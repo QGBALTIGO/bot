@@ -114,9 +114,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /manga nome do mangá")
         return
+                
     nome = " ".join(context.args)
-    await update.message.reply_text("📚 Procurando o mangá pra você...
-Aguarde um instante ⏳")
+    await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde um instante ⏳")
 
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
@@ -144,6 +144,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
