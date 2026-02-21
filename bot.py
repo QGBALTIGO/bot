@@ -122,9 +122,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
             "👉 <b>Formato correto:</b>\n"
-            "<code>/anime nome do anime</code>\n\n"
+            "<code>/manga nome do mangá</code>\n\n"
             "🎬 <b>Exemplo:</b>\n"
-            "<code>/anime naruto</code>"
+            "<code>/manga naruto</code>"
         )
         return
 
@@ -164,6 +164,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
