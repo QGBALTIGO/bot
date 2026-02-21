@@ -3,6 +3,18 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import time
+
+PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas em segundos
+ultimo_pedido = {}
+
+def pode_pedir(user_id: int) -> bool:
+    agora = time.time()
+    if user_id in ultimo_pedido:
+        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
+            return False
+    ultimo_pedido[user_id] = agora
+    return True
             
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
@@ -52,6 +64,28 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== PEDIDOS =====
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not pode_pedir(user_id):
+        await update.message.reply_text(
+            "⏳ Você já enviou um pedido recentemente.\n\n"
+            "🕛 É permitido apenas <b>1 pedido a cada 12 horas</b>.\n"
+            "Tente novamente mais tarde 🙂",
+            parse_mode="HTML"
+        )
+        return
+
+    if not context.args:
+        await update.message.reply_html(
+            "📩 <b>Pedido de Adição</b>\n\n"
+            "Use assim:\n"
+            "<code>/pedido nome do anime ou mangá</code>"
+        )
+        return
+
+    texto_pedido = " ".join(context.args)
+            
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 👉 1. SE NÃO TIVER TEXTO
     if not context.args:
@@ -209,6 +243,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
