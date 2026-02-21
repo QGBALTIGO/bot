@@ -3,7 +3,32 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-            
+import aiohttp
+
+# ================= ANIList (API PÚBLICA) =================
+async def buscar_anilist_id(titulo: str, tipo: str):
+    query = """
+    query ($search: String, $type: MediaType) {
+      Media(search: $search, type: $type) {
+        id
+      }
+    }
+    """
+    variables = {
+        "search": titulo,
+        "type": tipo
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": variables}
+        ) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return data.get("data", {}).get("Media", {}).get("id")
+
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
@@ -74,15 +99,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not anti_spam(user_id):
+        await update.message.reply_text("⏳ Aguarde alguns segundos.")
+        return
+
     if not context.args:
         await update.message.reply_text("Use: /anime nome do anime")
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text("🔎 Buscando o anime...")
 
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
@@ -91,21 +119,28 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Anime não encontrado.")
         return
 
-    keyboard = [[
-        InlineKeyboardButton(
-            "▶️ Assistir no canal",
-            url=f"https://t.me/{CANAL_ANIME}/{msg_id}"
-        )
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    anilist_id = await buscar_anilist_id(nome, "ANIME")
 
-    # 🔁 COPIA A MENSAGEM DO CANAL (com imagem + texto)
+    keyboard = [
+        [InlineKeyboardButton("▶️ Assistir no canal",
+         url=f"https://t.me/{CANAL_ANIME}/{msg_id}")]
+    ]
+
+    if anilist_id:
+        keyboard.append([
+            InlineKeyboardButton(
+                "🎬 Ver no AniList",
+                url=f"https://anilist.co/anime/{anilist_id}"
+            )
+        ])
+
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_ANIME}",
         message_id=msg_id,
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
         
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,3 +190,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
