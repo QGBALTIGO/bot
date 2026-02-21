@@ -1,7 +1,6 @@
 from telethon import TelegramClient
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telethon import random
 
 # ===== DADOS =====
 api_id = 34116600
@@ -97,73 +96,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
 )
 
-# ===== COMANDO /random =====
-async def random_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_html(
-            "🎲 <b>Random</b>\n\n"
-            "Escolha o tipo:\n"
-            "<code>/random anime</code>\n"
-            "<code>/random manga</code>"
-        )
-        return
-
-    tipo = context.args[0].lower()
-
-    await update.message.reply_text("🎲 Sorteando algo pra você...")
-
-    if tipo == "anime":
-        link = await random_anime()
-        titulo = "Anime"
-    elif tipo == "manga":
-        link = await random_manga()
-        titulo = "Mangá"
-    else:
-        await update.message.reply_text("❌ Use apenas: anime ou manga")
-        return
-
-    if link:
-        await update.message.reply_html(
-            f"✨ <b>Indicação aleatória ({titulo})</b>\n\n"
-            f"Talvez isso vire seu próximo vício 😈\n\n"
-            f"🔗 {link}"
-        )
-    else:
-        await update.message.reply_text("❌ Não consegui sortear nada.")
-
-import random
-
-async def random_anime():
-    async with client_random:
-        msgs = []
-        async for msg in client_random.iter_messages(CANAL_ANIME, limit=100):
-            if msg.text:
-                msgs.append(msg)
-        if not msgs:
-            return None
-        escolhido = random.choice(msgs)
-        return f"https://t.me/{CANAL_ANIME}/{escolhido.id}"
-
-async def random_manga():
-    async with client_random:
-        msgs = []
-        async for msg in client_random.iter_messages(CANAL_MANGA, limit=100):
-            if msg.text:
-                msgs.append(msg)
-        if not msgs:
-            return None
-        escolhido = random.choice(msgs)
-        return f"https://t.me/{CANAL_MANGA}/{escolhido.id}"
-
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("randomanime", randomanime))
-app.add_handler(CommandHandler("randommanga", randommanga))
+app.add_handler(CommandHandler("start", start)
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
