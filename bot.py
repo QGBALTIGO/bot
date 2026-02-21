@@ -12,8 +12,8 @@ from telegram.ext import (
 # 🔐 CONFIGURAÇÕES (USE VARIÁVEIS DE AMBIENTE)
 # ======================================================
 API_ID = int(os.getenv("API_ID", "34116600"))
-API_HASH = os.getenv("API_HASH", "COLOQUE_SEU_API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "COLOQUE_SEU_BOT_TOKEN")
+API_HASH = os.getenv("API_HASH", "b8f22be457ce73f65fad82315073fbc3")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg")
 
 CANAL_ANIME = os.getenv("CANAL_ANIME", "Centraldeanimes_Baltigo")
 CANAL_MANGA = os.getenv("CANAL_MANGA", "MangasBrasil")
@@ -119,3 +119,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
