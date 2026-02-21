@@ -63,25 +63,28 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto_pedido = " ".join(context.args)
     user = update.effective_user
 
-    mensagem = (
-        "📥 *NOVO PEDIDO RECEBIDO*\n\n"
-        f"👤 Usuário: {user.full_name}\n"
-        f"🆔 ID: `{user.id}`\n\n"
-        f"📝 Pedido:\n"
-        f"{texto_pedido}"
+    # 📤 MENSAGEM QUE VAI PARA O CANAL FECHADO
+    mensagem_canal = (
+        "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
+        f"👤 <b>Usuário:</b> {user.full_name}\n"
+        f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
+        f"📝 <b>Pedido:</b>\n"
+        f"<i>{texto_pedido}</i>\n\n"
+        "✅ <b>Status:</b> Pedido listado com sucesso!"
     )
 
-    # Envia para o canal fechado
     await context.bot.send_message(
         chat_id=CANAL_PEDIDOS,
-        text=mensagem,
-        parse_mode="Markdown"
+        text=mensagem_canal,
+        parse_mode="HTML"
     )
 
-    # Responde ao usuário
-    await update.message.reply_text(
-        "✅ Seu pedido foi enviado com sucesso!\n"
-        "📨 Em breve a equipe irá analisar."
+    # 📥 RESPOSTA PARA QUEM FEZ O PEDIDO
+    await update.message.reply_html(
+        f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
+        f"Seu pedido <b>{texto_pedido}</b> já foi listado com sucesso!\n\n"
+        "🕒 Agora é só aguardar que em breve estaremos postando.\n\n"
+        "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
     )
             
 # ===== BUSCAS =====
@@ -199,6 +202,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
