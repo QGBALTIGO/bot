@@ -1,122 +1,93 @@
-import os
-import asyncio
 from telethon import TelegramClient
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# ======================================================
-# 🔐 CONFIGURAÇÕES (USE VARIÁVEIS DE AMBIENTE)
-# ======================================================
-API_ID = int(os.getenv("API_ID", "34116600"))
-API_HASH = os.getenv("API_HASH", "b8f22be457ce73f65fad82315073fbc3")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg")
+# ===== DADOS =====
+api_id = 34116600
+api_hash = "b8f22be457ce73f65fad82315073fbc3"
+BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
+CANAL_ANIME = "Centraldeanimes_Baltigo"
+CANAL_MANGA = "MangasBrasil"
 
-CANAL_ANIME = os.getenv("CANAL_ANIME", "Centraldeanimes_Baltigo")
-CANAL_MANGA = os.getenv("CANAL_MANGA", "MangasBrasil")
+# ===== TELETHON =====
+client = TelegramClient("sessao_busca", api_id, api_hash)
 
-# ======================================================
-# 🤖 TELETHON CLIENT (INICIA UMA VEZ)
-# ======================================================
-telethon_client = TelegramClient(
-    "sessao_busca",
-    API_ID,
-    API_HASH
-)
-
-# ======================================================
-# 🔎 FUNÇÕES DE BUSCA
-# ======================================================
-async def buscar_link(canal: str, termo: str):
-    async for msg in telethon_client.iter_messages(canal, search=termo):
+# ===== BUSCAS =====
+async def buscar_anime(nome):
+    async for msg in client.iter_messages(CANAL_ANIME, search=nome):
         if msg.text:
-            return f"https://t.me/{canal}/{msg.id}"
+            return f"https://t.me/{CANAL_ANIME}/{msg.id}"
     return None
-
-# ======================================================
-# 📌 COMANDOS
-# ======================================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html(
-        "👋 <b>Olá!</b>\n\n"
-        "Sou um bot de busca de <b>animes</b> e <b>mangás</b>.\n\n"
-        "📌 <b>Comandos disponíveis:</b>\n"
-        "🎬 <code>/anime nome</code>\n"
-        "📖 <code>/manga nome</code>\n\n"
-        "✨ Exemplo:\n"
-        "<code>/anime naruto</code>"
-    )
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
-
+async def buscar_manga(nome):
+    async for msg in client.iter_messages(CANAL_MANGA, search=nome):
+        if msg.text:
+            return f"https://t.me/{CANAL_MANGA}/{msg.id}"
+    return None
+    
+# ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Uso incorreto</b>\n\n"
-            "👉 <code>/anime nome do anime</code>"
-        )
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
+            "👉 <b>Formato correto:</b>\n"
+            "<code>/anime nome do anime</code>\n\n"
+            "🎬 <b>Exemplo:</b>\n"
+            "<code>/anime naruto</code>")
         return
-
-    nome = " ".join(context.args).lower()
-    await update.message.reply_text("🔎 Procurando o anime...")
-
-    link = await buscar_link(CANAL_ANIME, nome)
-
+    nome = " ".join(context.args)
+    await update.message.reply_text("🔎 Teste o anime pra você...\nAguarde um instante ⏳")
+    async with client:
+        link = await buscar_anime(nome.lower())
     if link:
         await update.message.reply_html(
-            f"🎬 <b>{nome.upper()}</b>\n\n"
-            f"🔗 <b>Assista aqui:</b>\n{link}"
-        )
+    f"🍿 <b>A espera acabou.</b>\n"
+    f"O momento chegou.\n\n"
+    f"📺 <b>{nome.upper()}</b>\n\n"
+    f"Entre, assista e desapareça do mundo por algumas horas.\n\n"
+    f"🔗 <b>Disponível agora:</b>\n"
+    f"{link}"
+)
     else:
         await update.message.reply_html(
-            "🚫 <b>Anime não encontrado</b>\n"
-            "Tente outro nome."
-        )
-
+    "🚫 <b>Nada por aqui…</b>\n\n"
+    "O anime que você procurou não foi encontrado no canal.\n\n"
+    "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+)
+        
+# ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Uso incorreto</b>\n\n"
-            "👉 <code>/manga nome do mangá</code>"
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
+            "👉 <b>Formato correto:</b>\n"
+            "<code>/manga nome do mangá</code>\n\n"
+            "📖 <b>Exemplo:</b>\n"
+            "<code>/manga one piece</code>"
         )
         return
-
-    nome = " ".join(context.args).lower()
-    await update.message.reply_text("📚 Procurando o mangá...")
-
-    link = await buscar_link(CANAL_MANGA, nome)
-
+    nome = " ".join(context.args)
+    await update.message.reply_text("📚 Procurando o mangá...\nJá já te mando 📖")
+    async with client:
+        link = await buscar_manga(nome.lower())
     if link:
         await update.message.reply_html(
-            f"📖 <b>{nome.upper()}</b>\n\n"
-            f"🔗 <b>Leia aqui:</b>\n{link}"
-        )
+    f"📚 <b>A espera acabou.</b>\n"
+    f"A próxima leitura te chama.\n\n"
+    f"📖 <b>{nome.upper()}</b>\n\n"
+    f"Prepare-se para virar páginas e esquecer do tempo.\n\n"
+    f"🔗 <b>Leia agora:</b>\n"
+    f"{link}"
+)
     else:
         await update.message.reply_html(
-            "🚫 <b>Mangá não encontrado</b>\n"
-            "Tente outro nome."
-        )
-
-# ======================================================
-# 🚀 MAIN
-# ======================================================
-async def main():
-    await telethon_client.start()
-
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("anime", anime))
-    app.add_handler(CommandHandler("manga", manga))
-
-    print("🤖 Bot rodando...")
-    await app.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
+    "🚫 <b>Nada por aqui…</b>\n\n"
+    "O mangá que você procurou não foi encontrado no canal.\n\n"
+    "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+)
+        
+# ===== INICIAR BOT =====
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("manga", manga))
+print("🤖 Bot rodando...")
+app.run_polling()
