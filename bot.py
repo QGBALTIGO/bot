@@ -109,8 +109,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-        
-# ===== COMANDO /manga =====
+
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -151,6 +150,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
