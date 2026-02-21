@@ -1,0 +1,68 @@
+{
+    "name":"Ani-Info",
+    "description":"telegram anime info provider bot",
+    "keywords":[
+        "Pyrogram",
+        "Telegram",
+        "Bot",
+        "Anime"
+    ],
+    "repository":"https://github.com/lostb053/anibot",
+    "website":"https://github.com/lostb053/anibot",
+    "success_url":"https://t.me/lostb053",
+    "env":{
+        "API_ID":{
+            "description":"34116600"
+        },
+        "API_HASH":{
+            "description":"b8f22be457ce73f65fad82315073fbc3"
+        },
+        "DATABASE_URL":{
+            "description":"DATABASE_URL=mongodb+srv://kaykys468_db_user:oqSNFQ0Su4uWCcRT@cluster0.xxxxx.mongodb.net/anibot"
+        },
+        "LOG_CHANNEL_ID":{
+            "description":"-1003889677462"
+        },
+        "BOT_TOKEN":{
+            "description":"8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
+        },
+        "BOT_NAME":{
+            "description":" @SourceBaltigo_Bot"
+        },
+        "OWNER_ID":{
+            "description":"1852596083"
+        },
+        "ANILIST_CLIENT": {
+            "description":"36318"
+        },
+        "ANILIST_SECRET": {
+            "description":"0S7GDyIMBRrvmQI8M2Mc32FIdC1j9wgK4WVhUe0M"
+        },
+        "ANILIST_REDIRECT_URL": {
+            "description":"https://example.com",
+            "required":false
+        },
+        "TRIGGERS":{
+            "description":"/ !",
+            "required":false
+        },
+        "PREFERRED_LANGUAGE":{
+            "description":"pt",
+            "required":false
+        }
+    },
+    "buildpacks":[
+        {
+            "url":"https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git"
+        },
+        {
+            "url":"heroku/python"
+        }
+    ],
+    "formation":{
+        "worker":{
+            "quantity":1,
+            "size":"free"
+        }
+    }
+}
