@@ -110,6 +110,24 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         
+        # 👉 SE TIVER FOTO
+    if msg.photo:
+        await update.message.reply_photo(
+            photo=msg.photo,
+            caption=(
+                f"🍿 <b>{nome.upper()}</b>\n\n"
+                f"Clique no botão abaixo para assistir 👇"
+            ),
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_html(
+            f"🍿 <b>{nome.upper()}</b>\n\n"
+            f"{link}",
+            reply_markup=reply_markup
+        )
+        
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -158,6 +176,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
