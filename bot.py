@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 # ===== DADOS =====
 api_id = 34116600
 api_hash = "b8f22be457ce73f65fad82315073fbc3"
-BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
+BOT_TOKEN = "dd"
 
 CANAL_ANIME = "Centraldeanimes_Baltigo"
 CANAL_MANGA = "MangasBrasil"
@@ -99,6 +99,7 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
