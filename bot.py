@@ -3,29 +3,6 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import aiohttp
-
-# ===== ANI CONFIG =====
-ANILIST_API = "https://graphql.anilist.co"
-
-async def buscar_anilist_id(nome: str, tipo: str):
-    query = """
-    query ($search: String) {
-      Media(search: $search, type: %s) {
-        id
-      }
-    }
-    """ % tipo
-
-    variables = {"search": nome}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables}
-        ) as resp:
-            data = await resp.json()
-            return data["data"]["Media"]["id"] if data.get("data") else None
             
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
@@ -178,6 +155,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
