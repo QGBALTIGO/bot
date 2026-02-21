@@ -108,48 +108,34 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
         
 # ===== COMANDO /manga =====
-async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Use:</b>\n"
-            "<code>/manga nome do mangá</code>\n\n"
-            "📖 <b>Exemplo:</b>\n"
-            "<code>/manga one piece</code>"
-        )
+   if not context.args:
+        await update.message.reply_text("Use: /manga nome do mangá")
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("📚 Buscando o mangá pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde um instante ⏳")
 
     async with client:
-        msg = await buscar_post(CANAL_MANGA, nome)
+        msg_id = await buscar_post(CANAL_MANGA, nome)
 
-    if not msg:
-        await update.message.reply_html(
-            "🚫 <b>Mangá não encontrado.</b>\n\n"
-            "✨ Tente outro nome ou grafia."
-        )
+    if not msg_id:
+        await update.message.reply_text("❌ Mangá não encontrado.")
         return
 
-    # 🔁 REENVIA A MENSAGEM ORIGINAL (COM FOTO)
-    await context.bot.forward_message(
-        chat_id=update.effective_chat.id,
-        from_chat_id=CANAL_MANGA,
-        message_id=msg.id
-    )
-
-    # 🔘 BOTÃO
-    link = f"https://t.me/{CANAL_MANGA}/{msg.id}"
-    keyboard = [
-        [InlineKeyboardButton("📖 Ler agora", url=link)]
-    ]
+    keyboard = [[
+        InlineKeyboardButton(
+            "📖 Ler agora",
+            url=f"https://t.me/{CANAL_MANGAA}/{msg_id}"
+        )
+    ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        f"📖 *{nome.upper()}*\n\nClique no botão abaixo 👇",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+    # 🔁 COPIA A MENSAGEM DO CANAL (com imagem + texto)
+    await context.bot.copy_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=f"@{CANAL_MANGA}",
+        message_id=msg_id,
+        reply_markup=reply_markup
     )
         
 # ===== INICIAR BOT =====
@@ -159,6 +145,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
