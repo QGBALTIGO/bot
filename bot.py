@@ -68,6 +68,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/manga</code>\n\n"
         "✨ Aguarde novidades!"
     )
+
+# ===== COMANDO /foto =====
+async def buscar_post(canal, termo):
+    async for msg in client.iter_messages(canal, search=termo):
+        if msg:
+            link = f"https://t.me/{canal}/{msg.id}"
+            foto = None
+
+            if msg.media and isinstance(msg.media, MessageMediaPhoto):
+                foto = msg.photo
+
+            return link, foto
+
+    return None, None
     
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,6 +190,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
