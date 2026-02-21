@@ -52,12 +52,15 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== PEDIDOS =====
-async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text(
-            "📩 Use assim:\n"
-            "/pedido escreva aqui o que você quer pedir"
-        )
+await update.message.reply_html(
+    "📩 <b>Pedido de Adição</b>\n\n"
+    "Quer sugerir um <b>anime</b> ou <b>mangá</b> para adicionarmos no canal?\n"
+    "É só usar o comando abaixo 👇\n\n"
+    "📝 <b>Como usar:</b>\n"
+    "<code>/pedido nome do anime ou mangá</code>\n\n"
+    "✅ Seu pedido será enviado para a equipe\n"
+    "⏳ Assim que possível, ele poderá ser postado!"
+)
         return
 
     texto_pedido = " ".join(context.args)
@@ -202,6 +205,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
