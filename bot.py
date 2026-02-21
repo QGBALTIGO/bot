@@ -5,6 +5,14 @@ import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             
 # ===== ANTI-SPAM CONFIG =====
+
+async def apagar_mensagem(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    await context.bot.delete_message(
+        chat_id=job.chat_id,
+        message_id=job.data
+    )
+            
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
 
@@ -86,9 +94,16 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text(
-        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
-    )
+    msg_busca = await update.message.reply_text(
+    "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
+)
+
+context.job_queue.run_once(
+    apagar_mensagem,
+    5,  # ⏱️ 5 segundos
+    chat_id=update.effective_chat.id,
+    data=msg_busca.message_id
+)
 
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
@@ -164,6 +179,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
