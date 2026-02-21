@@ -77,32 +77,38 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 <b>Formato correto:</b>\n"
             "<code>/anime nome do anime</code>\n\n"
             "🎬 <b>Exemplo:</b>\n"
-            "<code>/anime naruto</code>")
+            "<code>/anime naruto</code>"
+        )
         return
+
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
+
+    await update.message.reply_text(
+        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
+    )
+
     async with client:
         link = await buscar_anime(nome.lower())
+
     if link:
         keyboard = [
-    [InlineKeyboardButton("▶️ Assistir agora", url=link)]
-]
+            [InlineKeyboardButton("▶️ Assistir agora", url=link)]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-reply_markup = InlineKeyboardMarkup(keyboard)
-
-await update.message.reply_html(
-    f"🍿 <b>A espera acabou.</b>\n"
-    f"O momento chegou.\n\n"
-    f"📺 <b>{nome.upper()}</b>\n\n"
-    f"Clique no botão abaixo para assistir 👇",
-    reply_markup=reply_markup
-)
+        await update.message.reply_html(
+            f"🍿 <b>A espera acabou.</b>\n"
+            f"O momento chegou.\n\n"
+            f"📺 <b>{nome.upper()}</b>\n\n"
+            f"Clique no botão abaixo para assistir 👇",
+            reply_markup=reply_markup
+        )
     else:
         await update.message.reply_html(
-    "🚫 <b>Nada por aqui…</b>\n\n"
-    "O anime que você procurou não foi encontrado no canal.\n\n"
-    "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
-)
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "O anime que você procurou não foi encontrado no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+        )
         
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,6 +148,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
