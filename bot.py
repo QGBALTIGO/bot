@@ -90,7 +90,8 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg_id:
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
-            "O anime que você procurou não foi encontrado."
+            "O anime que você procurou não foi encontrado no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
 
@@ -123,8 +124,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not msg_id:
         await update.message.reply_html(
-            "🚫 <b>Mangá não encontrado.</b>\n\n"
-            "✨ Tente outro nome ou grafia."
+             "🚫 <b>Nada por aqui…</b>\n\n"
+            "O mangá que você procurou não foi encontrado no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
 
@@ -150,6 +152,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
