@@ -53,7 +53,11 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     f"{link}"
 )
     else:
-        await update.message.reply_text("❌ Anime não encontrado.")
+        await update.message.reply_html(
+    "🚫 <b>Nada por aqui…</b>\n\n"
+    "O anime que você procurou não foi encontrado no canal.\n\n"
+    "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+)
 
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,6 +96,7 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
