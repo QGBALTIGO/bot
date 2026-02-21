@@ -122,10 +122,22 @@ def pode_pedir(user_id: int) -> bool:
     ultimo_pedido[user_id] = agora
     return True
 
-# ===== PEDIDOS EM MEMÓRIA =====
-# chave: texto do pedido | valor: user_id
-pedidos_pendentes = {}
+import time
 
+# ===== CONFIG ANTIFLOOD =====
+PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
+ultimo_pedido = {}
+
+def pode_pedir(user_id: int) -> bool:
+    agora = time.time()
+    if user_id in ultimo_pedido:
+        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
+            return False
+    ultimo_pedido[user_id] = agora
+    return True
+
+
+# ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -135,15 +147,15 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "⏳ <b>Pedido recente detectado</b>\n\n"
             "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
-            "🕒 Aguarde antes de enviar outro 🙂"
+            "🕒 Aguarde um pouco antes de enviar outro 🙂"
         )
         return
 
-    # ❌ SEM TEXTO
+    # 👉 SEM TEXTO
     if not context.args:
         await update.message.reply_html(
             "📩 <b>Pedido de Anime ou Mangá</b>\n\n"
-            "Use este comando para solicitar a adição de um conteúdo.\n\n"
+            "Use este comando para solicitar a adição de um conteúdo no canal.\n\n"
             "📝 <b>Como usar:</b>\n"
             "<code>/pedido nome do anime ou mangá</code>\n\n"
             "📌 <b>Exemplos:</b>\n"
@@ -155,58 +167,31 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 📌 TEXTO DO PEDIDO
     texto_pedido = " ".join(context.args)
-    chave = texto_pedido.lower()
 
-    # 💾 SALVA PEDIDO
-    pedidos_pendentes[chave] = user_id
+    # 📤 ENVIA PARA O CANAL FECHADO
+    CANAL_PEDIDOS = "@SEU_CANAL_FECHADO_AQUI"
 
-    # 📤 ENVIA PARA CANAL FECHADO
+    mensagem_canal = (
+        "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
+        f"👤 <b>Usuário:</b> {user.first_name}\n"
+        f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
+        f"📌 <b>Pedido:</b>\n"
+        f"<code>{texto_pedido}</code>"
+    )
+
     await context.bot.send_message(
         chat_id=CANAL_PEDIDOS,
-        text=(
-            "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
-            f"👤 <b>Usuário:</b> {user.full_name}\n"
-            f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
-            f"📝 <b>Pedido:</b>\n"
-            f"<i>{texto_pedido}</i>\n\n"
-            "⏳ <b>Status:</b> Aguardando postagem"
-        ),
+        text=mensagem_canal,
         parse_mode="HTML"
     )
 
-    # 📥 CONFIRMA PARA O USUÁRIO
+    # ✅ RESPOSTA PARA O USUÁRIO
     await update.message.reply_html(
-        f"✅ <b>{user.first_name}</b>\n\n"
-        f"Seu pedido <b>{texto_pedido}</b> foi registrado com sucesso!\n\n"
-        "🕒 Assim que um ADM postar esse conteúdo no canal, você será avisado automaticamente 📢"
+        "✅ <b>Pedido enviado com sucesso!</b>\n\n"
+        f"📌 <b>Pedido:</b> <code>{texto_pedido}</code>\n\n"
+        "Agora é só aguardar ✨\n"
+        "Assim que possível, ele poderá ser postado no canal!"
     )
-
-async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.channel_post:
-        return
-
-    texto = update.channel_post.text
-    if not texto:
-        return
-
-    texto_lower = texto.lower()
-
-    for pedido, user_id in list(pedidos_pendentes.items()):
-        if pedido in texto_lower:
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=(
-                        "🎉 <b>Pedido atendido!</b>\n\n"
-                        f"O conteúdo <b>{pedido}</b> já foi postado no canal ✅\n\n"
-                        "📺 Aproveite e bom entretenimento!"
-                    ),
-                    parse_mode="HTML"
-                )
-            except:
-                pass
-
-            del pedidos_pendentes[pedido]
             
 # ===== BUSCAS =====
 async def buscar_anime(nome):
@@ -330,6 +315,7 @@ app.add_handler(
 )
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
