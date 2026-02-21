@@ -115,20 +115,20 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /manga nome do mangá")
         return
-                
+
     nome = " ".join(context.args)
     await update.message.reply_text("📚 Buscando o mangá... ⏳")
 
     async with client:
-        msg = await buscar_post(CANAL_MANGA, nome)
+        msg_id = await buscar_post(CANAL_MANGA, nome)
 
-    if not msg:
+    if not msg_id:
         await update.message.reply_html(
             "🚫 <b>Mangá não encontrado.</b>\n\n"
             "✨ Tente outro nome ou grafia."
         )
         return
-                
+
     keyboard = [[
         InlineKeyboardButton(
             "📖 Ler agora",
@@ -136,6 +136,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
@@ -150,6 +151,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
