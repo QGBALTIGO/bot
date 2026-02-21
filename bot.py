@@ -52,6 +52,46 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
+# ===== ENTRADA CANAIS =====
+from telegram.error import BadRequest
+
+async def usuario_no_canal(context, user_id: int) -> bool:
+    try:
+        membro_anime = await context.bot.get_chat_member(-1001823020280, user_id)
+        if membro_anime.status in ["member", "administrator", "creator"]:
+            return True
+    except BadRequest:
+        pass
+
+    try:
+        membro_manga = await context.bot.get_chat_member(-1001834602691, user_id)
+        if membro_manga.status in ["member", "administrator", "creator"]:
+            return True
+    except BadRequest:
+        pass
+
+    return False
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def bloquear_se_nao_membro(update, context) -> bool:
+    user_id = update.effective_user.id
+    if await usuario_no_canal(context, user_id):
+        return False  # pode usar o bot
+
+    keyboard = [
+        [InlineKeyboardButton("🎬 Canal de Animes", url="t.me/Centraldeanimes_Baltigo")],
+        [InlineKeyboardButton("📚 Canal de Mangás", url="t.me/MangasBrasil")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_html(
+        "🔒 <b>Acesso restrito</b>\n\n"
+        "Para usar os comandos do bot, você precisa estar em <b>pelo menos um</b> dos canais abaixo 👇",
+        reply_markup=reply_markup
+    )
+    return True
+            
 # ===== CONFIG ANTIFLOOD =====
 PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
 ultimo_pedido = {}
@@ -254,6 +294,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
