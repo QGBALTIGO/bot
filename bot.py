@@ -1,6 +1,39 @@
 from telethon import TelegramClient
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import time
+
+# ===== ANTI-SPAM CONFIG =====
+ANTI_SPAM_TIME = 5  # segundos
+last_command_time = {}
+
+def anti_spam(user_id: int) -> bool:
+    agora = time.time()
+
+    if user_id in last_command_time:
+        if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
+            return False
+
+    last_command_time[user_id] = agora
+    return True
+
+async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Calma aí!\nEspere alguns segundos antes de usar outro comando."
+        )
+        return
+
+async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
 
 # ===== DADOS =====
 api_id = 34116600
@@ -103,4 +136,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
