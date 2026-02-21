@@ -2,6 +2,7 @@ from telethon import TelegramClient
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
@@ -83,13 +84,18 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with client:
         link = await buscar_anime(nome.lower())
     if link:
-        await update.message.reply_html(
+        keyboard = [
+    [InlineKeyboardButton("▶️ Assistir agora", url=link)]
+]
+
+reply_markup = InlineKeyboardMarkup(keyboard)
+
+await update.message.reply_html(
     f"🍿 <b>A espera acabou.</b>\n"
     f"O momento chegou.\n\n"
     f"📺 <b>{nome.upper()}</b>\n\n"
-    f"Entre, assista e desapareça do mundo por algumas horas.\n\n"
-    f"🔗 <b>Disponível agora:</b>\n"
-    f"{link}"
+    f"Clique no botão abaixo para assistir 👇",
+    reply_markup=reply_markup
 )
     else:
         await update.message.reply_html(
@@ -136,5 +142,6 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
