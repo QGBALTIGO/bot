@@ -29,11 +29,12 @@ async def buscar_manga(nome):
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("❌ Comando incompleto.\n\n"
-"👉 Use assim:\n"
-"/anime nome do anime\n\n"
-"Exemplo:\n"
-"/anime naruto")
+        await update.message.reply_html(
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
+            "👉 <b>Formato correto:</b>\n"
+            "<code>/anime nome do anime</code>\n\n"
+            "🎬 <b>Exemplo:</b>\n"
+            "<code>/anime naruto</code>")
         return
 
     nome = " ".join(context.args)
@@ -58,7 +59,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou</b>\n\n"
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
             "👉 <b>Formato correto:</b>\n"
             "<code>/manga nome do mangá</code>\n\n"
             "📖 <b>Exemplo:</b>\n"
@@ -91,6 +92,7 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
