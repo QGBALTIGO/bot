@@ -76,7 +76,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Use: /anime nome do anime")
+        await update.message.reply_html(
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
+            "👉 <b>Formato correto:</b>\n"
+            "<code>/anime nome do anime</code>\n\n"
+            "🎬 <b>Exemplo:</b>\n"
+            "<code>/anime naruto</code>"
+        )
         return
 
     nome = " ".join(context.args)
@@ -152,6 +158,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
