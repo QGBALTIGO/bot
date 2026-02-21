@@ -63,11 +63,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = await buscar_manga(nome.lower())
 
     if link:
-        await update.message.reply_text(
-            f"📖 Mangá encontrado!\n\n"
-            f"📚 {nome}\n"
-            f"🔗 {link}"
-        )
+        await update.message.reply_html(
+    f"📚 <b>A espera acabou.</b>\n"
+    f"A próxima leitura te chama.\n\n"
+    f"📖 <b>{nome.upper()}</b>\n\n"
+    f"Prepare-se para virar páginas e esquecer do tempo.\n\n"
+    f"🔗 <b>Leia agora:</b>\n"
+    f"{link}"
+)
     else:
         await update.message.reply_text("❌ Mangá não encontrado.")
 
@@ -78,5 +81,6 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
