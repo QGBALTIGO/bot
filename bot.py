@@ -88,7 +88,8 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_ANIME, nome)
 
     if not msg_id:
-        await update.message.reply_text("❌ Anime não encontrado.")
+        await update.message.reply_text("🚫 <b>Nada por aqui…</b>\n\n"
+            "O anime que você procurou não foi encontrado.")
         return
 
     keyboard = [[
@@ -155,3 +156,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
