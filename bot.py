@@ -112,7 +112,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Formato correto:</b>\n"
+            "👉 <b>Use:</b>\n"
             "<code>/manga nome do mangá</code>\n\n"
             "📖 <b>Exemplo:</b>\n"
             "<code>/manga one piece</code>"
@@ -120,41 +120,37 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-
-    await update.message.reply_text("📚 Buscando o mangá...\nAguarde ⏳")
+    await update.message.reply_text("📚 Buscando o mangá... ⏳")
 
     async with client:
-        link, media_id = await buscar_manga(nome.lower())
+        msg = await buscar_post(CANAL_MANGA, nome)
 
-    if not link:
+    if not msg:
         await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado."
+            "🚫 <b>Mangá não encontrado.</b>\n\n"
+            "✨ Tente outro nome ou grafia."
         )
         return
 
+    # 🔁 REENVIA A MENSAGEM ORIGINAL (COM FOTO)
+    await context.bot.forward_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=CANAL_MANGA,
+        message_id=msg.id
+    )
+
+    # 🔘 BOTÃO
+    link = f"https://t.me/{CANAL_MANGA}/{msg.id}"
     keyboard = [
         [InlineKeyboardButton("📖 Ler agora", url=link)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    texto = (
-        f"📚 <b>{nome.upper()}</b>\n\n"
-        "Clique no botão abaixo para ler 👇"
+    await update.message.reply_text(
+        f"📖 *{nome.upper()}*\n\nClique no botão abaixo 👇",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
     )
-
-    if media_id:
-        await update.message.reply_photo(
-            photo=media_id,
-            caption=texto,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_html(
-            texto,
-            reply_markup=reply_markup
-        )
         
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -163,6 +159,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
