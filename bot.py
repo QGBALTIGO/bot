@@ -121,31 +121,39 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    await update.message.reply_text(
-        "📚 Procurando o mangá pra você...\nAguarde um instante ⏳"
-    )
+    await update.message.reply_text("📚 Buscando o mangá...\nAguarde ⏳")
 
     async with client:
-        link = await buscar_manga(nome.lower())
+        link, media_id = await buscar_manga(nome.lower())
 
-    if link:
-        keyboard = [
-            [InlineKeyboardButton("📖 Ler agora", url=link)]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+    if not link:
         await update.message.reply_html(
-            f"📚 <b>A espera acabou.</b>\n"
-            f"A próxima leitura te chama.\n\n"
-            f"📖 <b>{nome.upper()}</b>\n\n"
-            f"Clique no botão abaixo para ler 👇",
-            reply_markup=reply_markup
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "O mangá que você procurou não foi encontrado."
+        )
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("📖 Ler agora", url=link)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    texto = (
+        f"📚 <b>{nome.upper()}</b>\n\n"
+        "Clique no botão abaixo para ler 👇"
+    )
+
+    if media_id:
+        await update.message.reply_photo(
+            photo=media_id,
+            caption=texto,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
         )
     else:
         await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+            texto,
+            reply_markup=reply_markup
         )
         
 # ===== INICIAR BOT =====
@@ -155,6 +163,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
