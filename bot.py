@@ -1,35 +1,16 @@
+import requests
 from telethon import TelegramClient
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ===== DADOS =====
-api_id = 34116600
-api_hash = "b8f22be457ce73f65fad82315073fbc3"
+API_ID = 34116600
+API_HASH = "b8f22be457ce73f65fad82315073fbc3"
 BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
+CANAL = "Centraldeanimes_Baltigo"
 
-CANAL_ANIME = "Centraldeanimes_Baltigo"
-CANAL_MANGA = "MangasBrasil"
-
-# ===== TELETHON =====
-client = TelegramClient("sessao_busca", api_id, api_hash)
-
-# ===== CACHE E ANTI-SPAM =====
-cache = {}          # { "naruto": link }
-cooldown = {}       # { user_id: timestamp }
-COOLDOWN_TIME = 10  # segundos
-
-# ===== BUSCAS =====
-async def buscar_anime(nome):
-    async for msg in client.iter_messages(CANAL_ANIME, search=nome):
-        if msg.text:
-            return f"https://t.me/{CANAL_ANIME}/{msg.id}"
-    return None
-
-async def buscar_manga(nome):
-    async for msg in client.iter_messages(CANAL_MANGA, search=nome):
-        if msg.text:
-            return f"https://t.me/{CANAL_MANGA}/{msg.id}"
-    return None
+# ===== TELETHON (USERBOT) =====
+client = TelegramClient("sessao_busca", API_ID, API_HASH)
 
 # ===== ANIList =====
 def buscar_anilist(nome):
@@ -100,33 +81,10 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=texto,
         parse_mode="HTML"
     )
-# ===== COMANDO /manga =====
-async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❌ Use assim: /manga one piece")
-        return
 
-    nome = " ".join(context.args)
-    await update.message.reply_text("📚 Procurando mangá...")
-
-    async with client:
-        link = await buscar_manga(nome.lower())
-
-    if link:
-        await update.message.reply_text(
-            f"📖 Mangá encontrado!\n\n"
-            f"📚 {nome}\n"
-            f"🔗 {link}"
-        )
-    else:
-        await update.message.reply_text("❌ Mangá não encontrado.")
-
-# ===== INICIAR BOT =====
+# ===== INICIAR =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
-app.add_handler(CommandHandler("manga", manga))
 
-print("🤖 Bot rodando...")
+print("🤖 Bot rodando (AniList + Canal)...")
 app.run_polling()
-
-
