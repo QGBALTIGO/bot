@@ -52,9 +52,8 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
-# ===== PEDIDOS =====
-
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas em segundos
+# ===== CONFIG ANTIFLOOD =====
+PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
 ultimo_pedido = {}
 
 def pode_pedir(user_id: int) -> bool:
@@ -64,30 +63,37 @@ def pode_pedir(user_id: int) -> bool:
             return False
     ultimo_pedido[user_id] = agora
     return True
-    
+
+
+# ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
     # ⛔ ANTIFLOOD
     if not pode_pedir(user_id):
-        await update.message.reply_text(
-            "⏳ Você já fez um pedido recentemente.\n\n"
-            "🕒 É permitido **1 pedido a cada 12 horas**.\n"
-            "Tente novamente mais tarde 🙂"
+        await update.message.reply_html(
+            "⏳ <b>Pedido recente detectado</b>\n\n"
+            "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
+            "🕒 Aguarde um pouco antes de enviar outro 🙂"
         )
         return
 
+    # 👉 SEM TEXTO
     if not context.args:
         await update.message.reply_html(
             "📩 <b>Pedido de Anime ou Mangá</b>\n\n"
-            "Use este comando para solicitar a adição de um conteúdo.\n\n"
-            "👉 <b>Exemplo:</b>\n"
+            "Use este comando para solicitar a adição de um conteúdo no canal.\n\n"
+            "📝 <b>Como usar:</b>\n"
+            "<code>/pedido nome do anime ou mangá</code>\n\n"
+            "📌 <b>Exemplos:</b>\n"
             "<code>/pedido Naruto Shippuden</code>\n"
             "<code>/pedido Solo Leveling (mangá)</code>\n\n"
-            "⏱️ Limite: <b>1 pedido a cada 12 horas</b>"
+            "⏱️ <b>Limite:</b> 1 pedido a cada 12 horas"
         )
         return
+
+    # 📌 TEXTO DO PEDIDO
 
     texto_pedido = " ".join(context.args)
             
@@ -248,6 +254,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
