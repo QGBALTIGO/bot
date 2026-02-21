@@ -3,7 +3,30 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import aiohttp
 
+# ===== ANI CONFIG =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_anilist_id(nome: str, tipo: str):
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: %s) {
+        id
+      }
+    }
+    """ % tipo
+
+    variables = {"search": nome}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables}
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Media"]["id"] if data.get("data") else None
+            
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
@@ -120,24 +143,39 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
     if not msg_id:
-        await update.message.reply_text("📚 Buscando o mangá pra você...\nAguarde um instante ⏳")
+        await update.message.reply_text("❌ Mangá não encontrado.")
         return
 
-    keyboard = [[
-        InlineKeyboardButton(
-            "📖 Ler agora",
-            url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
-        )
-    ]]
+    # 🔍 Busca o ID no AniList
+    anilist_id = await buscar_anilist_id(nome, "MANGA")
+
+    # 🔘 Botões
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📖 Ler agora",
+                url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
+            )
+        ]
+    ]
+
+    if anilist_id:
+        keyboard.append([
+            InlineKeyboardButton(
+                "📚 Ver no AniList",
+                url=f"https://anilist.co/manga/{anilist_id}"
+            )
+        ])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # 🔁 Copia a mensagem original do canal (imagem + texto)
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
         message_id=msg_id,
         reply_markup=reply_markup
     )
-        
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -145,6 +183,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
