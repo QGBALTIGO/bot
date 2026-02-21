@@ -105,10 +105,111 @@ def pode_pedir(user_id: int) -> bool:
     ultimo_pedido[user_id] = agora
     return True
 
+# ===== CANAIS =====
+CANAL_PEDIDOS = -1001234567890  # 🔒 canal fechado onde chegam os pedidos
+CANAL_ANIME = -1001823020280
+CANAL_MANGA = -1001834602691
+
+# ===== ANTIFLOOD PEDIDO =====
+PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
+ultimo_pedido = {}
+
+def pode_pedir(user_id: int) -> bool:
+    agora = time.time()
+    if user_id in ultimo_pedido:
+        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
+            return False
+    ultimo_pedido[user_id] = agora
+    return True
+
 # ===== PEDIDOS EM MEMÓRIA =====
+# chave: texto do pedido | valor: user_id
 pedidos_pendentes = {}
-# formato:
-# pedidos_pendentes["naruto"] = user_id
+
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+
+    # ⛔ ANTIFLOOD
+    if not pode_pedir(user_id):
+        await update.message.reply_html(
+            "⏳ <b>Pedido recente detectado</b>\n\n"
+            "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
+            "🕒 Aguarde antes de enviar outro 🙂"
+        )
+        return
+
+    # ❌ SEM TEXTO
+    if not context.args:
+        await update.message.reply_html(
+            "📩 <b>Pedido de Anime ou Mangá</b>\n\n"
+            "Use este comando para solicitar a adição de um conteúdo.\n\n"
+            "📝 <b>Como usar:</b>\n"
+            "<code>/pedido nome do anime ou mangá</code>\n\n"
+            "📌 <b>Exemplos:</b>\n"
+            "<code>/pedido Naruto Shippuden</code>\n"
+            "<code>/pedido Solo Leveling (mangá)</code>\n\n"
+            "⏱️ <b>Limite:</b> 1 pedido a cada 12 horas"
+        )
+        return
+
+    # 📌 TEXTO DO PEDIDO
+    texto_pedido = " ".join(context.args)
+    chave = texto_pedido.lower()
+
+    # salva em memória
+    pedidos_pendentes[chave] = user_id
+
+    # 📤 ENVIA PARA CANAL FECHADO
+    await context.bot.send_message(
+        chat_id=CANAL_PEDIDOS,
+        text=(
+            "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
+            f"👤 <b>Usuário:</b> {user.full_name}\n"
+            f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
+            f"📝 <b>Pedido:</b>\n"
+            f"<i>{texto_pedido}</i>\n\n"
+            "📌 <b>Quando este conteúdo for postado no canal, o bot avisará o usuário automaticamente.</b>"
+        ),
+        parse_mode="HTML"
+    )
+
+    # 📥 RESPOSTA AO USUÁRIO
+    await update.message.reply_html(
+        f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
+        f"Seu pedido <b>{texto_pedido}</b> foi registrado com sucesso!\n\n"
+        "🕒 Agora é só aguardar.\n"
+        "📢 Assim que um ADM postar esse conteúdo, você será avisado automaticamente!"
+    )
+
+async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.channel_post:
+        return
+
+    texto = update.channel_post.text
+    if not texto:
+        return
+
+    texto_lower = texto.lower()
+
+    for pedido, user_id in list(pedidos_pendentes.items()):
+        if pedido in texto_lower:
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        "🎉 <b>Pedido atendido!</b>\n\n"
+                        f"O conteúdo <b>{pedido}</b> já foi postado no canal ✅\n\n"
+                        "📺 Aproveite e bom entretenimento!"
+                    ),
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+
+            # remove da lista após avisar
+            del pedidos_pendentes[pedido]
+
 
 # ===== COMANDO /pedido =====
 
@@ -139,81 +240,6 @@ async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYP
 
             # remove pedido após avisar
             del pedidos_pendentes[pedido]
-                    
-async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-
-    # ⛔ ANTIFLOOD
-    if not pode_pedir(user_id):
-        await update.message.reply_html(
-            "⏳ <b>Pedido recente detectado</b>\n\n"
-            "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
-            "🕒 Aguarde um pouco antes de enviar outro 🙂"
-        )
-        return
-
-    # 👉 SEM TEXTO
-    if not context.args:
-        await update.message.reply_html(
-            "📩 <b>Pedido de Anime ou Mangá</b>\n\n"
-            "Use este comando para solicitar a adição de um conteúdo no canal.\n\n"
-            "📝 <b>Como usar:</b>\n"
-            "<code>/pedido nome do anime ou mangá</code>\n\n"
-            "📌 <b>Exemplos:</b>\n"
-            "<code>/pedido Naruto Shippuden</code>\n"
-            "<code>/pedido Solo Leveling (mangá)</code>\n\n"
-            "⏱️ <b>Limite:</b> 1 pedido a cada 12 horas"
-        )
-        return
-
-    texto_pedido = " ".join(context.args)
-chave = texto_pedido.lower()
-
-# salva pedido
-pedidos_pendentes[chave] = user.id
-            
-async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 👉 1. SE NÃO TIVER TEXTO
-    if not context.args:
-        await update.message.reply_text(
-            "📩 *Pedido de anime ou mangá*\n\n"
-            "Use este comando para solicitar a adição de um anime ou mangá no canal 📚🎬\n\n"
-            "📝 *Como usar:*\n"
-            "`/pedido nome do anime ou mangá`\n\n"
-            "📌 *Exemplo:*\n"
-            "`/pedido Naruto Shippuden`"
-            ,
-            parse_mode="Markdown"
-        )
-        return
-
-    texto_pedido = " ".join(context.args)
-    user = update.effective_user
-
-    # 📤 MENSAGEM QUE VAI PARA O CANAL FECHADO
-    mensagem_canal = (
-        "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
-        f"👤 <b>Usuário:</b> {user.full_name}\n"
-        f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
-        f"📝 <b>Pedido:</b>\n"
-        f"<i>{texto_pedido}</i>\n\n"
-        "✅ <b>Status:</b> Pedido listado com sucesso!"
-    )
-
-    await context.bot.send_message(
-        chat_id=CANAL_PEDIDOS,
-        text=mensagem_canal,
-        parse_mode="HTML"
-    )
-
-    # 📥 RESPOSTA PARA QUEM FEZ O PEDIDO
-    await update.message.reply_html(
-        f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
-        f"Seu pedido <b>{texto_pedido}</b> já foi listado com sucesso!\n\n"
-        "🕒 Agora é só aguardar que em breve estaremos postando.\n\n"
-        "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
-    )
             
 # ===== BUSCAS =====
 async def buscar_anime(nome):
@@ -329,8 +355,15 @@ app.add_handler(MessageHandler(filters.ChatType.CHANNEL, detectar_confirmacao))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
+app.add_handler(
+    MessageHandler(
+        filters.ChatType.CHANNEL,
+        detectar_confirmacao
+    )
+)
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
