@@ -23,7 +23,18 @@ async def buscar_manga(nome):
         if msg.text:
             return f"https://t.me/{CANAL_MANGA}/{msg.id}"
     return None
-    
+
+# ===== COMANDO /start =====
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_html(
+        "👋 <b>Olá!</b>\n\n"
+        "🤖 Eu estou <b>online</b> e funcionando.\n\n"
+        "📌 Você poderá usar:\n"
+        "• <code>/anime</code>\n"
+        "• <code>/manga</code>\n\n"
+        "✨ Aguarde novidades!"
+    )
+
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -91,3 +102,4 @@ app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
