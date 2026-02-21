@@ -29,12 +29,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html(
         "👋 <b>Olá!</b>\n\n"
         "🤖 Eu estou <b>online</b> e funcionando.\n\n"
-        "📌 Você poderá usar:\n"
+        "📌 Em breve você poderá usar:\n"
         "• <code>/anime</code>\n"
         "• <code>/manga</code>\n\n"
         "✨ Aguarde novidades!"
     )
-
+    
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -46,7 +46,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>/anime naruto</code>")
         return
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text("🔎 Teste o anime pra você...\nAguarde um instante ⏳")
     async with client:
         link = await buscar_anime(nome.lower())
     if link:
@@ -95,17 +95,11 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     "O mangá que você procurou não foi encontrado no canal.\n\n"
     "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
 )
-
+        
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start)
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
-
-
-
-
