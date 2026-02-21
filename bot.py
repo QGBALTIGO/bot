@@ -4,6 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
+from telegram.ext import MessageHandler, filters
             
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
@@ -104,8 +105,41 @@ def pode_pedir(user_id: int) -> bool:
     ultimo_pedido[user_id] = agora
     return True
 
+# ===== PEDIDOS EM MEMÓRIA =====
+pedidos_pendentes = {}
+# formato:
+# pedidos_pendentes["naruto"] = user_id
 
 # ===== COMANDO /pedido =====
+
+async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.channel_post:
+        return
+
+    texto = update.channel_post.text
+    if not texto:
+        return
+
+    texto_lower = texto.lower()
+
+    for pedido, user_id in list(pedidos_pendentes.items()):
+        if pedido in texto_lower:
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        "🎉 <b>Pedido atendido!</b>\n\n"
+                        f"O conteúdo <b>{pedido}</b> já foi postado no canal ✅\n\n"
+                        "📺 Aproveite e bom entretenimento!"
+                    ),
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+
+            # remove pedido após avisar
+            del pedidos_pendentes[pedido]
+                    
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -133,9 +167,11 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # 📌 TEXTO DO PEDIDO
-
     texto_pedido = " ".join(context.args)
+chave = texto_pedido.lower()
+
+# salva pedido
+pedidos_pendentes[chave] = user.id
             
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 👉 1. SE NÃO TIVER TEXTO
@@ -289,11 +325,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(MessageHandler(filters.ChatType.CHANNEL, detectar_confirmacao))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
