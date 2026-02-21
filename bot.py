@@ -31,27 +31,66 @@ async def buscar_manga(nome):
             return f"https://t.me/{CANAL_MANGA}/{msg.id}"
     return None
 
+# ===== FUNÇÃO ANIList =====
+def buscar_anime(nome):
+    url = "https://graphql.anilist.co"
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        title {
+          romaji
+        }
+        description(asHtml: false)
+        averageScore
+        siteUrl
+        coverImage {
+          large
+        }
+      }
+    }
+    """
+    variables = {"search": nome}
+    response = requests.post(url, json={"query": query, "variables": variables})
+    data = response.json()
+
+    if "data" not in data or data["data"]["Media"] is None:
+        return None
+
+    return data["data"]["Media"]
+
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("❌ Use assim: /anime naruto")
+        await update.message.reply_text(
+            "❌ Use assim:\n\n"
+            "👉 /anime nome do anime\n"
+            "Exemplo: /anime naruto"
+        )
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Procurando anime...")
+    msg = await update.message.reply_text("🔎 Procurando informações no AniList...")
 
-    async with client:
-        link = await buscar_anime(nome.lower())
+    anime = buscar_anime(nome)
 
-    if link:
-        await update.message.reply_text(
-            f"🍿 Anime encontrado!\n\n"
-            f"📺 {nome}\n"
-            f"🔗 {link}"
-        )
-    else:
+    await msg.delete()
+
+    if not anime:
         await update.message.reply_text("❌ Anime não encontrado.")
+        return
 
+    texto = (
+        f"🍿 <b>{anime['title']['romaji']}</b>\n\n"
+        f"⭐ Nota: {anime['averageScore']}\n\n"
+        f"📖 <i>{anime['description'][:500]}...</i>\n\n"
+        f"🔗 <a href='{anime['siteUrl']}'>Ver no AniList</a>"
+    )
+
+    await update.message.reply_photo(
+        photo=anime["coverImage"]["large"],
+        caption=texto,
+        parse_mode="HTML"
+    )
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -80,3 +119,4 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
