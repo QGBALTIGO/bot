@@ -116,7 +116,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde ⏳")
+    await update.message.reply_text("🔎 Buscando o mangá pra você...")
 
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
@@ -133,13 +133,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # 🔁 COPIA A MENSAGEM DO CANAL (IMAGEM + TEXTO)
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
-        from_chat_id=CANAL_MANGA,   # ⚠️ SEM ERRO AQUI
+        from_chat_id=f"@{CANAL_MANGA}",
         message_id=msg_id,
         reply_markup=reply_markup
     )
-
         
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -148,6 +148,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
