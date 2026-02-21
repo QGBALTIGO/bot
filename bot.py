@@ -109,47 +109,29 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
         
 # ===== COMANDO /manga =====
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
+# ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Use:</b>\n"
-            "<code>/manga nome do mangá</code>"
-        )
+        await update.message.reply_text("Use: /manga nome do mangá")
         return
-
     nome = " ".join(context.args)
-
-    await update.message.reply_text("📚 Buscando o mangá...")
-
+    await update.message.reply_text("🔎 Buscando o mangá...")
     async with client:
-        msg = await buscar_post_manga(nome.lower())
-
-    if not msg:
-        await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado."
-        )
+        msg_id = await buscar_post(CANAL_MANGA, nome)
+    if not msg_id:
+        await update.message.reply_text("❌ Mangá não encontrado.")
         return
-
-    # 🔁 REENVIA A MENSAGEM ORIGINAL (com imagem)
-    await context.bot.forward_message(
-        chat_id=update.effective_chat.id,
-        from_chat_id=CANAL_MANGA,
-        message_id=msg.id
-    )
-
-    # 🔘 BOTÃO
-    link = f"https://t.me/{CANAL_MANGA}/{msg.id}"
-    keyboard = [[InlineKeyboardButton("📖 Ler agora", url=link)]]
+    keyboard = [[
+        InlineKeyboardButton(
+            "📖 Ler agora",
+            url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
+        )
+    ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # 📝 TEXTO PADRÃO (SEPARADO)
-    await update.message.reply_html(
-        f"📖 <b>{nome.upper()}</b>\n\n"
-        "Clique no botão abaixo 👇",
+    await context.bot.copy_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=f"@{CANAL_MANGA}",
+        message_id=msg_id,
         reply_markup=reply_markup
     )
     
@@ -160,6 +142,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
