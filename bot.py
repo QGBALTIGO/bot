@@ -93,8 +93,9 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text(
+   nome = " ".join(context.args)
+
+msg_busca = await update.message.reply_text(
     "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
 )
 
@@ -179,6 +180,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
