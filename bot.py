@@ -42,6 +42,7 @@ api_hash = "b8f22be457ce73f65fad82315073fbc3"
 BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
 CANAL_ANIME = "Centraldeanimes_Baltigo"
 CANAL_MANGA = "MangasBrasil"
+CANAL_PEDIDOS = -1003895811362  # ID do canal fechado
 
 # ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
@@ -50,6 +51,39 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
+# ===== PEDIDOS =====
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "📩 Use assim:\n"
+            "/pedido escreva aqui o que você quer pedir"
+        )
+        return
+
+    texto_pedido = " ".join(context.args)
+    user = update.effective_user
+
+    mensagem = (
+        "📥 *NOVO PEDIDO RECEBIDO*\n\n"
+        f"👤 Usuário: {user.full_name}\n"
+        f"🆔 ID: `{user.id}`\n\n"
+        f"📝 Pedido:\n"
+        f"{texto_pedido}"
+    )
+
+    # Envia para o canal fechado
+    await context.bot.send_message(
+        chat_id=CANAL_PEDIDOS,
+        text=mensagem,
+        parse_mode="Markdown"
+    )
+
+    # Responde ao usuário
+    await update.message.reply_text(
+        "✅ Seu pedido foi enviado com sucesso!\n"
+        "📨 Em breve a equipe irá analisar."
+    )
+            
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
@@ -160,10 +194,12 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
