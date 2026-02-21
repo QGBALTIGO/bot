@@ -46,7 +46,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>/anime naruto</code>")
         return
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Teste o anime pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
     async with client:
         link = await buscar_anime(nome.lower())
     if link:
@@ -103,5 +103,6 @@ app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
