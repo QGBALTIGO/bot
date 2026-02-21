@@ -45,6 +45,10 @@ CANAL_MANGA = "MangasBrasil"
 
 # ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
+async def buscar_post(canal, termo):
+    async for msg in client.iter_messages(canal, search=termo):
+        return msg.id
+    return None
 
 # ===== BUSCAS =====
 async def buscar_anime(nome):
@@ -70,6 +74,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /anime nome do anime")
@@ -79,33 +85,27 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔎 Buscando o anime...")
 
     async with client:
-        link, foto = await buscar_post(CANAL_ANIME, nome)
+        msg_id = await buscar_post(CANAL_ANIME, nome)
 
-    if not link:
+    if not msg_id:
         await update.message.reply_text("❌ Anime não encontrado.")
         return
 
-    keyboard = [[InlineKeyboardButton("▶️ Assistir agora", url=link)]]
+    keyboard = [[
+        InlineKeyboardButton(
+            "▶️ Assistir no canal",
+            url=f"https://t.me/{CANAL_ANIME}/{msg_id}"
+        )
+    ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    texto = (
-        f"🍿 <b>{nome.upper()}</b>\n\n"
-        "Clique no botão abaixo para assistir 👇"
+    # 🔁 COPIA A MENSAGEM DO CANAL (com imagem + texto)
+    await context.bot.copy_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=f"@{CANAL_ANIME}",
+        message_id=msg_id,
+        reply_markup=reply_markup
     )
-
-    if foto:
-        await update.message.reply_photo(
-            photo=open(foto, "rb"),
-            caption=texto,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-        os.remove(foto)
-    else:
-        await update.message.reply_html(
-            texto,
-            reply_markup=reply_markup
-        )
         
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,6 +155,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
