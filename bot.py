@@ -39,11 +39,13 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = await buscar_anime(nome.lower())
 
     if link:
-        await update.message.reply_text(
-            f"🍿 Anime encontrado!\n\n"
-            f"📺 {nome}\n"
-            f"🔗 {link}"
-        )
+        await update.message.reply_html(
+    f"🍿 <b>Anime encontrado!</b>\n\n"
+    f"📺 <b>{nome}</b>\n"
+    f"━━━━━━━━━━━━━━\n"
+    f"🔗 <i>Clique abaixo para assistir:</i>\n"
+    f"{link}"
+)
     else:
         await update.message.reply_text("❌ Anime não encontrado.")
 
@@ -75,3 +77,4 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
