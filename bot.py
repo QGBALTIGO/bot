@@ -121,25 +121,35 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>/manga one piece</code>"
         )
         return
+
     nome = " ".join(context.args)
-    await update.message.reply_text("📚 Procurando o mangá...\nJá já te mando 📖")
+
+    await update.message.reply_text(
+        "📚 Procurando o mangá pra você...\nAguarde um instante ⏳"
+    )
+
     async with client:
         link = await buscar_manga(nome.lower())
+
     if link:
+        keyboard = [
+            [InlineKeyboardButton("📖 Ler agora", url=link)]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await update.message.reply_html(
-    f"📚 <b>A espera acabou.</b>\n"
-    f"A próxima leitura te chama.\n\n"
-    f"📖 <b>{nome.upper()}</b>\n\n"
-    f"Prepare-se para virar páginas e esquecer do tempo.\n\n"
-    f"🔗 <b>Leia agora:</b>\n"
-    f"{link}"
-)
+            f"📚 <b>A espera acabou.</b>\n"
+            f"A próxima leitura te chama.\n\n"
+            f"📖 <b>{nome.upper()}</b>\n\n"
+            f"Clique no botão abaixo para ler 👇",
+            reply_markup=reply_markup
+        )
     else:
         await update.message.reply_html(
-    "🚫 <b>Nada por aqui…</b>\n\n"
-    "O mangá que você procurou não foi encontrado no canal.\n\n"
-    "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
-)
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "O mangá que você procurou não foi encontrado no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+        )
         
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -148,6 +158,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
