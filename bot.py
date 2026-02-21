@@ -69,86 +69,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✨ Aguarde novidades!"
     )
 
-# ===== COMANDO /foto =====
-async def buscar_post(canal, termo):
-    async for msg in client.iter_messages(canal, search=termo):
-        if msg:
-            link = f"https://t.me/{canal}/{msg.id}"
-            foto = None
-
-            if msg.media and isinstance(msg.media, MessageMediaPhoto):
-                foto = msg.photo
-
-            return link, foto
-
-    return None, None
-    
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Formato correto:</b>\n"
-            "<code>/anime nome do anime</code>\n\n"
-            "🎬 <b>Exemplo:</b>\n"
-            "<code>/anime naruto</code>"
-        )
-        return
-
-    nome = " ".join(context.args)
-
-    await update.message.reply_text(
-        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
-    )
-
-    async with client:
-        link = await buscar_anime(nome.lower())
-
-    if link:
-        keyboard = [
-            [InlineKeyboardButton("▶️ Assistir agora", url=link)]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await update.message.reply_html(
-            f"🍿 <b>A espera acabou.</b>\n"
-            f"O momento chegou.\n\n"
-            f"📺 <b>{nome.upper()}</b>\n\n"
-            f"Clique no botão abaixo para assistir 👇",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
-            "O anime que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
-        )
-        
-        # 👉 SE TIVER FOTO
-    if msg.photo:
-        await update.message.reply_photo(
-            photo=msg.photo,
-            caption=(
-                f"🍿 <b>{nome.upper()}</b>\n\n"
-                f"Clique no botão abaixo para assistir 👇"
-            ),
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_html(
-            f"🍿 <b>{nome.upper()}</b>\n\n"
-            f"{link}",
-            reply_markup=reply_markup
-        )
-        async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /anime nome do anime")
         return
 
     nome = " ".join(context.args)
-
-    await update.message.reply_text("🔎 Buscando anime...")
+    await update.message.reply_text("🔎 Buscando o anime...")
 
     async with client:
         link, foto = await buscar_post(CANAL_ANIME, nome)
@@ -161,22 +89,22 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     texto = (
-        f"🍿 *{nome.upper()}*\n\n"
+        f"🍿 <b>{nome.upper()}</b>\n\n"
         "Clique no botão abaixo para assistir 👇"
     )
 
     if foto:
         await update.message.reply_photo(
-            photo=foto,
+            photo=open(foto, "rb"),
             caption=texto,
             reply_markup=reply_markup,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
+        os.remove(foto)
     else:
-        await update.message.reply_text(
+        await update.message.reply_html(
             texto,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            reply_markup=reply_markup
         )
         
 # ===== COMANDO /manga =====
@@ -227,6 +155,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
