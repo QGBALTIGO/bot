@@ -108,12 +108,15 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
         
 # ===== COMANDO /manga =====
-   if not context.args:
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
         await update.message.reply_text("Use: /manga nome do mangá")
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde ⏳")
 
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
@@ -125,18 +128,18 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[
         InlineKeyboardButton(
             "📖 Ler agora",
-            url=f"https://t.me/{CANAL_MANGAA}/{msg_id}"
+            url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # 🔁 COPIA A MENSAGEM DO CANAL (com imagem + texto)
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
-        from_chat_id=f"@{CANAL_MANGA}",
+        from_chat_id=CANAL_MANGA,   # ⚠️ SEM ERRO AQUI
         message_id=msg_id,
         reply_markup=reply_markup
     )
+
         
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -145,6 +148,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
