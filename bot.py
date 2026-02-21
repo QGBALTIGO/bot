@@ -143,29 +143,23 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
     if not msg_id:
-        await update.message.reply_text("❌ Mangá não encontrado.")
+        await update.message.reply_text("📚 Buscando o mangá pra você...\nAguarde um instante ⏳")
         return
 
-    # 🔍 Busca o ID no AniList
-    anilist_id = await buscar_anilist_id(nome, "MANGA")
+    keyboard = [[
+        InlineKeyboardButton(
+            "📖 Ler agora",
+            url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # 🔘 Botões
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📖 Ler agora",
-                url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
-            )
-        ]
-    ]
-
-    if anilist_id:
-        keyboard.append([
-            InlineKeyboardButton(
-                "📚 Ver no AniList",
-                url=f"https://anilist.co/manga/{anilist_id}"
-            )
-        ])
+    await context.bot.copy_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=f"@{CANAL_MANGA}",
+        message_id=msg_id,
+        reply_markup=reply_markup
+    )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -176,6 +170,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -183,6 +178,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
