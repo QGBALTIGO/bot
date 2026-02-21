@@ -61,7 +61,12 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("📚 Procurando o mangá...\nJá já te mando 📖")
+   await update.message.reply_html(
+    "🚫 <b>Ops! Algo faltou</b>\n\n"
+    "👉 <b>Formato correto:</b>\n"
+    "<code>/manga nome do mangá</code>\n\n"
+    "📖 <b>Exemplo:</b>\n"
+    "<code>/manga one piece</code>")
 
     async with client:
         link = await buscar_manga(nome.lower())
@@ -85,5 +90,6 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
