@@ -157,7 +157,7 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto_pedido = " ".join(context.args)
     chave = texto_pedido.lower()
 
-    # salva em memória
+    # 💾 SALVA PEDIDO
     pedidos_pendentes[chave] = user_id
 
     # 📤 ENVIA PARA CANAL FECHADO
@@ -169,17 +169,16 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
             f"📝 <b>Pedido:</b>\n"
             f"<i>{texto_pedido}</i>\n\n"
-            "📌 <b>Quando este conteúdo for postado no canal, o bot avisará o usuário automaticamente.</b>"
+            "⏳ <b>Status:</b> Aguardando postagem"
         ),
         parse_mode="HTML"
     )
 
-    # 📥 RESPOSTA AO USUÁRIO
+    # 📥 CONFIRMA PARA O USUÁRIO
     await update.message.reply_html(
-        f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
+        f"✅ <b>{user.first_name}</b>\n\n"
         f"Seu pedido <b>{texto_pedido}</b> foi registrado com sucesso!\n\n"
-        "🕒 Agora é só aguardar.\n"
-        "📢 Assim que um ADM postar esse conteúdo, você será avisado automaticamente!"
+        "🕒 Assim que um ADM postar esse conteúdo no canal, você será avisado automaticamente 📢"
     )
 
 async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,38 +206,6 @@ async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYP
             except:
                 pass
 
-            # remove da lista após avisar
-            del pedidos_pendentes[pedido]
-
-
-# ===== COMANDO /pedido =====
-
-async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.channel_post:
-        return
-
-    texto = update.channel_post.text
-    if not texto:
-        return
-
-    texto_lower = texto.lower()
-
-    for pedido, user_id in list(pedidos_pendentes.items()):
-        if pedido in texto_lower:
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=(
-                        "🎉 <b>Pedido atendido!</b>\n\n"
-                        f"O conteúdo <b>{pedido}</b> já foi postado no canal ✅\n\n"
-                        "📺 Aproveite e bom entretenimento!"
-                    ),
-                    parse_mode="HTML"
-                )
-            except:
-                pass
-
-            # remove pedido após avisar
             del pedidos_pendentes[pedido]
             
 # ===== BUSCAS =====
@@ -363,6 +330,7 @@ app.add_handler(
 )
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
