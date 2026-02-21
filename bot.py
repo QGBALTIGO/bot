@@ -84,12 +84,14 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome = " ".join(context.args)
     await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
 
-    async with client:
-        msg_id = await buscar_post(CANAL_ANIME, nome)
+      async with client:
+        msg = await buscar_post_manga(nome.lower())
 
-    if not msg_id:
-        await update.message.reply_text("🚫 <b>Nada por aqui…</b>\n\n"
-            "O anime que você procurou não foi encontrado.")
+    if not msg:
+        await update.message.reply_html(
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "O anime que você procurou não foi encontrado."
+        )
         return
 
     keyboard = [[
@@ -118,13 +120,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome = " ".join(context.args)
     await update.message.reply_text("🔎 Buscando o mangá pra você...\nAguarde um instante ⏳")
 
-    async with client:
-        msg_id = await buscar_post(CANAL_MANGA, nome)
-                
-    if not msg_id:
-        await update.message.reply_text("🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado.")
-                
+     async with client:
+        msg = await buscar_post_manga(nome.lower())
+
+    if not msg:
+        await update.message.reply_html(
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "O mangá que você procurou não foi encontrado."
+        )
         return
     keyboard = [[
         InlineKeyboardButton(
@@ -147,6 +150,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
