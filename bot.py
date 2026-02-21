@@ -40,10 +40,11 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if link:
         await update.message.reply_html(
-    f"🍿 <b>Anime encontrado!</b>\n\n"
-    f"📺 <b>{nome}</b>\n"
-    f"━━━━━━━━━━━━━━\n"
-    f"🔗 <i>Clique abaixo para assistir:</i>\n"
+    f"🍿 <b>A espera acabou.</b>\n"
+    f"O momento chegou.\n\n"
+    f"📺 <b>{nome.upper()}</b>\n\n"
+    f"Entre, assista e desapareça do mundo por algumas horas.\n\n"
+    f"🔗 <b>Disponível agora:</b>\n"
     f"{link}"
 )
     else:
@@ -77,4 +78,5 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
