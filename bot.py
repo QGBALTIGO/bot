@@ -38,21 +38,17 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text("🔎 Procurando anime...")
-await asyncio.sleep(3)
-await msg_busca.delete()
+    await update.message.reply_text("🔎 Procurando anime...")
 
     async with client:
         link = await buscar_anime(nome.lower())
 
     if link:
-        await update.message.reply_html(
-    f"🍿 <b>Anime encontrado!</b>\n\n"
-    f"📺 <b>{nome}</b>\n"
-    f"━━━━━━━━━━━━━━\n"
-    f"🔗 <i>Clique abaixo para assistir:</i>\n"
-    f"{link}"
-)
+        await update.message.reply_text(
+            f"🍿 Anime encontrado!\n\n"
+            f"📺 {nome}\n"
+            f"🔗 {link}"
+        )
     else:
         await update.message.reply_text("❌ Anime não encontrado.")
 
@@ -63,21 +59,17 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text("📚 Procurando mangá...")
-await asyncio.sleep(3)
-await msg_busca.delete()
+    await update.message.reply_text("📚 Procurando mangá...")
 
     async with client:
         link = await buscar_manga(nome.lower())
 
     if link:
-        await update.message.reply_html(
-    f"📖 <b>Mangá encontrado!</b>\n\n"
-    f"📚 <b>{nome}</b>\n"
-    f"━━━━━━━━━━━━━━\n"
-    f"🔗 <i>Leia aqui:</i>\n"
-    f"{link}"
-)
+        await update.message.reply_text(
+            f"📖 Mangá encontrado!\n\n"
+            f"📚 {nome}\n"
+            f"🔗 {link}"
+        )
     else:
         await update.message.reply_text("❌ Mangá não encontrado.")
 
@@ -88,5 +80,3 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
