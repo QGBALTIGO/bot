@@ -33,7 +33,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Procurando anime...")
+    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
 
     async with client:
         link = await buscar_anime(nome.lower())
@@ -57,7 +57,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("📚 Procurando mangá...")
+    await update.message.reply_text("📚 Procurando o mangá...\nJá já te mando 📖")
 
     async with client:
         link = await buscar_manga(nome.lower())
@@ -81,3 +81,4 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
