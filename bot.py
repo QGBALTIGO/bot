@@ -13,6 +13,11 @@ CANAL_MANGA = "MangasBrasil"
 # ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
 
+# ===== CACHE E ANTI-SPAM =====
+cache = {}          # { "naruto": link }
+cooldown = {}       # { user_id: timestamp }
+COOLDOWN_TIME = 10  # segundos
+
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
@@ -75,3 +80,4 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
