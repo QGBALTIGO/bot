@@ -98,8 +98,10 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
