@@ -38,15 +38,34 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with client:
         link = await buscar_anime(nome.lower())
 
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Use assim: /anime naruto")
+        return
+
+    nome = " ".join(context.args)
+    await update.message.reply_text("🔎 Procurando anime...")
+
+    async with client:
+        link = await buscar_anime(nome.lower())
+
     if link:
+        keyboard = [
+            [InlineKeyboardButton("▶️ Assistir agora", url=link)]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await update.message.reply_html(
-    f"🍿 <b>A espera acabou.</b>\n"
-    f"O momento chegou.\n\n"
-    f"📺 <b>{nome.upper()}</b>\n\n"
-    f"Entre, assista e desapareça do mundo por algumas horas.\n\n"
-    f"🔗 <b>Disponível agora:</b>\n"
-    f"{link}"
-)
+            f"🍿 <b>A espera acabou.</b>\n"
+            f"O momento chegou.\n\n"
+            f"📺 <b>{nome.upper()}</b>\n\n"
+            f"Entre, assista e desapareça do mundo por algumas horas.",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text("❌ Anime não encontrado.")
     else:
         await update.message.reply_text("❌ Anime não encontrado.")
 
@@ -81,6 +100,7 @@ app.add_handler(CommandHandler("manga", manga))
 
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
