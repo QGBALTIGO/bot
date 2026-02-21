@@ -1,6 +1,7 @@
 from telethon import TelegramClient
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, random
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telethon import random
 
 # ===== DADOS =====
 api_id = 34116600
@@ -163,6 +164,7 @@ app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
