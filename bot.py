@@ -74,20 +74,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /anime nome do anime")
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text("🔎 Buscando o anime pra você...\nAguarde um instante ⏳")
+    await update.message.reply_text(
+        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
+    )
 
-      async with client:
-        msg = await buscar_post_manga(nome.lower())
+    async with client:
+        msg_id = await buscar_post(CANAL_ANIME, nome)
 
-    if not msg:
+    if not msg_id:
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O anime que você procurou não foi encontrado."
@@ -102,14 +102,13 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # 🔁 COPIA A MENSAGEM DO CANAL (com imagem + texto)
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_ANIME}",
         message_id=msg_id,
         reply_markup=reply_markup
     )
-
+            
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -151,6 +150,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
