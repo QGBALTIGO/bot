@@ -33,9 +33,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text("🔎 Procurando anime...")
-await asyncio.sleep(3)
-await msg_busca.delete()
+    await update.message.reply_text("🔎 Procurando anime...")
 
     async with client:
         link = await buscar_anime(nome.lower())
@@ -56,9 +54,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text("📚 Procurando mangá...")
-await asyncio.sleep(3)
-await msg_busca.delete()
+    await update.message.reply_text("📚 Procurando mangá...")
 
     async with client:
         link = await buscar_manga(nome.lower())
