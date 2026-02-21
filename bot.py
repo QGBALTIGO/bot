@@ -120,7 +120,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
     if not msg_id:
-        await update.message.reply_text("❌ Mangá não encontrado.")
+        await update.message.reply_text("📚 Buscando o mangá pra você...\nAguarde um instante ⏳")
         return
 
     keyboard = [[
@@ -145,6 +145,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
