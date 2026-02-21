@@ -141,6 +141,43 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{link}",
             reply_markup=reply_markup
         )
+        async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Use: /anime nome do anime")
+        return
+
+    nome = " ".join(context.args)
+
+    await update.message.reply_text("🔎 Buscando anime...")
+
+    async with client:
+        link, foto = await buscar_post(CANAL_ANIME, nome)
+
+    if not link:
+        await update.message.reply_text("❌ Anime não encontrado.")
+        return
+
+    keyboard = [[InlineKeyboardButton("▶️ Assistir agora", url=link)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    texto = (
+        f"🍿 *{nome.upper()}*\n\n"
+        "Clique no botão abaixo para assistir 👇"
+    )
+
+    if foto:
+        await update.message.reply_photo(
+            photo=foto,
+            caption=texto,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            texto,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
         
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -190,6 +227,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
