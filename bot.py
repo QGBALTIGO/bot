@@ -67,7 +67,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html(
         "👋 <b>Olá!</b>\n\n"
         "🤖 Eu estou <b>online</b> e funcionando.\n\n"
-        "📌 Em breve você poderá usar:\n"
+        "📌 Você poderá usar:\n"
         "• <code>/anime</code>\n"
         "• <code>/manga</code>\n\n"
         "✨ Aguarde novidades!"
@@ -152,6 +152,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
