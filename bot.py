@@ -35,6 +35,100 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
+# ===== PERFIL =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_perfil_anilist(username: str):
+    query = """
+    query ($name: String) {
+      User(name: $name) {
+        name
+        siteUrl
+        avatar {
+          large
+        }
+        statistics {
+          anime {
+            count
+            minutesWatched
+          }
+          manga {
+            count
+          }
+        }
+      }
+    }
+    """
+
+    variables = {"name": username}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data.get("data", {}).get("User")
+    except Exception as e:
+        print("Erro AniList:", e)
+        return None
+
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "👤 <b>Perfil AniList</b>\n\n"
+            "Use assim:\n"
+            "<code>/perfil nome_do_usuario</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/perfil samuelpocas</code>"
+        )
+        return
+
+    username = context.args[0]
+
+    msg = await update.message.reply_text("🔎 Buscando perfil no AniList...")
+
+    dados = await buscar_perfil_anilist(username)
+
+    if not dados:
+        await msg.edit_text(
+            "❌ Não encontrei esse perfil no AniList.\n"
+            "Verifique o nome e tente novamente."
+        )
+        return
+
+    anime = dados["statistics"]["anime"]
+    manga = dados["statistics"]["manga"]
+    dias = round(anime["minutesWatched"] / 60 / 24, 1)
+
+    texto = (
+        f"👤 <b>Perfil AniList</b>\n\n"
+        f"🧾 <b>Usuário:</b> {dados['name']}\n"
+        f"🎬 <b>Animes assistidos:</b> {anime['count']}\n"
+        f"📚 <b>Mangás lidos:</b> {manga['count']}\n"
+        f"⏱️ <b>Dias assistidos:</b> {dias}"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📺 Anime Stats", url=dados["siteUrl"] + "/animelist"),
+            InlineKeyboardButton("📚 Manga Stats", url=dados["siteUrl"] + "/mangalist"),
+        ],
+        [
+            InlineKeyboardButton("👤 Abrir perfil no AniList", url=dados["siteUrl"])
+        ]
+    ]
+
+    await msg.edit_text(
+        texto,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -241,8 +335,10 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("perfil", perfil))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
