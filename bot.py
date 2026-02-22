@@ -482,12 +482,19 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
+
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
             "👉 <b>Formato correto:</b>\n"
             "<code>/manga nome do mangá</code>\n\n"
-            "🎬 <b>Exemplo:</b>\n"
+            "📚 <b>Exemplo:</b>\n"
             "<code>/manga naruto</code>"
         )
         return
@@ -498,7 +505,8 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 Buscando o mangá pra você...\nAguarde um instante ⏳"
     )
 
-    msg_id = await buscar_post(CANAL_MANGA, nome)
+    async with client:
+        msg_id = await buscar_post(CANAL_MANGA, nome)
 
     if not msg_id:
         await msg_busca.delete()
@@ -518,11 +526,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]]
 
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
         message_id=msg_id,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=reply_markup
     )
 
 # ===== INICIAR BOT =====
@@ -536,4 +546,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
