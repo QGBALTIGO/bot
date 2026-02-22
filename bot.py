@@ -102,7 +102,7 @@ async def infoanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg = await update.message.reply_text("🔎 Buscando versões no AniList...")
+    msg = await update.message.reply_text("🔎 Obtendo versões no AniList...")
 
     resultados = await buscar_multiplos_anilist(nome)
 
@@ -281,7 +281,7 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg = await update.message.reply_text("🔎 Buscando mangá no AniList...")
+    msg = await update.message.reply_text("🔎 Obtendo mangá no AniList...")
 
     media = await buscar_anilist_manga(nome)
     if not media:
@@ -532,4 +532,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
