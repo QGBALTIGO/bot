@@ -48,7 +48,7 @@ async def buscar_anilist(nome: str):
         id
         title {
           romaji
-          english
+          portugues
           native
         }
         description(asHtml: false)
@@ -113,7 +113,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     titulo = (
-        media["title"]["english"]
+        media["title"]["portugues"]
         or media["title"]["romaji"]
         or media["title"]["native"]
         or "Título desconhecido"
@@ -129,7 +129,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⭐ <b>Nota:</b> {media.get('averageScore', 'N/A')}\n"
         f"🎞️ <b>Episódios:</b> {media.get('episodes', 'N/A')}\n"
         f"📚 <b>Capítulos:</b> {media.get('chapters', 'N/A')}\n\n"
-        f"📝 <b>Descrição:</b>\n{descricao[:350]}..."
+        f"📝 <b>Descrição:</b>\n{descricao[:700]}..."
     )
 
     await msg_busca.edit_text(resposta, parse_mode="HTML")
@@ -345,3 +345,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
