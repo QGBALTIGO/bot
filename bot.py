@@ -43,34 +43,38 @@ async def buscar_post(canal, termo):
 anilist_users = {}
 
 # ===== ANILIST API =====
-async def buscar_anilist(username: str):
+async def buscar_perfil_anilist(username: str):
     url = "https://graphql.anilist.co"
+
     query = """
     query ($name: String) {
       User(name: $name) {
         id
         name
         siteUrl
+        avatar {
+          large
+        }
         statistics {
           anime {
             count
-            episodesWatched
             minutesWatched
           }
           manga {
             count
-            chaptersRead
           }
         }
       }
     }
     """
+
     variables = {"name": username}
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             url,
-            json={"query": query, "variables": variables}
+            json={"query": query, "variables": variables},
+            headers={"Content-Type": "application/json"}
         ) as response:
             if response.status != 200:
                 return None
@@ -479,6 +483,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
