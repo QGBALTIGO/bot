@@ -93,19 +93,6 @@ async def bloquear_se_nao_membro(update, context) -> bool:
         reply_markup=reply_markup
     )
     return True
-            
-# ===== CONFIG ANTIFLOOD =====
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
-ultimo_pedido = {}
-
-def pode_pedir(user_id: int) -> bool:
-    agora = time.time()
-    if user_id in ultimo_pedido:
-        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
-            return False
-    ultimo_pedido[user_id] = agora
-    return True
-
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -180,69 +167,24 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🕒 Agora é só aguardar que em breve estaremos postando.\n\n"
         "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
     )
-
-# ===== BUSCAS INLINE =====
-async def inline_busca(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query.query.lower().strip()
-
-    if not query:
-        return
-
-    resultados = []
-
-    async with client:
-        # 🔍 BUSCA ANIMES
-        async for msg in client.iter_messages(CANAL_ANIME, search=query, limit=5):
-            resultados.append(
-                InlineQueryResultArticle(
-                    id=f"anime_{msg.id}",
-                    title=f"🎬 Anime: {query.title()}",
-                    description="Clique para assistir",
-                    input_message_content=InputTextMessageContent(
-                        f"🎬 *Anime encontrado!*\n\n"
-                        f"🔗 https://t.me/{CANAL_ANIME}/{msg.id}",
-                        parse_mode="Markdown"
-                    )
-                )
-            )
-
-        # 🔍 BUSCA MANGÁS
-        async for msg in client.iter_messages(CANAL_MANGA, search=query, limit=5):
-            resultados.append(
-                InlineQueryResultArticle(
-                    id=f"manga_{msg.id}",
-                    title=f"📚 Mangá: {query.title()}",
-                    description="Clique para ler",
-                    input_message_content=InputTextMessageContent(
-                        f"📚 *Mangá encontrado!*\n\n"
-                        f"🔗 https://t.me/{CANAL_MANGA}/{msg.id}",
-                        parse_mode="Markdown"
-                    )
-                )
-            )
-
-    if resultados:
-        await update.inline_query.answer(
-            resultados,
-            cache_time=5,
-            is_personal=True
-        )
         
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
         if msg.text:
-            return f"https://t.me/{CANAL_ANIME}/{msg.id}"
+            return link_canal(CANAL_ANIME, msg.id)
     return None
+    
 async def buscar_manga(nome):
     async for msg in client.iter_messages(CANAL_MANGA, search=nome):
         if msg.text:
-            return f"https://t.me/{CANAL_MANGA}/{msg.id}"
+            return link_canal(CANAL_MANGA, msg.id)
     return None
+    
     async def buscar_serie(nome):
     async for msg in client.iter_messages(CANAL_SERIE, search=nome):
         if msg.text:
-            return f"https://t.me/{CANAL_SERIE}/{msg.id}"
+            return link_canal(CANAL_SERIE, msg.id)
     return None
 
 # ===== COMANDO /start =====
@@ -395,6 +337,7 @@ app.add_handler(CommandHandler("manga", manga))
 app.add_handler(CommandHandler("serie", serie))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
