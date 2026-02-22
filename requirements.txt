@@ -1,2 +1,6 @@
 python-telegram-bot
+
 telethon
+
+python-telegram-bot==20.7
+aiohttp
