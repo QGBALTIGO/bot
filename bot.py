@@ -497,9 +497,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -521,12 +518,11 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    # 🔎 MENSAGEM DE BUSCA (IMPORTANTE)
+    # 🔎 MENSAGEM DE BUSCA (GUARDAMOS ELA)
     msg_busca = await update.message.reply_text(
         "🔎 Buscando o mangá pra você...\nAguarde um instante ⏳"
     )
 
-    # ===== BUSCA NO CANAL =====
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
@@ -540,7 +536,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ✅ ENCONTROU → APAGA BUSCA
+    # ✅ ENCONTROU → APAGA O BUSCANDO
     await msg_busca.delete()
 
     keyboard = [[
@@ -570,6 +566,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
