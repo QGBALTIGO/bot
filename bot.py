@@ -35,22 +35,16 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
-# ===== CONFIG ANTIFLOOD =====
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
-ultimo_pedido = {}
-
-def pode_pedir(user_id: int) -> bool:
-    agora = time.time()
-    if user_id in ultimo_pedido:
-        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
-            return False
-    ultimo_pedido[user_id] = agora
-    return True
-
 # ===== COMANDO /pedido =====
-async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
+
+async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
 
     # ⛔ ANTIFLOOD
     if not pode_pedir(user_id):
@@ -252,6 +246,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
