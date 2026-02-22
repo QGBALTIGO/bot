@@ -439,14 +439,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
-        )
-        return
-
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -490,14 +482,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
-        )
-        return
-
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -548,3 +532,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
