@@ -36,8 +36,7 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== COMANDO /pedido =====
-
-async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not anti_spam(user_id):
@@ -246,6 +245,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
