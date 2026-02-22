@@ -334,6 +334,110 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await msg.delete()
+
+# ===== COMANDO PERFIL =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_usuario_anilist(username: str):
+    query = """
+    query ($name: String) {
+      User(name: $name) {
+        id
+        name
+        siteUrl
+        avatar {
+          large
+        }
+        statistics {
+          anime {
+            count
+            minutesWatched
+            meanScore
+          }
+          manga {
+            count
+            chaptersRead
+            meanScore
+          }
+        }
+      }
+    }
+    """
+    variables = {"name": username}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data.get("data", {}).get("User")
+    except Exception as e:
+        print("Erro AniList User:", e)
+        return None
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Faltou o nome do usuário!</b>\n\n"
+            "Use assim:\n"
+            "<code>/infouser nome_do_usuario</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/infouser samuelpocas</code>"
+        )
+        return
+
+    username = context.args[0]
+    msg = await update.message.reply_text("🔎 Buscando perfil no AniList...")
+
+    user = await buscar_usuario_anilist(username)
+    if not user:
+        await msg.edit_text(
+            "🚫 Não encontrei esse usuário no AniList.\n"
+            "👉 Verifique o nome e tente novamente."
+        )
+        return
+
+    anime = user["statistics"]["anime"]
+    manga = user["statistics"]["manga"]
+
+    # ===== CONVERSÕES =====
+    dias_assistidos = round(anime["minutesWatched"] / 60 / 24, 1)
+
+    # ===== TEXTO =====
+    texto = (
+        f"<b>{user['name']}</b>\n\n"
+        f"<b>Total Anime:</b> <code>{anime['count']}</code>\n"
+        f"<b>Days Watched:</b> <code>{dias_assistidos}</code>\n"
+        f"<b>Mean Score (Anime):</b> <code>{anime['meanScore']}</code>\n\n"
+        f"<b>Total Manga:</b> <code>{manga['count']}</code>\n"
+        f"<b>Chapters Read:</b> <code>{manga['chaptersRead']}</code>\n"
+        f"<b>Mean Score (Manga):</b> <code>{manga['meanScore']}</code>"
+    )
+
+    # ===== FOTO =====
+    foto = user["avatar"]["large"]
+
+    # ===== BOTÃO =====
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👤 Abrir perfil no AniList", url=user["siteUrl"])]
+    ])
+
+    await update.message.reply_photo(
+        photo=foto,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
+
+    await msg.delete()
     
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -543,11 +647,13 @@ app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
+application.add_handler(CommandHandler("perfil", perfil))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
