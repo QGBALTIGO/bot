@@ -48,7 +48,7 @@ async def buscar_anilist(nome: str):
         id
         title {
           romaji
-          portugues
+          ingles
           native
         }
         description(asHtml: false)
@@ -113,7 +113,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     titulo = (
-        media["title"]["portugues"]
+        media["title"]["ingles"]
         or media["title"]["romaji"]
         or media["title"]["native"]
         or "Título desconhecido"
@@ -345,4 +345,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
