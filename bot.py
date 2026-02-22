@@ -1,15 +1,15 @@
 from telethon import TelegramClient
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    CallbackQueryHandler
+)
 import aiohttp
-from telegram import Update
-from telegram.ext import ContextTypes
+import time
 
 # ===== ANTI-SPAM CONFIG =====
-import time
-
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
 
@@ -33,10 +33,11 @@ CANAL_PEDIDOS = -1003895811362  # ID do canal fechado
 
 # ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
+
 async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
-    return Non
+    return None
 
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
@@ -87,9 +88,6 @@ async def buscar_multiplos_anilist(nome: str):
         return []
 
 # ===== COMANDO INFO =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
 async def infoanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -438,6 +436,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
+ANTI_SPAM_TIME = 5
+last_command_time = {}
+
+def anti_spam(user_id: int) -> bool:
+    agora = time.time()
+    if user_id in last_command_time:
+        if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
+            return False
+    last_command_time[user_id] = agora
+    return True
+    
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -481,64 +490,62 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+ANTI_SPAM_TIME = 5
+last_command_time = {}
 
-async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
-        )
-        return
+def anti_spam(user_id: int) -> bool:
+    agora = time.time()
+    if user_id in last_command_time:
+        if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
+            return False
+    last_command_time[user_id] = agora
+    return True
 
+  async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
             "👉 <b>Formato correto:</b>\n"
-            "<code>/manga nome do mangá</code>\n\n"
+            "<code>/anime nome do anime</code>\n\n"
             "🎬 <b>Exemplo:</b>\n"
-            "<code>/manga naruto</code>"
+            "<code>/anime naruto</code>"
         )
         return
 
     nome = " ".join(context.args)
 
-    # ✅ GUARDA A MENSAGEM "BUSCANDO"
     msg_busca = await update.message.reply_text(
-        "📚 Buscando o mangá pra você...\nAguarde um instante ⏳"
+        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
     )
 
     async with client:
-        msg_id = await buscar_post(CANAL_MANGA, nome)
+        msg_id = await buscar_post(CANAL_ANIME, nome)
 
-    # ❌ NÃO ENCONTROU
     if not msg_id:
-        await msg_busca.delete()  # apaga o buscando
+        await msg_busca.delete()
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado no canal.\n\n"
+            "O anime que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
 
-    # ✅ ENCONTROU → APAGA BUSCANDO
     await msg_busca.delete()
 
     keyboard = [[
         InlineKeyboardButton(
-            "📖 Ler agora",
-            url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
+            "▶️ Assistir no canal",
+            url=f"https://t.me/{CANAL_ANIME}/{msg_id}"
         )
     ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
-        from_chat_id=f"@{CANAL_MANGA}",
+        from_chat_id=f"@{CANAL_ANIME}",
         message_id=msg_id,
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -550,6 +557,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
