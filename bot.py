@@ -39,6 +39,8 @@ async def buscar_post(canal, termo):
     return Non
 
 # ===== ANILIST =====
+import aiohttp
+
 ANILIST_API = "https://graphql.anilist.co"
 
 async def buscar_anilist(nome: str):
@@ -51,33 +53,35 @@ async def buscar_anilist(nome: str):
           english
           native
         }
-        description(asHtml: false)
-        episodes
-        chapters
-        format
         status
         averageScore
+        genres
+        startDate {
+          day
+          month
+          year
+        }
+        coverImage {
+          large
+        }
       }
     }
     """
 
-    variables = {
-        "search": nome
-    }
+    variables = {"search": nome}
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 ANILIST_API,
                 json={"query": query, "variables": variables},
+                headers={"Content-Type": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
                 if resp.status != 200:
                     return None
-
                 data = await resp.json()
                 return data.get("data", {}).get("Media")
-
     except Exception as e:
         print("Erro AniList:", e)
         return None
@@ -88,28 +92,22 @@ from telegram.ext import ContextTypes
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_html(
-            "❌ <b>Faltou o nome!</b>\n\n"
+        await update.message.reply_text(
+            "❌ Faltou o nome!\n\n"
             "Use assim:\n"
-            "<code>/info nome do anime ou mangá</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/info Naruto</code>"
+            "/info nome do anime\n\n"
+            "Exemplo:\n"
+            "/info Gachiakuta"
         )
         return
 
     nome = " ".join(context.args)
 
-    msg_busca = await update.message.reply_text(
-        "🔎 Buscando informações no AniList...\nAguarde ⏳"
-    )
+    msg = await update.message.reply_text("🔎 Buscando no AniList...")
 
     media = await buscar_anilist(nome)
-
     if not media:
-        await msg_busca.edit_text(
-            "🚫 Não encontrei esse título no AniList.\n"
-            "👉 Tente outro nome ou grafia."
-        )
+        await msg.edit_text("🚫 Não encontrei esse anime no AniList.")
         return
 
     titulo = (
@@ -119,20 +117,37 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or "Título desconhecido"
     )
 
-    descricao = media.get("description") or "Sem descrição disponível."
-    descricao = descricao.replace("<br>", "\n")
+    score = media.get("averageScore", "N/A")
+    status = media.get("status", "N/A")
+    genres = ", ".join(media.get("genres", [])) or "N/A"
+    anime_id = media.get("id", "N/A")
 
-    resposta = (
-        f"🎬 <b>{titulo}</b>\n\n"
-        f"📌 <b>Formato:</b> {media.get('format', 'N/A')}\n"
-        f"📊 <b>Status:</b> {media.get('status', 'N/A')}\n"
-        f"⭐ <b>Nota:</b> {media.get('averageScore', 'N/A')}\n"
-        f"🎞️ <b>Episódios:</b> {media.get('episodes', 'N/A')}\n"
-        f"📚 <b>Capítulos:</b> {media.get('chapters', 'N/A')}\n\n"
-        f"📝 <b>Descrição:</b>\n{descricao[:500]}..."
+    data = media.get("startDate", {})
+    start_date = f"{data.get('day', '?')}/{data.get('month', '?')}/{data.get('year', '?')}"
+
+    texto = (
+        f"<b>{titulo}</b>\n\n"
+        f"⭐ <b>Score:</b> {score}\n"
+        f"📺 <b>Status:</b> {status}\n"
+        f"🎭 <b>Genres:</b> {genres}\n"
+        f"🆔 <b>ID:</b> {anime_id}\n"
+        f"📅 <b>Start Date:</b> {start_date}"
     )
 
-    await msg_busca.edit_text(resposta, parse_mode="HTML")
+    capa = media.get("coverImage", {}).get("large")
+
+    # Apaga a mensagem "buscando"
+    await msg.delete()
+
+    # Envia com capa
+    if capa:
+        await update.message.reply_photo(
+            photo=capa,
+            caption=texto,
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_text(texto, parse_mode="HTML")
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -345,3 +360,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
