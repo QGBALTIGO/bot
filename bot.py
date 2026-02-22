@@ -118,6 +118,18 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # 📌 TEXTO DO PEDIDO
+texto_pedido = " ".join(context.args)
+chave = texto_pedido.lower()
+
+# ⛔ EVITAR PEDIDO DUPLICADO
+if chave in pedidos_pendentes:
+    await update.message.reply_html(
+        "⚠️ <b>Pedido já registrado</b>\n\n"
+        "Esse conteúdo já está na fila de pedidos 📋"
+    )
+    return
+    
     # 👉 SEM TEXTO
     if not context.args:
         await update.message.reply_html(
@@ -293,5 +305,6 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
