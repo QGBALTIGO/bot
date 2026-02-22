@@ -222,6 +222,118 @@ async def callback_info_anime(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(botoes)
     )
+
+# ===== ANILIST MANGA =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_anilist_manga(nome: str):
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: MANGA) {
+        id
+        siteUrl
+        title {
+          romaji
+          english
+          native
+        }
+        status
+        averageScore
+        startDate {
+          day
+          month
+          year
+        }
+        genres
+      }
+    }
+    """
+    variables = {"search": nome}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data.get("data", {}).get("Media")
+    except Exception as e:
+        print("Erro AniList Manga:", e)
+        return None
+
+# ===== COMANDO INFOMANGA =====
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Faltou o nome!</b>\n\n"
+            "Use assim:\n"
+            "<code>/infomanga nome do mangá</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/infomanga Gachiakuta</code>"
+        )
+        return
+
+    nome = " ".join(context.args)
+    msg = await update.message.reply_text("🔎 Buscando mangá no AniList...")
+
+    media = await buscar_anilist_manga(nome)
+    if not media:
+        await msg.edit_text("🚫 Não encontrei esse mangá no AniList.")
+        return
+
+    # ===== DADOS =====
+    titulo = (
+        media["title"]["english"]
+        or media["title"]["romaji"]
+        or media["title"]["native"]
+    )
+
+    score = media.get("averageScore", "N/A")
+    status = media.get("status", "N/A")
+    genres = ", ".join(media.get("genres", [])) or "N/A"
+    manga_id = media["id"]
+
+    data = media.get("startDate", {})
+    start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
+
+    # ===== TEXTO =====
+    texto = (
+        f"<b>{titulo}</b>\n\n"
+       f"<b>Pontuação:</b> <code>{score}</code>\n"
+        f"<b>Situação:</b> <code>{status}</code>\n"
+        f"<b>Gênero:</b> <code>{genres}</code>\n"
+        f"<b>Lançamento:</b> <code>{start_date}</code>"
+    )
+
+    # ===== IMAGEM (CAPA DO MANGÁ) =====
+    imagem = f"https://img.anili.st/media/{manga_id}"
+
+    # ===== BOTÕES =====
+    teclado = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "📖 Ver no AniList",
+                url=media["siteUrl"]
+            )
+        ]
+    ])
+
+    # ===== ENVIO =====
+    await update.message.reply_photo(
+        photo=imagem,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
+
+    await msg.delete()
     
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -430,11 +542,13 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
 app.add_handler(CommandHandler("infoanime", infoanime))
+app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
