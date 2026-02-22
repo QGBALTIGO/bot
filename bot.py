@@ -90,7 +90,7 @@ async def buscar_multiplos_anilist(nome: str):
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def infoanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "❌ <b>Faltou o nome!</b>\n\n"
@@ -193,11 +193,10 @@ async def callback_info_anime(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     texto = (
         f"<b>{titulo}</b>\n\n"
-        f"<b>Score:</b> <code>{score}</code>\n"
-        f"<b>Status:</b> <code>{status}</code>\n"
-        f"<b>Genres:</b> <code>{genres}</code>\n"
-        f"<b>ID:</b> <code>{media['id']}</code>\n"
-        f"<b>Start Date:</b> <code>{start_date}</code>"
+        f"<b>Pontuação:</b> <code>{score}</code>\n"
+        f"<b>Situação:</b> <code>{status}</code>\n"
+        f"<b>Gênero:</b> <code>{genres}</code>\n"
+        f"<b>Lançamento:</b> <code>{start_date}</code>"
     )
 
     imagem = f"https://img.anili.st/media/{media['id']}"
@@ -430,12 +429,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
-app.add_handler(CommandHandler("info", info))
+app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
