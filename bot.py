@@ -14,16 +14,13 @@ last_command_time = {}
 
 def anti_spam(user_id: int) -> bool:
     agora = time.time()
+
     if user_id in last_command_time:
         if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
             return False
+
     last_command_time[user_id] = agora
     return True
-
-import time
-
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
-ultimo_pedido = {}
 
 # ===== DADOS =====
 api_id = 34116600
@@ -41,13 +38,14 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== CONFIG ANTIFLOOD =====
+PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
+ultimo_pedido = {}
+
 def pode_pedir(user_id: int) -> bool:
     agora = time.time()
-
-    ultimo = ultimo_pedido.get(user_id)
-    if ultimo and (agora - ultimo) < PEDIDO_COOLDOWN:
-        return False
-
+    if user_id in ultimo_pedido:
+        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
+            return False
     ultimo_pedido[user_id] = agora
     return True
 
@@ -56,12 +54,12 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
-    # ⛔ ANTIFLOOD — PRIMEIRA COISA
+    # ⛔ ANTIFLOOD
     if not pode_pedir(user_id):
         await update.message.reply_html(
             "⏳ <b>Pedido recente detectado</b>\n\n"
             "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
-            "🕒 Aguarde antes de enviar outro 🙂"
+            "🕒 Aguarde um pouco antes de enviar outro 🙂"
         )
         return
 
@@ -171,7 +169,7 @@ async def inline_busca(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cache_time=5,
             is_personal=True
         )
-        
+
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
@@ -304,5 +302,3 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
