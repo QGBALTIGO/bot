@@ -34,8 +34,8 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return None
-
-# ===== PERFIL =====
+    
+# ================= ANI LIST =================
 ANILIST_API = "https://graphql.anilist.co"
 
 async def buscar_perfil_anilist(username: str):
@@ -44,9 +44,6 @@ async def buscar_perfil_anilist(username: str):
       User(name: $name) {
         name
         siteUrl
-        avatar {
-          large
-        }
         statistics {
           anime {
             count
@@ -59,45 +56,37 @@ async def buscar_perfil_anilist(username: str):
       }
     }
     """
-
     variables = {"name": username}
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                headers={"Content-Type": "application/json"}
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                return data.get("data", {}).get("User")
-    except Exception as e:
-        print("Erro AniList:", e)
-        return None
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            headers={"Content-Type": "application/json"}
+        ) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return data.get("data", {}).get("User")
 
+# ================= COMANDO /perfil =================
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_html(
-            "👤 <b>Perfil AniList</b>\n\n"
-            "Use assim:\n"
-            "<code>/perfil nome_do_usuario</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/perfil samuelpocas</code>"
+        await update.message.reply_text(
+            "❌ Use assim:\n\n"
+            "/perfil nome_do_usuario\n\n"
+            "Exemplo:\n"
+            "/perfil samuelpocas"
         )
         return
 
     username = context.args[0]
 
-    msg = await update.message.reply_text("🔎 Buscando perfil no AniList...")
-
     dados = await buscar_perfil_anilist(username)
-
     if not dados:
-        await msg.edit_text(
-            "❌ Não encontrei esse perfil no AniList.\n"
-            "Verifique o nome e tente novamente."
+        await update.message.reply_text(
+            "❌ Não achei esse usuário no AniList.\n"
+            "Verifique o nome."
         )
         return
 
@@ -106,29 +95,32 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dias = round(anime["minutesWatched"] / 60 / 24, 1)
 
     texto = (
-        f"👤 <b>Perfil AniList</b>\n\n"
-        f"🧾 <b>Usuário:</b> {dados['name']}\n"
-        f"🎬 <b>Animes assistidos:</b> {anime['count']}\n"
-        f"📚 <b>Mangás lidos:</b> {manga['count']}\n"
-        f"⏱️ <b>Dias assistidos:</b> {dias}"
+        f"👤 *Perfil AniList*\n\n"
+        f"🧾 Nome: `{dados['name']}`\n"
+        f"🎬 Animes: *{anime['count']}*\n"
+        f"📚 Mangás: *{manga['count']}*\n"
+        f"⏱️ Dias assistidos: *{dias}*"
     )
 
-    keyboard = [
-        [
-            InlineKeyboardButton("📺 Anime Stats", url=dados["siteUrl"] + "/animelist"),
-            InlineKeyboardButton("📚 Manga Stats", url=dados["siteUrl"] + "/mangalist"),
-        ],
-        [
-            InlineKeyboardButton("👤 Abrir perfil no AniList", url=dados["siteUrl"])
-        ]
+    teclado = [
+        [InlineKeyboardButton("👤 Abrir Perfil", url=dados["siteUrl"])]
     ]
 
-    await msg.edit_text(
+    await update.message.reply_text(
         texto,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(teclado)
     )
 
+# ================= MAIN =================
+def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("perfil", perfil))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+    
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -341,4 +333,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
