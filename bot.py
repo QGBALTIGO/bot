@@ -70,24 +70,22 @@ async def buscar_perfil_anilist(username: str):
             data = await resp.json()
             return data.get("data", {}).get("User")
 
-
 # ===== COMANDO /perfil =====
-async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "❌ Use assim:\n\n"
-            "`/perfil nome_do_usuario`",
-            parse_mode="Markdown"
+            "Use assim:\n/perfil nome_do_usuario\n\nExemplo:\n/perfil samuelpocas"
         )
         return
 
     username = context.args[0]
+
     dados = await buscar_perfil_anilist(username)
 
     if not dados:
         await update.message.reply_text(
-            "❌ Perfil não encontrado.\n"
-            "Verifique o nome no AniList."
+            "Não encontrei esse perfil no AniList.\n"
+            f"Verifique se existe:\nhttps://anilist.co/user/{username}"
         )
         return
 
@@ -96,21 +94,22 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dias = round(anime["minutesWatched"] / 60 / 24, 1)
 
     texto = (
-        f"👤 *Perfil AniList*\n\n"
-        f"🧾 Nome: `{dados['name']}`\n"
-        f"🎬 Animes assistidos: *{anime['count']}*\n"
-        f"📚 Mangás lidos: *{manga['count']}*\n"
-        f"⏱️ Dias assistidos: *{dias}*"
+        f"Perfil AniList\n\n"
+        f"Nome: {dados['name']}\n"
+        f"Animes: {anime['count']}\n"
+        f"Mangás: {manga['count']}\n"
+        f"Dias assistidos: {dias}"
     )
 
-    teclado = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👤 Abrir Perfil", url=dados["siteUrl"])]
-    ])
+    keyboard = [
+        [
+            InlineKeyboardButton("Ver perfil", url=dados["siteUrl"])
+        ]
+    ]
 
     await update.message.reply_text(
         texto,
-        parse_mode="Markdown",
-        reply_markup=teclado
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
 # ===== COMANDO /pedido =====
@@ -325,6 +324,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
