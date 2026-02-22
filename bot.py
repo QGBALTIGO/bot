@@ -38,7 +38,136 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
-# ===== ANNILIST =====
+# ===== INFO PERFIL =====
+# telegram_id -> access_token do anilist
+usuarios_anilist = {}
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+ANILIST_CLIENT_ID = "SEU_CLIENT_ID"
+
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+
+    url_login = (
+        "https://anilist.co/api/v2/oauth/authorize"
+        f"?client_id={ANILIST_CLIENT_ID}"
+        "&response_type=token"
+    )
+
+    keyboard = [[
+        InlineKeyboardButton("🔐 Login com AniList", url=url_login)
+    ]]
+
+    await update.message.reply_text(
+        "🔑 Para ver seu perfil, faça login no AniList:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Envie assim:\n/token SEU_TOKEN_DO_ANILIST"
+        )
+        return
+
+    access_token = context.args[0]
+    telegram_id = update.effective_user.id
+
+    usuarios_anilist[telegram_id] = access_token
+
+    await update.message.reply_text(
+        "✅ Conta do AniList vinculada com sucesso!"
+    )
+
+# ===== INFO PERFIL 2.0 =====
+import aiohttp
+
+async def buscar_perfil_anilist(token):
+    url = "https://graphql.anilist.co"
+
+    query = """
+    query {
+      Viewer {
+        id
+        name
+        avatar {
+          large
+        }
+        statistics {
+          anime {
+            count
+            episodesWatched
+            minutesWatched
+          }
+          manga {
+            count
+            chaptersRead
+          }
+        }
+      }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            url,
+            json={"query": query},
+            headers=headers
+        ) as resp:
+            return await resp.json()
+
+# ===== COMANDO ANILIST PERFIL =====
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+
+    if telegram_id not in usuarios_anilist:
+        await update.message.reply_text(
+            "❌ Você ainda não vinculou seu AniList.\nUse /login"
+        )
+        return
+
+    dados = await buscar_perfil_anilist(usuarios_anilist[telegram_id])
+    user = dados["data"]["Viewer"]
+
+    nome = user["name"]
+    avatar = user["avatar"]["large"]
+
+    anime_count = user["statistics"]["anime"]["count"]
+    manga_count = user["statistics"]["manga"]["count"]
+
+    texto = (
+        f"👤 *{nome}*\n\n"
+        f"📺 Animes vistos: {anime_count}\n"
+        f"📚 Mangás lidos: {manga_count}"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📺 Anime Stats", callback_data="anime_stats"),
+            InlineKeyboardButton("📚 Manga Stats", callback_data="manga_stats")
+        ],
+        [
+            InlineKeyboardButton(
+                "👤 Ir para o perfil",
+                url=f"https://anilist.co/user/{nome}"
+            )
+        ]
+    ]
+
+    await update.message.reply_photo(
+        photo=avatar,
+        caption=texto,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
 async def buscar_anilist(nome: str):
@@ -345,6 +474,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
