@@ -1,6 +1,5 @@
 python-telegram-bot
-
 telethon
-
 aiohttp
-
+fastapi
+uvicorn
