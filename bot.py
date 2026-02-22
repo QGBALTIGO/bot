@@ -38,62 +38,19 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
-# ===== INFO PERFIL =====
-# telegram_id -> access_token do anilist
-usuarios_anilist = {}
+# ===== ANILIST USERS EM MEMÓRIA =====
+# user_id do Telegram -> username do AniList
+anilist_users = {}
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-ANILIST_CLIENT_ID = "SEU_CLIENT_ID"
-
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-
-    url_login = (
-        "https://anilist.co/api/v2/oauth/authorize"
-        f"?client_id={ANILIST_CLIENT_ID}"
-        "&response_type=token"
-    )
-
-    keyboard = [[
-        InlineKeyboardButton("🔐 Login com AniList", url=url_login)
-    ]]
-
-    await update.message.reply_text(
-        "🔑 Para ver seu perfil, faça login no AniList:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def token(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text(
-            "❌ Envie assim:\n/token SEU_TOKEN_DO_ANILIST"
-        )
-        return
-
-    access_token = context.args[0]
-    telegram_id = update.effective_user.id
-
-    usuarios_anilist[telegram_id] = access_token
-
-    await update.message.reply_text(
-        "✅ Conta do AniList vinculada com sucesso!"
-    )
-
-# ===== INFO PERFIL 2.0 =====
-import aiohttp
-
-async def buscar_perfil_anilist(token):
+# ===== ANILIST API =====
+async def buscar_anilist(username: str):
     url = "https://graphql.anilist.co"
-
     query = """
-    query {
-      Viewer {
+    query ($name: String) {
+      User(name: $name) {
         id
         name
-        avatar {
-          large
-        }
+        siteUrl
         statistics {
           anime {
             count
@@ -108,61 +65,107 @@ async def buscar_perfil_anilist(token):
       }
     }
     """
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+    variables = {"name": username}
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             url,
-            json={"query": query},
-            headers=headers
-        ) as resp:
-            return await resp.json()
+            json={"query": query, "variables": variables}
+        ) as response:
+            if response.status != 200:
+                return None
+            data = await response.json()
+            return data.get("data", {}).get("User")
 
-# ===== COMANDO ANILIST PERFIL =====
-async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-
-    if telegram_id not in usuarios_anilist:
+# ===== COMANDO /login =====
+async def login(update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
         await update.message.reply_text(
-            "❌ Você ainda não vinculou seu AniList.\nUse /login"
+            "🔐 *Conectar AniList*\n\n"
+            "Use assim:\n"
+            "`/login nome_do_usuario_no_anilist`\n\n"
+            "Exemplo:\n"
+            "`/login samuelpocas`",
+            parse_mode="Markdown"
         )
         return
 
-    dados = await buscar_perfil_anilist(usuarios_anilist[telegram_id])
-    user = dados["data"]["Viewer"]
+    username = context.args[0]
+    user_id = update.effective_user.id
 
-    nome = user["name"]
-    avatar = user["avatar"]["large"]
+    dados = await buscar_anilist(username)
+    if not dados:
+        await update.message.reply_text(
+            "❌ Não encontrei esse usuário no AniList.\n"
+            "Verifique o nome e tente novamente."
+        )
+        return
 
-    anime_count = user["statistics"]["anime"]["count"]
-    manga_count = user["statistics"]["manga"]["count"]
+    anilist_users[user_id] = username
+
+    await update.message.reply_text(
+        f"✅ Conta conectada com sucesso!\n\n"
+        f"👤 AniList: {username}\n\n"
+        "Agora você pode usar:\n"
+        "📌 /perfil"
+    )
+
+# ===== COMANDO /perfil =====
+async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in anilist_users:
+        await update.message.reply_text(
+            "⚠️ Você ainda não conectou seu AniList.\n\n"
+            "Use primeiro:\n"
+            "`/login nome_do_usuario`",
+            parse_mode="Markdown"
+        )
+        return
+
+    username = anilist_users[user_id]
+    dados = await buscar_anilist(username)
+
+    if not dados:
+        await update.message.reply_text(
+            "❌ Erro ao buscar dados do AniList."
+        )
+        return
+
+    anime = dados["statistics"]["anime"]
+    manga = dados["statistics"]["manga"]
+
+    dias_assistidos = round(anime["minutesWatched"] / 60 / 24, 1)
 
     texto = (
-        f"👤 *{nome}*\n\n"
-        f"📺 Animes vistos: {anime_count}\n"
-        f"📚 Mangás lidos: {manga_count}"
+        f"👤 *Perfil AniList*\n\n"
+        f"🧾 Nome: `{dados['name']}`\n"
+        f"🎬 Animes assistidos: *{anime['count']}*\n"
+        f"📚 Mangás lidos: *{manga['count']}*\n"
+        f"⏱️ Dias assistidos: *{dias_assistidos}*\n"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("📺 Anime Stats", callback_data="anime_stats"),
-            InlineKeyboardButton("📚 Manga Stats", callback_data="manga_stats")
+            InlineKeyboardButton(
+                "📺 Anime Stats",
+                url=dados["siteUrl"] + "/animelist"
+            ),
+            InlineKeyboardButton(
+                "📚 Manga Stats",
+                url=dados["siteUrl"] + "/mangalist"
+            )
         ],
         [
             InlineKeyboardButton(
                 "👤 Ir para o perfil",
-                url=f"https://anilist.co/user/{nome}"
+                url=dados["siteUrl"]
             )
         ]
     ]
 
-    await update.message.reply_photo(
-        photo=avatar,
-        caption=texto,
+    await update.message.reply_text(
+        texto,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -468,12 +471,15 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("login", login))
+app.add_handler(CommandHandler("perfil", perfil))
 app.add_handler(CommandHandler("info", info))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
