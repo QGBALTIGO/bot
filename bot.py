@@ -7,36 +7,18 @@ from telegram.ext import InlineQueryHandler
 from telegram import InlineQueryResultArticle, InputTextMessageContent
 
 # ===== ANTI-SPAM CONFIG =====
+import time
+
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
 
 def anti_spam(user_id: int) -> bool:
     agora = time.time()
-
     if user_id in last_command_time:
         if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
             return False
-
     last_command_time[user_id] = agora
     return True
-
-async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Calma aí!\nEspere alguns segundos antes de usar outro comando."
-        )
-        return
-
-async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
-        )
-        return
 
 # ===== DADOS =====
 api_id = 34116600
@@ -52,46 +34,6 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return None
-
-# ===== ENTRADA CANAIS =====
-from telegram.error import BadRequest
-
-async def usuario_no_canal(context, user_id: int) -> bool:
-    try:
-        membro_anime = await context.bot.get_chat_member(-1001823020280, user_id)
-        if membro_anime.status in ["member", "administrator", "creator"]:
-            return True
-    except BadRequest:
-        pass
-
-    try:
-        membro_manga = await context.bot.get_chat_member(-1001834602691, user_id)
-        if membro_manga.status in ["member", "administrator", "creator"]:
-            return True
-    except BadRequest:
-        pass
-
-    return False
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-async def bloquear_se_nao_membro(update, context) -> bool:
-    user_id = update.effective_user.id
-    if await usuario_no_canal(context, user_id):
-        return False  # pode usar o bot
-
-    keyboard = [
-        [InlineKeyboardButton("🎬 Canal de Animes", url="t.me/Centraldeanimes_Baltigo")],
-        [InlineKeyboardButton("📚 Canal de Mangás", url="t.me/MangasBrasil")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_html(
-        "🔒 <b>Acesso restrito</b>\n\n"
-        "Para usar os comandos do bot, você precisa estar em <b>pelo menos um</b> dos canais abaixo 👇",
-        reply_markup=reply_markup
-    )
-    return True
 
 # ===== CONFIG ANTIFLOOD =====
 PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
@@ -252,6 +194,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /anime =====
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
+
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -295,6 +245,14 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
+
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -343,3 +301,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
