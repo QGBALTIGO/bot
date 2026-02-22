@@ -297,18 +297,22 @@ async def serie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text(
+
+    msg_temp = await update.message.reply_text(
         "🔎 Buscando a série pra você...\nAguarde um instante ⏳"
     )
 
-    async with client:
-        msg_id = await buscar_post(CANAL_SERIE, nome)
+    msg_id = await buscar_serie(nome)
+
+    # 🧹 apaga mensagem temporária após 5s
+    await asyncio.sleep(5)
+    await msg_temp.delete()
 
     if not msg_id:
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
-            "A série que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+            "A série que você procurou não foi encontrada no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou grafia diferente."
         )
         return
 
@@ -318,6 +322,7 @@ async def serie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url=f"https://t.me/{CANAL_SERIE}/{msg_id}"
         )
     ]]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await context.bot.copy_message(
@@ -337,6 +342,7 @@ app.add_handler(CommandHandler("manga", manga))
 app.add_handler(CommandHandler("serie", serie))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
