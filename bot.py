@@ -521,7 +521,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    # 🔎 Mensagem de busca (GUARDA O OBJETO)
+    # 🔎 MENSAGEM DE BUSCA (SALVA!)
     msg_busca = await update.message.reply_text(
         "🔎 Buscando o mangá pra você...\nAguarde um instante ⏳"
     )
@@ -529,12 +529,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
-    # ❌ NÃO ENCONTROU
+    # ❌ NÃO ACHOU
     if not msg_id:
-        # 🔥 APAGA O "BUSCANDO"
-        await msg_busca.delete()
-
-        # 🚫 MANDA A MENSAGEM DE ERRO
+        await msg_busca.delete()  # <<< ISSO É O QUE FALTAVA
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O mangá que você procurou não foi encontrado no canal.\n\n"
@@ -542,19 +539,18 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ✅ ENCONTROU → APAGA O BUSCANDO
+    # ✅ ACHOU
     await msg_busca.delete()
 
-    # ▶️ BOTÃO
     keyboard = [[
         InlineKeyboardButton(
             "📖 Ler no canal",
             url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
         )
     ]]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # 📤 ENVIA O POST
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
@@ -573,6 +569,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
