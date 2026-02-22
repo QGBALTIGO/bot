@@ -6,7 +6,6 @@ import time
 import aiohttp
 from telegram import Update
 from telegram.ext import ContextTypes
-from fastapi import FastAPI, Request
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -38,6 +37,49 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return None
+
+# ===== ANNILIST =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_anilist(nome: str):
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        id
+        title {
+          romaji
+          english
+          native
+        }
+        description(asHtml: false)
+        episodes
+        chapters
+        format
+        status
+        averageScore
+      }
+    }
+    """
+
+    variables = {
+        "search": nome
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+
+                data = await resp.json()
+                return data.get("data", {}).get("Media")
+
+    except Exception as e:
+        print("Erro AniList:", e)
+        return None
         
 # ===== COMANDO INFO =====
 from telegram import Update
@@ -296,24 +338,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
-app.add_handler(CommandHandler("perfil", perfil))
 app.add_handler(CommandHandler("info", info))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
