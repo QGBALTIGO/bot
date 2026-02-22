@@ -453,25 +453,32 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 <b>Formato correto:</b>\n"
             "<code>/anime nome do anime</code>\n\n"
             "🎬 <b>Exemplo:</b>\n"
-            "<code>/anime naruto</code>"
+            "<code>/anime Naruto</code>"
         )
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text(
+
+    # 👇 GUARDA a mensagem de busca
+    msg_busca = await update.message.reply_text(
         "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
     )
 
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
 
+    # ❌ NÃO ACHOU → EDITA a mensagem
     if not msg_id:
-        await update.message.reply_html(
+        await msg_busca.edit_text(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente.",
+            parse_mode="HTML"
         )
         return
+
+    # ✅ ACHOU → apaga o “Buscando”
+    await msg_busca.delete()
 
     keyboard = [[
         InlineKeyboardButton(
@@ -479,6 +486,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url=f"https://t.me/{CANAL_ANIME}/{msg_id}"
         )
     ]]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await context.bot.copy_message(
@@ -561,6 +569,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
