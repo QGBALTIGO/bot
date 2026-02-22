@@ -127,11 +127,11 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = (
         f"<b>{titulo}</b>\n\n"
-        f"⭐ <b>Score:</b> {score}\n"
-        f"📺 <b>Status:</b> {status}\n"
-        f"🎭 <b>Genres:</b> {genres}\n"
-        f"🆔 <b>ID:</b> {anime_id}\n"
-        f"📅 <b>Start Date:</b> {start_date}"
+        f"<b>Score:</b> {score}\n"
+        f"<b>Status:</b> {status}\n"
+        f"<b>Genres:</b> {genres}\n"
+        f"<b>ID:</b> {anime_id}\n"
+        f"<b>Start Date:</b> {start_date}"
     )
 
     capa = media.get("coverImage", {}).get("large")
@@ -360,4 +360,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
