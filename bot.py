@@ -41,10 +41,102 @@ async def buscar_post(canal, termo):
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
-async def buscar_anilist(nome: str):
+async def buscar_multiplos_anilist(nome: str):
     query = """
     query ($search: String) {
-      Media(search: $search, type: ANIME) {
+      Page(perPage: 6) {
+        media(search: $search, type: ANIME) {
+          id
+          siteUrl
+          title {
+            romaji
+            english
+            native
+          }
+          status
+          averageScore
+          startDate {
+            day
+            month
+            year
+          }
+          genres
+          trailer {
+            site
+            id
+          }
+        }
+      }
+    }
+    """
+    variables = {"search": nome}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data["data"]["Page"]["media"]
+    except Exception as e:
+        print("Erro AniList:", e)
+        return []
+        
+# ===== COMANDO INFO =====
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Faltou o nome!</b>\n\n"
+            "Use assim:\n"
+            "<code>/info nome do anime</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/info Naruto</code>"
+        )
+        return
+
+    nome = " ".join(context.args)
+    msg = await update.message.reply_text("🔎 Buscando versões no AniList...")
+
+    resultados = await buscar_multiplos_anilist(nome)
+
+    if not resultados:
+        await msg.edit_text("🚫 Não encontrei nenhum anime com esse nome.")
+        return
+
+    botoes = []
+
+    for media in resultados:
+        titulo = (
+            media["title"]["english"]
+            or media["title"]["romaji"]
+            or media["title"]["native"]
+        )
+
+        botoes.append([
+            InlineKeyboardButton(
+                titulo,
+                callback_data=f"info_anime:{media['id']}"
+            )
+        ])
+
+    await msg.edit_text(
+        "📌 <b>Encontrei várias versões</b>\n\n"
+        "Escolha qual você quer ver:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(botoes)
+    )
+
+async def buscar_anilist_por_id(anime_id: int):
+    query = """
+    query ($id: Int) {
+      Media(id: $id, type: ANIME) {
         id
         siteUrl
         title {
@@ -67,47 +159,25 @@ async def buscar_anilist(nome: str):
       }
     }
     """
-    variables = {"search": nome}
+    variables = {"id": anime_id}
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                return data.get("data", {}).get("Media")
-    except Exception as e:
-        print("Erro AniList:", e)
-        return None
-        
-# ===== COMANDO INFO =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables}
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Media"]
 
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_html(
-            "❌ <b>Faltou o nome!</b>\n\n"
-            "Use assim:\n"
-            "<code>/info nome do anime</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/info Gachiakuta</code>"
-        )
-        return
+from telegram.ext import CallbackQueryHandler
 
-    nome = " ".join(context.args)
-    msg = await update.message.reply_text("🔎 Buscando no AniList...")
+async def callback_info_anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    media = await buscar_anilist(nome)
-    if not media:
-        await msg.edit_text("🚫 Não encontrei esse anime no AniList.")
-        return
+    anime_id = int(query.data.split(":")[1])
+    media = await buscar_anilist_por_id(anime_id)
 
-    # ===== DADOS =====
     titulo = (
         media["title"]["english"]
         or media["title"]["romaji"]
@@ -117,51 +187,42 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     score = media.get("averageScore", "N/A")
     status = media.get("status", "N/A")
     genres = ", ".join(media.get("genres", [])) or "N/A"
-    anime_id = media["id"]
 
     data = media.get("startDate", {})
     start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
 
-    # ===== TEXTO FORMATADO =====
     texto = (
         f"<b>{titulo}</b>\n\n"
         f"<b>Score:</b> <code>{score}</code>\n"
         f"<b>Status:</b> <code>{status}</code>\n"
-        f"<b>Gênero:</b> <code>{genres}</code>\n"
-        f"<b>ID:</b> <code>{anime_id}</code>\n"
-        f"<b>Lançamento:</b> <code>{start_date}</code>"
+        f"<b>Genres:</b> <code>{genres}</code>\n"
+        f"<b>ID:</b> <code>{media['id']}</code>\n"
+        f"<b>Start Date:</b> <code>{start_date}</code>"
     )
 
-    # ===== IMAGEM (CAPA) =====
-    imagem = f"https://img.anili.st/media/{anime_id}"
+    imagem = f"https://img.anili.st/media/{media['id']}"
 
-    # ===== BOTÕES =====
     botoes = []
 
-    # Trailer (se existir)
     trailer = media.get("trailer")
     if trailer and trailer["site"] == "youtube":
-        trailer_url = f"https://www.youtube.com/watch?v={trailer['id']}"
         botoes.append([
-            InlineKeyboardButton("🎬 Trailer", url=trailer_url)
+            InlineKeyboardButton(
+                "🎬 Trailer",
+                url=f"https://www.youtube.com/watch?v={trailer['id']}"
+            )
         ])
 
-    # Descrição / AniList
     botoes.append([
         InlineKeyboardButton("📖 Descrição", url=media["siteUrl"])
     ])
 
-    teclado = InlineKeyboardMarkup(botoes)
-
-    # ===== ENVIO FINAL =====
-    await update.message.reply_photo(
+    await query.message.reply_photo(
         photo=imagem,
         caption=texto,
         parse_mode="HTML",
-        reply_markup=teclado
+        reply_markup=InlineKeyboardMarkup(botoes)
     )
-
-    await msg.delete()
     
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -368,12 +429,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
 app.add_handler(CommandHandler("info", info))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
