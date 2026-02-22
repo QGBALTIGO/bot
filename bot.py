@@ -85,6 +85,9 @@ async def buscar_anilist(nome: str):
         return None
         
 # ===== COMANDO INFO =====
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -97,13 +100,14 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    msg_busca = await update.message.reply_text("🔎 Buscando no AniList...")
+    msg = await update.message.reply_text("🔎 Buscando no AniList...")
 
     media = await buscar_anilist(nome)
     if not media:
-        await msg_busca.edit_text("🚫 Não encontrei esse anime.")
+        await msg.edit_text("🚫 Não encontrei esse anime no AniList.")
         return
 
+    # ===== DADOS =====
     titulo = (
         media["title"]["english"]
         or media["title"]["romaji"]
@@ -113,47 +117,52 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     score = media.get("averageScore", "N/A")
     status = media.get("status", "N/A")
     genres = ", ".join(media.get("genres", [])) or "N/A"
-
-    start = media.get("startDate", {})
-    start_date = f"{start.get('day','?')}/{start.get('month','?')}/{start.get('year','?')}"
-
     anime_id = media["id"]
-    capa = f"https://img.anili.st/media/{anime_id}"
 
+    data = media.get("startDate", {})
+    start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
+
+    # ===== TEXTO FORMATADO =====
     texto = (
         f"<b>{titulo}</b>\n\n"
-        f"<b>Score:</b> {score}\n"
-        f"<b>Status:</b> {status}\n"
-        f"<b>Gêneros:</b> {genres}\n"
-        f"<b>ID:</b> {anime_id}\n"
-        f"<b>Start Date:</b> {start_date}"
+        f"<b>Score:</b> <code>{score}</code>\n"
+        f"<b>Status:</b> <code>{status}</code>\n"
+        f"<b>Gênero:</b> <code>{genres}</code>\n"
+        f"<b>ID:</b> <code>{anime_id}</code>\n"
+        f"<b>Lançamento:</b> <code>{start_date}</code>"
     )
+
+    # ===== IMAGEM (CAPA) =====
+    imagem = f"https://img.anili.st/media/{anime_id}"
 
     # ===== BOTÕES =====
     botoes = []
 
-    # 🎬 Trailer
+    # Trailer (se existir)
     trailer = media.get("trailer")
     if trailer and trailer["site"] == "youtube":
         trailer_url = f"https://www.youtube.com/watch?v={trailer['id']}"
-        botoes.append(
+        botoes.append([
             InlineKeyboardButton("🎬 Trailer", url=trailer_url)
-        )
+        ])
 
-    # 📄 Descrição (AniList)
-    botoes.append(
-        InlineKeyboardButton("📄 Descrição", url=media["siteUrl"])
-    )
+    # Descrição / AniList
+    botoes.append([
+        InlineKeyboardButton("📖 Descrição", url=media["siteUrl"]),
+        InlineKeyboardButton("▶️ Assistir", url=media["siteUrl"])
+    ])
 
-    keyboard = InlineKeyboardMarkup([botoes])
+    teclado = InlineKeyboardMarkup(botoes)
 
-    await msg_busca.delete()
+    # ===== ENVIO FINAL =====
     await update.message.reply_photo(
-        photo=capa,
+        photo=imagem,
         caption=texto,
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=teclado
     )
+
+    await msg.delete()
     
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -366,6 +375,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
