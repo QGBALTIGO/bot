@@ -481,6 +481,9 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not anti_spam(user_id):
@@ -494,13 +497,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
             "👉 <b>Formato correto:</b>\n"
             "<code>/manga nome do mangá</code>\n\n"
-            "📚 <b>Exemplo:</b>\n"
+            "🎬 <b>Exemplo:</b>\n"
             "<code>/manga naruto</code>"
         )
         return
 
     nome = " ".join(context.args)
 
+    # ✅ GUARDA A MENSAGEM "BUSCANDO"
     msg_busca = await update.message.reply_text(
         "📚 Buscando o mangá pra você...\nAguarde um instante ⏳"
     )
@@ -508,8 +512,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
+    # ❌ NÃO ENCONTROU
     if not msg_id:
-        await msg_busca.delete()
+        await msg_busca.delete()  # apaga o buscando
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O mangá que você procurou não foi encontrado no canal.\n\n"
@@ -517,6 +522,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ✅ ENCONTROU → APAGA BUSCANDO
     await msg_busca.delete()
 
     keyboard = [[
@@ -525,7 +531,6 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
         )
     ]]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await context.bot.copy_message(
@@ -534,7 +539,6 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -546,6 +550,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
