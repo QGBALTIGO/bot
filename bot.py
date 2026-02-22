@@ -6,6 +6,7 @@ import time
 import aiohttp
 from telegram import Update
 from telegram.ext import ContextTypes
+from fastapi import FastAPI, Request
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -82,89 +83,59 @@ async def buscar_perfil_anilist(username: str):
             return data.get("data", {}).get("User")
 
 # ===== COMANDO /login =====
-async def login(update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text(
-            "🔐 *Conectar AniList*\n\n"
-            "Use assim:\n"
-            "`/login nome_do_usuario_no_anilist`\n\n"
-            "Exemplo:\n"
-            "`/login samuelpocas`",
-            parse_mode="Markdown"
-        )
-        return
+ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID")
+ANILIST_CLIENT_SECRET = os.getenv("ANILIST_CLIENT_SECRET")
+ANILIST_REDIRECT_URI = os.getenv("ANILIST_REDIRECT_URI")
 
-    username = context.args[0]
-    user_id = update.effective_user.id
-
-    dados = await buscar_anilist(username)
-    if not dados:
-        await update.message.reply_text(
-            "❌ Não encontrei esse usuário no AniList.\n"
-            "Verifique o nome e tente novamente."
-        )
-        return
-
-    anilist_users[user_id] = username
-
-    await update.message.reply_text(
-        f"✅ Conta conectada com sucesso!\n\n"
-        f"👤 AniList: {username}\n\n"
-        "Agora você pode usar:\n"
-        "📌 /perfil"
+anilist_tokens = {}  # telegram_user_id -> access_token
+def gerar_link_login():
+    return (
+        "https://anilist.co/api/v2/oauth/authorize"
+        f"?client_id={ANILIST_CLIENT_ID}"
+        f"&redirect_uri={ANILIST_REDIRECT_URI}"
+        "&response_type=code"
     )
-
+    
+async def login(update, context: ContextTypes.DEFAULT_TYPE):
+    link = gerar_link_login()
+    await update.message.reply_text(
+        "🔐 Conecte sua conta AniList\n\n"
+        "1️⃣ Clique no link abaixo\n"
+        "2️⃣ Faça login\n"
+        "3️⃣ Autorize o bot\n\n"
+        f"👉 {link}"
+    )
+    
 # ===== COMANDO /perfil =====
 async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id not in anilist_users:
+    token = anilist_tokens.get("LAST")
+    if not token:
         await update.message.reply_text(
-            "⚠️ Você ainda não conectou seu AniList.\n\n"
-            "Use primeiro:\n"
-            "`/login nome_do_usuario`",
-            parse_mode="Markdown"
+            "⚠️ Você ainda não conectou seu AniList.\nUse /login"
         )
         return
 
-    username = anilist_users[user_id]
-    dados = await buscar_anilist(username)
-
-    if not dados:
-        await update.message.reply_text(
-            "❌ Erro ao buscar dados do AniList."
-        )
-        return
+    dados = await buscar_perfil(token)
 
     anime = dados["statistics"]["anime"]
     manga = dados["statistics"]["manga"]
-
-    dias_assistidos = round(anime["minutesWatched"] / 60 / 24, 1)
+    dias = round(anime["minutesWatched"] / 60 / 24, 1)
 
     texto = (
         f"👤 *Perfil AniList*\n\n"
         f"🧾 Nome: `{dados['name']}`\n"
-        f"🎬 Animes assistidos: *{anime['count']}*\n"
-        f"📚 Mangás lidos: *{manga['count']}*\n"
-        f"⏱️ Dias assistidos: *{dias_assistidos}*\n"
+        f"🎬 Animes: *{anime['count']}*\n"
+        f"📚 Mangás: *{manga['count']}*\n"
+        f"⏱️ Dias assistidos: *{dias}*"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton(
-                "📺 Anime Stats",
-                url=dados["siteUrl"] + "/animelist"
-            ),
-            InlineKeyboardButton(
-                "📚 Manga Stats",
-                url=dados["siteUrl"] + "/mangalist"
-            )
+            InlineKeyboardButton("📺 Anime List", url=dados["siteUrl"] + "/animelist"),
+            InlineKeyboardButton("📚 Manga List", url=dados["siteUrl"] + "/mangalist"),
         ],
         [
-            InlineKeyboardButton(
-                "👤 Ir para o perfil",
-                url=dados["siteUrl"]
-            )
+            InlineKeyboardButton("👤 Abrir Perfil", url=dados["siteUrl"])
         ]
     ]
 
@@ -483,6 +454,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
