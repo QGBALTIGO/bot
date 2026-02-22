@@ -123,63 +123,6 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
     )
 
-# ===== INLINE QUERY =====
-async def inline_busca(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query.query.strip().lower()
-
-    if not query:
-        return
-
-    resultados = []
-
-    async with client:
-        # 🎬 ANIMES
-        async for msg in client.iter_messages(CANAL_ANIME, search=query, limit=5):
-            if not msg.text:
-                continue
-
-            resultados.append(
-                InlineQueryResultArticle(
-                    id=str(uuid.uuid4()),
-                    title=f"🎬 Anime encontrado",
-                    description=query.title(),
-                    input_message_content=InputTextMessageContent(
-                        message_text=(
-                            f"🎬 *Anime encontrado!*\n\n"
-                            f"🔗 https://t.me/{CANAL_ANIME}/{msg.id}"
-                        ),
-                        parse_mode="Markdown"
-                    )
-                )
-            )
-
-        # 📚 MANGÁS
-        async for msg in client.iter_messages(CANAL_MANGA, search=query, limit=5):
-            if not msg.text:
-                continue
-
-            resultados.append(
-                InlineQueryResultArticle(
-                    id=str(uuid.uuid4()),
-                    title=f"📚 Mangá encontrado",
-                    description=query.title(),
-                    input_message_content=InputTextMessageContent(
-                        message_text=(
-                            f"📚 *Mangá encontrado!*\n\n"
-                            f"🔗 https://t.me/{CANAL_MANGA}/{msg.id}"
-                        ),
-                        parse_mode="Markdown"
-                    )
-                )
-            )
-
-    if resultados:
-        await update.inline_query.answer(
-            resultados,
-            cache_time=5,
-            is_personal=True
-        )
-
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
@@ -306,11 +249,11 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
-app.add_handler(InlineQueryHandler(inline_busca))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
