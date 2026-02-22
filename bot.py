@@ -3,10 +3,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
-from telegram import (
-    InlineQueryResultArticle,
-    InputTextMessageContent
-)
+from telegram import InlineQueryResultArticle, InputTextMessageContent
 import uuid
 
 # ===== ANTI-SPAM CONFIG =====
@@ -315,4 +312,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
