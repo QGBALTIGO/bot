@@ -1,9 +1,51 @@
 from telethon import TelegramClient
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
+from telegram.ext import MessageHandler, filters
+
+# ===== PEDIDOS EM MEMÓRIA =====
+pedidos_pendentes = {}
+# formato:
+# pedidos_pendentes["naruto"] = user_id
+
+texto_pedido = " ".join(context.args)
+chave = texto_pedido.lower()
+
+# salva pedido
+pedidos_pendentes[chave] = user.id
+
+async def detectar_confirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.channel_post:
+        return
+
+    texto = update.channel_post.text
+    if not texto:
+        return
+
+    texto_lower = texto.lower()
+
+    for pedido, user_id in list(pedidos_pendentes.items()):
+        if pedido in texto_lower:
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        "🎉 <b>Pedido atendido!</b>\n\n"
+                        f"O conteúdo <b>{pedido}</b> já foi postado no canal ✅\n\n"
+                        "📺 Aproveite e bom entretenimento!"
+                    ),
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+
+            # remove pedido após avisar
+            del pedidos_pendentes[pedido]
+            app.add_handler(
+    MessageHandler(filters.ChatType.CHANNEL, detectar_confirmacao)
+)
 
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
@@ -294,3 +336,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
