@@ -461,10 +461,8 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
     )
-
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
-
     if not msg_id:
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
@@ -472,7 +470,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
-
     keyboard = [[
         InlineKeyboardButton(
             "▶️ Assistir no canal",
@@ -480,7 +477,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_ANIME}",
@@ -548,3 +544,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
