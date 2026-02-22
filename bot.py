@@ -4,8 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
-from telegram.ext import MessageHandler, filters
-            
+
 # ===== ANTI-SPAM CONFIG =====
 ANTI_SPAM_TIME = 5  # segundos
 last_command_time = {}
@@ -105,37 +104,6 @@ def pode_pedir(user_id: int) -> bool:
     ultimo_pedido[user_id] = agora
     return True
 
-# ===== CANAIS =====
-CANAL_PEDIDOS = -1001234567890  # 🔒 canal fechado onde chegam os pedidos
-CANAL_ANIME = -1001823020280
-CANAL_MANGA = -1001834602691
-
-# ===== ANTIFLOOD PEDIDO =====
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
-ultimo_pedido = {}
-
-def pode_pedir(user_id: int) -> bool:
-    agora = time.time()
-    if user_id in ultimo_pedido:
-        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
-            return False
-    ultimo_pedido[user_id] = agora
-    return True
-
-import time
-
-# ===== CONFIG ANTIFLOOD =====
-PEDIDO_COOLDOWN = 12 * 60 * 60  # 12 horas
-ultimo_pedido = {}
-
-def pode_pedir(user_id: int) -> bool:
-    agora = time.time()
-    if user_id in ultimo_pedido:
-        if agora - ultimo_pedido[user_id] < PEDIDO_COOLDOWN:
-            return False
-    ultimo_pedido[user_id] = agora
-    return True
-
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,17 +134,35 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 📌 TEXTO DO PEDIDO
+
     texto_pedido = " ".join(context.args)
 
-    # 📤 ENVIA PARA O CANAL FECHADO
-    CANAL_PEDIDOS = "@SEU_CANAL_FECHADO_AQUI"
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 👉 1. SE NÃO TIVER TEXTO
+    if not context.args:
+        await update.message.reply_text(
+            "📩 *Pedido de anime ou mangá*\n\n"
+            "Use este comando para solicitar a adição de um anime ou mangá no canal 📚🎬\n\n"
+            "📝 *Como usar:*\n"
+            "`/pedido nome do anime ou mangá`\n\n"
+            "📌 *Exemplo:*\n"
+            "`/pedido Naruto Shippuden`"
+            ,
+            parse_mode="Markdown"
+        )
+        return
 
+    texto_pedido = " ".join(context.args)
+    user = update.effective_user
+
+    # 📤 MENSAGEM QUE VAI PARA O CANAL FECHADO
     mensagem_canal = (
         "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
-        f"👤 <b>Usuário:</b> {user.first_name}\n"
+        f"👤 <b>Usuário:</b> {user.full_name}\n"
         f"🆔 <b>ID:</b> <code>{user.id}</code>\n\n"
-        f"📌 <b>Pedido:</b>\n"
-        f"<code>{texto_pedido}</code>"
+        f"📝 <b>Pedido:</b>\n"
+        f"<i>{texto_pedido}</i>\n\n"
+        "✅ <b>Status:</b> Pedido listado com sucesso!"
     )
 
     await context.bot.send_message(
@@ -185,14 +171,14 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-    # ✅ RESPOSTA PARA O USUÁRIO
+    # 📥 RESPOSTA PARA QUEM FEZ O PEDIDO
     await update.message.reply_html(
-        "✅ <b>Pedido enviado com sucesso!</b>\n\n"
-        f"📌 <b>Pedido:</b> <code>{texto_pedido}</code>\n\n"
-        "Agora é só aguardar ✨\n"
-        "Assim que possível, ele poderá ser postado no canal!"
+        f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
+        f"Seu pedido <b>{texto_pedido}</b> já foi listado com sucesso!\n\n"
+        "🕒 Agora é só aguardar que em breve estaremos postando.\n\n"
+        "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
     )
-            
+
 # ===== BUSCAS =====
 async def buscar_anime(nome):
     async for msg in client.iter_messages(CANAL_ANIME, search=nome):
@@ -258,7 +244,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-            
+
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -299,52 +285,12 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-    
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
-app.add_handler(MessageHandler(filters.ChatType.CHANNEL, detectar_confirmacao))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
-app.add_handler(
-    MessageHandler(
-        filters.ChatType.CHANNEL,
-        detectar_confirmacao
-    )
-)
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
