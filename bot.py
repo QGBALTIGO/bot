@@ -55,49 +55,40 @@ async def buscar_anilist(nome: str):
         }
         status
         averageScore
-        genres
         startDate {
           day
           month
           year
         }
+        genres
+        siteUrl
         coverImage {
-          large
+          extraLarge
         }
       }
     }
     """
-
     variables = {"search": nome}
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                return data.get("data", {}).get("Media")
-    except Exception as e:
-        print("Erro AniList:", e)
-        return None
-
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables}
+        ) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return data.get("data", {}).get("Media")
+            
 # ===== COMANDO INFO =====
 from telegram import Update
 from telegram.ext import ContextTypes
+from anilist import buscar_anilist
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "❌ Faltou o nome!\n\n"
-            "Use assim:\n"
-            "/info nome do anime\n\n"
-            "Exemplo:\n"
-            "/info Gachiakuta"
+            "❌ Use assim:\n/info nome do anime\n\nExemplo:\n/info Gachiakuta"
         )
         return
 
@@ -107,48 +98,44 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     media = await buscar_anilist(nome)
     if not media:
-        await msg.edit_text("🚫 Não encontrei esse anime no AniList.")
+        await msg.edit_text("❌ Não encontrei esse anime.")
         return
 
     titulo = (
         media["title"]["english"]
         or media["title"]["romaji"]
         or media["title"]["native"]
-        or "Título desconhecido"
     )
 
     score = media.get("averageScore", "N/A")
     status = media.get("status", "N/A")
-    genres = ", ".join(media.get("genres", [])) or "N/A"
-    anime_id = media.get("id", "N/A")
+    genres = ", ".join(media.get("genres", []))
+    mid = media.get("id", "N/A")
 
     data = media.get("startDate", {})
-    start_date = f"{data.get('day', '?')}/{data.get('month', '?')}/{data.get('year', '?')}"
+    start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
+
+    imagem = media["coverImage"]["extraLarge"]
 
     texto = (
         f"<b>{titulo}</b>\n\n"
-        f"<b>Score:</b> {score}\n"
-        f"<b>Status:</b> {status}\n"
-        f"<b>Genres:</b> {genres}\n"
-        f"<b>ID:</b> {anime_id}\n"
-        f"<b>Start Date:</b> {start_date}"
+        f"⭐ Score: {score}\n"
+        f"📡 Status: {status}\n"
+        f"🎭 Gêneros: {genres}\n"
+        f"🆔 ID: {mid}\n"
+        f"📅 Início: {start_date}"
     )
 
-    capa = media.get("coverImage", {}).get("large")
-
-    # Apaga a mensagem "buscando"
+    # APAGA "buscando..."
     await msg.delete()
 
-    # Envia com capa
-    if capa:
-        await update.message.reply_photo(
-            photo=capa,
-            caption=texto,
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_text(texto, parse_mode="HTML")
-
+    # ENVIA CARD (imagem + texto)
+    await update.message.reply_photo(
+        photo=imagem,
+        caption=texto,
+        parse_mode="HTML"
+    )
+    
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -360,5 +347,6 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
