@@ -40,22 +40,17 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== ANILIST USERS EM MEMÓRIA =====
-# user_id do Telegram -> username do AniList
+# telegram_user_id -> anilist_username
 anilist_users = {}
 
-# ===== ANILIST API =====
-async def buscar_perfil_anilist(username: str):
-    url = "https://graphql.anilist.co"
+ANILIST_API = "https://graphql.anilist.co"
 
+async def buscar_perfil_anilist(username: str):
     query = """
     query ($name: String) {
       User(name: $name) {
-        id
         name
         siteUrl
-        avatar {
-          large
-        }
         statistics {
           anime {
             count
@@ -73,49 +68,69 @@ async def buscar_perfil_anilist(username: str):
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            url,
+            ANILIST_API,
             json={"query": query, "variables": variables},
             headers={"Content-Type": "application/json"}
-        ) as response:
-            if response.status != 200:
+        ) as resp:
+            if resp.status != 200:
                 return None
-            data = await response.json()
+
+            data = await resp.json()
             return data.get("data", {}).get("User")
 
-# ===== COMANDO /login =====
-ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID")
-ANILIST_CLIENT_SECRET = os.getenv("ANILIST_CLIENT_SECRET")
-ANILIST_REDIRECT_URI = os.getenv("ANILIST_REDIRECT_URI")
+ANILIST_API = "https://graphql.anilist.co"
 
-anilist_tokens = {}  # telegram_user_id -> access_token
-def gerar_link_login():
-    return (
-        "https://anilist.co/api/v2/oauth/authorize"
-        f"?client_id={ANILIST_CLIENT_ID}"
-        f"&redirect_uri={ANILIST_REDIRECT_URI}"
-        "&response_type=code"
-    )
-    
-async def login(update, context: ContextTypes.DEFAULT_TYPE):
-    link = gerar_link_login()
-    await update.message.reply_text(
-        "🔐 Conecte sua conta AniList\n\n"
-        "1️⃣ Clique no link abaixo\n"
-        "2️⃣ Faça login\n"
-        "3️⃣ Autorize o bot\n\n"
-        f"👉 {link}"
-    )
-    
-# ===== COMANDO /perfil =====
-async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
-    token = anilist_tokens.get("LAST")
-    if not token:
+async def buscar_perfil_anilist(username: str):
+    query = """
+    query ($name: String) {
+      User(name: $name) {
+        name
+        siteUrl
+        statistics {
+          anime {
+            count
+            minutesWatched
+          }
+          manga {
+            count
+          }
+        }
+      }
+    }
+    """
+
+    variables = {"name": username}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            headers={"Content-Type": "application/json"}
+        ) as resp:
+            if resp.status != 200:
+                return None
+
+            data = await resp.json()
+            return data.get("data", {}).get("User")
+
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in anilist_users:
         await update.message.reply_text(
-            "⚠️ Você ainda não conectou seu AniList.\nUse /login"
+            "⚠️ Você ainda não conectou seu AniList.\n\n"
+            "Use primeiro:\n"
+            "`/login nome_do_usuario`",
+            parse_mode="Markdown"
         )
         return
 
-    dados = await buscar_perfil(token)
+    username = anilist_users[user_id]
+    dados = await buscar_perfil_anilist(username)
+
+    if not dados:
+        await update.message.reply_text("❌ Erro ao buscar dados do AniList.")
+        return
 
     anime = dados["statistics"]["anime"]
     manga = dados["statistics"]["manga"]
@@ -124,15 +139,15 @@ async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         f"👤 *Perfil AniList*\n\n"
         f"🧾 Nome: `{dados['name']}`\n"
-        f"🎬 Animes: *{anime['count']}*\n"
-        f"📚 Mangás: *{manga['count']}*\n"
+        f"🎬 Animes assistidos: *{anime['count']}*\n"
+        f"📚 Mangás lidos: *{manga['count']}*\n"
         f"⏱️ Dias assistidos: *{dias}*"
     )
 
     keyboard = [
         [
             InlineKeyboardButton("📺 Anime List", url=dados["siteUrl"] + "/animelist"),
-            InlineKeyboardButton("📚 Manga List", url=dados["siteUrl"] + "/mangalist"),
+            InlineKeyboardButton("📚 Manga List", url=dados["siteUrl"] + "/mangalist")
         ],
         [
             InlineKeyboardButton("👤 Abrir Perfil", url=dados["siteUrl"])
@@ -144,50 +159,6 @@ async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
-# ===== ANILIST =====
-ANILIST_API = "https://graphql.anilist.co"
-
-async def buscar_anilist(nome: str):
-    query = """
-    query ($search: String) {
-      Media(search: $search, type: ANIME) {
-        id
-        title {
-          romaji
-          english
-          native
-        }
-        description(asHtml: false)
-        episodes
-        chapters
-        format
-        status
-        averageScore
-      }
-    }
-    """
-
-    variables = {
-        "search": nome
-    }
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status != 200:
-                    return None
-
-                data = await resp.json()
-                return data.get("data", {}).get("Media")
-
-    except Exception as e:
-        print("Erro AniList:", e)
-        return None
         
 # ===== COMANDO INFO =====
 from telegram import Update
@@ -454,6 +425,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
