@@ -3,6 +3,10 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
+import aiohttp
+import html
+import re
+import os
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -34,7 +38,82 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return None
-    
+
+# ===== ANILIST =====
+def limpar_html(texto: str) -> str:
+    if not texto:
+        return "Sem descrição disponível."
+    texto = re.sub(r"<br\s*/?>", "\n", texto)
+    texto = re.sub(r"<.*?>", "", texto)
+    return html.unescape(texto)
+
+def limpar_html(texto: str) -> str:
+    if not texto:
+        return "Sem descrição disponível."
+    texto = re.sub(r"<br\s*/?>", "\n", texto)
+    texto = re.sub(r"<.*?>", "", texto)
+    return html.unescape(texto)
+
+# ===== COMANDO INFO =====
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Faltou o nome!</b>\n\n"
+            "Use assim:\n"
+            "<code>/info nome do anime ou mangá</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/info Naruto</code>"
+        )
+        return
+
+    nome = " ".join(context.args)
+
+    msg_busca = await update.message.reply_text(
+        "🔎 Buscando informações no AniList...\nAguarde ⏳"
+    )
+
+    media = await buscar_anilist(nome)
+
+    if not media:
+        await msg_busca.edit_text(
+            "🚫 Não encontrei esse título no AniList.\n"
+            "👉 Tente outro nome ou grafia."
+        )
+        return
+
+    titulo = (
+        media["title"].get("english")
+        or media["title"].get("romaji")
+        or media["title"].get("native")
+        or "Título desconhecido"
+    )
+
+    descricao = limpar_html(media.get("description"))
+
+    texto = (
+        f"🎬 <b>{titulo}</b>\n\n"
+        f"📌 <b>Formato:</b> {media.get('format', 'N/A')}\n"
+        f"📊 <b>Status:</b> {media.get('status', 'N/A')}\n"
+        f"⭐ <b>Nota:</b> {media.get('averageScore', 'N/A')}\n"
+        f"🎞️ <b>Episódios:</b> {media.get('episodes', 'N/A')}\n"
+        f"📚 <b>Capítulos:</b> {media.get('chapters', 'N/A')}\n\n"
+        f"📝 <b>Sinopse:</b>\n{descricao}"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "🌐 Ver no AniList",
+            url=f"https://anilist.co/anime/{media['id']}"
+        )]
+    )
+
+    await msg_busca.edit_text(
+        texto,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -241,11 +320,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("info", info))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
