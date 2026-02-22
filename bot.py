@@ -44,6 +44,7 @@ api_hash = "b8f22be457ce73f65fad82315073fbc3"
 BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
 CANAL_ANIME = "Centraldeanimes_Baltigo"
 CANAL_MANGA = "MangasBrasil"
+CANAL_SERIE = "Series_Brazil"
 CANAL_PEDIDOS = -1003895811362  # ID do canal fechado
 
 # ===== TELETHON =====
@@ -238,6 +239,11 @@ async def buscar_manga(nome):
         if msg.text:
             return f"https://t.me/{CANAL_MANGA}/{msg.id}"
     return None
+    async def buscar_serie(nome):
+    async for msg in client.iter_messages(CANAL_SERIE, search=nome):
+        if msg.text:
+            return f"https://t.me/{CANAL_SERIE}/{msg.id}"
+    return None
 
 # ===== COMANDO /start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -246,7 +252,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 Eu estou <b>online</b> e funcionando.\n\n"
         "📌 Você poderá usar:\n"
         "• <code>/anime</code>\n"
-        "• <code>/manga</code>\n\n"
+         "• <code>/manga</code>\n"
+         "• <code>/serie</code>\n"
+        "• <code>/pedido</code>\n\n"
         "✨ Aguarde novidades!"
     )
 
@@ -334,6 +342,49 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# ===== COMANDO /serie =====
+async def serie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "🚫 <b>Ops! Algo faltou.</b>\n\n"
+            "👉 <b>Formato correto:</b>\n"
+            "<code>/serie nome da série</code>\n\n"
+            "🎬 <b>Exemplo:</b>\n"
+            "<code>/serie Vikings</code>"
+        )
+        return
+
+    nome = " ".join(context.args)
+    await update.message.reply_text(
+        "🔎 Buscando a série pra você...\nAguarde um instante ⏳"
+    )
+
+    async with client:
+        msg_id = await buscar_post(CANAL_SERIE, nome)
+
+    if not msg_id:
+        await update.message.reply_html(
+            "🚫 <b>Nada por aqui…</b>\n\n"
+            "A série que você procurou não foi encontrado no canal.\n\n"
+            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+        )
+        return
+
+    keyboard = [[
+        InlineKeyboardButton(
+            "▶️ Assistir no canal",
+            url=f"https://t.me/{CANAL_SERIE}/{msg_id}"
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.copy_message(
+        chat_id=update.effective_chat.id,
+        from_chat_id=f"@{CANAL_SERIE}",
+        message_id=msg_id,
+        reply_markup=reply_markup
+    )
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -341,8 +392,10 @@ app.add_handler(InlineQueryHandler(inline_busca))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
+app.add_handler(CommandHandler("serie", serie))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
