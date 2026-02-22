@@ -38,13 +38,13 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
-# ===== ANNILIST =====
+# ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
 async def buscar_anilist(nome: str):
     query = """
     query ($search: String) {
-      Media(search: $search, type: ANIME) {
+      Media (search: $search, type: ANIME) {
         id
         title {
           romaji
@@ -52,44 +52,39 @@ async def buscar_anilist(nome: str):
           native
         }
         description(asHtml: false)
+        startDate {
+          year
+        }
         episodes
         chapters
-        format
-        status
         averageScore
+        coverImage {
+          large
+        }
+        siteUrl
+        type
       }
     }
     """
 
-    variables = {
-        "search": nome
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status != 200:
-                    return None
+    variables = {"search": nome}
 
-                data = await resp.json()
-                return data.get("data", {}).get("Media")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables}
+        ) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return data.get("data", {}).get("Media")
 
-    except Exception as e:
-        print("Erro AniList:", e)
-        return None
-        
 # ===== COMANDO INFO =====
-from telegram import Update
-from telegram.ext import ContextTypes
-
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Faltou o nome!</b>\n\n"
-            "Use assim:\n"
+            "❌ <b>Uso incorreto</b>\n\n"
+            "👉 Use assim:\n"
             "<code>/info nome do anime ou mangá</code>\n\n"
             "📌 Exemplo:\n"
             "<code>/info Naruto</code>"
@@ -98,40 +93,57 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    msg_busca = await update.message.reply_text(
-        "🔎 Buscando informações no AniList...\nAguarde ⏳"
-    )
+    msg = await update.message.reply_text("🔎 Buscando informações no AniList...")
 
-    media = await buscar_anilist(nome)
+    dados = await buscar_anilist(nome)
 
-    if not media:
-        await msg_busca.edit_text(
-            "🚫 Não encontrei esse título no AniList.\n"
-            "👉 Tente outro nome ou grafia."
+    if not dados:
+        await msg.edit_text(
+            "❌ Não encontrei informações no AniList.\n"
+            "Tente outro nome ou grafia."
         )
         return
 
-    titulo = (
-        media["title"]["english"]
-        or media["title"]["romaji"]
-        or media["title"]["native"]
-        or "Título desconhecido"
+    titulo = dados["title"]["romaji"]
+    titulo_native = dados["title"]["native"] or ""
+    descricao = dados["description"] or "Sem descrição disponível."
+    nota = dados["averageScore"] or "N/A"
+    ano = dados["startDate"]["year"] or "?"
+    episodios = dados["episodes"]
+    capitulos = dados["chapters"]
+    tipo = "Anime 🎬" if dados["type"] == "ANIME" else "Mangá 📚"
+    capa = dados["coverImage"]["large"]
+    link = dados["siteUrl"]
+
+    # Limita a descrição (Telegram não gosta de texto gigante)
+    if len(descricao) > 700:
+        descricao = descricao[:700] + "..."
+
+    texto = (
+        f"<b>{titulo}</b>\n"
+        f"<i>{titulo_native}</i>\n\n"
+        f"📌 <b>Tipo:</b> {tipo}\n"
+        f"📅 <b>Ano:</b> {ano}\n"
+        f"⭐ <b>Nota:</b> {nota}\n"
     )
 
-    descricao = media.get("description") or "Sem descrição disponível."
-    descricao = descricao.replace("<br>", "\n")
+    if episodios:
+        texto += f"🎞️ <b>Episódios:</b> {episodios}\n"
+    if capitulos:
+        texto += f"📖 <b>Capítulos:</b> {capitulos}\n"
 
-    resposta = (
-        f"🎬 <b>{titulo}</b>\n\n"
-        f"📌 <b>Formato:</b> {media.get('format', 'N/A')}\n"
-        f"📊 <b>Status:</b> {media.get('status', 'N/A')}\n"
-        f"⭐ <b>Nota:</b> {media.get('averageScore', 'N/A')}\n"
-        f"🎞️ <b>Episódios:</b> {media.get('episodes', 'N/A')}\n"
-        f"📚 <b>Capítulos:</b> {media.get('chapters', 'N/A')}\n\n"
-        f"📝 <b>Descrição:</b>\n{descricao[:350]}..."
+    texto += (
+        f"\n📝 <b>Sinopse:</b>\n{descricao}\n\n"
+        f"🔗 <a href='{link}'>Ver no AniList</a>"
     )
 
-    await msg_busca.edit_text(resposta, parse_mode="HTML")
+    await msg.delete()
+
+    await update.message.reply_photo(
+        photo=capa,
+        caption=texto,
+        parse_mode="HTML"
+    )
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
