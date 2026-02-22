@@ -71,7 +71,10 @@ async def buscar_perfil_anilist(username: str):
             return data.get("data", {}).get("User")
 
 # ===== COMANDO /perfil =====
-async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
+async def perfil(update, context):
+    await update.message.reply_text("ENTREI NO COMANDO PERFIL")
+    
+async def perfil(update, context):
     if not context.args:
         await update.message.reply_text(
             "Use assim:\n/perfil nome_do_usuario\n\nExemplo:\n/perfil samuelpocas"
@@ -84,8 +87,8 @@ async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
 
     if not dados:
         await update.message.reply_text(
-            "Não encontrei esse perfil no AniList.\n"
-            f"Verifique se existe:\nhttps://anilist.co/user/{username}"
+            "Perfil não encontrado.\n"
+            f"Confira manualmente:\nhttps://anilist.co/user/{username}"
         )
         return
 
@@ -94,18 +97,16 @@ async def perfil(update, context: ContextTypes.DEFAULT_TYPE):
     dias = round(anime["minutesWatched"] / 60 / 24, 1)
 
     texto = (
-        f"Perfil AniList\n\n"
+        "Perfil AniList\n\n"
         f"Nome: {dados['name']}\n"
         f"Animes: {anime['count']}\n"
         f"Mangás: {manga['count']}\n"
         f"Dias assistidos: {dias}"
     )
 
-    keyboard = [
-        [
-            InlineKeyboardButton("Ver perfil", url=dados["siteUrl"])
-        ]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("Abrir perfil", url=dados["siteUrl"])
+    ]]
 
     await update.message.reply_text(
         texto,
@@ -324,6 +325,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
