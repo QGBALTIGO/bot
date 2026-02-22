@@ -3,6 +3,9 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
+import aiohttp
+from telegram import Update
+from telegram.ext import ContextTypes
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -34,6 +37,113 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return None
+
+# ===== ANILIST =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_anilist(nome: str):
+    query = """
+    query ($search: String) {
+      Media (search: $search, type: ANIME) {
+        id
+        title {
+          romaji
+          english
+          native
+        }
+        description(asHtml: false)
+        startDate {
+          year
+        }
+        episodes
+        chapters
+        averageScore
+        coverImage {
+          large
+        }
+        siteUrl
+        type
+      }
+    }
+    """
+
+    variables = {"search": nome}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables}
+        ) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return data.get("data", {}).get("Media")
+
+# ===== COMANDO INFO =====
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Uso incorreto</b>\n\n"
+            "👉 Use assim:\n"
+            "<code>/info nome do anime ou mangá</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/info Naruto</code>"
+        )
+        return
+
+    nome = " ".join(context.args)
+
+    msg = await update.message.reply_text("🔎 Buscando informações no AniList...")
+
+    dados = await buscar_anilist(nome)
+
+    if not dados:
+        await msg.edit_text(
+            "❌ Não encontrei informações no AniList.\n"
+            "Tente outro nome ou grafia."
+        )
+        return
+
+    titulo = dados["title"]["romaji"]
+    titulo_native = dados["title"]["native"] or ""
+    descricao = dados["description"] or "Sem descrição disponível."
+    nota = dados["averageScore"] or "N/A"
+    ano = dados["startDate"]["year"] or "?"
+    episodios = dados["episodes"]
+    capitulos = dados["chapters"]
+    tipo = "Anime 🎬" if dados["type"] == "ANIME" else "Mangá 📚"
+    capa = dados["coverImage"]["large"]
+    link = dados["siteUrl"]
+
+    # Limita a descrição (Telegram não gosta de texto gigante)
+    if len(descricao) > 700:
+        descricao = descricao[:700] + "..."
+
+    texto = (
+        f"<b>{titulo}</b>\n"
+        f"<i>{titulo_native}</i>\n\n"
+        f"📌 <b>Tipo:</b> {tipo}\n"
+        f"📅 <b>Ano:</b> {ano}\n"
+        f"⭐ <b>Nota:</b> {nota}\n"
+    )
+
+    if episodios:
+        texto += f"🎞️ <b>Episódios:</b> {episodios}\n"
+    if capitulos:
+        texto += f"📖 <b>Capítulos:</b> {capitulos}\n"
+
+    texto += (
+        f"\n📝 <b>Sinopse:</b>\n{descricao}\n\n"
+        f"🔗 <a href='{link}'>Ver no AniList</a>"
+    )
+
+    await msg.delete()
+
+    await update.message.reply_photo(
+        photo=capa,
+        caption=texto,
+        parse_mode="HTML"
+    )
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,11 +350,13 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
+app.add_handler(CommandHandler("info", info))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
