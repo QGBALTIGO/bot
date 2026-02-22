@@ -39,8 +39,6 @@ async def buscar_post(canal, termo):
     return Non
 
 # ===== ANILIST =====
-import aiohttp
-
 ANILIST_API = "https://graphql.anilist.co"
 
 async def buscar_anilist(nome: str):
@@ -55,35 +53,35 @@ async def buscar_anilist(nome: str):
         }
         status
         averageScore
+        genres
         startDate {
           day
           month
           year
-        }
-        genres
-        siteUrl
-        coverImage {
-          extraLarge
         }
       }
     }
     """
     variables = {"search": nome}
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables}
-        ) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            return data.get("data", {}).get("Media")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data.get("data", {}).get("Media")
+    except Exception as e:
+        print("Erro AniList:", e)
+        return None
             
 # ===== COMANDO INFO =====
 from telegram import Update
 from telegram.ext import ContextTypes
-from anilist import buscar_anilist
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -98,9 +96,10 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     media = await buscar_anilist(nome)
     if not media:
-        await msg.edit_text("❌ Não encontrei esse anime.")
+        await msg.edit_text("🚫 Não encontrei esse anime.")
         return
 
+    # ===== DADOS =====
     titulo = (
         media["title"]["english"]
         or media["title"]["romaji"]
@@ -110,28 +109,32 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     score = media.get("averageScore", "N/A")
     status = media.get("status", "N/A")
     genres = ", ".join(media.get("genres", []))
-    mid = media.get("id", "N/A")
+    media_id = media["id"]
 
-    data = media.get("startDate", {})
-    start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
+    start = media.get("startDate")
+    if start and start["day"]:
+        start_date = f"{start['day']}/{start['month']}/{start['year']}"
+    else:
+        start_date = "N/A"
 
-    imagem = media["coverImage"]["extraLarge"]
+    # ===== CAPA PELO ID =====
+    capa_url = f"https://img.anili.st/media/{media_id}"
 
     texto = (
         f"<b>{titulo}</b>\n\n"
         f"⭐ Score: {score}\n"
-        f"📡 Status: {status}\n"
-        f"🎭 Gêneros: {genres}\n"
-        f"🆔 ID: {mid}\n"
-        f"📅 Início: {start_date}"
+        f"📺 Status: {status}\n"
+        f"🎭 Genres: {genres}\n"
+        f"🆔 ID: {media_id}\n"
+        f"📅 Start Date: {start_date}"
     )
 
-    # APAGA "buscando..."
+    # APAGA A MENSAGEM DE "BUSCANDO"
     await msg.delete()
 
-    # ENVIA CARD (imagem + texto)
+    # ENVIA CARD COM IMAGEM
     await update.message.reply_photo(
-        photo=imagem,
+        photo=capa_url,
         caption=texto,
         parse_mode="HTML"
     )
@@ -347,6 +350,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
