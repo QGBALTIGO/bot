@@ -35,84 +35,6 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
     
-# ================= ANI LIST =================
-ANILIST_API = "https://graphql.anilist.co"
-
-# ===== FUNÇÃO QUE BUSCA PERFIL PÚBLICO =====
-async def buscar_perfil_anilist(username: str):
-    query = """
-    query ($name: String) {
-      User(name: $name) {
-        name
-        siteUrl
-        statistics {
-          anime {
-            count
-            minutesWatched
-          }
-          manga {
-            count
-          }
-        }
-      }
-    }
-    """
-    variables = {"name": username}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables},
-            headers={"Content-Type": "application/json"}
-        ) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            return data.get("data", {}).get("User")
-
-# ===== COMANDO /perfil =====
-async def perfil(update, context):
-    await update.message.reply_text("ENTREI NO COMANDO PERFIL")
-    
-async def perfil(update, context):
-    if not context.args:
-        await update.message.reply_text(
-            "Use assim:\n/perfil nome_do_usuario\n\nExemplo:\n/perfil samuelpocas"
-        )
-        return
-
-    username = context.args[0]
-
-    dados = await buscar_perfil_anilist(username)
-
-    if not dados:
-        await update.message.reply_text(
-            "Perfil não encontrado.\n"
-            f"Confira manualmente:\nhttps://anilist.co/user/{username}"
-        )
-        return
-
-    anime = dados["statistics"]["anime"]
-    manga = dados["statistics"]["manga"]
-    dias = round(anime["minutesWatched"] / 60 / 24, 1)
-
-    texto = (
-        "Perfil AniList\n\n"
-        f"Nome: {dados['name']}\n"
-        f"Animes: {anime['count']}\n"
-        f"Mangás: {manga['count']}\n"
-        f"Dias assistidos: {dias}"
-    )
-
-    keyboard = [[
-        InlineKeyboardButton("Abrir perfil", url=dados["siteUrl"])
-    ]]
-
-    await update.message.reply_text(
-        texto,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -325,6 +247,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
