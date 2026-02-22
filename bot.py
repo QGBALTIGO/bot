@@ -122,11 +122,11 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = (
         f"<b>{titulo}</b>\n\n"
-        f"⭐ Score: {score}\n"
-        f"📺 Status: {status}\n"
-        f"🎭 Genres: {genres}\n"
-        f"🆔 ID: {media_id}\n"
-        f"📅 Start Date: {start_date}"
+        f"Score: {score}\n"
+        f"Status: {status}\n"
+        f"Genres: {genres}\n"
+        f"ID: {media_id}\n"
+        f"Start Date: {start_date}"
     )
 
     # APAGA A MENSAGEM DE "BUSCANDO"
@@ -350,6 +350,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
