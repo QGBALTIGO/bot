@@ -148,8 +148,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Descrição / AniList
     botoes.append([
-        InlineKeyboardButton("📖 Descrição", url=media["siteUrl"]),
-        InlineKeyboardButton("▶️ Assistir", url=media["siteUrl"])
+        InlineKeyboardButton("📖 Descrição", url=media["siteUrl"])
     ])
 
     teclado = InlineKeyboardMarkup(botoes)
@@ -375,6 +374,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
