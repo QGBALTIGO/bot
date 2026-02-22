@@ -3,6 +3,9 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
+import aiohttp
+from telegram import Update
+from telegram.ext import ContextTypes
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -33,24 +36,56 @@ client = TelegramClient("sessao_busca", api_id, api_hash)
 async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
-    return None
+    return Non
 
 # ===== ANILIST =====
-def limpar_html(texto: str) -> str:
-    if not texto:
-        return "Sem descrição disponível."
-    texto = re.sub(r"<br\s*/?>", "\n", texto)
-    texto = re.sub(r"<.*?>", "", texto)
-    return html.unescape(texto)
+ANILIST_API = "https://graphql.anilist.co"
 
-def limpar_html(texto: str) -> str:
-    if not texto:
-        return "Sem descrição disponível."
-    texto = re.sub(r"<br\s*/?>", "\n", texto)
-    texto = re.sub(r"<.*?>", "", texto)
-    return html.unescape(texto)
+async def buscar_anilist(nome: str):
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        id
+        title {
+          romaji
+          english
+          native
+        }
+        description(asHtml: false)
+        episodes
+        chapters
+        format
+        status
+        averageScore
+      }
+    }
+    """
+
+    variables = {
+        "search": nome
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+
+                data = await resp.json()
+                return data.get("data", {}).get("Media")
+
+    except Exception as e:
+        print("Erro AniList:", e)
+        return None
 
 # ===== COMANDO INFO =====
+from telegram import Update
+from telegram.ext import ContextTypes
+
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -78,41 +113,29 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     titulo = (
-        media["title"].get("english")
-        or media["title"].get("romaji")
-        or media["title"].get("native")
+        media["title"]["english"]
+        or media["title"]["romaji"]
+        or media["title"]["native"]
         or "Título desconhecido"
     )
 
-    descricao = limpar_html(media.get("description"))
+    descricao = media.get("description") or "Sem descrição disponível."
+    descricao = descricao.replace("<br>", "\n")
 
-    texto = (
+    resposta = (
         f"🎬 <b>{titulo}</b>\n\n"
         f"📌 <b>Formato:</b> {media.get('format', 'N/A')}\n"
         f"📊 <b>Status:</b> {media.get('status', 'N/A')}\n"
         f"⭐ <b>Nota:</b> {media.get('averageScore', 'N/A')}\n"
         f"🎞️ <b>Episódios:</b> {media.get('episodes', 'N/A')}\n"
         f"📚 <b>Capítulos:</b> {media.get('chapters', 'N/A')}\n\n"
-        f"📝 <b>Sinopse:</b>\n{descricao}"
+        f"📝 <b>Descrição:</b>\n{descricao[:350]}..."
     )
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "🌐 Ver no AniList",
-            url=f"https://anilist.co/anime/{media['id']}"
-        )]
-    )
-
-    await msg_busca.edit_text(
-        texto,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
+    await msg_busca.edit_text(resposta, parse_mode="HTML")
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     user_id = update.effective_user.id
 
     if not anti_spam(user_id):
@@ -322,11 +345,3 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
-
-
-
-
-
-
