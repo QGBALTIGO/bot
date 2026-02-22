@@ -3,8 +3,11 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
-from telegram.ext import InlineQueryHandler
-from telegram import InlineQueryResultArticle, InputTextMessageContent
+from telegram import (
+    InlineQueryResultArticle,
+    InputTextMessageContent
+)
+import uuid
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -123,9 +126,9 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✨ Enquanto espera, aproveita para conhecer a central e os outros canais disponíveis!"
     )
 
-# ===== BUSCAS INLINE =====
+# ===== INLINE QUERY =====
 async def inline_busca(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query.query.lower().strip()
+    query = update.inline_query.query.strip().lower()
 
     if not query:
         return
@@ -133,31 +136,41 @@ async def inline_busca(update: Update, context: ContextTypes.DEFAULT_TYPE):
     resultados = []
 
     async with client:
-        # 🔍 BUSCA ANIMES
+        # 🎬 ANIMES
         async for msg in client.iter_messages(CANAL_ANIME, search=query, limit=5):
+            if not msg.text:
+                continue
+
             resultados.append(
                 InlineQueryResultArticle(
-                    id=f"anime_{msg.id}",
-                    title=f"🎬 Anime: {query.title()}",
-                    description="Clique para assistir",
+                    id=str(uuid.uuid4()),
+                    title=f"🎬 Anime encontrado",
+                    description=query.title(),
                     input_message_content=InputTextMessageContent(
-                        f"🎬 *Anime encontrado!*\n\n"
-                        f"🔗 https://t.me/{CANAL_ANIME}/{msg.id}",
+                        message_text=(
+                            f"🎬 *Anime encontrado!*\n\n"
+                            f"🔗 https://t.me/{CANAL_ANIME}/{msg.id}"
+                        ),
                         parse_mode="Markdown"
                     )
                 )
             )
 
-        # 🔍 BUSCA MANGÁS
+        # 📚 MANGÁS
         async for msg in client.iter_messages(CANAL_MANGA, search=query, limit=5):
+            if not msg.text:
+                continue
+
             resultados.append(
                 InlineQueryResultArticle(
-                    id=f"manga_{msg.id}",
-                    title=f"📚 Mangá: {query.title()}",
-                    description="Clique para ler",
+                    id=str(uuid.uuid4()),
+                    title=f"📚 Mangá encontrado",
+                    description=query.title(),
                     input_message_content=InputTextMessageContent(
-                        f"📚 *Mangá encontrado!*\n\n"
-                        f"🔗 https://t.me/{CANAL_MANGA}/{msg.id}",
+                        message_text=(
+                            f"📚 *Mangá encontrado!*\n\n"
+                            f"🔗 https://t.me/{CANAL_MANGA}/{msg.id}"
+                        ),
                         parse_mode="Markdown"
                     )
                 )
@@ -302,3 +315,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
