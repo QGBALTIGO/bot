@@ -481,17 +481,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not anti_spam(user_id):
-        await update.message.reply_text(
-            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
-        )
-        return
-
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -504,17 +494,14 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    # ✅ GUARDA A MENSAGEM "BUSCANDO"
     msg_busca = await update.message.reply_text(
         "📚 Buscando o mangá pra você...\nAguarde um instante ⏳"
     )
 
-    async with client:
-        msg_id = await buscar_post(CANAL_MANGA, nome)
+    msg_id = await buscar_post(CANAL_MANGA, nome)
 
-    # ❌ NÃO ENCONTROU
     if not msg_id:
-        await msg_busca.delete()  # apaga o buscando
+        await msg_busca.delete()
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O mangá que você procurou não foi encontrado no canal.\n\n"
@@ -522,7 +509,6 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ✅ ENCONTROU → APAGA BUSCANDO
     await msg_busca.delete()
 
     keyboard = [[
@@ -532,13 +518,11 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]]
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
         message_id=msg_id,
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 # ===== INICIAR BOT =====
@@ -552,3 +536,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
