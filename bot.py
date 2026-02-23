@@ -65,8 +65,10 @@ async def login(update, context):
 ANILIST_API = "https://graphql.anilist.co"
 
 # ==================================================
+# ==================================================
 # CONFIGURAÇÃO DE ADMINS
 # ==================================================
+
 ADMINS = {
     1852596083,  # coloque seus IDs aqui
 }
@@ -80,6 +82,41 @@ def is_admin(user_id: int) -> bool:
 
 def get_admin_photo(user_id: int):
     return ADMIN_PHOTOS.get(user_id)
+
+# ==================================================
+# /ADMINFOTO — DEFINIR FOTO PERSONALIZADA DE ADMIN
+# ==================================================
+async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.message.reply_html(
+            "⛔ <b>Acesso negado</b>\n\n"
+            "Este comando é exclusivo para <b>admins</b>."
+        )
+        return
+
+    if not context.args:
+        await update.message.reply_html(
+            "👑 <b>Foto de Admin</b>\n\n"
+            "Envie um link direto de imagem:\n"
+            "<code>/adminfoto https://imagem.jpg</code>\n\n"
+            "📌 Essa imagem será a <b>capa do seu perfil</b>."
+        )
+        return
+
+    url = context.args[0]
+    ADMIN_PHOTOS[user_id] = url
+
+    await update.message.reply_photo(
+        photo=url,
+        caption=(
+            "👑 <b>Foto de admin definida!</b>\n\n"
+            "✨ Agora seu perfil usará essa imagem.\n"
+            "👀 Veja com <code>/perfil</code>"
+        ),
+        parse_mode="HTML"
+    )
 
 # ==================================================
 # BANCO DE DADOS (MEMÓRIA)
@@ -1414,6 +1451,7 @@ app.add_handler(CommandHandler("nick", nick))
 app.add_handler(CommandHandler("nivel", nivel))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
