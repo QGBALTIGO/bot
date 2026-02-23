@@ -37,7 +37,7 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== LOGIN =====
-sync def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
     url = (
@@ -592,6 +592,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
