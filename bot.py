@@ -59,13 +59,24 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
-===== CONFIGURAÇÃO ANI LIST =====
+# ==================================================
+# CONFIGURAÇÃO ANI LIST
+# ==================================================
+
 ANILIST_API = "https://graphql.anilist.co"
 
-===== BANCO DE DADOS SIMPLES (MEMÓRIA) =====
+
+# ==================================================
+# BANCO DE DADOS SIMPLES (MEMÓRIA)
+# ==================================================
+
 USERS = {}
 
-===== FUNÇÃO: BUSCAR PERSONAGEM NO ANILIST =====
+
+# ==================================================
+# FUNÇÃO: BUSCAR PERSONAGEM NO ANILIST
+# ==================================================
+
 async def buscar_personagem(nome: str):
     query = """
     query ($search: String) {
@@ -89,15 +100,19 @@ async def buscar_personagem(nome: str):
             data = await resp.json()
             return data.get("data", {}).get("Character")
 
-===== /FAVORITAR =====
+
+# ==================================================
+# /FAVORITAR
+# ==================================================
+
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "❤️ <b>Favoritar personagem</b>\n\n"
-            "Use o comando assim:\n"
-            "<code>/favoritar Nome COMPLETO do personagem</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/favoritar Monkey D. Luffy</code>"
+            "Escolha <b>1 personagem</b> para ser a capa do seu perfil.\n\n"
+            "📌 Use o nome <b>completo</b>:\n"
+            "<code>/favoritar Monkey D. Luffy</code>\n\n"
+            "✨ Dica: quanto mais completo o nome, maior a chance de encontrar."
         )
         return
 
@@ -107,11 +122,10 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔎 Procurando personagem no AniList...")
 
     personagem = await buscar_personagem(nome)
-
     if not personagem:
         await update.message.reply_html(
             "❌ <b>Personagem não encontrado</b>\n\n"
-            "➡️ Verifique se:\n"
+            "Verifique se:\n"
             "• O nome está completo\n"
             "• Está escrito corretamente\n\n"
             "📌 Exemplo correto:\n"
@@ -120,11 +134,10 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = USERS.get(user_id, {})
-
     if user.get("fav_character"):
         await update.message.reply_html(
-            "⚠️ <b>Você já tem um personagem favorito</b>\n\n"
-            "❌ Só é possível ter <b>1 favorito</b> por vez.\n"
+            "⚠️ <b>Você já tem um favorito</b>\n\n"
+            "Só é possível ter <b>1 personagem favorito</b>.\n"
             "💡 Use <code>/desfavoritar</code> para trocar."
         )
         return
@@ -148,15 +161,20 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ),
         parse_mode="HTML"
     )
-===== /DESFAVORITAR =====
+
+
+# ==================================================
+# /DESFAVORITAR
+# ==================================================
+
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = USERS.get(user_id)
 
     if not user or not user.get("fav_character"):
         await update.message.reply_html(
-            "💔 <b>Você não tem personagem favorito</b>\n\n"
-            "Use <code>/favoritar Nome</code> para escolher um."
+            "💔 <b>Nenhum favorito definido</b>\n\n"
+            "Use <code>/favoritar Nome</code> para escolher um personagem."
         )
         return
 
@@ -166,7 +184,12 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💔 <b>Personagem removido</b>\n\n"
         "Agora você pode escolher outro favorito ✨"
     )
-===== /NICK =====
+
+
+# ==================================================
+# /NICK
+# ==================================================
+
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -189,7 +212,12 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✨ <b>Nick atualizado!</b>\n\n"
         f"👤 Novo nome: <b>{novo_nick}</b>"
     )
-===== /PERFIL =====
+
+
+# ==================================================
+# /PERFIL
+# ==================================================
+
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = USERS.get(user_id)
@@ -1345,6 +1373,7 @@ app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
