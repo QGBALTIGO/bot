@@ -37,6 +37,47 @@ async def buscar_post(canal, termo):
         return msg.id
     return None
 
+# ===============================
+# 🔒 CANAL OBRIGATÓRIO
+# ===============================
+CANAL_OBRIGATORIO = -1003818375955  # SEU CANAL
+
+# ===============================
+# 🔐 VERIFICA SE USUÁRIO ESTÁ NO CANAL
+# ===============================
+async def usuario_no_canal(bot, user_id: int) -> bool:
+    try:
+        membro = await bot.get_chat_member(CANAL_OBRIGATORIO, user_id)
+        return membro.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+# ===============================
+# ⛔ BLOQUEIO SE NÃO FOR MEMBRO
+# ===============================
+async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user_id = update.effective_user.id
+    esta_no_canal = await usuario_no_canal(context.bot, user_id)
+
+    if not esta_no_canal:
+        teclado = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📢 Entrar no canal",
+                    url="https://t.me/SourcerBaltigo"
+                )
+            ]
+        ])
+        await update.message.reply_html(
+            "🚫 <b>Acesso bloqueado</b>\n\n"
+            "Para usar este bot, você precisa estar no nosso canal oficial 👇\n\n"
+            "✅ Após entrar, volte e use o comando novamente.",
+            reply_markup=teclado
+        )
+        return False
+
+    return True
+    
 # ===== LOGIN =====
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -989,11 +1030,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
 
     # 🔒 Anti-spam
     if not anti_spam(user_id):
@@ -1627,3 +1669,4 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
