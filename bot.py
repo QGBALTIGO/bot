@@ -438,7 +438,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /anime =====
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
+
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -450,20 +461,28 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = " ".join(context.args)
-    await update.message.reply_text(
+
+    # ✅ GUARDA a mensagem de buscando
+    msg_busca = await update.message.reply_text(
         "🔎 Buscando o anime pra você...\nAguarde um instante ⏳"
     )
 
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
 
+    # ❌ NÃO ACHOU
     if not msg_id:
+        await msg_busca.delete()  # 👈 APAGA o "Buscando"
+
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
+
+    # ✅ ACHOU
+    await msg_busca.delete()  # 👈 APAGA o "Buscando"
 
     keyboard = [[
         InlineKeyboardButton(
@@ -479,7 +498,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -547,6 +565,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
