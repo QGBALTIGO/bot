@@ -977,8 +977,8 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagens))
-    app.add_handler(CommandHandler("capturar", capturar))
-    app.add_handler(CommandHandler("colecao", minha_colecao))
+app.add_handler(CommandHandler("capturar", capturar))
+app.add_handler(CommandHandler("colecao", minha_colecao))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("perso", perso))
@@ -990,6 +990,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
