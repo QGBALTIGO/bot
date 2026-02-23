@@ -1053,15 +1053,20 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# ==================================================
 # ===== COMANDO /manga =====
+# ==================================================
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
+    # Anti-spam (mantém se você já usa)
     if not anti_spam(user_id):
         await update.message.reply_text(
             "⏳ Sem flood 😅\nTente novamente em alguns segundos."
         )
         return
 
+    # Sem argumentos
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -1074,36 +1079,39 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
+    # Mensagem de busca
     msg_busca = await update.message.reply_html(
-        "📚 Buscando o mangá pra você...\nAguarde um instante ⏳\n\n"
-          "🚫 <b>Nada por aqui…</b>\n"
-            "O anime que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+        "📚 Buscando o mangá pra você...\n"
+        "Aguarde um instante ⏳"
     )
 
+    # Busca no canal
     async with client:
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
+    # ❌ Não encontrado (EXATAMENTE como você pediu)
     if not msg_id:
         await msg_busca.delete()
         await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
-            "O mangá que você procurou não foi encontrado no canal.\n\n"
+            "🚫 <b>Nada por aqui…</b>\n"
+            "O anime que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
 
+    # Remove mensagem de busca
     await msg_busca.delete()
 
+    # Botão "Ler agora"
     keyboard = [[
         InlineKeyboardButton(
             "📖 Ler agora",
             url=f"https://t.me/{CANAL_MANGA}/{msg_id}"
         )
     ]]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Copia a mensagem do canal
     await context.bot.copy_message(
         chat_id=update.effective_chat.id,
         from_chat_id=f"@{CANAL_MANGA}",
@@ -1616,5 +1624,6 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
