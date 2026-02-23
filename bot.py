@@ -1928,8 +1928,6 @@ app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 pp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_messages))
 app.add_handler(CommandHandler("spawn", admin_spawn))
 app.add_handler(CommandHandler("capturar", capturar))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagens))
-
 app.run_polling()
 
 
