@@ -1439,34 +1439,35 @@ ANILIST_API = "https://graphql.anilist.co"
 # ==================================================
 async def buscar_cards(anime_nome: str, page: int = 1):
     query = """
-query ($search: String, $page: Int) {
-  Page(page: 1, perPage: 1) {
-    media(search: $search, type: ANIME) {
-      id
-      title { romaji }
-      coverImage { large }
-      characters(
-        page: $page,
-        perPage: 15,
-        role: MAIN,
-        sort: [RELEVANCE, ID]
-      ) {
-        pageInfo {
-          total
-          currentPage
-          lastPage
-        }
-        edges {
-          node {
-            id
-            name { full }
-            image { large }
+    query ($search: String, $page: Int) {
+      Page(page: 1, perPage: 1) {
+        media(search: $search, type: ANIME) {
+          id
+          title {
+            romaji
+          }
+          bannerImage
+          coverImage {
+            large
+          }
+          characters(page: $page, perPage: 15) {
+            pageInfo {
+              total
+              currentPage
+              lastPage
+            }
+            edges {
+              node {
+                id
+                name {
+                  full
+                }
+              }
+            }
           }
         }
       }
     }
-  }
-}
     """
     variables = {
         "search": anime_nome,
@@ -1610,6 +1611,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
