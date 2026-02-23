@@ -520,7 +520,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    msg_busca = await update.message.reply_text(
+    msg_busca = await update.message.reply_html(
         "📚 Buscando o mangá pra você...\nAguarde um instante ⏳\n\n"
           "🚫 <b>Nada por aqui…</b>\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
@@ -568,6 +568,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
