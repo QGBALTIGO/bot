@@ -687,11 +687,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "🏴‍☠️ <b>Ahoy! Eu sou o Source Baltigo</b>\n\n"
         "⚡ Seu bot definitivo de <b>animes, mangás e personagens</b>.\n\n"
-        "✨ O que eu sei fazer?\n"
+        "✨ O que eu sei fazer?\n\n"
         "• 🔍 Buscar infos completas de animes e mangás\n"
         "• 🎭 Mostrar personagens detalhados\n"
         "• 🔥 Rankings em alta\n"
-        "• 🎲 Recomendações inteligentes e surpresas\n"
+        "• 🎲 Recomendações inteligentes e surpresas\n\n"
         "📢 <b>Onde eu brilho de verdade?</b>\n"
         "👉 Em <b>grupos</b>! Me adiciona em um grupo e deixa a mágica acontecer ✨"
     )
@@ -1174,6 +1174,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
