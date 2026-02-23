@@ -43,18 +43,13 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = (
         "https://anilist.co/api/v2/oauth/authorize"
         "?client_id=36358"
-        "&response_type=code"
         "&redirect_uri=https://loginbot-production.up.railway.app/callback"
+        "&response_type=code"
         f"&state={telegram_id}"
     )
 
     teclado = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "🔐 Conectar com AniList",
-                url=url
-            )
-        ]
+        [InlineKeyboardButton("🔐 Conectar com AniList", url=url)]
     ])
 
     await update.message.reply_html(
@@ -597,6 +592,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
