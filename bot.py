@@ -946,21 +946,34 @@ async def callback_emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado
     )
 
-# ===== RECOMENDACOES =====
+# ===== RECOMENDAÇÕES ANIList =====
+import random
+import aiohttp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
+
 ANILIST_API = "https://graphql.anilist.co"
+MAX_PAGES = 3
+PER_PAGE = 5
 
-async def buscar_recomendacoes(tipo: str, page: int = 1):
-    sort_map = {
-        "anime": "SCORE_DESC",
-        "manga": "SCORE_DESC",
-        "popular": "POPULARITY_DESC",
-    }
+# ===== BUSCAR RECOMENDAÇÕES =====
+async def buscar_recomendacoes(tipo: str, page: int):
+    if tipo == "surpresa":
+        page = random.randint(1, 100)  # top ~500 (5 por página)
+        sort = random.choice(["SCORE_DESC", "POPULARITY_DESC"])
+    else:
+        sort_map = {
+            "anime": "SCORE_DESC",
+            "manga": "SCORE_DESC",
+            "popular": "POPULARITY_DESC"
+        }
+        sort = sort_map[tipo]
 
-    media_type = "ANIME" if tipo in ["anime", "popular"] else "MANGA"
+    media_type = "MANGA" if tipo == "manga" else "ANIME"
 
     query = """
-    query ($page: Int, $type: MediaType, $sort: [MediaSort]) {
-      Page(page: $page, perPage: 5) {
+    query ($page: Int, $type: MediaType, $sort: [MediaSort], $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
         media(type: $type, sort: $sort) {
           id
           siteUrl
@@ -968,10 +981,15 @@ async def buscar_recomendacoes(tipo: str, page: int = 1):
             romaji
             english
           }
-          genres
-          format
           averageScore
           popularity
+          genres
+          coverImage {
+            extraLarge
+          }
+          startDate {
+            year
+          }
         }
       }
     }
@@ -980,37 +998,40 @@ async def buscar_recomendacoes(tipo: str, page: int = 1):
     variables = {
         "page": page,
         "type": media_type,
-        "sort": [sort_map[tipo]]
+        "sort": [sort],
+        "perPage": PER_PAGE
     }
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ANILIST_API,
-            json={"query": query, "variables": variables}
+            json={"query": query, "variables": variables},
+            timeout=aiohttp.ClientTimeout(total=10)
         ) as resp:
             data = await resp.json()
             return data["data"]["Page"]["media"]
 
-
-def formatar_lista(lista, page):
-    texto = f"🔥 <b>RECOMENDAÇÕES — Página {page}/3</b>\n\n"
+# ===== FORMATAR TEXTO =====
+def formatar_lista(lista, tipo, page):
+    titulo = f"🔥 <b>RECOMENDAÇÕES — {tipo.upper()}</b>\n📄 Página {page}/{MAX_PAGES}\n\n"
+    texto = titulo
 
     for i, media in enumerate(lista, start=1):
-        titulo = media["title"]["english"] or media["title"]["romaji"]
+        nome = media["title"]["english"] or media["title"]["romaji"]
         score = media["averageScore"] or "—"
-        generos = ", ".join(media["genres"][:3]) or "—"
-        formato = media["format"] or "—"
+        pop = media["popularity"] or "—"
+        generos = ", ".join(media["genres"][:3]) if media["genres"] else "—"
 
         texto += (
-            f"<b>{i}.</b> {titulo}\n"
-            f"🎭 <b>Gêneros:</b> <code>{generos}</code>\n"
-            f"📺 <b>Formato:</b> <code>{formato}</code>\n"
-            f"⭐ <b>Score:</b> <code>{score}</code>\n\n"
+            f"<b>{i}.</b> {nome}\n"
+            f"⭐ <b>Score:</b> <code>{score}</code>\n"
+            f"👥 <b>Popularidade:</b> <code>{pop}</code>\n"
+            f"🎭 <b>Gêneros:</b> <code>{generos}</code>\n\n"
         )
 
     return texto
 
-
+# ===== TECLADO =====
 def teclado_recomenda(tipo, page):
     botoes = []
 
@@ -1018,19 +1039,18 @@ def teclado_recomenda(tipo, page):
         botoes.append(
             InlineKeyboardButton("⬅️ Anterior", callback_data=f"rec:{tipo}:{page-1}")
         )
-
-    if page < 3:
+    if page < MAX_PAGES:
         botoes.append(
             InlineKeyboardButton("➡️ Próximo", callback_data=f"rec:{tipo}:{page+1}")
         )
 
-    return InlineKeyboardMarkup([botoes])
+    return InlineKeyboardMarkup([botoes]) if botoes else None
 
-
+# ===== COMANDO /recomenda =====
 async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Escolha uma opção:</b>\n\n"
+            "❌ <b>Use:</b>\n\n"
             "<code>/recomenda anime</code>\n"
             "<code>/recomenda manga</code>\n"
             "<code>/recomenda popular</code>\n"
@@ -1039,25 +1059,49 @@ async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     tipo = context.args[0].lower()
-
-    if tipo == "surpresa":
-        await recomenda_surpresa(update)
-        return
-
-    if tipo not in ["anime", "manga", "popular"]:
+    if tipo not in ["anime", "manga", "popular", "surpresa"]:
         await update.message.reply_text("❌ Opção inválida.")
         return
 
     page = 1
     lista = await buscar_recomendacoes(tipo, page)
-    texto = formatar_lista(lista, page)
 
+    # 🎲 SURPRESA → CARD
+    if tipo == "surpresa":
+        media = random.choice(lista)
+        nome = media["title"]["english"] or media["title"]["romaji"]
+        score = media["averageScore"] or "—"
+        pop = media["popularity"] or "—"
+        generos = ", ".join(media["genres"][:3]) if media["genres"] else "—"
+        ano = media["startDate"]["year"] or "—"
+
+        texto = (
+            f"<b>{nome}</b>\n\n"
+            f"<b>Score:</b> <code>{score}</code>\n"
+            f"<b>Popularidade:</b> <code>{pop}</code>\n"
+            f"<b>Gêneros:</b> <code>{generos}</code>\n"
+            f"<b>Ano:</b> <code>{ano}</code>"
+        )
+
+        teclado = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Ver no AniList", url=media["siteUrl"])]
+        ])
+
+        await update.message.reply_photo(
+            photo=media["coverImage"]["extraLarge"],
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=teclado
+        )
+        return
+
+    texto = formatar_lista(lista, tipo, page)
     await update.message.reply_html(
         texto,
         reply_markup=teclado_recomenda(tipo, page)
     )
 
-
+# ===== CALLBACK =====
 async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1065,72 +1109,16 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
     _, tipo, page = query.data.split(":")
     page = int(page)
 
-    if page < 1 or page > 3:
+    if page < 1 or page > MAX_PAGES:
         return
 
     lista = await buscar_recomendacoes(tipo, page)
-    texto = formatar_lista(lista, page)
+    texto = formatar_lista(lista, tipo, page)
 
     await query.message.edit_text(
         texto,
         parse_mode="HTML",
         reply_markup=teclado_recomenda(tipo, page)
-    )
-
-async def recomenda_surpresa(update: Update):
-    query = """
-    query {
-      Page(perPage: 1) {
-        media(sort: [TRENDING_DESC]) {
-          id
-          siteUrl
-          title {
-            romaji
-            english
-          }
-          genres
-          format
-          averageScore
-          popularity
-          coverImage {
-            large
-          }
-        }
-      }
-    }
-    """
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query}
-        ) as resp:
-            data = await resp.json()
-            media = data["data"]["Page"]["media"][0]
-
-    titulo = media["title"]["english"] or media["title"]["romaji"]
-    generos = ", ".join(media["genres"][:3])
-    formato = media["format"]
-    score = media["averageScore"] or "—"
-    url = media["siteUrl"]
-
-    texto = (
-        f"🎲 <b>RECOMENDAÇÃO SURPRESA</b>\n\n"
-        f"<b>{titulo}</b>\n\n"
-        f"🎭 <b>Gêneros:</b> <code>{generos}</code>\n"
-        f"📺 <b>Formato:</b> <code>{formato}</code>\n"
-        f"⭐ <b>Score:</b> <code>{score}</code>"
-    )
-
-    teclado = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📖 Ver no AniList", url=url)]
-    ])
-
-    await update.message.reply_photo(
-        photo=media["coverImage"]["large"],
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=teclado
     )
     
 # ===== INICIAR BOT =====
@@ -1151,6 +1139,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
