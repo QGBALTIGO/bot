@@ -814,12 +814,146 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# ===============================
+# 🔥 BUSCAR ANIMES EM ALTA
+# ===============================
+ANILIST_API = "https://graphql.anilist.co"
+ANIMES_POR_PAGINA = 10
+
+async def buscar_animes_em_alta(pagina: int):
+    query = """
+    query ($page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        media(sort: TRENDING_DESC, type: ANIME) {
+          id
+          siteUrl
+          title {
+            romaji
+            english
+          }
+          averageScore
+          popularity
+        }
+      }
+    }
+    """
+    variables = {
+        "page": pagina,
+        "perPage": ANIMES_POR_PAGINA
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Page"]["media"]
+
+
+# ===============================
+# 🎨 FORMATAR TEXTO DO RANKING
+# ===============================
+def formatar_ranking(animes, pagina):
+    inicio = (pagina - 1) * ANIMES_POR_PAGINA + 1
+    texto = "🔥 <b>ANIMES EM ALTA AGORA</b> 🔥\n\n"
+
+    for i, anime in enumerate(animes):
+        posicao = inicio + i
+        titulo = anime["title"]["english"] or anime["title"]["romaji"]
+        score = anime["averageScore"] or "N/A"
+        pop = anime["popularity"] or "N/A"
+
+        emoji = "🏅"
+        if posicao == 1:
+            emoji = "🥇"
+        elif posicao == 2:
+            emoji = "🥈"
+        elif posicao == 3:
+            emoji = "🥉"
+
+        texto += (
+            f"{emoji} <b>{posicao}º</b> {titulo}\n"
+            f"⭐ <b>Score:</b> <code>{score}</code>\n"
+            f"👥 <b>Popularidade:</b> <code>{pop}</code>\n\n"
+        )
+
+    return texto
+
+
+# ===============================
+# 🔘 TECLADO DE NAVEGAÇÃO
+# ===============================
+def teclado_em_alta(pagina, site_url=None):
+    botoes = []
+
+    navegacao = []
+    if pagina > 1:
+        navegacao.append(
+            InlineKeyboardButton(
+                "⏪ Anterior",
+                callback_data=f"emalta:{pagina - 1}"
+            )
+        )
+
+    navegacao.append(
+        InlineKeyboardButton(
+            "⏩ Próximo",
+            callback_data=f"emalta:{pagina + 1}"
+        )
+    )
+
+    botoes.append(navegacao)
+
+    if site_url:
+        botoes.append([
+            InlineKeyboardButton("📖 Ver no AniList", url=site_url)
+        ])
+
+    return InlineKeyboardMarkup(botoes)
+
+
+# ===============================
+# 📌 COMANDO /emalta
+# ===============================
+async def emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pagina = 1
+    animes = await buscar_animes_em_alta(pagina)
+
+    texto = formatar_ranking(animes, pagina)
+    teclado = teclado_em_alta(pagina)
+
+    await update.message.reply_html(texto, reply_markup=teclado)
+
+
+# ===============================
+# 🔁 CALLBACK PAGINAÇÃO
+# ===============================
+async def callback_emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    pagina = int(query.data.split(":")[1])
+    animes = await buscar_animes_em_alta(pagina)
+
+    texto = formatar_ranking(animes, pagina)
+    teclado = teclado_em_alta(pagina)
+
+    await query.message.edit_text(
+        texto,
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("perso", perso))
+app.add_handler(CommandHandler("emalta", emalta))
+app.add_handler(CallbackQueryHandler(callback_emalta, pattern="^emalta:"))
 app.add_handler(CallbackQueryHandler(callback_info_perso, pattern="^info_perso:"))
 app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
 app.add_handler(CommandHandler("pedido", pedido))
@@ -828,6 +962,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
