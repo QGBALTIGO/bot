@@ -407,12 +407,12 @@ async def callback_info_manga(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=teclado
     )
 
-# ===== ANILIST PERSON =====
-ANILIST_API = "https://graphql.anilist.co"
-
+# ===== ANILIST PERSONAGEM =====
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
+
+ANILIST_API = "https://graphql.anilist.co"
 
 # ===== BUSCAR MÚLTIPLOS PERSONAGENS =====
 async def buscar_multiplos_personagens(nome: str):
@@ -433,16 +433,24 @@ async def buscar_multiplos_personagens(nome: str):
     }
     """
     variables = {"search": nome}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables}
-        ) as resp:
-            data = await resp.json()
-            return data["data"]["Page"]["characters"]
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data["data"]["Page"]["characters"]
+    except Exception as e:
+        print("Erro personagem:", e)
+        return []
 
 # ===== BUSCAR PERSONAGEM POR ID =====
-async def buscar_personagem_por_id(person_id: int):
+async def buscar_personagem_por_id(char_id: int):
     query = """
     query ($id: Int) {
       Character(id: $id) {
@@ -454,22 +462,15 @@ async def buscar_personagem_por_id(person_id: int):
         image {
           large
         }
-        description(asHtml: false)
-        media {
-          nodes {
-            title {
-              romaji
-              english
-            }
-            type
-            siteUrl
-          }
-        }
+        gender
+        age
+        bloodType
         siteUrl
       }
     }
     """
-    variables = {"id": person_id}
+    variables = {"id": char_id}
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ANILIST_API,
@@ -478,15 +479,13 @@ async def buscar_personagem_por_id(person_id: int):
             data = await resp.json()
             return data["data"]["Character"]
 
-# ===== COMANDO /PERSO =====
+# ===== COMANDO /perso =====
 async def perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Faltou o nome do personagem!</b>\n\n"
-            "Use assim:\n"
-            "<code>/perso nome</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/perso Luffy</code>"
+            "❌ <b>Faltou o nome!</b>\n\n"
+            "Use:\n<code>/perso nome do personagem</code>\n\n"
+            "Exemplo:\n<code>/perso Luffy</code>"
         )
         return
 
@@ -494,6 +493,7 @@ async def perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Buscando personagens no AniList...")
 
     resultados = await buscar_multiplos_personagens(nome)
+
     if not resultados:
         await msg.edit_text("🚫 Nenhum personagem encontrado.")
         return
@@ -509,92 +509,46 @@ async def perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
     await msg.edit_text(
-        "🎭 <b>Encontrei vários personagens</b>\n\n"
-        "Escolha qual você quer ver:",
+        "🎭 <b>Escolha o personagem:</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(botoes)
     )
 
-## ===== CALLBACK INFO PERSONAGEM =====
-async def callback_info_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===== CALLBACK PERSONAGEM =====
+async def callback_info_perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    personagem_id = int(query.data.split(":")[1])
-    personagem = await buscar_personagem_por_id(personagem_id)
+    char_id = int(query.data.split(":")[1])
 
-    # 🔥 APAGA a mensagem com os botões
-    chat_id = query.message.chat_id
+    # apaga a mensagem com os botões
     await query.message.delete()
 
-    nome = personagem["name"]["full"]
-    favoritos = personagem.get("favourites", 0)
-    descricao = personagem.get("description", "Sem descrição.")
+    personagem = await buscar_personagem_por_id(char_id)
+
+    nome = personagem["name"]["full"] or personagem["name"]["native"]
+    genero = personagem.get("gender") or "N/A"
+    idade = personagem.get("age") or "N/A"
+    sangue = personagem.get("bloodType") or "N/A"
+
+    texto = (
+        f"<b>{nome}</b>\n\n"
+        f"👤 <b>Gênero:</b> <code>{genero}</code>\n"
+        f"🎂 <b>Idade:</b> <code>{idade}</code>\n"
+        f"🩸 <b>Tipo sanguíneo:</b> <code>{sangue}</code>"
+    )
+
     imagem = personagem["image"]["large"]
 
-    texto = (
-        f"🎭 <b>{nome}</b>\n\n"
-        f"⭐ <b>Favoritos:</b> <code>{favoritos}</code>\n\n"
-        f"<b>Descrição:</b>\n"
-        f"{descricao[:900]}..."
-    )
-
-    botoes = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📚 Ver no AniList",
-                url=personagem["siteUrl"]
-            )
-        ]
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 Ver no AniList", url=personagem["siteUrl"])]
     ])
-
-    # ✅ ENVIO CORRETO (mensagem nova)
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=imagem,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=botoes
-    )
-    # ===== SEPARAR OBRAS =====
-    animes = []
-    mangas = []
-
-    for obra in personagem["media"]["nodes"]:
-        titulo = obra["title"]["english"] or obra["title"]["romaji"]
-        if obra["type"] == "ANIME":
-            animes.append(titulo)
-        elif obra["type"] == "MANGA":
-            mangas.append(titulo)
-
-    texto = (
-        f"🎭 <b>{nome}</b>\n"
-        f"<i>{nome_native}</i>\n\n"
-        f"📝 <b>Descrição</b>\n"
-        f"{descricao}\n\n"
-    )
-
-    if animes:
-        texto += "📺 <b>Animes</b>\n" + "• " + "\n• ".join(animes[:5]) + "\n\n"
-
-    if mangas:
-        texto += "📚 <b>Mangás</b>\n" + "• " + "\n• ".join(mangas[:5]) + "\n\n"
-
-    # ===== BOTÕES =====
-    botoes = [
-        [
-            InlineKeyboardButton(
-                "📚 Ver obras do personagem",
-                url=personagem["siteUrl"]
-            )
-        ]
-    ]
 
     await query.message.reply_photo(
         photo=imagem,
         caption=texto,
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(botoes)
+        reply_markup=teclado
     )
     
 # ===== COMANDO /pedido =====
@@ -837,6 +791,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
