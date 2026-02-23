@@ -102,7 +102,10 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
-# ================= DATABASE =================
+# ========= LOG =========
+logging.basicConfig(level=logging.INFO)
+
+# ========= DATABASE =========
 db = sqlite3.connect("database.db", check_same_thread=False)
 cursor = db.cursor()
 
@@ -126,30 +129,42 @@ CREATE TABLE IF NOT EXISTS collection (
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS active_drop (
-    character_id INTEGER,
-    character_name TEXT,
-    anime TEXT,
-    image TEXT,
-    active INTEGER
+CREATE TABLE IF NOT EXISTS state (
+    key TEXT PRIMARY KEY,
+    value TEXT
 )
 """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS counter (
-    id INTEGER PRIMARY KEY,
-    messages INTEGER
-)
-""")
-
-cursor.execute("INSERT OR IGNORE INTO counter VALUES (1, 0)")
 db.commit()
 
-# ================= ANI LIST =================
-async def get_top_characters():
+# ========= GLOBAL STATE =========
+current_spawn = {
+    "active": False,
+    "character_id": None,
+    "name": None,
+    "anime": None,
+    "image": None
+}
+
+# ========= HELPERS =========
+def get_state(key, default="0"):
+    cursor.execute("SELECT value FROM state WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+    cursor.execute("INSERT INTO state (key, value) VALUES (?, ?)", (key, default))
+    db.commit()
+    return default
+
+def set_state(key, value):
+    cursor.execute("UPDATE state SET value = ? WHERE key = ?", (value, key))
+    db.commit()
+
+# ========= ANILIST =========
+async def buscar_personagem_popular():
     query = """
     query {
-      Page(page: 1, perPage: 500) {
+      Page(page: 1, perPage: 50) {
         characters(sort: FAVOURITES_DESC) {
           id
           name { full }
@@ -164,77 +179,86 @@ async def get_top_characters():
     }
     """
     async with aiohttp.ClientSession() as session:
-        async with session.post(ANILIST_API, json={"query": query}) as r:
-            data = await r.json()
-            return data["data"]["Page"]["characters"]
+        async with session.post(
+            ANILIST_API,
+            json={"query": query},
+            timeout=aiohttp.ClientTimeout(total=15)
+        ) as resp:
+            data = await resp.json()
 
-# ================= DROP =================
-async def drop_character(context: ContextTypes.DEFAULT_TYPE, chat_id):
-    characters = await get_top_characters()
-    char = random.choice(characters)
+    char = random.choice(data["data"]["Page"]["characters"])
+    anime = char["media"]["nodes"][0]["title"]["romaji"]
 
-    anime = char["media"]["nodes"][0]["title"]["romaji"] if char["media"]["nodes"] else "Desconhecido"
+    return {
+        "id": char["id"],
+        "name": char["name"]["full"],
+        "image": char["image"]["large"],
+        "anime": anime
+    }
 
-    cursor.execute("DELETE FROM active_drop")
-    cursor.execute("""
-        INSERT INTO active_drop VALUES (?, ?, ?, ?, 1)
-    """, (
-        char["id"],
-        char["name"]["full"],
-        anime,
-        char["image"]["large"]
-    ))
-    db.commit()
+# ========= SPAWN =========
+async def spawn_character(context: ContextTypes.DEFAULT_TYPE):
+    global current_spawn
+
+    personagem = await buscar_personagem_popular()
+
+    current_spawn = {
+        "active": True,
+        "character_id": personagem["id"],
+        "name": personagem["name"],
+        "anime": personagem["anime"],
+        "image": personagem["image"]
+    }
 
     await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=char["image"]["large"],
+        chat_id=context._chat_id,
+        photo=personagem["image"],
         caption=(
-            f"🎯 <b>PERSONAGEM APARECEU!</b>\n\n"
-            f"👤 <b>{char['name']['full']}</b>\n"
-            f"📺 <i>{anime}</i>\n\n"
-            f"✍️ Use:\n"
-            f"<code>/capturar {char['name']['full']}</code>"
+            f"🎯 **PERSONAGEM APARECEU!**\n\n"
+            f"👤 {personagem['name']}\n"
+            f"📺 {personagem['anime']}\n\n"
+            f"💬 Primeiro que mandar:\n"
+            f"/capturar {personagem['name']}"
         ),
-        parse_mode="HTML"
+        parse_mode="Markdown"
     )
 
-# ================= MESSAGE COUNTER =================
+# ========= MESSAGE COUNTER =========
 async def contar_mensagens(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("UPDATE counter SET messages = messages + 1 WHERE id = 1")
-    db.commit()
-
-    cursor.execute("SELECT messages FROM counter WHERE id = 1")
-    count = cursor.fetchone()[0]
-
-    if count >= GROUP_MESSAGE_TRIGGER:
-        cursor.execute("UPDATE counter SET messages = 0 WHERE id = 1")
-        db.commit()
-        await drop_character(context, update.effective_chat.id)
-
-# ================= CAPTURA =================
-async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT * FROM active_drop WHERE active = 1")
-    drop = cursor.fetchone()
-
-    if not drop:
+    if not update.message or update.message.chat.type == "private":
         return
 
-    _, name, anime, image, _ = drop
-    texto = " ".join(context.args).lower()
+    count = int(get_state("msg_count"))
+    count += 1
+    set_state("msg_count", str(count))
 
-    if texto != name.lower():
+    if count >= MSG_TRIGGER and not current_spawn["active"]:
+        set_state("msg_count", "0")
+        context._chat_id = update.message.chat_id
+        await spawn_character(context)
+
+# ========= CAPTURA =========
+async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global current_spawn
+
+    if not current_spawn["active"]:
+        return
+
+    texto = update.message.text.lower()
+    nome = current_spawn["name"].lower()
+
+    if nome not in texto:
         return
 
     user = update.effective_user
-    cursor.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (user.id, user.first_name))
 
     cursor.execute("""
         SELECT id, quantity FROM collection
         WHERE user_id = ? AND character_id = ?
-    """, (user.id, drop[0]))
+    """, (user.id, current_spawn["character_id"]))
 
     row = cursor.fetchone()
+
     if row:
         cursor.execute(
             "UPDATE collection SET quantity = quantity + 1 WHERE id = ?",
@@ -243,43 +267,35 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = "🔁 Personagem duplicado!"
     else:
         cursor.execute("""
-            INSERT INTO collection (user_id, character_id, character_name, anime, image)
+            INSERT INTO collection
+            (user_id, character_id, character_name, anime, image)
             VALUES (?, ?, ?, ?, ?)
-        """, (user.id, drop[0], name, anime, image))
-        msg = "✨ Novo personagem adicionado!"
+        """, (
+            user.id,
+            current_spawn["character_id"],
+            current_spawn["name"],
+            current_spawn["anime"],
+            current_spawn["image"]
+        ))
+        msg = "🎉 Captura realizada!"
 
-    cursor.execute("DELETE FROM active_drop")
     db.commit()
 
     await update.message.reply_text(
-        f"🏆 <b>{user.first_name} capturou {name}!</b>\n{msg}",
-        parse_mode="HTML"
+        f"{msg}\n\n"
+        f"👤 {current_spawn['name']}\n"
+        f"📺 {current_spawn['anime']}\n"
+        f"🏆 Capturado por {user.first_name}"
     )
 
-# ================= ADMIN EVENT =================
-async def evento(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    current_spawn["active"] = False
+
+# ========= ADMIN =========
+async def admin_spawn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
         return
-
-    if len(context.args) < 3:
-        await update.message.reply_text(
-            "Use:\n/evento NOME | ANIME | IMAGEM_URL"
-        )
-        return
-
-    texto = " ".join(context.args)
-    nome, anime, imagem = texto.split("|")
-
-    cursor.execute("DELETE FROM active_drop")
-    cursor.execute("""
-        INSERT INTO active_drop VALUES (?, ?, ?, ?, 1)
-    """, (999999, nome.strip(), anime.strip(), imagem.strip()))
-    db.commit()
-
-    await update.message.reply_photo(
-        photo=imagem.strip(),
-        caption=f"🎉 EVENTO ESPECIAL!\n\n👤 {nome}\n📺 {anime}",
-    )
+    context._chat_id = update.message.chat_id
+    await spawn_character(context)
 
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1910,12 +1926,12 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 pp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_messages))
-app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("spawn", admin_spawn))
 app.add_handler(CommandHandler("capturar", capturar))
-app.add_handler(CommandHandler("evento", evento))
-app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, contar_mensagens))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagens))
 
 app.run_polling()
+
 
 
 
