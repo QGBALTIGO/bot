@@ -42,13 +42,12 @@ async def buscar_post(canal, termo):
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
-    url = (
-        "https://anilist.co/api/v2/oauth/authorize"
+    url = ( "https://anilist.co/api/v2/oauth/authorize"
         "?client_id=36358"
         "&redirect_uri=https://bot-production-1980.up.railway.app/callback"
         "&response_type=code"
         f"&state={telegram_id}"
-    )
+)
 
     await update.message.reply_text(
         "🔐 Conecte sua conta AniList:\n\n" + url
