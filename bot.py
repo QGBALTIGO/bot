@@ -1438,25 +1438,27 @@ ANILIST_API = "https://graphql.anilist.co"
 async def buscar_cards(anime_nome: str, page: int = 1):
     query = """
     query ($search: String, $page: Int) {
-      Media(search: $search, type: ANIME) {
-        id
-        title {
-          romaji
-        }
-        coverImage {
-          large
-        }
-        characters(page: $page, perPage: 15) {
-          pageInfo {
-            total
-            currentPage
-            lastPage
+      Page(page: 1, perPage: 1) {
+        media(search: $search, type: ANIME) {
+          id
+          title {
+            romaji
           }
-          edges {
-            node {
-              id
-              name {
-                full
+          coverImage {
+            large
+          }
+          characters(page: $page, perPage: 15) {
+            pageInfo {
+              total
+              currentPage
+              lastPage
+            }
+            edges {
+              node {
+                id
+                name {
+                  full
+                }
               }
             }
           }
@@ -1464,7 +1466,6 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       }
     }
     """
-
     variables = {
         "search": anime_nome,
         "page": page
@@ -1477,12 +1478,14 @@ async def buscar_cards(anime_nome: str, page: int = 1):
             timeout=aiohttp.ClientTimeout(total=15)
         ) as resp:
             data = await resp.json()
-            return data.get("data", {}).get("Media")
+            media = data.get("data", {}).get("Page", {}).get("media", [])
+            return media[0] if media else None
+
 
 # ==================================================
-# FORMATAR TEXTO DOS CARDS
+# FORMATAR TEXTO
 # ==================================================
-def formatar_cards(media, page: int):
+def formatar_cards(media, page):
     chars = media["characters"]["edges"]
     info = media["characters"]["pageInfo"]
 
@@ -1497,37 +1500,31 @@ def formatar_cards(media, page: int):
 
     return texto
 
+
 # ==================================================
-# TECLADO DE PAGINAÇÃO
+# TECLADO
 # ==================================================
-def teclado_cards(anime: str, page: int, last: int):
+def teclado_cards(anime, page, last):
     botoes = []
 
     if page > 1:
         botoes.append(
-            InlineKeyboardButton(
-                "⬅️ Anterior",
-                callback_data=f"cards:{anime}:{page-1}"
-            )
+            InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}")
         )
 
     if page < last:
         botoes.append(
-            InlineKeyboardButton(
-                "➡️ Próximo",
-                callback_data=f"cards:{anime}:{page+1}"
-            )
+            InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}")
         )
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
+
 
 # ==================================================
 # COMANDO .cards
 # ==================================================
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto_msg = update.message.text
-
-    if len(texto_msg.split()) < 2:
+    if not context.args:
         await update.message.reply_html(
             "📁 <b>Cards de personagens</b>\n\n"
             "Use:\n"
@@ -1537,12 +1534,15 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    anime = texto_msg.replace(".cards", "").strip()
-
+    anime = " ".join(context.args)
     media = await buscar_cards(anime, 1)
 
     if not media:
-        await update.message.reply_html("❌ <b>Anime não encontrado.</b>")
+        await update.message.reply_html(
+            "❌ <b>Anime não encontrado</b>\n\n"
+            "Tente usar o nome mais conhecido.\n"
+            "📌 Exemplo: <code>One Piece</code>"
+        )
         return
 
     texto = formatar_cards(media, 1)
@@ -1555,23 +1555,18 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_cards(anime, 1, last)
     )
 
+
 # ==================================================
-# CALLBACK DOS CARDS
+# CALLBACK
 # ==================================================
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    try:
-        _, anime, page = query.data.split(":")
-        page = int(page)
-    except ValueError:
-        return
+    _, anime, page = query.data.split(":")
+    page = int(page)
 
     media = await buscar_cards(anime, page)
-    if not media:
-        return
-
     texto = formatar_cards(media, page)
     last = media["characters"]["pageInfo"]["lastPage"]
 
@@ -1580,7 +1575,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=teclado_cards(anime, page, last)
     )
-
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -1603,10 +1598,11 @@ app.add_handler(CommandHandler("favoritar", favoritar))
 app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 app.add_handler(CommandHandler("nivel", nivel))
-app.add_handler(CommandHandler("cards", cards))
+app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
