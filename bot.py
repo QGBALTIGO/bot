@@ -58,6 +58,128 @@ async def login(update, context):
         "🔑 Clique para conectar sua conta AniList:",
         reply_markup=keyboard
     )
+
+# ===== PERFIL =====
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_personagem(nome: str):
+    query = """
+    query ($search: String) {
+      Character(search: $search) {
+        id
+        name {
+          full
+        }
+        image {
+          large
+        }
+      }
+    }
+    """
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": {"search": nome}}
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Character"]
+
+USERS = {}
+
+async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Use: /favoritar Nome do personagem")
+        return
+
+    user_id = update.effective_user.id
+    nome = " ".join(context.args)
+
+    personagem = await buscar_personagem(nome)
+    if not personagem:
+        await update.message.reply_text("❌ Personagem não encontrado.")
+        return
+
+    user = USERS.get(user_id, {})
+    if user.get("fav_character"):
+        await update.message.reply_text(
+            "❌ Você já tem um personagem favorito.\nUse /desfavoritar primeiro."
+        )
+        return
+
+    USERS[user_id] = {
+        "nick": update.effective_user.first_name,
+        "fav_character": {
+            "id": personagem["id"],
+            "name": personagem["name"]["full"],
+            "image": personagem["image"]["large"]
+        }
+    }
+
+    await update.message.reply_photo(
+        photo=personagem["image"]["large"],
+        caption=(
+            "❤️ <b>Personagem favoritado!</b>\n\n"
+            f"<b>{personagem['name']['full']}</b>\n"
+            "Agora ele é a capa do seu perfil."
+        ),
+        parse_mode="HTML"
+    )
+
+async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = USERS.get(user_id)
+
+    if not user or not user.get("fav_character"):
+        await update.message.reply_text("❌ Você não tem personagem favorito.")
+        return
+
+    user["fav_character"] = None
+    await update.message.reply_text("💔 Personagem favorito removido.")
+
+async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Use: /nick SeuNome")
+        return
+
+    user_id = update.effective_user.id
+    novo_nick = " ".join(context.args)
+
+    user = USERS.get(user_id, {})
+    user["nick"] = novo_nick
+    USERS[user_id] = user
+
+    await update.message.reply_text(f"✏️ Nick definido como: <b>{novo_nick}</b>", parse_mode="HTML")
+
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = USERS.get(user_id)
+
+    if not user:
+        await update.message.reply_text("❌ Você ainda não criou um perfil.")
+        return
+
+    nick = user.get("nick", update.effective_user.first_name)
+    fav = user.get("fav_character")
+
+    if fav:
+        await update.message.reply_photo(
+            photo=fav["image"],
+            caption=(
+                "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+                f"👤 <b>{nick}</b>\n"
+                f"❤️ Personagem favorito:\n"
+                f"{fav['name']}"
+            ),
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_html(
+            "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+            f"👤 <b>{nick}</b>\n"
+            "❤️ Nenhum personagem favorito ainda.\n"
+            "Use <code>/favoritar Nome</code>"
+        )
+
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -1172,8 +1294,13 @@ app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
+app.add_handler(CommandHandler("perfil", perfil))
+app.add_handler(CommandHandler("favoritar", favoritar))
+app.add_handler(CommandHandler("desfavoritar", desfavoritar))
+app.add_handler(CommandHandler("nick", nick))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
