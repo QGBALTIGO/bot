@@ -534,6 +534,15 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
+async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not await usuario_no_canal(context.bot, user_id):
+        await acesso_negado(update)
+        return
+
+    # 👇 resto do código continua igual
+
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not anti_spam(user_id):
@@ -602,4 +611,5 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
