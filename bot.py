@@ -1430,7 +1430,6 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ==================================================
 # COMANDO .cards — PERSONAGENS DO ANIME (COM BANNER)
 # ==================================================
-
 ANILIST_API = "https://graphql.anilist.co"
 
 # --------------------------------------------------
@@ -1442,13 +1441,9 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       Page(page: 1, perPage: 1) {
         media(search: $search, type: ANIME) {
           id
-          title {
-            romaji
-          }
+          title { romaji }
           bannerImage
-          coverImage {
-            extraLarge
-          }
+          coverImage { extraLarge }
           characters(page: $page, perPage: 15) {
             pageInfo {
               total
@@ -1458,9 +1453,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
             edges {
               node {
                 id
-                name {
-                  full
-                }
+                name { full }
               }
             }
           }
@@ -1511,11 +1504,18 @@ def teclado_cards(anime, page, last):
 
     if page > 1:
         botoes.append(
-            InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}")
+            InlineKeyboardButton(
+                "⬅️ Anterior",
+                callback_data=f"cards:{anime}:{page-1}"
+            )
         )
+
     if page < last:
         botoes.append(
-            InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}")
+            InlineKeyboardButton(
+                "➡️ Próximo",
+                callback_data=f"cards:{anime}:{page+1}"
+            )
         )
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
@@ -1549,10 +1549,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = formatar_cards(media, 1)
     last = media["characters"]["pageInfo"]["lastPage"]
 
-    # 👉 PRIORIDADE DE IMAGEM:
-    # 1️⃣ bannerImage (igual infoanime)
-    # 2️⃣ coverImage.extraLarge (fallback)
-    foto = media["bannerImage"] or media["coverImage"]["extraLarge"]
+    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
 
     await update.message.reply_photo(
         photo=foto,
@@ -1576,7 +1573,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = formatar_cards(media, page)
     last = media["characters"]["pageInfo"]["lastPage"]
 
-    foto = media["bannerImage"] or media["coverImage"]["extraLarge"]
+    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
 
     await query.message.edit_media(
         media=InputMediaPhoto(
@@ -1613,6 +1610,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
