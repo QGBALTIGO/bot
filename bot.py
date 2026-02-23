@@ -42,14 +42,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
-    url = (
-        "https://anilist.co/api/v2/oauth/authorize"
-        "?client_id=36358"
-        "&redirect_uri=https://loginbot-production.up.railway.app/callback"
-        "&response_type=code"
-        f"&state={telegram_id}"
-    )
-
+   url = (
+    "https://anilist.co/api/v2/oauth/authorize"
+    "?client_id=36358"
+    "&redirect_uri=https://loginbot-production.up.railway.app/callback"
+    "&response_type=code"
+    f"&state={telegram_id}"
+)
     teclado = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -599,6 +598,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
