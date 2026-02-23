@@ -33,7 +33,7 @@ client = TelegramClient("sessao_busca", api_id, api_hash)
 async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
-    return Non
+    return None
 
 # ===== LOGIN =====
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -598,6 +598,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
