@@ -515,25 +515,47 @@ async def perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(botoes)
     )
 
-# ===== CALLBACK INFO PERSONAGEM =====
-async def callback_info_perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
+## ===== CALLBACK INFO PERSONAGEM =====
+async def callback_info_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    person_id = int(query.data.split(":")[1])
-    personagem = await buscar_personagem_por_id(person_id)
+    personagem_id = int(query.data.split(":")[1])
+    personagem = await buscar_personagem_por_id(personagem_id)
 
-    # 🔥 APAGA A MENSAGEM COM AS OPÇÕES
+    # 🔥 APAGA a mensagem com os botões
+    chat_id = query.message.chat_id
     await query.message.delete()
 
     nome = personagem["name"]["full"]
-    nome_native = personagem["name"]["native"] or "N/A"
+    favoritos = personagem.get("favourites", 0)
+    descricao = personagem.get("description", "Sem descrição.")
     imagem = personagem["image"]["large"]
 
-    descricao = personagem.get("description") or "Sem descrição disponível."
-    descricao = descricao.replace("<br>", "\n").replace("<i>", "").replace("</i>", "")
-    descricao = descricao[:900] + "..." if len(descricao) > 900 else descricao
+    texto = (
+        f"🎭 <b>{nome}</b>\n\n"
+        f"⭐ <b>Favoritos:</b> <code>{favoritos}</code>\n\n"
+        f"<b>Descrição:</b>\n"
+        f"{descricao[:900]}..."
+    )
 
+    botoes = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "📚 Ver no AniList",
+                url=personagem["siteUrl"]
+            )
+        ]
+    ])
+
+    # ✅ ENVIO CORRETO (mensagem nova)
+    await context.bot.send_photo(
+        chat_id=chat_id,
+        photo=imagem,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=botoes
+    )
     # ===== SEPARAR OBRAS =====
     animes = []
     mangas = []
@@ -815,6 +837,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
