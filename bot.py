@@ -1426,7 +1426,121 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML",
         reply_markup=teclado_recomenda(tipo, page)
     )
-    
+
+# ===== COMANDO CARDS =====
+
+async def buscar_cards(anime_nome: str, page: int = 1):
+    query = """
+    query ($search: String, $page: Int) {
+      Media(search: $search, type: ANIME) {
+        id
+        title { romaji }
+        coverImage { large }
+        characters(page: $page, perPage: 15) {
+          pageInfo {
+            total
+            currentPage
+            lastPage
+          }
+          edges {
+            node {
+              id
+              name { full }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    variables = {
+        "search": anime_nome,
+        "page": page
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            timeout=aiohttp.ClientTimeout(total=15)
+        ) as resp:
+            data = await resp.json()
+            return data.get("data", {}).get("Media")
+
+def formatar_cards(media, page):
+    chars = media["characters"]["edges"]
+    info = media["characters"]["pageInfo"]
+
+    texto = (
+        f"📁 | <b>{media['title']['romaji']}</b>\n"
+        f"ℹ️ | <b>{info['total']}</b>\n"
+        f"🗂 | <b>{page}/{info['lastPage']}</b>\n\n"
+    )
+
+    for c in chars:
+        texto += f"🧧 <b>{c['node']['id']}.</b> {c['node']['name']['full']}\n"
+
+    return texto
+    def teclado_cards(anime, page, last):
+    botoes = []
+
+    if page > 1:
+        botoes.append(
+            InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}")
+        )
+
+    if page < last:
+        botoes.append(
+            InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}")
+        )
+
+    return InlineKeyboardMarkup([botoes]) if botoes else None
+
+async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "📁 <b>Cards de personagens</b>\n\n"
+            "Use:\n"
+            "<code>.cards Nome do Anime</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>.cards One Piece</code>"
+        )
+        return
+
+    anime = " ".join(context.args)
+    media = await buscar_cards(anime, 1)
+
+    if not media:
+        await update.message.reply_html("❌ Anime não encontrado.")
+        return
+
+    texto = formatar_cards(media, 1)
+    last = media["characters"]["pageInfo"]["lastPage"]
+
+    await update.message.reply_photo(
+        photo=media["coverImage"]["large"],
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado_cards(anime, 1, last)
+    )
+
+async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    _, anime, page = query.data.split(":")
+    page = int(page)
+
+    media = await buscar_cards(anime, page)
+    texto = formatar_cards(media, page)
+    last = media["characters"]["pageInfo"]["lastPage"]
+
+    await query.message.edit_caption(
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado_cards(anime, page, last)
+    )
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -1449,8 +1563,11 @@ app.add_handler(CommandHandler("favoritar", favoritar))
 app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 app.add_handler(CommandHandler("nivel", nivel))
+app.add_handler(CommandHandler("cards", cards))
+app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
