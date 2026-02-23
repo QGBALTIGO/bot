@@ -4,6 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 import aiohttp
+from telegram.ext import ChatMemberHandler
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -681,15 +682,68 @@ async def buscar_manga(nome):
     return None
 
 # ===== COMANDO /start =====
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html(
-        "👋 <b>Olá!</b>\n\n"
-        "🤖 Eu estou <b>online</b> e funcionando.\n\n"
-        "📌 Você poderá usar:\n"
-        "• <code>/anime</code>\n"
-        "• <code>/manga</code>\n\n"
-        "✨ Aguarde novidades!"
+    texto = (
+        "🏴‍☠️ <b>Ahoy! Eu sou o Source Baltigo</b>\n\n"
+        "⚡ Seu bot definitivo de <b>animes, mangás e personagens</b> usando o AniList.\n\n"
+        "✨ O que eu sei fazer?\n"
+        "• 🔍 Buscar infos completas de animes e mangás\n"
+        "• 🎭 Mostrar personagens detalhados\n"
+        "• 🔥 Rankings em alta\n"
+        "• 🎲 Recomendações inteligentes e surpresas\n"
+        "• 🎰 (Em breve) sistema gacha em grupos\n\n"
+        "📢 <b>Onde eu brilho de verdade?</b>\n"
+        "👉 Em <b>grupos</b>! Me adiciona em um grupo e deixa a mágica acontecer ✨"
     )
+
+    teclado = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "➕ Adicionar em um grupo",
+                url="https://t.me/SourceBaltigo_bot?startgroup=start"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📚 AniList",
+                url="https://anilist.co"
+            )
+        ]
+    ])
+
+    await update.message.reply_html(
+        texto,
+        reply_markup=teclado
+    )
+
+async def bot_adicionado_no_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.my_chat_member.chat
+    novo_status = update.my_chat_member.new_chat_member.status
+
+    if novo_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR]:
+        texto = (
+            "💥 <b>PLOFT!</b> Caí de paraquedas aqui 😎\n\n"
+            "🏴‍☠️ Eu sou o <b>Source Baltigo</b>, um bot feito pra quem ama:\n"
+            "🎬 Animes\n"
+            "📚 Mangás\n"
+            "🎭 Personagens\n\n"
+            "🔥 O que posso fazer nesse grupo?\n"
+            "• <code>/infoanime nome</code>\n"
+            "• <code>/infomanga nome</code>\n"
+            "• <code>/perso nome</code>\n"
+            "• <code>/emalta</code>\n"
+            "• <code>/recomenda anime|manga|popular|surpresa</code>\n\n"
+            "✨ Fiquem à vontade!\n"
+            "Se eu ficar quietinho demais… é só começar a falar de anime 😏"
+        )
+
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=texto,
+            parse_mode="HTML"
+        )
 
 # ===== COMANDO /anime =====
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1147,8 +1201,10 @@ app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
+app.add_handler(ChatMemberHandler(bot_adicionado_no_grupo, ChatMemberHandler.MY_CHAT_MEMBER))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
