@@ -2,5 +2,5 @@ python-telegram-bot==20.7
 pyTelegramBotAPI
 telethon
 aiohttp
-requests
-flask
+
+
