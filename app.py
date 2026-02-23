@@ -4,6 +4,7 @@ import os
 
 app = Flask(__name__)
 
+# AQUI são os NOMES das variáveis do Railway
 CLIENT_ID = os.environ.get("36358")
 CLIENT_SECRET = os.environ.get("9ttdEOMhVL6aYP5vuJixCYFeqlmhIGBXsf898eie")
 REDIRECT_URI = os.environ.get("https://bot-production-1980.up.railway.app/callback")
@@ -15,6 +16,7 @@ def home():
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
+    telegram_id = request.args.get("state")
 
     if not code:
         return "Code não recebido", 400
@@ -30,7 +32,13 @@ def callback():
     }
 
     response = requests.post(token_url, json=data)
-    return response.json()
+    token = response.json().get("access_token")
+
+    if not token:
+        return response.json(), 400
+
+    # depois a gente salva no banco
+    return "Login feito com sucesso ✅ Pode voltar pro Telegram."
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
