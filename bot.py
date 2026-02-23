@@ -582,17 +582,18 @@ async def callback_info_perso(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # ===== TEXTO EM MONOESPAÇO =====
     texto = (
-        f"<b>{nome}</b>\n\n"
-        f"<code>"
-        f"Gênero: {genero}\n"
-        f"Nascimento: {nascimento}\n"
-        f"Idade: {idade}\n"
-        f"Favoritos: {fav}\n\n"
-        f"Obra: {obra}\n"
-        f"Tipo: {tipo}\n"
-        f"Estreia: {estreia}"
-        f"</code>"
-    )
+    f"<b>{nome_personagem}</b>\n\n"
+
+    f"<b>Gênero:</b> <code>{genero}</code>\n"
+    f"<b>Nascimento:</b> <code>{nascimento}</code>\n"
+    f"<b>Altura:</b> <code>{altura}</code>\n"
+    f"<b>Favoritos:</b> <code>{favoritos}</code>\n\n"
+
+    f"<b>Obra:</b> <code>{obra}</code>\n"
+    f"<b>Tipo:</b> <code>{tipo}</code>\n"
+    f"<b>Papel:</b> <code>{papel}</code>\n"
+    f"<b>Estreia:</b> <code>{estreia}</code>"
+)
 
     imagem = personagem["image"]["large"]
 
@@ -852,6 +853,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
