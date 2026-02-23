@@ -1428,12 +1428,17 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # ==================================================
-# CONFIGURAÇÃO ANI LIST
+# COMANDO .cards — LISTA DE PERSONAGENS (AniList)
 # ==================================================
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes, CallbackQueryHandler, CommandHandler, MessageHandler, filters
+import aiohttp
+
 ANILIST_API = "https://graphql.anilist.co"
 
 # ==================================================
-# BUSCAR CARDS (PERSONAGENS DO ANIME)
+# BUSCAR PERSONAGENS DO ANIME
 # ==================================================
 async def buscar_cards(anime_nome: str, page: int = 1):
     query = """
@@ -1466,6 +1471,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       }
     }
     """
+
     variables = {
         "search": anime_nome,
         "page": page
@@ -1483,7 +1489,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
 
 
 # ==================================================
-# FORMATAR TEXTO
+# FORMATAR TEXTO DO CARD
 # ==================================================
 def formatar_cards(media, page):
     chars = media["characters"]["edges"]
@@ -1502,7 +1508,7 @@ def formatar_cards(media, page):
 
 
 # ==================================================
-# TECLADO
+# TECLADO DE PAGINAÇÃO
 # ==================================================
 def teclado_cards(anime, page, last):
     botoes = []
@@ -1521,7 +1527,7 @@ def teclado_cards(anime, page, last):
 
 
 # ==================================================
-# COMANDO .cards
+# COMANDO .cards / /cards
 # ==================================================
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -1540,8 +1546,8 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not media:
         await update.message.reply_html(
             "❌ <b>Anime não encontrado</b>\n\n"
-            "Tente usar o nome mais conhecido.\n"
-            "📌 Exemplo: <code>One Piece</code>"
+            "💡 Tente usar o nome mais conhecido.\n"
+            "Exemplo: <code>One Piece</code>"
         )
         return
 
@@ -1557,7 +1563,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# CALLBACK
+# CALLBACK DA PAGINAÇÃO
 # ==================================================
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1601,8 +1607,8 @@ app.add_handler(CommandHandler("nivel", nivel))
 app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
-print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
