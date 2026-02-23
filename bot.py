@@ -705,7 +705,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton(
-                "⚔️ CENTRAL QG BALTIGO ",
+                "⚔️ QG Baltigo ",
                 url="t.me/QG_BALTIGO"
             )
         ]
@@ -1174,6 +1174,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
