@@ -1,40 +1,76 @@
-from telethon import TelegramClient
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+# =====================================================
+# IMPORTS
+# =====================================================
+
 import time
 import aiohttp
-from telegram.ext import MessageHandler, CallbackQueryHandler, filters
+
+from telethon import TelegramClient
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
+)
+
 from database import db, cursor
 
-# ===== ANTI-SPAM CONFIG =====
-import time
+# =====================================================
+# CONFIGURAÇÕES GERAIS
+# =====================================================
 
-ANTI_SPAM_TIME = 5  # segundos
-last_command_time = {}
+BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
+
+api_id = 34116600
+api_hash = "b8f22be457ce73f65fad82315073fbc3"
+
+CANAL_ANIME = "Centraldeanimes_Baltigo"
+CANAL_MANGA = "MangasBrasil"
+CANAL_PEDIDOS = -1003895811362  # canal fechado
+
+# =====================================================
+# ANTI-SPAM
+# =====================================================
+
+ANTI_SPAM_TIME = 4  # segundos (mais fluido)
+last_command_time: dict[int, float] = {}
+
 
 def anti_spam(user_id: int) -> bool:
     agora = time.time()
+    ultimo = last_command_time.get(user_id, 0)
 
-    if user_id in last_command_time:
-        if agora - last_command_time[user_id] < ANTI_SPAM_TIME:
-            return False
+    if agora - ultimo < ANTI_SPAM_TIME:
+        return False
 
     last_command_time[user_id] = agora
     return True
 
-# ===== DADOS =====
-api_id = 34116600
-api_hash = "b8f22be457ce73f65fad82315073fbc3"
-BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
-CANAL_ANIME = "Centraldeanimes_Baltigo"
-CANAL_MANGA = "MangasBrasil"
-CANAL_PEDIDOS = -1003895811362  # ID do canal fechado
+# =====================================================
+# TELETHON
+# =====================================================
 
-# ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
-async def buscar_post(canal, termo):
-    async for msg in client.iter_messages(canal, search=termo):
+
+
+async def buscar_post(canal: str, termo: str) -> int | None:
+    """
+    Busca a primeira mensagem encontrada no canal
+    """
+    async for msg in client.iter_messages(
+        canal,
+        search=termo,
+        limit=1
+    ):
         return msg.id
     return None
 
@@ -1731,6 +1767,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
