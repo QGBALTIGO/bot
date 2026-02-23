@@ -1469,6 +1469,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       }
     }
     """
+
     variables = {
         "search": anime_nome,
         "page": page
@@ -1483,6 +1484,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
             data = await resp.json()
             media = data.get("data", {}).get("Page", {}).get("media", [])
             return media[0] if media else None
+
 
 # ==================================================
 # FORMATAR TEXTO DO CARD
@@ -1501,6 +1503,7 @@ def formatar_cards(media, page):
         texto += f"🧧 <b>{c['node']['id']}.</b> {c['node']['name']['full']}\n"
 
     return texto
+
 
 # ==================================================
 # TECLADO DE PAGINAÇÃO
@@ -1525,6 +1528,7 @@ def teclado_cards(anime, page, last):
         )
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
+
 
 # ==================================================
 # COMANDO .cards / /cards
@@ -1564,6 +1568,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=teclado_cards(anime, 1, last)
     )
+
 
 # ==================================================
 # CALLBACK DA PAGINAÇÃO
@@ -1611,8 +1616,3 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
-
-
-
-
-
