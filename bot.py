@@ -982,6 +982,11 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto_pedido = " ".join(context.args)
 
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     # 👉 1. SE NÃO TIVER TEXTO
     if not context.args:
         await update.message.reply_text(
@@ -1725,5 +1730,6 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
