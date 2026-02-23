@@ -1429,24 +1429,6 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # ==================================================
-# IMPORTS NECESSÁRIOS
-# ==================================================
-import aiohttp
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-    Update
-)
-from telegram.ext import (
-    ContextTypes,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters
-)
-
-# ==================================================
 # CONFIG ANI LIST
 # ==================================================
 ANILIST_API = "https://graphql.anilist.co"
@@ -1632,6 +1614,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
