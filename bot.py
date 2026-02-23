@@ -213,8 +213,7 @@ async def callback_info_anime(update: Update, context: ContextTypes.DEFAULT_TYPE
         ])
 
     botoes.append([
-        InlineKeyboardButton("📖 Descrição", url=media["siteUrl"]),
-        InlineKeyboardButton("▶️ Animes", url=media["t.me/Centraldeanimes_Baltigo"])
+        InlineKeyboardButton("📖 Descrição", url=media["siteUrl"])
     ])
 
     await query.message.reply_photo(
@@ -322,8 +321,6 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 "📖 Ver no AniList",
                 url=media["siteUrl"]
-                 "📚 Mangás",
-                url=media["t.me/MangasBrasil"]
             )
         ]
     ])
@@ -337,7 +334,40 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await msg.delete()
-    
+
+# ===== COMANDO /pedido =====
+async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not anti_spam(user_id):
+        await update.message.reply_text(
+            "⏳ Sem flood 😅\nTente novamente em alguns segundos."
+        )
+        return
+
+    # ⛔ ANTIFLOOD
+    if not pode_pedir(user_id):
+        await update.message.reply_html(
+            "⏳ <b>Pedido recente detectado</b>\n\n"
+            "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
+            "🕒 Aguarde um pouco antes de enviar outro 🙂"
+        )
+        return
+
+    # 👉 SEM TEXTO
+    if not context.args:
+        await update.message.reply_html(
+            "📩 <b>Pedido de Anime ou Mangá</b>\n\n"
+            "Use este comando para solicitar a adição de um conteúdo no canal.\n\n"
+            "📝 <b>Como usar:</b>\n"
+            "<code>/pedido nome do anime ou mangá</code>\n\n"
+            "📌 <b>Exemplos:</b>\n"
+            "<code>/pedido Naruto Shippuden</code>\n"
+            "<code>/pedido Solo Leveling (mangá)</code>\n\n"
+            "⏱️ <b>Limite:</b> 1 pedido a cada 12 horas"
+        )
+        return
+
     # 📌 TEXTO DO PEDIDO
 
     texto_pedido = " ".join(context.args)
@@ -471,7 +501,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=msg_id,
         reply_markup=reply_markup
     )
-    
+
 # ===== COMANDO /manga =====
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -541,19 +571,3 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
