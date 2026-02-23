@@ -120,13 +120,12 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ===============================
+# ==================================================
 # BANCO DE DADOS SQLITE
-# ===============================
+# ==================================================
 db = sqlite3.connect("database.db", check_same_thread=False)
 cursor = db.cursor()
 
-# CRIA TABELA SE NÃO EXISTIR
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -139,13 +138,10 @@ CREATE TABLE IF NOT EXISTS users (
 db.commit()
 
 def get_user(user_id, name):
-    cursor.execute(
-        "SELECT * FROM users WHERE user_id = ?",
-        (user_id,)
-    )
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
 
-    if row is None:
+    if not row:
         cursor.execute(
             "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
             (user_id, name, None, 0, 1)
@@ -166,7 +162,7 @@ def get_user(user_id, name):
         "commands": row[3],
         "level": row[4]
     }
-    
+
 # ==================================================
 # SISTEMA DE NÍVEL
 # ==================================================
@@ -1659,6 +1655,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
