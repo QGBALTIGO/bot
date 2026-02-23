@@ -102,6 +102,22 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
+# ===== CONTADOR DE MENSAGENS =====
+message_counter = {}
+SPAWN_INTERVAL = 40
+
+async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    if chat_id not in message_counter:
+        message_counter[chat_id] = 0
+
+    message_counter[chat_id] += 1
+
+    if message_counter[chat_id] >= SPAWN_INTERVAL:
+        message_counter[chat_id] = 0
+        await spawn_personagem(update, context)
+        
 # ===== GACHA =====
 async def buscar_personagem_famoso():
     query = """
@@ -1810,6 +1826,7 @@ app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
