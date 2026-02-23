@@ -847,7 +847,7 @@ app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("perso", infoperson))
 app.add_handler(CallbackQueryHandler(callback_info_perso, pattern="^info_perso:"))
-app.add_handler(CallbackQueryHandler(callback_info_person, pattern="^info_person:"))
+app.add_handler(CallbackQueryHandler(callback_obras_perso, pattern="^obras_perso:"))
 app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
@@ -855,6 +855,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
