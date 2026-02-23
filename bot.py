@@ -3,9 +3,6 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
-import aiohttp
-from telegram import Update
-from telegram.ext import ContextTypes
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -601,6 +598,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
