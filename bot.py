@@ -995,12 +995,14 @@ from telegram.ext import ContextTypes
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
+    # 🔒 Anti-spam
     if not anti_spam(user_id):
         await update.message.reply_text(
             "⏳ Sem flood 😅\nTente novamente em alguns segundos."
         )
         return
 
+    # ❌ Sem nome do anime
     if not context.args:
         await update.message.reply_html(
             "🚫 <b>Ops! Algo faltou.</b>\n\n"
@@ -1013,30 +1015,28 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nome = " ".join(context.args)
 
-    # ✅ GUARDA a mensagem de buscando
+    # ⏳ Mensagem de busca
     msg_busca = await update.message.reply_html(
-        "🔎 Buscando o anime pra você...\nAguarde um instante ⏳\n\n"
-          "🚫 <b>Nada por aqui…</b>\n"
-            "O anime que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
+        "🔎 Buscando o anime pra você...\n"
+        "Aguarde um instante ⏳"
     )
 
+    # 🔍 Buscar no canal
     async with client:
         msg_id = await buscar_post(CANAL_ANIME, nome)
 
     # ❌ NÃO ACHOU
     if not msg_id:
-        await msg_busca.delete()  # 👈 APAGA o "Buscando"
-
+        await msg_busca.delete()
         await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n\n"
+            "🚫 <b>Nada por aqui…</b>\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
 
     # ✅ ACHOU
-    await msg_busca.delete()  # 👈 APAGA o "Buscando"
+    await msg_busca.delete()
 
     keyboard = [[
         InlineKeyboardButton(
@@ -1094,7 +1094,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg_busca.delete()
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n"
-            "O anime que você procurou não foi encontrado no canal.\n\n"
+            "O mangá que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
         )
         return
@@ -1624,6 +1624,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
