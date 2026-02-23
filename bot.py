@@ -681,23 +681,39 @@ async def buscar_manga(nome):
     return None
 
 # ===== COMANDO /start =====
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html(
+    texto = (
         "🏴‍☠️ <b>Ahoy! Eu sou o Source Baltigo</b>\n\n"
-        "⚡️ Seu bot definitivo de <b>animes, mangás e personagens</b>\n"
-        "🧭 Diretamente da organização <b>@QG_Baltigo</b>\n\n"
-        "✨ <b>O que eu sei fazer?</b>\n"
+        "⚡ Seu bot definitivo de <b>animes, mangás e personagens</b>.\n\n"
+        "✨ O que eu sei fazer?\n"
         "• 🔍 Buscar infos completas de animes e mangás\n"
-        "• 📺 Enviar links para assistir animes no Telegram\n"
-        "• 📖 Enviar links para ler mangás no Telegram\n"
         "• 🎭 Mostrar personagens detalhados\n"
-        "• 🔥 Rankings de animes em alta\n"
-        "• 🎲 Recomendações inteligentes e surpresas\n\n"
+        "• 🔥 Rankings em alta\n"
+        "• 🎲 Recomendações inteligentes e surpresas\n"
         "📢 <b>Onde eu brilho de verdade?</b>\n"
-        "👉 <b>Em grupos!</b> Me adiciona em um grupo e deixa a mágica acontecer ✨\n\n"
-        "🚀 <b>Me adicione agora:</b>\n"
-        "🔗 https://t.me/SourceBaltigo_bot?startgroup=start\n\n"
-        "💡 <i>Dica:</i> Quanto mais o grupo conversa, mais recursos eu ativo 😉"
+        "👉 Em <b>grupos</b>! Me adiciona em um grupo e deixa a mágica acontecer ✨"
+    )
+
+    teclado = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "➕ Adicionar em um grupo",
+                url="https://t.me/SourceBaltigo_bot?startgroup=start"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⚔️ CENTRAL QG BALTIGO ",
+                url="t.me/QG_BALTIGO"
+            )
+        ]
+    ])
+
+    await update.message.reply_html(
+        texto,
+        reply_markup=teclado
     )
 
 # ===== COMANDO /anime =====
@@ -1158,6 +1174,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
