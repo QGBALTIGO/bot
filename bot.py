@@ -233,6 +233,11 @@ async def buscar_personagem(nome: str):
 # /FAVORITAR
 # ==================================================
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     await registrar_comando(update)
 
     if not context.args:
@@ -281,6 +286,11 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /DESFAVORITAR
 # ==================================================
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     await registrar_comando(update)
 
     user = USERS.get(update.effective_user.id)
@@ -298,6 +308,11 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /NICK
 # ==================================================
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     await registrar_comando(update)
 
     if not context.args:
@@ -317,6 +332,11 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /PERFIL
 # ==================================================
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     await registrar_comando(update)
 
     user_id = update.effective_user.id
@@ -353,6 +373,11 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /NIVEL
 # ==================================================
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     await registrar_comando(update)
 
     user = get_user(update.effective_user.id, update.effective_user.first_name)
@@ -419,10 +444,12 @@ async def buscar_multiplos_anilist(nome: str):
         return []
 
 # ===== COMANDO INFO =====
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
 async def infoanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     if not context.args:
         await update.message.reply_html(
             "❌ <b>Faltou o nome!</b>\n\n"
@@ -636,6 +663,11 @@ async def buscar_anilist_manga_por_id(manga_id: int):
 
 # ===== COMANDO INFOMANGA =====
 async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     if not context.args:
         await update.message.reply_html(
             "❌ <b>Faltou o nome!</b>\n\n"
@@ -804,6 +836,11 @@ async def buscar_personagem_por_id(char_id: int):
 
 # ===== COMANDO /perso =====
 async def perso(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     if not context.args:
         await update.message.reply_html(
             "❌ <b>Faltou o nome!</b>\n\n"
@@ -904,6 +941,11 @@ async def callback_info_perso(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     user_id = update.effective_user.id
 
     if not anti_spam(user_id):
@@ -1104,6 +1146,10 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+
     # Anti-spam (mantém se você já usa)
     if not anti_spam(user_id):
         await update.message.reply_text(
@@ -1268,6 +1314,11 @@ def teclado_em_alta(pagina, site_url=None):
 # 📌 COMANDO /emalta
 # ===============================
 async def emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     pagina = 1
     animes = await buscar_animes_em_alta(pagina)
 
@@ -1587,6 +1638,11 @@ def teclado_cards(anime, page, last):
 # COMANDO .cards / /cards
 # ==================================================
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+        
     if not context.args:
         await update.message.reply_html(
             "📁 <b>Cards de personagens</b>\n\n"
@@ -1669,4 +1725,5 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
