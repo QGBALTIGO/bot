@@ -38,6 +38,24 @@ async def buscar_post(canal, termo):
         return msg.id
     return Non
 
+# ===== LOGIN =====
+@bot.message_handler(commands=["login"])
+def login(msg):
+    telegram_id = msg.from_user.id
+
+    url = (
+        "https://anilist.co/api/v2/oauth/authorize"
+        "?client_id=36358"
+        "&redirect_uri=https://bot-production-1980.up.railway.app/callback"
+        "&response_type=code"
+        f"&state={telegram_id}"
+    )
+
+    bot.send_message(
+        msg.chat.id,
+        f"Clica no link pra conectar sua conta AniList:\n{url}"
+    )
+    
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -571,6 +589,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
