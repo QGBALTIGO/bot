@@ -30,8 +30,6 @@ BOT_TOKEN = "8001392073:AAEW64SRZI7BIY6l8reeKnNONu-6gjLt0Sg"
 CANAL_ANIME = "Centraldeanimes_Baltigo"
 CANAL_MANGA = "MangasBrasil"
 CANAL_PEDIDOS = -1003895811362  # ID do canal fechado
-CANAL_OBRIGATORIO_ID = -1003818375955
-CANAL_OBRIGATORIO_LINK = "https://t.me/SourcerBaltigo"
 
 # ===== TELETHON =====
 client = TelegramClient("sessao_busca", api_id, api_hash)
@@ -39,25 +37,6 @@ async def buscar_post(canal, termo):
     async for msg in client.iter_messages(canal, search=termo):
         return msg.id
     return Non
-
-# ===== ENTRADA =====
-from telegram.error import TelegramError
-
-async def usuario_no_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user_id = update.effective_user.id
-    try:
-        membro = await context.bot.get_chat_member(CANAL_ID, user_id)
-        return membro.status in ("member", "administrator", "creator")
-    except TelegramError:
-        return False
-
-async def acesso_negado(update):
-    await update.message.reply_html(
-        "🚫 <b>Acesso restrito</b>\n\n"
-        "Para usar este bot, você precisa entrar no canal oficial:\n\n"
-        f"👉 <a href='{CANAL_OBRIGATORIO_LINK}'>Entrar no canal</a>\n\n"
-        "Depois disso, volte e use o comando novamente 😊"
-    )
 
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
@@ -357,14 +336,6 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.delete()
 
 # ===== COMANDO /pedido =====
-async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not await usuario_no_canal(context.bot, user_id):
-        await acesso_negado(update)
-        return
-
-    # 👇 resto do código continua igual
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -532,16 +503,6 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== COMANDO /manga =====
-async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await usuario_no_canal(update, context):
-        await update.message.reply_html(
-            "🚫 <b>Acesso restrito</b>\n\n"
-            "Você precisa estar no canal para usar este bot.\n\n"
-            f"👉 <a href='{LINK_CANAL}'>Entrar no canal</a>"
-        )
-        return
-
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not anti_spam(user_id):
@@ -610,6 +571,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
