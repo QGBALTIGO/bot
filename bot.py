@@ -194,6 +194,68 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== COMANDO /spawn =====
 async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await spawn_personagem(update, context)
+
+# ===== /CAPTURAR =====
+async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    user_id = user.id
+
+    if not context.args:
+        await update.message.reply_text("❌ Use: /capturar nome")
+        return
+
+    nome_digitado = " ".join(context.args).lower()
+
+    # Busca spawn ativo
+    cursor.execute(
+        "SELECT character_id, character_name, image, expires_at FROM active_spawns WHERE chat_id = ?",
+        (chat_id,)
+    )
+    spawn = cursor.fetchone()
+
+    if not spawn:
+        await update.message.reply_text("❌ Não há personagem para capturar agora.")
+        return
+
+    char_id, char_name, image, expires_at = spawn
+
+    # Verifica expiração
+    if time.time() > expires_at:
+        cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
+        db.commit()
+        await update.message.reply_text("⌛ O personagem fugiu!")
+        return
+
+    # Confere nome (parcial)
+    if nome_digitado not in char_name.lower():
+        return  # errou, não responde nada (igual bots famosos)
+
+    # ===== CAPTURA =====
+    cursor.execute("""
+        INSERT INTO user_collection
+        (user_id, character_id, character_name, image, captured_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        char_id,
+        char_name,
+        image,
+        int(time.time())
+    ))
+
+    # Remove spawn
+    cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
+
+    db.commit()
+
+    # XP / LEVEL
+    adicionar_xp(user_id)
+
+    await update.message.reply_text(
+        f"🏆 {user.mention_html()} capturou <b>{char_name}</b>!",
+        parse_mode="HTML"
+    )
      
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1825,7 +1887,9 @@ app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
+app.add_handler(CommandHandler("capturar", capturar_command))
 app.run_polling()
+
 
 
 
