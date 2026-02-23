@@ -1050,11 +1050,21 @@ def teclado_recomenda(tipo, page):
 async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
-            "❌ <b>Use:</b>\n\n"
+            "✨ <b>SISTEMA DE RECOMENDAÇÕES</b> ✨\n\n"
+            "Escolha como você quer descobrir algo novo:\n\n"
+            "🎬 <b>Anime</b>\n"
             "<code>/recomenda anime</code>\n"
+            "Descubra animes bem avaliados para começar algo de qualidade.\n\n"
+            "📚 <b>Mangá</b>\n"
             "<code>/recomenda manga</code>\n"
+            "Boas recomendações de mangás para leitura.\n\n"
+            "🔥 <b>Popular</b>\n"
             "<code>/recomenda popular</code>\n"
-            "<code>/recomenda surpresa</code>"
+            "O que está bombando agora entre a comunidade.\n\n"
+            "🎲 <b>Surpresa</b>\n"
+            "<code>/recomenda surpresa</code>\n"
+            "Uma recomendação aleatória para quem quer sair da bolha e se surpreender.\n\n"
+            "💡 <i>Dica:</i> Use os botões para navegar entre as páginas."
         )
         return
 
@@ -1139,6 +1149,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
