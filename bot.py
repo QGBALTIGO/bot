@@ -1603,10 +1603,11 @@ app.add_handler(CommandHandler("favoritar", favoritar))
 app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 app.add_handler(CommandHandler("nivel", nivel))
-app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
+app.add_handler(CommandHandler("cards", cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
