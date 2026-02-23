@@ -946,9 +946,14 @@ async def callback_emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado
     )
 
-# ===== RECOMENDACOES =====
+# ===== RECOMENDAÇÕES =====
+import aiohttp
+import random
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram.ext import ContextTypes
 
 ANILIST_API = "https://graphql.anilist.co"
+
 
 async def buscar_recomendacoes(tipo: str, page: int = 1):
     sort_map = {
@@ -990,10 +995,19 @@ async def buscar_recomendacoes(tipo: str, page: int = 1):
             timeout=aiohttp.ClientTimeout(total=10)
         ) as resp:
             data = await resp.json()
+
+            if "data" not in data:
+                return []
+
             return data["data"]["Page"]["media"]
-            
-            def formatar_lista(lista, page):
+
+
+def formatar_lista(lista, page):
     texto = f"🔥 <b>RECOMENDAÇÕES — Página {page}</b>\n\n"
+
+    if not lista:
+        return texto + "❌ Nenhum resultado encontrado."
+
     for i, media in enumerate(lista, start=1):
         titulo = media["title"]["english"] or media["title"]["romaji"]
         score = media["averageScore"] or "—"
@@ -1004,15 +1018,21 @@ async def buscar_recomendacoes(tipo: str, page: int = 1):
             f"⭐ <b>Score:</b> <code>{score}</code>\n"
             f"👥 <b>Popularidade:</b> <code>{pop}</code>\n\n"
         )
+
     return texto
 
+
 def teclado_recomenda(tipo, page):
+    if page < 1:
+        page = 1
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("⬅️ Anterior", callback_data=f"rec:{tipo}:{page-1}"),
             InlineKeyboardButton("➡️ Próximo", callback_data=f"rec:{tipo}:{page+1}")
         ]
     ])
+
 
 async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -1026,6 +1046,7 @@ async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     tipo = context.args[0].lower()
+
     if tipo not in ["anime", "manga", "popular", "surpresa"]:
         await update.message.reply_text("❌ Opção inválida.")
         return
@@ -1039,14 +1060,13 @@ async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_recomenda(tipo, page)
     )
 
+
 async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     _, tipo, page = query.data.split(":")
-    page = int(page)
-    if page < 1:
-        page = 1
+    page = max(1, int(page))
 
     lista = await buscar_recomendacoes(tipo, page)
     texto = formatar_lista(lista, page)
@@ -1056,7 +1076,7 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML",
         reply_markup=teclado_recomenda(tipo, page)
     )
-
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -1075,6 +1095,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
