@@ -86,7 +86,7 @@ def get_admin_photo(user_id: int):
 # ==================================================
 USERS = {}
 
-def get_user(user_id, name):
+def get_user(user_id: int, name: str):
     if user_id not in USERS:
         USERS[user_id] = {
             "nick": name,
@@ -96,27 +96,37 @@ def get_user(user_id, name):
         }
     return USERS[user_id]
 
-# ===== SISTEMA DE NÍVEL =====
+# ==================================================
+# SISTEMA DE NÍVEL
+# ==================================================
 COMANDOS_POR_NIVEL = 100
 
-# ==================================================
-# SISTEMA DE LEVEL
-# ==================================================
 async def registrar_comando(update: Update):
-    user_id = update.effective_user.id
-    user = get_user(user_id, update.effective_user.first_name)
+    user = get_user(
+        update.effective_user.id,
+        update.effective_user.first_name
+    )
 
     user["commands"] += 1
-    novo_nivel = (user["commands"] // 100) + 1
+    novo_nivel = (user["commands"] // COMANDOS_POR_NIVEL) + 1
 
     if novo_nivel > user["level"]:
         user["level"] = novo_nivel
-        await update.message.reply_html(
-            f"🎉 <b>LEVEL UP!</b>\n\n"
+
+        mensagem = (
+            "🎉 <b>LEVEL UP!</b>\n\n"
             f"✨ Parabéns <b>{user['nick']}</b>!\n"
             f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
-            "Continue usando os comandos para subir ainda mais 🚀"
+            "🚀 Continue usando o bot!"
         )
+
+        if update.message:
+            await update.message.reply_html(mensagem)
+        else:
+            await update.effective_user.send_message(
+                mensagem,
+                parse_mode="HTML"
+            )
 
 # ==================================================
 # BUSCAR PERSONAGEM NO ANILIST
@@ -169,7 +179,7 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not personagem:
         await update.message.reply_html(
             "❌ <b>Personagem não encontrado</b>\n\n"
-            "Confira se o nome está correto e completo."
+            "Verifique se o nome está completo e correto."
         )
         return
 
@@ -249,7 +259,6 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto += f"🧧 <b>{fav['name']} ✨</b>" if fav else "— Nenhum favorito"
 
-    # prioridade de imagem
     foto = admin_photo or (fav["image"] if fav else None)
 
     if foto:
@@ -271,15 +280,18 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     comandos = user["commands"]
     nivel_atual = user["level"]
-    prox = ((nivel_atual * 100) - comandos)
+
+    proximo = nivel_atual * COMANDOS_POR_NIVEL
+    faltam = max(proximo - comandos, 0)
 
     await update.message.reply_html(
         "📊 <b>SEU PROGRESSO</b>\n\n"
-        f"⭐ <b>Nível:</b> {nivel_atual}\n"
-        f"⌨️ <b>Comandos usados:</b> {comandos}\n"
-        f"⏭️ <b>Faltam:</b> {prox} comandos para o próximo nível"
+        f"👤 <b>{user['nick']}</b>\n\n"
+        f"⭐ <i>Nível</i>: <b>{nivel_atual}</b>\n"
+        f"⌨️ <i>Comandos usados</i>: <b>{comandos}</b>\n"
+        f"⏳ <i>Faltam</i>: <b>{faltam}</b> comandos"
     )
-        
+
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -1402,6 +1414,7 @@ app.add_handler(CommandHandler("nick", nick))
 app.add_handler(CommandHandler("nivel", nivel))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
