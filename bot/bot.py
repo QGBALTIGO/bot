@@ -39,9 +39,8 @@ async def buscar_post(canal, termo):
     return Non
 
 # ===== LOGIN =====
-@bot.message_handler(commands=["login"])
-def login(msg):
-    telegram_id = msg.from_user.id
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
 
     url = (
         "https://anilist.co/api/v2/oauth/authorize"
@@ -51,10 +50,10 @@ def login(msg):
         f"&state={telegram_id}"
     )
 
-    bot.send_message(
-        msg.chat.id,
-        f"Clica no link pra conectar sua conta AniList:\n{url}"
+    await update.message.reply_text(
+        "🔐 Conecte sua conta AniList:\n\n" + url
     )
+
     
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
@@ -586,10 +585,10 @@ app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
-
 
 
 
