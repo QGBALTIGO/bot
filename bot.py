@@ -5,7 +5,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 import aiohttp
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
-import sqlite3
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -121,47 +120,19 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
-# BANCO DE DADOS SQLITE
+# BANCO DE DADOS (MEMÓRIA)
 # ==================================================
-db = sqlite3.connect("database.db", check_same_thread=False)
-cursor = db.cursor()
+USERS = {}
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    nick TEXT,
-    fav_character TEXT,
-    commands INTEGER,
-    level INTEGER
-)
-""")
-db.commit()
-
-def get_user(user_id, name):
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-
-    if not row:
-        cursor.execute(
-            "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
-            (user_id, name, None, 0, 1)
-        )
-        db.commit()
-        return {
-            "user_id": user_id,
+def get_user(user_id: int, name: str):
+    if user_id not in USERS:
+        USERS[user_id] = {
             "nick": name,
             "fav_character": None,
             "commands": 0,
             "level": 1
         }
-
-    return {
-        "user_id": row[0],
-        "nick": row[1],
-        "fav_character": row[2],
-        "commands": row[3],
-        "level": row[4]
-    }
+    return USERS[user_id]
 
 # ==================================================
 # SISTEMA DE NÍVEL
@@ -194,8 +165,6 @@ async def registrar_comando(update: Update):
                 mensagem,
                 parse_mode="HTML"
             )
-
-
 
 # ==================================================
 # BUSCAR PERSONAGEM NO ANILIST
@@ -1050,6 +1019,8 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_busca = await update.message.reply_html(
         "🔎 Buscando o anime pra você...\n"
         "Aguarde um instante ⏳"
+
+
     )
 
     # 🔍 Buscar no canal
@@ -1059,6 +1030,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ❌ NÃO ACHOU
     if not msg_id:
         await msg_busca.delete()
+
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
@@ -1655,10 +1627,3 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
-
-
-
-
-
-
-
