@@ -59,138 +59,38 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
-# ===== CONFIGURAÇÃO DE ADMINS =====
+# ==================================================
+# CONFIGURAÇÃO ANI LIST
+# ==================================================
+ANILIST_API = "https://graphql.anilist.co"
 
-# IDs dos admins (Telegram ID)
+# ==================================================
+# BANCO DE DADOS (MEMÓRIA)
+# ==================================================
+USERS = {}
+
+# ==================================================
+# CONFIGURAÇÃO DE ADMINS
+# ==================================================
 ADMINS = {
-    1852596083,  # Exemplo
-    987654321
+    1852596083,  # coloque seus IDs aqui
 }
 
-# Fotos personalizadas de admins
-ADMIN_PHOTOS = {
-    # user_id: "https://link-da-imagem.jpg"
-}
+ADMIN_PHOTOS = {}  # user_id: url
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
-def get_admin_photo(user_id: int):
-    return ADMIN_PHOTOS.get(user_id)
-
-async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not is_admin(user_id):
-        await update.message.reply_html(
-            "⛔ <b>Acesso negado</b>\n\n"
-            "Esse comando é exclusivo para admins."
-        )
-        return
-
-    if not context.args:
-        await update.message.reply_html(
-            "🖼️ <b>Definir foto de admin</b>\n\n"
-            "Use:\n"
-            "<code>/adminfoto LINK_DA_IMAGEM</code>\n\n"
-            "📌 A imagem será usada como capa do seu perfil."
-        )
-        return
-
-    url = context.args[0]
-
-    ADMIN_PHOTOS[user_id] = url
-
-    await update.message.reply_photo(
-        photo=url,
-        caption=(
-            "👑 <b>Foto de admin definida!</b>\n\n"
-            "✨ Essa imagem agora é a capa do seu perfil.\n"
-            "👀 Use <code>/perfil</code> para ver."
-        ),
-        parse_mode="HTML"
-    )
-
-async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = USERS.get(user_id)
-
-    if not user:
-        await update.message.reply_html(
-            "🎴 <b>Perfil não encontrado</b>\n\n"
-            "✨ Crie seu perfil favoritando um personagem:\n"
-            "<code>/favoritar Nome do Personagem</code>"
-        )
-        return
-
-    nick = user.get("nick", update.effective_user.first_name)
-    fav = user.get("fav_character")
-
-    admin = is_admin(user_id)
-    admin_photo = get_admin_photo(user_id)
-
-    # Texto do perfil
-    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
-
-    texto = (
-        f"{titulo}: <b>{nick}</b>\n\n"
-        "📚 | <i>Coleção</i>: <b>0</b>\n"
-        "🎰 | <i>Spins</i>: <b>0</b>\n\n"
-        "❤️ <i>Favorite</i>:\n"
-    )
-
-    if fav:
-        texto += f"🧧 <b>{fav['name']} ✨</b>"
-    else:
-        texto += "— Nenhum personagem favorito"
-
-    # Prioridade de imagem:
-    # 1️⃣ Foto personalizada de admin
-    # 2️⃣ Foto do personagem favorito
-    if admin_photo:
-        await update.message.reply_photo(
-            photo=admin_photo,
-            caption=texto,
-            parse_mode="HTML"
-        )
-    elif fav:
-        await update.message.reply_photo(
-            photo=fav["image"],
-            caption=texto,
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_html(texto)
-        
 # ==================================================
-# CONFIGURAÇÃO ANI LIST
+# BUSCAR PERSONAGEM NO ANILIST
 # ==================================================
-
-ANILIST_API = "https://graphql.anilist.co"
-
-
-# ==================================================
-# BANCO DE DADOS SIMPLES (MEMÓRIA)
-# ==================================================
-
-USERS = {}
-
-
-# ==================================================
-# FUNÇÃO: BUSCAR PERSONAGEM NO ANILIST
-# ==================================================
-
 async def buscar_personagem(nome: str):
     query = """
     query ($search: String) {
       Character(search: $search) {
         id
-        name {
-          full
-        }
-        image {
-          large
-        }
+        name { full }
+        image { large }
       }
     }
     """
@@ -203,19 +103,17 @@ async def buscar_personagem(nome: str):
             data = await resp.json()
             return data.get("data", {}).get("Character")
 
-
 # ==================================================
 # /FAVORITAR
 # ==================================================
-
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "❤️ <b>Favoritar personagem</b>\n\n"
             "Escolha <b>1 personagem</b> para ser a capa do seu perfil.\n\n"
-            "📌 Use o nome <b>completo</b>:\n"
+            "📌 Use o nome <b>COMPLETO</b>:\n"
             "<code>/favoritar Monkey D. Luffy</code>\n\n"
-            "✨ Dica: quanto mais completo o nome, maior a chance de encontrar."
+            "💡 Quanto mais completo o nome, melhor o resultado."
         )
         return
 
@@ -231,16 +129,17 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Verifique se:\n"
             "• O nome está completo\n"
             "• Está escrito corretamente\n\n"
-            "📌 Exemplo correto:\n"
+            "📌 Exemplo:\n"
             "<code>Monkey D. Luffy</code>"
         )
         return
 
     user = USERS.get(user_id, {})
+
     if user.get("fav_character"):
         await update.message.reply_html(
             "⚠️ <b>Você já tem um favorito</b>\n\n"
-            "Só é possível ter <b>1 personagem favorito</b>.\n"
+            "Só é permitido <b>1 personagem favorito</b>.\n"
             "💡 Use <code>/desfavoritar</code> para trocar."
         )
         return
@@ -250,29 +149,28 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "fav_character": {
             "id": personagem["id"],
             "name": personagem["name"]["full"],
-            "image": personagem["image"]["large"]
-        }
+            "image": personagem["image"]["large"],
+        },
+        "colecao": 0,
+        "spins": 0,
     }
 
     await update.message.reply_photo(
         photo=personagem["image"]["large"],
         caption=(
             "❤️ <b>PERSONAGEM FAVORITADO!</b>\n\n"
-            f"✨ <b>{personagem['name']['full']}</b>\n\n"
-            "🎴 Agora ele é a <b>capa do seu perfil</b>.\n"
-            "👀 Use <code>/perfil</code> para ver!"
+            f"🧧 <b>{personagem['name']['full']}</b>\n\n"
+            "🎴 Ele agora é a <b>capa do seu perfil</b>.\n"
+            "👀 Veja com <code>/perfil</code>"
         ),
         parse_mode="HTML"
     )
 
-
 # ==================================================
 # /DESFAVORITAR
 # ==================================================
-
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = USERS.get(user_id)
+    user = USERS.get(update.effective_user.id)
 
     if not user or not user.get("fav_character"):
         await update.message.reply_html(
@@ -288,11 +186,9 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Agora você pode escolher outro favorito ✨"
     )
 
-
 # ==================================================
 # /NICK
 # ==================================================
-
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -300,7 +196,7 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Use:\n"
             "<code>/nick Seu Nome</code>\n\n"
             "📌 Exemplo:\n"
-            "<code>/nick Zoro</code>"
+            "<code>/nick Kayky</code>"
         )
         return
 
@@ -316,9 +212,42 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 Novo nome: <b>{novo_nick}</b>"
     )
 
+# ==================================================
+# /ADMINFOTO
+# ==================================================
+async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.message.reply_html(
+            "⛔ <b>Acesso negado</b>\n\n"
+            "Esse comando é exclusivo para admins."
+        )
+        return
+
+    if not context.args:
+        await update.message.reply_html(
+            "🖼️ <b>Foto de Admin</b>\n\n"
+            "Use:\n"
+            "<code>/adminfoto LINK_DA_IMAGEM</code>\n\n"
+            "👑 Essa imagem terá prioridade no seu perfil."
+        )
+        return
+
+    ADMIN_PHOTOS[user_id] = context.args[0]
+
+    await update.message.reply_photo(
+        photo=context.args[0],
+        caption=(
+            "👑 <b>Foto de admin definida!</b>\n\n"
+            "✨ Essa imagem agora é a <b>capa do seu perfil</b>."
+        ),
+        parse_mode="HTML"
+    )
 
 # ==================================================
-# ===== /PERFIL =====
+# /PERFIL
+# ==================================================
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = USERS.get(user_id)
@@ -326,42 +255,38 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         await update.message.reply_html(
             "🎴 <b>Perfil não encontrado</b>\n\n"
-            "Você ainda não criou seu perfil.\n\n"
-            "✨ Comece agora usando:\n"
+            "✨ Crie seu perfil usando:\n"
             "<code>/favoritar Nome do Personagem</code>"
         )
         return
 
     nick = user.get("nick", update.effective_user.first_name)
     fav = user.get("fav_character")
+    colecao = user.get("colecao", 0)
+    spins = user.get("spins", 0)
 
-    # valores futuros (por enquanto fixos)
-    colecao = 0
-    nivel = 1
+    admin = is_admin(user_id)
+    admin_photo = ADMIN_PHOTOS.get(user_id)
 
-    if fav:
-        await update.message.reply_photo(
-            photo=fav["image"],
-            caption=(
-                "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-                f"👤 | <i>User</i>: <b>{nick}</b>\n\n"
-                f"📚 | <i>Coleção</i>: <b>{colecao}</b>\n"
-                f"⭐ | <i>Nível</i>: <b>{nivel}</b>\n\n"
-                "❤️ <i>Favorito</i>:\n"
-                f"🧧 <b>{fav['name']} ✨</b>"
-            ),
-            parse_mode="HTML"
-        )
+    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
+
+    texto = (
+        f"{titulo}: <b>{nick}</b>\n\n"
+        f"📚 | <i>Coleção</i>: <b>{colecao}</b>\n"
+        f"🎰 | <i>Spins</i>: <b>{spins}</b>\n\n"
+        "❤️ <i>Favorite</i>:\n"
+    )
+
+    texto += f"🧧 <b>{fav['name']} ✨</b>" if fav else "— Nenhum favorito"
+
+    # PRIORIDADE DE IMAGEM
+    if admin_photo:
+        await update.message.reply_photo(photo=admin_photo, caption=texto, parse_mode="HTML")
+    elif fav:
+        await update.message.reply_photo(photo=fav["image"], caption=texto, parse_mode="HTML")
     else:
-        await update.message.reply_html(
-            "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-            f"👤 | <i>User</i>: <b>{nick}</b>\n\n"
-            f"📚 | <i>Coleção</i>: <b>0</b>\n"
-            f"⭐ | <i>Nível</i>: <b>1</b>\n\n"
-            "❤️ <i>Favorito</i>:\n"
-            "Nenhum ainda 😢\n\n"
-            "✨ Use <code>/favoritar Nome do Personagem</code>"
-        )
+        await update.message.reply_html(texto)
+
         
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
@@ -1484,6 +1409,7 @@ app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
