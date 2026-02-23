@@ -37,14 +37,16 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== LOGIN =====
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def login(update, context):
     telegram_id = update.effective_user.id
 
     url = (
         "https://anilist.co/api/v2/oauth/authorize"
         "?client_id=36358"
-        "&response_type=code"
         "&redirect_uri=https://loginbot-production.up.railway.app/callback"
+        "&response_type=code"
         f"&state={telegram_id}"
     )
 
@@ -52,12 +54,10 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔐 Conectar com AniList", url=url)]
     ])
 
-    await update.message.reply_html(
-        "🔑 <b>Login AniList</b>\n\n"
-        "Clique no botão abaixo para conectar sua conta:",
+    await update.message.reply_text(
+        "🔑 Login AniList\n\nClique no botão abaixo para autorizar:",
         reply_markup=teclado
     )
-    
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -592,6 +592,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
