@@ -4,7 +4,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 import aiohttp
-from telegram.ext import ChatMemberHandler
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -701,37 +700,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💡 <i>Dica:</i> Quanto mais o grupo conversa, mais recursos eu ativo 😉"
     )
 
-# ===== MENSAGEM AO ENTRAR EM GRUPO =====
-from telegram import ChatMemberUpdated
-
-async def entrou_no_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.my_chat_member:
-        status = update.my_chat_member.new_chat_member.status
-        if status in ("member", "administrator"):
-            chat = update.my_chat_member.chat
-            await context.bot.send_message(
-                chat_id=chat.id,
-                text=(
-                    "💥 <b>PLOFT!</b> Caí aqui de paraquedas 🪂\n\n"
-                    "🏴‍☠️ <b>Eu sou o Source Baltigo</b>\n"
-                    "⚡️ Um bot feito pra turbinar grupos com:\n\n"
-                    "• 🔍 Infos completas de animes e mangás\n"
-                    "• 🎭 Personagens detalhados\n"
-                    "• 🔥 Rankings em alta\n"
-                    "• 🎲 Recomendações inteligentes\n"
-                    "• 📺📖 Links diretos para animes e mangás\n\n"
-                    "✨ <b>Comandos principais:</b>\n"
-                    "• <code>/anime Nome</code>\n"
-                    "• <code>/manga Nome</code>\n"
-                    "• <code>/perso Nome</code>\n"
-                    "• <code>/emalta</code>\n"
-                    "• <code>/recomenda</code>\n\n"
-                    "🧭 Quanto mais o grupo conversa, mais eu apareço!\n"
-                    "🔥 Bora deixar esse grupo no modo otaku máximo?"
-                ),
-                parse_mode="HTML"
-            )
-
 # ===== COMANDO /anime =====
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -1188,9 +1156,9 @@ app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
-app.add_handler(ChatMemberHandler(bot_adicionado_no_grupo, ChatMemberHandler.MY_CHAT_MEMBER))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
