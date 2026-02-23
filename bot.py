@@ -195,9 +195,9 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "✏️ <b>Definir nick</b>\n\n"
             "Use:\n"
-            "<code>/nick SeuNome</code>\n\n"
+            "<code>/nick Seu Nome</code>\n\n"
             "📌 Exemplo:\n"
-            "<code>/nick Kayky</code>"
+            "<code>/nick Zoro</code>"
         )
         return
 
@@ -215,9 +215,7 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# /PERFIL
-# ==================================================
-
+# ===== /PERFIL =====
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = USERS.get(user_id)
@@ -226,7 +224,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "🎴 <b>Perfil não encontrado</b>\n\n"
             "Você ainda não criou seu perfil.\n\n"
-            "✨ Comece agora:\n"
+            "✨ Comece agora usando:\n"
             "<code>/favoritar Nome do Personagem</code>"
         )
         return
@@ -234,25 +232,34 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nick = user.get("nick", update.effective_user.first_name)
     fav = user.get("fav_character")
 
+    # valores futuros (por enquanto fixos)
+    colecao = 0
+    nivel = 1
+
     if fav:
         await update.message.reply_photo(
             photo=fav["image"],
             caption=(
                 "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-                f"👤 <b>{nick}</b>\n\n"
-                "❤️ <b>Personagem favorito</b>\n"
-                f"{fav['name']}"
+                f"👤 | <i>User</i>: <b>{nick}</b>\n\n"
+                f"📚 | <i>Coleção</i>: <b>{colecao}</b>\n"
+                f"⭐ | <i>Nível</i>: <b>{nivel}</b>\n\n"
+                "❤️ <i>Favorito</i>:\n"
+                f"🧧 <b>{fav['name']} ✨</b>"
             ),
             parse_mode="HTML"
         )
     else:
         await update.message.reply_html(
             "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-            f"👤 <b>{nick}</b>\n\n"
-            "❤️ Nenhum personagem favorito ainda.\n"
-            "✨ Use <code>/favoritar Nome</code>"
+            f"👤 | <i>User</i>: <b>{nick}</b>\n\n"
+            f"📚 | <i>Coleção</i>: <b>0</b>\n"
+            f"⭐ | <i>Nível</i>: <b>1</b>\n\n"
+            "❤️ <i>Favorito</i>:\n"
+            "Nenhum ainda 😢\n\n"
+            "✨ Use <code>/favoritar Nome do Personagem</code>"
         )
-
+        
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -1373,6 +1380,7 @@ app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
