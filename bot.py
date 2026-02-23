@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 import aiohttp
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import (
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -1580,13 +1581,6 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media["characters"]["pageInfo"]["lastPage"]
         )
     )
-
-# ==================================================
-# HANDLERS
-# ==================================================
-app.add_handler(CommandHandler("cards", cards))
-app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
-app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
     
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -1614,6 +1608,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
