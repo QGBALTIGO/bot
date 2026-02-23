@@ -59,6 +59,109 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
+# ===== CONFIGURAÇÃO DE ADMINS =====
+
+# IDs dos admins (Telegram ID)
+ADMINS = {
+    1852596083,  # Exemplo
+    987654321
+}
+
+# Fotos personalizadas de admins
+ADMIN_PHOTOS = {
+    # user_id: "https://link-da-imagem.jpg"
+}
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMINS
+
+def get_admin_photo(user_id: int):
+    return ADMIN_PHOTOS.get(user_id)
+
+async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.message.reply_html(
+            "⛔ <b>Acesso negado</b>\n\n"
+            "Esse comando é exclusivo para admins."
+        )
+        return
+
+    if not context.args:
+        await update.message.reply_html(
+            "🖼️ <b>Definir foto de admin</b>\n\n"
+            "Use:\n"
+            "<code>/adminfoto LINK_DA_IMAGEM</code>\n\n"
+            "📌 A imagem será usada como capa do seu perfil."
+        )
+        return
+
+    url = context.args[0]
+
+    ADMIN_PHOTOS[user_id] = url
+
+    await update.message.reply_photo(
+        photo=url,
+        caption=(
+            "👑 <b>Foto de admin definida!</b>\n\n"
+            "✨ Essa imagem agora é a capa do seu perfil.\n"
+            "👀 Use <code>/perfil</code> para ver."
+        ),
+        parse_mode="HTML"
+    )
+
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = USERS.get(user_id)
+
+    if not user:
+        await update.message.reply_html(
+            "🎴 <b>Perfil não encontrado</b>\n\n"
+            "✨ Crie seu perfil favoritando um personagem:\n"
+            "<code>/favoritar Nome do Personagem</code>"
+        )
+        return
+
+    nick = user.get("nick", update.effective_user.first_name)
+    fav = user.get("fav_character")
+
+    admin = is_admin(user_id)
+    admin_photo = get_admin_photo(user_id)
+
+    # Texto do perfil
+    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
+
+    texto = (
+        f"{titulo}: <b>{nick}</b>\n\n"
+        "📚 | <i>Coleção</i>: <b>0</b>\n"
+        "🎰 | <i>Spins</i>: <b>0</b>\n\n"
+        "❤️ <i>Favorite</i>:\n"
+    )
+
+    if fav:
+        texto += f"🧧 <b>{fav['name']} ✨</b>"
+    else:
+        texto += "— Nenhum personagem favorito"
+
+    # Prioridade de imagem:
+    # 1️⃣ Foto personalizada de admin
+    # 2️⃣ Foto do personagem favorito
+    if admin_photo:
+        await update.message.reply_photo(
+            photo=admin_photo,
+            caption=texto,
+            parse_mode="HTML"
+        )
+    elif fav:
+        await update.message.reply_photo(
+            photo=fav["image"],
+            caption=texto,
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_html(texto)
+        
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
 # ==================================================
@@ -1375,11 +1478,13 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 app.add_handler(CommandHandler("perfil", perfil))
+app.add_handler(CommandHandler("adminfoto", adminfoto))
 app.add_handler(CommandHandler("favoritar", favoritar))
 app.add_handler(CommandHandler("desfavoritar", desfavoritar))
 app.add_handler(CommandHandler("nick", nick))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
