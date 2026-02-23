@@ -1429,26 +1429,26 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # ==================================================
-# COMANDO .cards — PERSONAGENS DO ANIME (COM BANNER)
+# COMANDO .cards — PERSONAGENS DO ANIME (CORRIGIDO)
 # ==================================================
+
 ANILIST_API = "https://graphql.anilist.co"
 
 # --------------------------------------------------
-# BUSCAR CARDS (PERSONAGENS DO ANIME)
+# BUSCAR CARDS
 # --------------------------------------------------
-async def buscar_cards(anime_nome: str, page: int = 1):
+async def buscar_cards(anime: str, page: int = 1):
     query = """
     query ($search: String, $page: Int) {
-      Page(perPage: 1) {
+      Page(page: $page, perPage: 1) {
         media(search: $search, type: ANIME) {
           id
           title { romaji }
           bannerImage
           coverImage { extraLarge }
-          characters(page: $page, perPage: 15) {
+          characters(page: 1, perPage: 15) {
             pageInfo {
               total
-              currentPage
               lastPage
             }
             edges {
@@ -1462,17 +1462,12 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       }
     }
     """
-
-    variables = {
-        "search": anime_nome,
-        "page": page
-    }
+    variables = {"search": anime, "page": page}
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ANILIST_API,
-            json={"query": query, "variables": variables},
-            timeout=aiohttp.ClientTimeout(total=15)
+            json={"query": query, "variables": variables}
         ) as resp:
             data = await resp.json()
             media = data.get("data", {}).get("Page", {}).get("media", [])
@@ -1481,32 +1476,30 @@ async def buscar_cards(anime_nome: str, page: int = 1):
 # --------------------------------------------------
 # FORMATAR TEXTO
 # --------------------------------------------------
-def formatar_cards(media):
-    chars = media["characters"]["edges"]
+def formatar_cards(media, page):
     info = media["characters"]["pageInfo"]
-
     texto = (
         f"📁 | <b>{media['title']['romaji']}</b>\n"
         f"ℹ️ | <b>{info['total']}</b>\n"
-        f"🗂 | <b>{info['currentPage']}/{info['lastPage']}</b>\n\n"
+        f"🗂 | <b>{page}/{info['lastPage']}</b>\n\n"
     )
 
-    for c in chars:
+    for c in media["characters"]["edges"]:
         texto += f"🧧 <b>{c['node']['id']}.</b> {c['node']['name']['full']}\n"
 
     return texto
 
 # --------------------------------------------------
-# TECLADO DE PAGINAÇÃO
+# TECLADO
 # --------------------------------------------------
-def teclado_cards(anime, page, last):
+def teclado_cards(anime_id, page, last):
     botoes = []
 
     if page > 1:
         botoes.append(
             InlineKeyboardButton(
                 "⬅️ Anterior",
-                callback_data=f"cards:{anime}:{page-1}"
+                callback_data=f"cards:{anime_id}:{page-1}"
             )
         )
 
@@ -1514,7 +1507,7 @@ def teclado_cards(anime, page, last):
         botoes.append(
             InlineKeyboardButton(
                 "➡️ Próximo",
-                callback_data=f"cards:{anime}:{page+1}"
+                callback_data=f"cards:{anime_id}:{page+1}"
             )
         )
 
@@ -1527,10 +1520,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "📁 <b>Cards de personagens</b>\n\n"
-            "Use:\n"
-            "<code>.cards Nome do Anime</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>.cards One Piece</code>"
+            "Use:\n<code>.cards Nome do Anime</code>"
         )
         return
 
@@ -1538,47 +1528,41 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     media = await buscar_cards(anime, 1)
 
     if not media:
-        await update.message.reply_html("❌ <b>Anime não encontrado.</b>")
+        await update.message.reply_html("❌ Anime não encontrado.")
         return
 
-    info = media["characters"]["pageInfo"]
-    texto = formatar_cards(media)
+    texto = formatar_cards(media, 1)
+    last = media["characters"]["pageInfo"]["lastPage"]
 
-    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
+    foto = media["bannerImage"] or media["coverImage"]["extraLarge"]
 
     await update.message.reply_photo(
         photo=foto,
         caption=texto,
         parse_mode="HTML",
-        reply_markup=teclado_cards(anime, info["currentPage"], info["lastPage"])
+        reply_markup=teclado_cards(media["id"], 1, last)
     )
 
 # --------------------------------------------------
-# CALLBACK DE PAGINAÇÃO
+# CALLBACK
 # --------------------------------------------------
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    _, anime, page = query.data.split(":")
+    _, anime_id, page = query.data.split(":")
     page = int(page)
 
-    media = await buscar_cards(anime, page)
-    info = media["characters"]["pageInfo"]
-    texto = formatar_cards(media)
+    media = await buscar_cards(anime_id, page)
+    texto = formatar_cards(media, page)
+    last = media["characters"]["pageInfo"]["lastPage"]
 
-    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
-
-    await query.message.edit_media(
-        media=InputMediaPhoto(
-            media=foto,
-            caption=texto,
-            parse_mode="HTML"
-        ),
-        reply_markup=teclado_cards(anime, info["currentPage"], info["lastPage"])
+    await query.message.edit_caption(
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado_cards(anime_id, page, last)
     )
-
-
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -1605,4 +1589,5 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
