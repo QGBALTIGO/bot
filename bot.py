@@ -5,7 +5,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 import aiohttp
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
-from telegram.ext import (
 
 # ===== ANTI-SPAM CONFIG =====
 import time
@@ -861,7 +860,7 @@ async def callback_info_perso(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode="HTML",
         reply_markup=teclado
     )
-    
+
 # ===== COMANDO /pedido =====
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1430,13 +1429,13 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # ==================================================
-# CONFIGURAÇÃO ANILIST
+# COMANDO .cards — PERSONAGENS DO ANIME (COM BANNER)
 # ==================================================
 ANILIST_API = "https://graphql.anilist.co"
 
-# ==================================================
-# BUSCAR PERSONAGENS DO ANIME (CARDS)
-# ==================================================
+# --------------------------------------------------
+# BUSCAR CARDS (PERSONAGENS DO ANIME)
+# --------------------------------------------------
 async def buscar_cards(anime_nome: str, page: int = 1):
     query = """
     query ($search: String, $page: Int) {
@@ -1478,9 +1477,10 @@ async def buscar_cards(anime_nome: str, page: int = 1):
             media = data.get("data", {}).get("Page", {}).get("media", [])
             return media[0] if media else None
 
-# ==================================================
+
+# --------------------------------------------------
 # FORMATAR TEXTO
-# ==================================================
+# --------------------------------------------------
 def formatar_cards(media, page):
     chars = media["characters"]["edges"]
     info = media["characters"]["pageInfo"]
@@ -1496,9 +1496,10 @@ def formatar_cards(media, page):
 
     return texto
 
-# ==================================================
+
+# --------------------------------------------------
 # TECLADO DE PAGINAÇÃO
-# ==================================================
+# --------------------------------------------------
 def teclado_cards(anime, page, last):
     botoes = []
 
@@ -1520,9 +1521,10 @@ def teclado_cards(anime, page, last):
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
 
-# ==================================================
+
+# --------------------------------------------------
 # COMANDO .cards
-# ==================================================
+# --------------------------------------------------
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
@@ -1539,15 +1541,16 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not media:
         await update.message.reply_html(
-            "❌ <b>Anime não encontrado</b>\n"
-            "Tente o nome mais conhecido."
+            "❌ <b>Anime não encontrado</b>\n\n"
+            "Tente usar o nome mais conhecido.\n"
+            "📌 Exemplo: <code>One Piece</code>"
         )
         return
 
     texto = formatar_cards(media, 1)
     last = media["characters"]["pageInfo"]["lastPage"]
 
-    foto = media["bannerImage"] or media["coverImage"]["extraLarge"]
+    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
 
     await update.message.reply_photo(
         photo=foto,
@@ -1556,9 +1559,10 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_cards(anime, 1, last)
     )
 
-# ==================================================
-# CALLBACK DOS BOTÕES
-# ==================================================
+
+# --------------------------------------------------
+# CALLBACK DE PAGINAÇÃO
+# --------------------------------------------------
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1570,7 +1574,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = formatar_cards(media, page)
     last = media["characters"]["pageInfo"]["lastPage"]
 
-    foto = media["bannerImage"] or media["coverImage"]["extraLarge"]
+    foto = media.get("bannerImage") or media["coverImage"]["extraLarge"]
 
     await query.message.edit_media(
         media=InputMediaPhoto(
@@ -1580,7 +1584,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ),
         reply_markup=teclado_cards(anime, page, last)
     )
-    
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -1607,75 +1611,3 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
