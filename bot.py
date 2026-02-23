@@ -7,9 +7,6 @@ import aiohttp
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
 import sqlite3
 
-db = sqlite3.connect("database.db", check_same_thread=False)
-cursor = db.cursor()
-
 # ===== ANTI-SPAM CONFIG =====
 import time
 
@@ -123,9 +120,24 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ==================================================
-# BANCO DE DADOS (MEMÓRIA)
-# ==================================================
+# ===============================
+# BANCO DE DADOS SQLITE
+# ===============================
+db = sqlite3.connect("database.db", check_same_thread=False)
+cursor = db.cursor()
+
+# CRIA TABELA SE NÃO EXISTIR
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    nick TEXT,
+    fav_character TEXT,
+    commands INTEGER,
+    level INTEGER
+)
+""")
+db.commit()
+
 def get_user(user_id, name):
     cursor.execute(
         "SELECT * FROM users WHERE user_id = ?",
@@ -154,7 +166,7 @@ def get_user(user_id, name):
         "commands": row[3],
         "level": row[4]
     }
-
+    
 # ==================================================
 # SISTEMA DE NÍVEL
 # ==================================================
@@ -186,6 +198,8 @@ async def registrar_comando(update: Update):
                 mensagem,
                 parse_mode="HTML"
             )
+
+
 
 # ==================================================
 # BUSCAR PERSONAGEM NO ANILIST
@@ -1645,6 +1659,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
