@@ -946,12 +946,125 @@ async def callback_emalta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado
     )
 
+# ===== RECOMENDACOES =====
+
+ANILIST_API = "https://graphql.anilist.co"
+
+async def buscar_recomendacoes(tipo: str, page: int = 1):
+    sort_map = {
+        "anime": "SCORE_DESC",
+        "manga": "SCORE_DESC",
+        "popular": "POPULARITY_DESC",
+        "surpresa": random.choice(["SCORE_DESC", "POPULARITY_DESC", "TRENDING_DESC"])
+    }
+
+    media_type = "ANIME" if tipo in ["anime", "popular", "surpresa"] else "MANGA"
+
+    query = """
+    query ($page: Int, $type: MediaType, $sort: [MediaSort]) {
+      Page(page: $page, perPage: 10) {
+        media(type: $type, sort: $sort) {
+          id
+          siteUrl
+          title {
+            romaji
+            english
+          }
+          averageScore
+          popularity
+        }
+      }
+    }
+    """
+
+    variables = {
+        "page": page,
+        "type": media_type,
+        "sort": [sort_map[tipo]]
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Page"]["media"]
+            
+            def formatar_lista(lista, page):
+    texto = f"🔥 <b>RECOMENDAÇÕES — Página {page}</b>\n\n"
+    for i, media in enumerate(lista, start=1):
+        titulo = media["title"]["english"] or media["title"]["romaji"]
+        score = media["averageScore"] or "—"
+        pop = media["popularity"] or "—"
+
+        texto += (
+            f"<b>{i}.</b> {titulo}\n"
+            f"⭐ <b>Score:</b> <code>{score}</code>\n"
+            f"👥 <b>Popularidade:</b> <code>{pop}</code>\n\n"
+        )
+    return texto
+
+def teclado_recomenda(tipo, page):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⬅️ Anterior", callback_data=f"rec:{tipo}:{page-1}"),
+            InlineKeyboardButton("➡️ Próximo", callback_data=f"rec:{tipo}:{page+1}")
+        ]
+    ])
+
+async def recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_html(
+            "❌ <b>Escolha uma opção:</b>\n\n"
+            "<code>/recomenda anime</code>\n"
+            "<code>/recomenda manga</code>\n"
+            "<code>/recomenda popular</code>\n"
+            "<code>/recomenda surpresa</code>"
+        )
+        return
+
+    tipo = context.args[0].lower()
+    if tipo not in ["anime", "manga", "popular", "surpresa"]:
+        await update.message.reply_text("❌ Opção inválida.")
+        return
+
+    page = 1
+    lista = await buscar_recomendacoes(tipo, page)
+    texto = formatar_lista(lista, page)
+
+    await update.message.reply_html(
+        texto,
+        reply_markup=teclado_recomenda(tipo, page)
+    )
+
+async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    _, tipo, page = query.data.split(":")
+    page = int(page)
+    if page < 1:
+        page = 1
+
+    lista = await buscar_recomendacoes(tipo, page)
+    texto = formatar_lista(lista, page)
+
+    await query.message.edit_text(
+        texto,
+        parse_mode="HTML",
+        reply_markup=teclado_recomenda(tipo, page)
+    )
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("perso", perso))
+app.add_handler(CommandHandler("recomenda", recomenda))
+app.add_handler(CallbackQueryHandler(callback_recomenda, pattern="^rec:"))
 app.add_handler(CommandHandler("emalta", emalta))
 app.add_handler(CallbackQueryHandler(callback_emalta, pattern="^emalta:"))
 app.add_handler(CallbackQueryHandler(callback_info_perso, pattern="^info_perso:"))
@@ -962,6 +1075,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
