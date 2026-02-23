@@ -41,16 +41,14 @@ async def buscar_post(canal, termo):
     return Non
 
 # ===== ENTRADA =====
-from telegram.error import BadRequest
+from telegram.error import TelegramError
 
-async def usuario_no_canal(bot, user_id: int) -> bool:
+async def usuario_no_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user_id = update.effective_user.id
     try:
-        membro = await bot.get_chat_member(
-            chat_id=CANAL_OBRIGATORIO_ID,
-            user_id=user_id
-        )
-        return membro.status in ["member", "administrator", "creator"]
-    except BadRequest:
+        membro = await context.bot.get_chat_member(CANAL_ID, user_id)
+        return membro.status in ("member", "administrator", "creator")
+    except TelegramError:
         return False
 
 async def acesso_negado(update):
@@ -535,13 +533,14 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== COMANDO /manga =====
 async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
 
-    if not await usuario_no_canal(context.bot, user_id):
-        await acesso_negado(update)
+    if not await usuario_no_canal(update, context):
+        await update.message.reply_html(
+            "🚫 <b>Acesso restrito</b>\n\n"
+            "Você precisa estar no canal para usar este bot.\n\n"
+            f"👉 <a href='{LINK_CANAL}'>Entrar no canal</a>"
+        )
         return
-
-    # 👇 resto do código continua igual
 
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -611,5 +610,6 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
