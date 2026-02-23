@@ -534,7 +534,6 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
-app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("pedido", pedido))
@@ -542,6 +541,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
