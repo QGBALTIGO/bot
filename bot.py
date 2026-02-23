@@ -112,7 +112,7 @@ ANILIST_API = "https://graphql.anilist.co"
 # ==================================================
 
 ADMINS = {
-    1852596083, 6978699297, 5940138617, # coloque seus IDs aqui
+    1852596083, 6978699297, 5940138617, 7722180159, # coloque seus IDs aqui
 }
 
 ADMIN_PHOTOS = {
@@ -1730,6 +1730,7 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
 
