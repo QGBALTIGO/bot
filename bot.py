@@ -49,6 +49,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     "&response_type=code"
     f"&state={telegram_id}"
 )
+
     teclado = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -598,6 +599,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
