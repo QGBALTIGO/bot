@@ -472,9 +472,9 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ❌ NÃO ACHOU
     if not msg_id:
-        await msg_busca.delete()  # 👈 APAGA o "Buscando"
+        await msg_busca.edit_text()  # 👈 edita o "Buscando"
 
-        await update.message.reply_html(
+        await update.edit_text(
             "🚫 <b>Nada por aqui…</b>\n\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
             "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
@@ -567,6 +567,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
