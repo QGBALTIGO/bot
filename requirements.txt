@@ -1,5 +1,0 @@
-python-telegram-bot
-telethon
-aiohttp
-flask 
-requests 
