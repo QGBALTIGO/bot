@@ -102,23 +102,6 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
-# ===== CONTADOR DE MENSAGENS =====
-message_counter = {}
-
-SPAWN_INTERVAL = 40  # a cada 40 mensagens
-
-async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-
-    if chat_id not in message_counter:
-        message_counter[chat_id] = 0
-
-    message_counter[chat_id] += 1
-
-    if message_counter[chat_id] >= SPAWN_INTERVAL:
-        message_counter[chat_id] = 0
-        await spawn_personagem(update, context)
-
 # ===== GACHA =====
 async def buscar_personagem_famoso():
     query = """
@@ -137,14 +120,13 @@ async def buscar_personagem_famoso():
     }
     """
 
-    page = random.randint(1, 50)  # pega entre os mais populares
+    page = random.randint(1, 50)  # personagens famosos
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://graphql.anilist.co",
             json={"query": query, "variables": {"page": page}},
         ) as response:
-
             data = await response.json()
             char = data["data"]["Page"]["characters"][0]
 
@@ -153,37 +135,48 @@ async def buscar_personagem_famoso():
                 "name": char["name"]["full"],
                 "image": char["image"]["large"]
             }
-            
-# ===== SPWAN =====
- async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ===== SPAWN =====
+async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
     # verifica se já existe spawn ativo
-    cursor.execute("SELECT * FROM active_spawns WHERE chat_id = ?", (chat_id,))
-    existente = cursor.fetchone()
-
-    if existente:
-        return  # já tem personagem ativo
+    cursor.execute(
+        "SELECT 1 FROM active_spawns WHERE chat_id = ?",
+        (chat_id,)
+    )
+    if cursor.fetchone():
+        return
 
     personagem = await buscar_personagem_famoso()
-
     expires_at = int(time.time()) + 300  # 5 minutos
 
     cursor.execute("""
         INSERT OR REPLACE INTO active_spawns
         (chat_id, character_id, character_name, image, expires_at)
         VALUES (?, ?, ?, ?, ?)
-    """, (chat_id, personagem["id"], personagem["name"], personagem["image"], expires_at))
+    """, (
+        chat_id,
+        personagem["id"],
+        personagem["name"].lower(),
+        personagem["image"],
+        expires_at
+    ))
 
     db.commit()
 
     await context.bot.send_photo(
         chat_id=chat_id,
         photo=personagem["image"],
-        caption="✨ Um personagem famoso apareceu!\n\nUse /capturar nome para pegar!"
+        caption=(
+            "✨ Um personagem famoso apareceu!\n\n"
+            "Use:\n"
+            "/capturar nome"
+        )
     )
-     
-    async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ===== COMANDO /spawn =====
+async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await spawn_personagem(update, context)
      
 # ==================================================
@@ -1817,6 +1810,7 @@ app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
