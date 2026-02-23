@@ -817,31 +817,27 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== SISTEMA GACHA =====
 
 
+# ================== GACHA SYSTEM ==================
+import random
+import aiohttp
+from datetime import datetime
+from telegram import Update
+from telegram.ext import ContextTypes, MessageHandler, filters, CommandHandler
+
 ANILIST_API = "https://graphql.anilist.co"
 
 # ===== CONFIG =====
-MSG_PARA_SPAWN = 75
+MSG_LIMIT = 75
 
-# ===== MEMÓRIA (por enquanto) =====
-grupos = {}
-colecao = {}
+# ===== MEMÓRIA =====
+group_data = {}  # group_id -> dict
+user_collection = {}  # user_id -> list
 
-# ===== UTIL =====
-def definir_raridade(favs: int):
-    if favs >= 100_000:
-        return "⭐️⭐️⭐️⭐️⭐️ Lendário"
-    elif favs >= 50_000:
-        return "⭐️⭐️⭐️⭐️ Épico"
-    elif favs >= 10_000:
-        return "⭐️⭐️⭐️ Raro"
-    else:
-        return "⭐️⭐️ Comum"
-
-# ===== ANIList: PERSONAGENS POPULARES =====
+# ===== ANIList: Buscar personagem popular =====
 async def buscar_personagem_popular():
     query = """
-    query {
-      Page(perPage: 50) {
+    query ($page: Int) {
+      Page(page: $page, perPage: 1) {
         characters(sort: FAVOURITES_DESC) {
           id
           name {
@@ -867,111 +863,124 @@ async def buscar_personagem_popular():
       }
     }
     """
+    page = random.randint(1, 1000)
+    variables = {"page": page}
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ANILIST_API,
-            json={"query": query},
-            timeout=aiohttp.ClientTimeout(total=10)
+            json={"query": query, "variables": variables}
         ) as resp:
             data = await resp.json()
-            return random.choice(data["data"]["Page"]["characters"])
+            chars = data["data"]["Page"]["characters"]
+            return chars[0] if chars else None
+
+# ===== RARIDADE =====
+def definir_raridade(favs: int):
+    if favs >= 100_000:
+        return "⭐️⭐️⭐️⭐️⭐️ Lendário"
+    if favs >= 50_000:
+        return "⭐️⭐️⭐️⭐️ Épico"
+    if favs >= 10_000:
+        return "⭐️⭐️⭐️ Raro"
+    return "⭐️⭐️ Comum"
 
 # ===== CONTADOR DE MENSAGENS =====
 async def contar_mensagens(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.chat:
+    if not update.effective_chat or update.effective_chat.type == "private":
         return
 
-    if update.message.chat.type not in ["group", "supergroup"]:
-        return
+    group_id = update.effective_chat.id
 
-    gid = update.message.chat.id
-
-    if gid not in grupos:
-        grupos[gid] = {
-            "contador": 0,
-            "ativo": None
+    if group_id not in group_data:
+        group_data[group_id] = {
+            "count": 0,
+            "active": None
         }
 
-    grupos[gid]["contador"] += 1
+    data = group_data[group_id]
 
-    if grupos[gid]["contador"] >= MSG_PARA_SPAWN and not grupos[gid]["ativo"]:
+    if data["active"]:
+        return
+
+    data["count"] += 1
+
+    if data["count"] >= MSG_LIMIT:
         personagem = await buscar_personagem_popular()
+        if not personagem:
+            data["count"] = 0
+            return
 
         raridade = definir_raridade(personagem["favourites"])
 
-        grupos[gid]["ativo"] = personagem
-        grupos[gid]["contador"] = 0
+        data["active"] = {
+            "id": personagem["id"],
+            "name": personagem["name"]["full"].lower(),
+            "raw_name": personagem["name"]["full"],
+            "image": personagem["image"]["large"],
+            "rarity": raridade,
+            "url": personagem["siteUrl"]
+        }
 
-        await update.message.reply_photo(
+        data["count"] = 0
+
+        await update.effective_chat.send_photo(
             photo=personagem["image"]["large"],
             caption=(
                 "✨ <b>Novo personagem apareceu!</b>\n\n"
-                f"🎭 <b>{personagem['name']['full']}</b>\n"
-                f"⭐ <b>Raridade:</b> <code>{raridade}</code>\n\n"
-                "Digite:\n"
-                f"<code>/capturar {personagem['name']['full']}</code>"
+                f"<b>Nome:</b> <code>{personagem['name']['full']}</code>\n"
+                f"<b>Raridade:</b> <code>{raridade}</code>\n\n"
+                "🎯 Para capturar:\n"
+                "<code>/capturar NomeDoPersonagem</code>"
             ),
             parse_mode="HTML"
         )
 
-# ===== CAPTURA =====
+# ===== CAPTURAR =====
 async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type not in ["group", "supergroup"]:
-        return
-
-    gid = update.message.chat.id
-    uid = update.message.from_user.id
-    username = update.message.from_user.username or update.message.from_user.first_name
-
-    if gid not in grupos or not grupos[gid]["ativo"]:
-        await update.message.reply_text("❌ Nenhum personagem ativo agora.")
+    if not update.effective_chat or update.effective_chat.type == "private":
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Use: /capturar NomeDoPersonagem")
         return
 
+    group_id = update.effective_chat.id
+    user = update.effective_user
+
+    if group_id not in group_data or not group_data[group_id]["active"]:
+        await update.message.reply_text("❌ Nenhum personagem ativo no momento.")
+        return
+
+    personagem = group_data[group_id]["active"]
     nome_digitado = " ".join(context.args).lower()
-    personagem = grupos[gid]["ativo"]
 
-    if nome_digitado != personagem["name"]["full"].lower():
-        return  # erro silencioso (evita spam)
+    if nome_digitado != personagem["name"]:
+        return
 
-    raridade = definir_raridade(personagem["favourites"])
+    user_collection.setdefault(user.id, [])
 
-    colecao.setdefault(uid, []).append({
-        "nome": personagem["name"]["full"],
+    user_collection[user.id].append({
         "id": personagem["id"],
-        "raridade": raridade,
-        "data": datetime.now().isoformat()
+        "name": personagem["raw_name"],
+        "rarity": personagem["rarity"],
+        "date": datetime.utcnow().isoformat()
     })
 
-    grupos[gid]["ativo"] = None
+    group_data[group_id]["active"] = None
 
     await update.message.reply_photo(
-        photo=personagem["image"]["large"],
+        photo=personagem["image"],
         caption=(
-            f"🎉 <b>{username} capturou {personagem['name']['full']}!</b>\n\n"
-            f"⭐ <b>Raridade:</b> <code>{raridade}</code>\n"
-            f"❤️ <b>Favoritos:</b> <code>{personagem['favourites']}</code>"
+            f"🎉 <b>{user.first_name} capturou!</b>\n\n"
+            f"<b>Personagem:</b> <code>{personagem['raw_name']}</code>\n"
+            f"<b>Raridade:</b> <code>{personagem['rarity']}</code>"
         ),
         parse_mode="HTML"
     )
 
-# ===== COLEÇÃO =====
-async def minha_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.message.from_user.id
-
-    if uid not in colecao or not colecao[uid]:
-        await update.message.reply_text("📭 Sua coleção está vazia.")
-        return
-
-    texto = "<b>🎒 Sua coleção:</b>\n\n"
-    for p in colecao[uid]:
-        texto += f"• {p['nome']} — <code>{p['raridade']}</code>\n"
-
-    await update.message.reply_html(texto)
-
+# ===== HANDLERS =====
+gacha_message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagens)
+capturar_handler = CommandHandler("capturar", capturar)
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -990,6 +999,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
