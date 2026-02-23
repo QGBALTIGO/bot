@@ -1446,6 +1446,7 @@ async def buscar_cards(anime_nome: str, page: int = 1):
           title {
             romaji
           }
+          bannerImage
           coverImage {
             large
           }
@@ -1468,7 +1469,6 @@ async def buscar_cards(anime_nome: str, page: int = 1):
       }
     }
     """
-
     variables = {
         "search": anime_nome,
         "page": page
@@ -1483,7 +1483,6 @@ async def buscar_cards(anime_nome: str, page: int = 1):
             data = await resp.json()
             media = data.get("data", {}).get("Page", {}).get("media", [])
             return media[0] if media else None
-
 
 # ==================================================
 # FORMATAR TEXTO DO CARD
@@ -1503,7 +1502,6 @@ def formatar_cards(media, page):
 
     return texto
 
-
 # ==================================================
 # TECLADO DE PAGINAÇÃO
 # ==================================================
@@ -1512,16 +1510,21 @@ def teclado_cards(anime, page, last):
 
     if page > 1:
         botoes.append(
-            InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}")
+            InlineKeyboardButton(
+                "⬅️ Anterior",
+                callback_data=f"cards:{anime}:{page-1}"
+            )
         )
 
     if page < last:
         botoes.append(
-            InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}")
+            InlineKeyboardButton(
+                "➡️ Próximo",
+                callback_data=f"cards:{anime}:{page+1}"
+            )
         )
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
-
 
 # ==================================================
 # COMANDO .cards / /cards
@@ -1531,9 +1534,9 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "📁 <b>Cards de personagens</b>\n\n"
             "Use:\n"
-            "<code>.cards Nome do Anime</code>\n\n"
+            "<code>/cards Nome do Anime</code>\n\n"
             "📌 Exemplo:\n"
-            "<code>.cards One Piece</code>"
+            "<code>/cards One Piece</code>"
         )
         return
 
@@ -1551,13 +1554,16 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = formatar_cards(media, 1)
     last = media["characters"]["pageInfo"]["lastPage"]
 
+    # 🔥 AQUI É O AJUSTE PEDIDO
+    # usa banner do anime, se não tiver cai pro cover
+    foto = media["bannerImage"] or media["coverImage"]["large"]
+
     await update.message.reply_photo(
-        photo=media["coverImage"]["large"],
+        photo=foto,
         caption=texto,
         parse_mode="HTML",
         reply_markup=teclado_cards(anime, 1, last)
     )
-
 
 # ==================================================
 # CALLBACK DA PAGINAÇÃO
@@ -1605,5 +1611,6 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.run_polling()
+
 
 
