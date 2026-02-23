@@ -37,7 +37,7 @@ async def buscar_post(canal, termo):
     return None
 
 # ===== LOGIN =====
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+sync def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
     url = (
@@ -54,7 +54,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_html(
         "🔑 <b>Login AniList</b>\n\n"
-        "Clique no botão abaixo para autorizar sua conta:",
+        "Clique no botão abaixo para autorizar:",
         reply_markup=teclado
     )
     
@@ -592,6 +592,7 @@ app.add_handler(CommandHandler("login", login))
 app.add_handler(CommandHandler("manga", manga))
 print("🤖 Bot rodando...")
 app.run_polling()
+
 
 
 
