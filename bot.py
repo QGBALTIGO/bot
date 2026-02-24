@@ -583,105 +583,6 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html("💔 Personagem removido.")
 
 # ==================================================
-# 12) /anime e /manga (busca no canal)
-# ==================================================
-async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not await checar_canal(update, context):
-        return
-    if not anti_spam(user_id):
-        await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
-        return
-
-    if not context.args:
-        await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Formato correto:</b>\n"
-            "<code>/anime nome do anime</code>\n\n"
-            "🎬 <b>Exemplo:</b>\n"
-            "<code>/anime naruto</code>"
-        )
-        return
-
-    nome = " ".join(context.args)
-
-    msg_busca = await update.message.reply_html(
-        "🔎 Buscando o anime pra você...\n"
-        "Aguarde um instante ⏳"
-    )
-
-    async with client:
-        msg_id = await buscar_post(CANAL_ANIME, nome)
-
-    if not msg_id:
-        await msg_busca.delete()
-        await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n"
-            "O anime que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
-        )
-        return
-
-    await msg_busca.delete()
-
-    keyboard = [[InlineKeyboardButton("▶️ Assistir no canal", url=f"https://t.me/{CANAL_ANIME}/{msg_id}")]]
-    await context.bot.copy_message(
-        chat_id=update.effective_chat.id,
-        from_chat_id=f"@{CANAL_ANIME}",
-        message_id=msg_id,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not await checar_canal(update, context):
-        return
-    if not anti_spam(user_id):
-        await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
-        return
-
-    if not context.args:
-        await update.message.reply_html(
-            "🚫 <b>Ops! Algo faltou.</b>\n\n"
-            "👉 <b>Formato correto:</b>\n"
-            "<code>/manga nome do mangá</code>\n\n"
-            "📚 <b>Exemplo:</b>\n"
-            "<code>/manga naruto</code>"
-        )
-        return
-
-    nome = " ".join(context.args)
-
-    msg_busca = await update.message.reply_html(
-        "📚 Buscando o mangá pra você...\n"
-        "Aguarde um instante ⏳"
-    )
-
-    async with client:
-        msg_id = await buscar_post(CANAL_MANGA, nome)
-
-    if not msg_id:
-        await msg_busca.delete()
-        await update.message.reply_html(
-            "🚫 <b>Nada por aqui…</b>\n"
-            "O mangá que você procurou não foi encontrado no canal.\n\n"
-            "✨ <i>Dica:</i> tente outro nome ou uma grafia diferente."
-        )
-        return
-
-    await msg_busca.delete()
-
-    keyboard = [[InlineKeyboardButton("📖 Ler agora", url=f"https://t.me/{CANAL_MANGA}/{msg_id}")]]
-    await context.bot.copy_message(
-        chat_id=update.effective_chat.id,
-        from_chat_id=f"@{CANAL_MANGA}",
-        message_id=msg_id,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ==================================================
 # 13) /pedido (mantive seu texto)
 # ==================================================
 COOLDOWN_PEDIDO = 12 * 60 * 60  # 12h
@@ -2215,3 +2116,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
