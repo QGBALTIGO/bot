@@ -1843,245 +1843,292 @@ async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     await query.message.reply_text("✅ Ok!")
 
-# ==================================================
-# 23) /batalha (POSTGRES) — SEMPRE NO GRUPO + FOTO
-# ==================================================
+# ===================== BATALHA RPG =====================
+
 BATTLE_PHOTO = "https://photo.chelpbot.me/AgACAgEAAxkBZpH_wWmeJej3td1ktZvlFNrVTgqI5WKZAAIlDGsbjP7wRKQwEJtuQrQ4AQADAgADeQADOgQ/photo.jpg"
 
-def _battle_pick_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    # pega até 8 primeiros personagens do user pra escolher
-    chars, total, total_pages = shop_list_user_chars(user_id, 1, 8)
+# ===== TABELA =====
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS battles (
+    chat_id INTEGER PRIMARY KEY,
+    player1_id INTEGER,
+    player2_id INTEGER,
+    player1_name TEXT,
+    player2_name TEXT,
+    player1_char TEXT,
+    player2_char TEXT,
+    player1_hp INTEGER,
+    player2_hp INTEGER,
+    turno INTEGER,
+    vez INTEGER
+)
+""")
+db.commit()
 
-    rows = []
-    for cid, cname in chars:
-        rows.append([InlineKeyboardButton(f"🧧 {cid}. {cname}", callback_data=f"battle:pick:{user_id}:{cid}")])
+# ===== TRAVA GLOBAL =====
+def usuario_em_batalha(user_id: int):
+    cursor.execute("""
+        SELECT chat_id FROM battles
+        WHERE player1_id = ? OR player2_id = ?
+    """, (user_id, user_id))
+    return cursor.fetchone()
 
-    # botão de pronto (qualquer um pode apertar, mas só inicia se ambos escolheram)
-    rows.append([InlineKeyboardButton("✅ Estou pronto", callback_data="battle:ready")])
-
-    return InlineKeyboardMarkup(rows)
-
+# ===== DESAFIAR =====
 async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user1 = update.effective_user
 
-    # só faz sentido em grupo
-    if chat.type == "private":
-        await update.message.reply_text("⚠️ Use este comando em um grupo.")
-        return
-
     if not update.message.reply_to_message:
         await update.message.reply_text(
-            "⚔️ **COMO DESAFIAR**\n\n"
-            "👉 Responda a mensagem do jogador que deseja desafiar.\n\n"
-            "_A arena aguarda sangue novo..._",
+            "**⚔️ COMO DESAFIAR**\n\n"
+            "👉 Responda a mensagem do jogador que deseja desafiar.",
             parse_mode="Markdown"
         )
         return
 
     user2 = update.message.reply_to_message.from_user
+
     if user1.id == user2.id:
         return
 
-    ensure_user_row(user1.id, user1.first_name)
-    ensure_user_row(user2.id, user2.first_name)
+    # trava batalha ativa
+    if usuario_em_batalha(user1.id) or usuario_em_batalha(user2.id):
+        await update.message.reply_text(
+            "❌ Um dos jogadores já está em uma batalha ativa."
+        )
+        return
 
-    # cria batalha no DB
-    upsert_battle(
+    cursor.execute("""
+        INSERT INTO battles
+        (chat_id, player1_id, player2_id, player1_name, player2_name,
+         player1_hp, player2_hp, turno, vez)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
         chat.id,
-        user1.id, user2.id,
-        user1.first_name, user2.first_name
-    )
+        user1.id,
+        user2.id,
+        user1.first_name,
+        user2.first_name,
+        100,
+        100,
+        1,
+        user1.id
+    ))
+    db.commit()
 
-    teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Aceitar batalha", callback_data="battle:accept")
-    ]])
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚔️ Aceitar Batalha", callback_data="battle:accept")]
+    ])
 
     await update.message.reply_photo(
         photo=BATTLE_PHOTO,
         caption=(
-            f"⚔️ <b>{user1.first_name}</b> desafiou <b>{user2.first_name}</b>!\n\n"
-            "✅ Clique para aceitar e escolher personagem."
+            f"⚔️ **DESAFIO LANÇADO!**\n\n"
+            f"🔥 **{user1.first_name}** desafiou **{user2.first_name}**!\n\n"
+            "_Aguardando resposta do oponente..._"
         ),
-        parse_mode="HTML",
-        reply_markup=teclado
+        reply_markup=keyboard,
+        parse_mode="Markdown"
     )
 
+# ===== ACEITAR =====
 async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+    query = update.callback_query
+    await query.answer()
 
-    battle = get_battle(q.message.chat.id)
-    if not battle:
-        await q.answer("Batalha não encontrada.", show_alert=True)
+    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (query.message.chat.id,))
+    batalha = cursor.fetchone()
+    if not batalha:
         return
 
-    # só o player2 pode aceitar
-    if q.from_user.id != battle["player2_id"]:
-        await q.answer("Apenas o desafiado pode aceitar.", show_alert=True)
+    _, p1_id, p2_id, p1_name, p2_name, *_ = batalha
+
+    # verifica se ambos abriram PV
+    for uid in [p1_id, p2_id]:
+        try:
+            await context.bot.send_message(uid, "🔔 Preparando batalha...")
+        except:
+            await query.edit_message_caption(
+                caption="❌ Ambos precisam abrir o PV com o bot.",
+                parse_mode="Markdown"
+            )
+            cursor.execute("DELETE FROM battles WHERE chat_id = ?", (query.message.chat.id,))
+            db.commit()
+            return
+
+    # envia PV
+    for uid in [p1_id, p2_id]:
+        await context.bot.send_message(
+            uid,
+            "**🧙 ESCOLHA SEU PERSONAGEM**\n\n"
+            "Digite:\n"
+            "`/personagem Nome do Personagem`",
+            parse_mode="Markdown"
+        )
+
+    await query.edit_message_caption(
+        caption="⚔️ **BATALHA ACEITA!**\n\n📩 Escolha enviada no privado.",
+        parse_mode="Markdown"
+    )
+
+# ===== ESCOLHER PERSONAGEM =====
+async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if not context.args:
         return
 
-    chat_id = int(battle["chat_id"])
+    nome = " ".join(context.args)
 
-    # MENSAGENS SEMPRE NO GRUPO (chat_id da batalha)
+    # verifica coleção
+    cursor.execute("""
+        SELECT 1 FROM collection
+        WHERE user_id = ? AND LOWER(nome) = LOWER(?)
+    """, (user.id, nome))
+    tem = cursor.fetchone()
+
+    if not tem:
+        await update.message.reply_text("❌ Você não possui esse personagem na coleção.")
+        return
+
+    cursor.execute("""
+        SELECT chat_id, player1_id, player2_id
+        FROM battles
+        WHERE player1_id = ? OR player2_id = ?
+    """, (user.id, user.id))
+    batalha = cursor.fetchone()
+    if not batalha:
+        return
+
+    chat_id, p1_id, p2_id = batalha
+    campo = "player1_char" if user.id == p1_id else "player2_char"
+
+    cursor.execute(f"""
+        UPDATE battles SET {campo} = ?
+        WHERE chat_id = ?
+    """, (nome, chat_id))
+    db.commit()
+
+    await update.message.reply_text(
+        f"**✅ PERSONAGEM DEFINIDO**\n\n🧬 Você lutará como **{nome}**",
+        parse_mode="Markdown"
+    )
+
+    cursor.execute("""
+        SELECT player1_char, player2_char
+        FROM battles WHERE chat_id = ?
+    """, (chat_id,))
+    c1, c2 = cursor.fetchone()
+
+    if c1 and c2:
+        await iniciar_batalha(context, chat_id)
+
+# ===== INICIAR BATALHA =====
+async def iniciar_batalha(context, chat_id):
+    cursor.execute("""
+        SELECT player1_name, player2_name, player1_char, player2_char, player1_id
+        FROM battles WHERE chat_id = ?
+    """, (chat_id,))
+    p1, p2, c1, c2, vez = cursor.fetchone()
+
+    cursor.execute("UPDATE battles SET vez = ? WHERE chat_id = ?", (vez, chat_id))
+    db.commit()
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]
+    ])
+
     await context.bot.send_photo(
         chat_id=chat_id,
         photo=BATTLE_PHOTO,
         caption=(
-            "⚔️ <b>BATALHA INICIADA!</b>\n\n"
-            "Cada jogador precisa escolher um personagem da própria coleção.\n"
-            "Use os botões abaixo."
+            "**🔥 A BATALHA COMEÇOU!**\n\n"
+            f"🧙 **{p1}** → *{c1}*\n"
+            f"🧛 **{p2}** → *{c2}*\n\n"
+            "**⚔️ TURNO 1**\n"
+            f"👉 **Vez de {p1}**"
         ),
-        parse_mode="HTML"
+        reply_markup=keyboard,
+        parse_mode="Markdown"
     )
 
-    # player1 escolhe no grupo
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=BATTLE_PHOTO,
-        caption=f"🧩 <b>{battle['player1_name']}</b>, escolha seu personagem:",
-        parse_mode="HTML",
-        reply_markup=_battle_pick_keyboard(battle["player1_id"])
-    )
-
-    # player2 escolhe no grupo
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=BATTLE_PHOTO,
-        caption=f"🧩 <b>{battle['player2_name']}</b>, escolha seu personagem:",
-        parse_mode="HTML",
-        reply_markup=_battle_pick_keyboard(battle["player2_id"])
-    )
-
+# ===== ATAQUE =====
 async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+    query = update.callback_query
+    await query.answer()
 
-    battle = get_battle(q.message.chat.id)
-    if not battle:
-        await q.answer("Batalha não encontrada.", show_alert=True)
+    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (query.message.chat.id,))
+    b = cursor.fetchone()
+    if not b:
         return
 
-    chat_id = int(battle["chat_id"])
-    data = q.data.split(":")
+    (
+        chat_id, p1_id, p2_id, p1_name, p2_name,
+        p1_char, p2_char, p1_hp, p2_hp, turno, vez
+    ) = b
 
-    # --- ATACAR ---
-    if q.data == "atacar":
-        user_id = q.from_user.id
-        vez = int(battle["vez"] or 0)
+    if query.from_user.id != vez:
+        return
 
-        # vez = 1 (player1), 2 (player2)
-        if (vez == 1 and user_id != battle["player1_id"]) or (vez == 2 and user_id != battle["player2_id"]):
-            await q.answer("Não é sua vez.", show_alert=True)
-            return
+    dano = random.randint(10, 30)
+    erro = random.randint(1, 100)
 
-        dano = random.randint(10, 25)
-
-        if vez == 1:
-            battle_damage(chat_id, target="p2", damage=dano)
-            battle_set_turn(chat_id, 2)
-            battle = get_battle(chat_id)
-
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=BATTLE_PHOTO,
-                caption=(
-                    f"⚔️ <b>{battle['player1_name']}</b> atacou e deu <b>{dano}</b> de dano!\n"
-                    f"❤️ HP <b>{battle['player2_name']}</b>: <b>{battle['player2_hp']}</b>"
-                ),
-                parse_mode="HTML"
-            )
+    if erro <= 20:
+        resultado = "**❌ O ATAQUE ERROU!**"
+    else:
+        if vez == p1_id:
+            p2_hp -= dano
+            resultado = f"**💥 {p1_name} causou {dano} de dano!**"
+            vez = p2_id
         else:
-            battle_damage(chat_id, target="p1", damage=dano)
-            battle_set_turn(chat_id, 1)
-            battle = get_battle(chat_id)
+            p1_hp -= dano
+            resultado = f"**💥 {p2_name} causou {dano} de dano!**"
+            vez = p1_id
 
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=BATTLE_PHOTO,
-                caption=(
-                    f"⚔️ <b>{battle['player2_name']}</b> atacou e deu <b>{dano}</b> de dano!\n"
-                    f"❤️ HP <b>{battle['player1_name']}</b>: <b>{battle['player1_hp']}</b>"
-                ),
-                parse_mode="HTML"
-            )
+    turno += 1
 
-        # fim?
-        if int(battle["player1_hp"]) <= 0 or int(battle["player2_hp"]) <= 0:
-            winner = battle["player1_name"] if int(battle["player1_hp"]) > 0 else battle["player2_name"]
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=BATTLE_PHOTO,
-                caption=f"🏆 <b>{winner}</b> venceu a batalha!",
-                parse_mode="HTML"
-            )
-            delete_battle(chat_id)
+    if p1_hp <= 0 or p2_hp <= 0:
+        vencedor = p1_name if p1_hp > 0 else p2_name
 
-        return
-
-    # --- ESCOLHER PERSONAGEM ---
-    # callback: battle:pick:USERID:CHARID
-    if len(data) == 4 and data[0] == "battle" and data[1] == "pick":
-        pick_user_id = int(data[2])
-        char_id = int(data[3])
-
-        # só o dono do botão pode escolher
-        if q.from_user.id != pick_user_id:
-            await q.answer("Esse menu não é seu.", show_alert=True)
-            return
-
-        # regra: só pode escolher personagem que o usuário tem na coleção
-        if not user_has_character(pick_user_id, char_id):
-            await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
-            return
-
-        # salva char no DB
-        battle_set_char(chat_id, pick_user_id, str(char_id))
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ <b>{q.from_user.first_name}</b> escolheu o personagem <code>{char_id}</code>!",
-            parse_mode="HTML"
-        )
-        return
-
-    # --- READY ---
-    if q.data == "battle:ready":
-        battle = get_battle(chat_id)
-        if not battle:
-            return
-
-        if not battle["player1_char"] or not battle["player2_char"]:
-            await q.answer("Ainda falta alguém escolher personagem.", show_alert=True)
-            return
-
-        # inicia hp e vez
-        upsert_battle(
-            chat_id,
-            battle["player1_id"], battle["player2_id"],
-            battle["player1_name"], battle["player2_name"],
-            player1_char=battle["player1_char"],
-            player2_char=battle["player2_char"],
-            player1_hp=100,
-            player2_hp=100,
-            vez=1
-        )
-
-        teclado = InlineKeyboardMarkup([[InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]])
-
-        await context.bot.send_photo(
-            chat_id=chat_id,
-            photo=BATTLE_PHOTO,
+        await query.edit_message_caption(
             caption=(
-                "⚔️ <b>BATALHA PRONTA!</b>\n\n"
-                f"🧧 <b>{battle['player1_name']}</b> escolheu: <code>{battle['player1_char']}</code>\n"
-                f"🧧 <b>{battle['player2_name']}</b> escolheu: <code>{battle['player2_char']}</code>\n\n"
-                "🎮 Começa o Player 1! Clique em <b>Atacar</b>."
+                f"🏆 **FIM DA BATALHA!**\n\n"
+                f"👑 **Vencedor:** {vencedor}\n\n"
+                f"🧙 {p1_name} ({p1_char}) — {max(p1_hp,0)} HP\n"
+                f"🧛 {p2_name} ({p2_char}) — {max(p2_hp,0)} HP\n\n"
+                f"🔢 Turnos: {turno}"
             ),
-            parse_mode="HTML",
-            reply_markup=teclado
+            parse_mode="Markdown"
         )
+
+        cursor.execute("DELETE FROM battles WHERE chat_id = ?", (chat_id,))
+        db.commit()
         return
+
+    cursor.execute("""
+        UPDATE battles
+        SET player1_hp=?, player2_hp=?, turno=?, vez=?
+        WHERE chat_id=?
+    """, (p1_hp, p2_hp, turno, vez, chat_id))
+    db.commit()
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]
+    ])
+
+    prox = p1_name if vez == p1_id else p2_name
+
+    await query.edit_message_caption(
+        caption=(
+            f"{resultado}\n\n"
+            f"❤️ {p1_name}: {p1_hp} HP\n"
+            f"❤️ {p2_name}: {p2_hp} HP\n\n"
+            f"**🔄 TURNO {turno}**\n"
+            f"👉 **Vez de {prox}**"
+        ),
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
 
 # ==================================================
 # 24) /personagem (placeholder simples)
@@ -2151,6 +2198,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
