@@ -2276,7 +2276,7 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(
         f"{resultado}\n\n"
-        f"❤️ {p1_name}: {p1_hp} HP\n"
+        f"❤️ {p1_name}: {p1_h} HP\n"
         f"❤️ {p2_name}: {p2_hp} HP\n\n"
         f"**🔄 TURNO {turno}**\n"
         f"👉 **Vez de {prox}**",
@@ -2320,3 +2320,4 @@ app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:ac
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 app.run_polling()
+
