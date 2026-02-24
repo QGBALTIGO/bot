@@ -83,61 +83,39 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 
 COMANDOS_POR_NIVEL = 100
 
-def get_user_db(user_id: int, first_name: str):
+  File "/app/.venv/lib/python3.11/site-packages/telegram/ext/_application.py", line 1234, in process_update
+    await coroutine
+  File "/app/.venv/lib/python3.11/site-packages/telegram/ext/_basehandler.py", line 157, in handle_update
+    return await self.callback(update, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/bot.py", line 1347, in start
+    await update.message.reply_html(
+  File "/app/.venv/lib/python3.11/site-packages/telegram/_message.py", line 1278, in reply_html
+    return await self.get_bot().send_message(
+No error handlers are registered, logging exception.
+
+        async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await registrar_comando(update)
+
     cursor.execute(
-        """
-        SELECT user_id, nick, fav_name, fav_image, commands, level
-        FROM users
-        WHERE user_id = %s
-        """,
-        (user_id,)
+        "SELECT nick, commands, level FROM users WHERE user_id=%s",
+        (update.effective_user.id,)
     )
     user = cursor.fetchone()
 
     if not user:
-        cursor.execute(
-            """
-            INSERT INTO users (user_id, nick, commands, level)
-            VALUES (%s, %s, 0, 1)
-            """,
-            (user_id, first_name)
-        )
+        await update.message.reply_text("❌ Usuário não encontrado.")
+        return
 
-        return {
-            "user_id": user_id,
-            "nick": first_name,
-            "fav_name": None,
-            "fav_image": None,
-            "commands": 0,
-            "level": 1
-        }
+    nick, commands, level = user
+    faltam = max((level * COMANDOS_POR_NIVEL) - commands, 0)
 
-    return user
-
-
-async def registrar_comando(update: Update):
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
-
-    user = get_user_db(user_id, first_name)
-
-    novos_comandos = user["commands"] + 1
-    novo_nivel = (novos_comandos // COMANDOS_POR_NIVEL) + 1
-
-    cursor.execute(
-        """
-        UPDATE users
-        SET commands = %s, level = %s
-        WHERE user_id = %s
-        """,
-        (novos_comandos, novo_nivel, user_id)
+    await update.message.reply_html(
+        f"⭐ <b>{nick}</b>\n"
+        f"Nível: <b>{level}</b>\n"
+        f"Comandos: <b>{commands}</b>\n"
+        f"Faltam: <b>{faltam}</b>"
     )
-
-    if novo_nivel > user["level"] and update.message:
-        await update.message.reply_html(
-            f"🎉 <b>LEVEL UP!</b>\n\n"
-            f"✨ {user['nick']} agora é nível <b>{novo_nivel}</b>!"
-        )
         
 # ===== LOGIN =====
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -2378,6 +2356,7 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
 
 
