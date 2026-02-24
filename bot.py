@@ -267,9 +267,6 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== /COLECAO =====
-# ===== /COLECAO =====
-ITEMS_POR_PAGINA = 10
-
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await enviar_colecao(update, context, update.effective_user.id, page=1)
 
@@ -1978,6 +1975,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
