@@ -1853,7 +1853,7 @@ async def enviar_colecao(update, context, page):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITENS_POR_PAGINA + 1
 
-    texto = f"📚 *{nome}*\n📖 | *{page}/{total_paginas}*\n\n"
+    texto = f"📚 *{nome}*\n\n📖 | *{page}/{total_paginas}*\n\n"
     for cid, nomep in personagens:
         texto += f"🧧 `{cid}.` {nomep}\n"
 
@@ -2235,6 +2235,7 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 
 app.run_polling()
+
 
 
 
