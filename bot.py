@@ -583,20 +583,23 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     user = cursor.fetchone()
 
-    titulo = "👤 | <i>Admin</i>" if is_admin(update.effective_user.id) else "👤 | <i>User</i>"
+    if not user:
+        await update.message.reply_html("❌ Perfil não encontrado.")
+        return
 
+    nick, level, fav_name, fav_image = user
+
+    titulo = "👤 | <i>Admin</i>" if is_admin(update.effective_user.id) else "👤 | <i>User</i>"
     texto = (
         "🎴 <b>PERFIL</b>\n\n"
-        f"{titulo}: <b>{user['nick']}</b>\n"
-        f"⭐ Nível: <b>{user['level']}</b>\n\n"
+        f"{titulo}: <b>{nick}</b>\n"
+        f"⭐ Nível: <b>{level}</b>\n\n"
         "❤️ Favorito:\n"
-        f"{user['fav_name'] or '— Nenhum'}"
+        f"{fav_name or '— Nenhum'}"
     )
 
-    foto = get_admin_photo(update.effective_user.id) or user["fav_image"]
-
-    if foto:
-        await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
+    if fav_image:
+        await update.message.reply_photo(photo=fav_image, caption=texto, parse_mode="HTML")
     else:
         await update.message.reply_html(texto)
 
@@ -2330,6 +2333,7 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
 
 
