@@ -205,7 +205,7 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Use: /capturar nome")
         return
 
-    nome_digitado = " ".join(context.args).lower()
+    nome_digitado = " ".join(context.args).lower().strip()
 
     # Busca spawn ativo
     cursor.execute(
@@ -215,23 +215,23 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     spawn = cursor.fetchone()
 
     if not spawn:
-        await update.message.reply_text("❌ Não há personagem para capturar agora.")
+        await update.message.reply_text("❌ Não há personagem ativo agora.")
         return
 
     char_id, char_name, image, expires_at = spawn
 
-    # Verifica expiração
+    # Expiração
     if time.time() > expires_at:
         cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
         db.commit()
         await update.message.reply_text("⌛ O personagem fugiu!")
         return
 
-    # Confere nome (parcial)
+    # ❌ Errou o nome → não faz nada (igual bots famosos)
     if nome_digitado not in char_name.lower():
-        return  # errou, não responde nada (igual bots famosos)
+        return
 
-    # ===== CAPTURA =====
+    # ✅ ACERTOU → GANHA O PERSONAGEM
     cursor.execute("""
         INSERT INTO user_collection
         (user_id, character_id, character_name, image, captured_at)
@@ -244,14 +244,18 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         int(time.time())
     ))
 
-    # Remove spawn
-    cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
+    # Remove spawn imediatamente
+    cursor.execute(
+        "DELETE FROM active_spawns WHERE chat_id = ?",
+        (chat_id,)
+    )
 
     db.commit()
 
     # XP / LEVEL
     adicionar_xp(user_id)
 
+    # Mensagem de vitória
     await update.message.reply_text(
         f"🏆 {user.mention_html()} capturou <b>{char_name}</b>!",
         parse_mode="HTML"
@@ -1889,6 +1893,7 @@ app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("capturar", capturar_command))
 app.run_polling()
+
 
 
 
