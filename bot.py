@@ -2297,6 +2297,7 @@ app.add_handler(CommandHandler("emalta", emalta))
 app.add_handler(CallbackQueryHandler(callback_emalta, pattern="^emalta:"))
 app.add_handler(CallbackQueryHandler(callback_info_perso, pattern="^info_perso:"))
 app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
+app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
 app.add_handler(CommandHandler("pedido", pedido))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
@@ -2320,3 +2321,4 @@ app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:ac
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 app.run_polling()
+
