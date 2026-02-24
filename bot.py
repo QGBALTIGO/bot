@@ -1721,8 +1721,8 @@ import random
 import asyncio
 import aiohttp
 
-COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
-MAX_ROLLS_DIA = 6
+COOLDOWN_DADO = 2 * 60 * 60  # 2 horas (7200 segundos)
+MAX_ROLLS_DIA = 12
 ITENS_POR_PAGINA = 10
 
 # ================= BUSCAR PERSONAGEM =================
@@ -1786,12 +1786,12 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     numero = dice.dice.value
 
     raridades = {
-        1: (400, 500, "💀 *Ruim*"),
-        2: (250, 400, "😐 *Fraco*"),
-        3: (150, 250, "⭐ *Médio*"),
-        4: (80, 150, "🔥 *Forte*"),
-        5: (20, 80, "💎 *Raro*"),
-        6: (1, 20, "👑 *Lendário*")
+        1: (700, 1000, "💀 *Ruim*"),
+    2: (500, 699, "😐 *Fraco*"),
+    3: (300, 499, "⭐ *Médio*"),
+    4: (150, 299, "🔥 *Forte*"),
+    5: (50, 149, "💎 *Raro*"),
+    6: (1, 49, "👑 *Lendário*")
     }
 
     page_min, page_max, raridade = raridades[numero]
@@ -2554,6 +2554,7 @@ app.add_handler(CallbackQueryHandler(callback_confirmar_venda, pattern="^sell_co
 app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
 app.run_polling()
+
 
 
 
