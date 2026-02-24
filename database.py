@@ -1,67 +1,48 @@
-import os
-import mysql.connector
+db = sqlite3.connect("bot.db", check_same_thread=False)
+cursor = db.cursor()
 
 # =========================
-# CONEXÃO
-# =========================
-db = mysql.connector.connect(
-    host=os.getenv("DB_HOST"),
-    port=int(os.getenv("DB_PORT")),
-    user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    database=os.getenv("DB_NAME"),
-    autocommit=True
-)
-
-cursor = db.cursor(dictionary=True)
-
-# =========================
-# CRIAR TABELAS (AUTO)
+# USUÁRIOS
 # =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT NOT NULL UNIQUE,
-    nick VARCHAR(255),
-    fav_name VARCHAR(255),
+    telegram_id INTEGER PRIMARY KEY,
+    nick TEXT,
+    collection_name TEXT,
+    fav_name TEXT,
     fav_image TEXT,
-    commands INT DEFAULT 0,
-    level INT DEFAULT 1
+    commands INTEGER DEFAULT 0,
+    last_pedido INTEGER DEFAULT 0
 )
 """)
 
 # =========================
-# USUÁRIO
+# LEVEL / XP
 # =========================
-def get_user(user_id: int, first_name: str):
-    cursor.execute(
-        "SELECT * FROM users WHERE user_id = %s",
-        (user_id,)
-    )
-    user = cursor.fetchone()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_levels (
+    user_id INTEGER PRIMARY KEY,
+@@ -46,7 +51,9 @@ def adicionar_xp(user_id: int):
 
-    if not user:
-        cursor.execute(
-            "INSERT INTO users (user_id, nick) VALUES (%s, %s)",
-            (user_id, first_name)
-        )
-
-        cursor.execute(
-            "SELECT * FROM users WHERE user_id = %s",
-            (user_id,)
-        )
-        user = cursor.fetchone()
-
-    return user
+    db.commit()
 
 # =========================
-# COMANDOS / NÍVEL
+# SPAWN ATIVO
 # =========================
-def add_command(user_id: int):
-    cursor.execute("""
-        UPDATE users
-        SET 
-            commands = commands + 1,
-            level = FLOOR(commands / 100) + 1
-        WHERE user_id = %s
-    """, (user_id,))
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS active_spawns (
+    chat_id INTEGER PRIMARY KEY,
+@@ -57,7 +64,9 @@ def adicionar_xp(user_id: int):
+)
+""")
+
+# =========================
+# COLEÇÃO
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_collection (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+@@ -70,7 +79,3 @@ def adicionar_xp(user_id: int):
+""")
+
+db.commit()
