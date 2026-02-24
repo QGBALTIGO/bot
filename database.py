@@ -53,4 +53,17 @@ CREATE TABLE IF NOT EXISTS user_levels (
 )
 """)
 
+
+# ================= TABELA DE TROCAS =================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS trades (
+    trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_user INTEGER,
+    to_user INTEGER,
+    from_character_id INTEGER,
+    to_character_id INTEGER,
+    status TEXT DEFAULT 'pendente'
+)
+""")
 db.commit()
+
