@@ -1695,42 +1695,11 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_cards(anime, page, last)
     )
 
-MAX_ROLLS_DIA = 6
+# ================= CONFIG =================
+COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
+ITENS_POR_PAGINA = 10
 
-async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    hoje = datetime.date.today().isoformat()
-
-    # ===== VERIFICA LIMITE DIÁRIO =====
-    cursor.execute(
-        "SELECT rolls FROM daily_dice WHERE user_id=? AND date=?",
-        (user_id, hoje)
-    )
-    row = cursor.fetchone()
-
-    if row and row[0] >= MAX_ROLLS_DIA:
-        await update.message.reply_text(
-            "⛔ Você já usou suas **6 rolagens de hoje**.\n\n"
-            "🕛 Tente novamente amanhã!"
-        )
-        return
-
-    if not row:
-        cursor.execute(
-            "INSERT INTO daily_dice (user_id, date, rolls) VALUES (?, ?, 0)",
-            (user_id, hoje)
-        )
-
-    cursor.execute(
-        "UPDATE daily_dice SET rolls = rolls + 1 WHERE user_id=? AND date=?",
-        (user_id, hoje)
-    )
-    db.commit()
-
-    # ===== DADO REAL DO TELEGRAM =====
- COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
-
+# ================= DADO / PERSONAGEM =================
 async def buscar_personagem_por_popularidade(page_min, page_max):
     query = """
     query ($page: Int) {
@@ -1752,20 +1721,21 @@ async def buscar_personagem_por_popularidade(page_min, page_max):
             data = await resp.json()
             return data["data"]["Page"]["characters"][0]
 
+# ================= COMANDO DADO =================
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     agora = int(time.time())
 
     cursor.execute(
-        "SELECT last_dado, coins FROM users WHERE user_id = ?",
+        "SELECT last_dado, coins FROM users WHERE user_id=?",
         (user_id,)
     )
     row = cursor.fetchone()
 
     if not row:
         cursor.execute(
-            "INSERT INTO users (user_id, nick) VALUES (?, ?)",
+            "INSERT INTO users (user_id, nick, coins, last_dado) VALUES (?, ?, 0, 0)",
             (user_id, update.effective_user.first_name)
         )
         db.commit()
@@ -1842,10 +1812,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-   from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-ITENS_POR_PAGINA = 10
-
+# ================= COLEÇÃO =================
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await enviar_colecao(update, context, 1)
 
@@ -1880,11 +1847,7 @@ async def enviar_colecao(update, context, page):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITENS_POR_PAGINA + 1
 
-    texto = (
-        f"📚 *{nome_colecao}*\n"
-        f"📖 | *{page}/{total_paginas}*\n\n"
-    )
-
+    texto = f"📚 *{nome_colecao}*\n📖 | *{page}/{total_paginas}*\n\n"
     for cid, nome in personagens:
         texto += f"🧧 `{cid}.` {nome}\n"
 
@@ -1906,7 +1869,8 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     page = int(query.data.split(":")[1])
     await enviar_colecao(query, context, page)
 
-sync def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= NOME DA COLEÇÃO =================
+async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "Use: `/nomecolecao Nome da Coleção`",
@@ -1921,7 +1885,10 @@ sync def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     db.commit()
 
-    await update.message.reply_text(f"📚 Coleção renomeada para *{nome}*", parse_mode="Markdown")
+    await update.message.reply_text(
+        f"📚 Coleção renomeada para *{nome}*",
+        parse_mode="Markdown"
+    )
     
 # ================= IMPORTS =================
 import random
@@ -2264,6 +2231,7 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 
 app.run_polling()
+
 
 
 
