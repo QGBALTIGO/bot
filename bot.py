@@ -2291,11 +2291,12 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("batalha", batalha_command))
-app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
-app.add_handler(CallbackQueryHandler(batalha_recusar_callback, pattern="battle:deny"))
 app.add_handler(CommandHandler("personagem", personagem_command))
+app.add_handler(CallbackQueryHandler(batalha_aceitar, pattern="battle:accept"))
+app.add_handler(CallbackQueryHandler(batalha_recusar, pattern="battle:deny"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="battle:attack"))
 app.run_polling()
+
 
 
 
