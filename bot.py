@@ -398,6 +398,8 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ensure_user_row(update.effective_user.id, update.effective_user.first_name)
 
+
+
     # 1) decidir qual perfil mostrar:
     # - se tiver argumento: /perfil nick
     # - se não: seu próprio perfil
@@ -438,8 +440,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if private_on and user_id != update.effective_user.id:
         texto = (
-           "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{row['nick']}</b>\n\n"
+            f" | User: {nick}\n\n"
             "🔐 | <b>Private Profile!</b>\n\n"
             "❤️ <b>Favorite:</b>\n"
         )
@@ -464,11 +465,11 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome_colecao = alvo_row.get("collection_name") or "Minha Coleção"
 
     texto = (
-         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{row['nick']}</b>\n\n"
+        f" | User: {nick}\n\n"
+
         f"📚 | <i>Coleção</i>: <b>{total_colecao}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{int(row['level'] or 1)}</b>\n\n"
+        f"⭐ | <i>Nível</i>: <b>{level}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
 
@@ -485,68 +486,35 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_html(texto)
 
-async def callback_privado_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
 
-    # privado:set:on | privado:set:off
-    _, _, opt = q.data.split(":")
+    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
 
-    user_id = q.from_user.id
-    ensure_user_row(user_id, q.from_user.first_name)
+    if not context.args:
+        await update.message.reply_html(
+            "🔐 <b>PERFIL PRIVADO</b>\n\n"
+            "Ative para esconder suas infos (os outros só veem “Private Profile” + favorito).\n\n"
+            "✅ <b>Como usar:</b>\n"
+            "<code>/privado on</code>\n"
+            "<code>/privado off</code>"
+        )
+        return
 
-    from database import set_private_profile
-    set_private_profile(user_id, opt == "on")
-
-    if opt == "on":
-        msg = "🔐 <b>Perfil privado ativado!</b>\n\nAgora seu perfil ficará oculto para todos."
-    else:
-        msg = "🔓 <b>Perfil privado desativado!</b>\n\nAgora seu perfil fica público novamente."
-
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔐 ON", callback_data="privado:set:on"),
-            InlineKeyboardButton("🔓 OFF", callback_data="privado:set:off"),
-        ]
-    ])
-
-    await q.message.edit_text(msg, parse_mode="HTML", reply_markup=kb)
-
-# ==================================================
-# Callback dos botões do /privado (ON/OFF)
-# ==================================================
-async def callback_privado_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    # privado:set:on | privado:set:off
-    parts = q.data.split(":")
-    opt = parts[2]  # on/off
-
-    user_id = q.from_user.id
-    ensure_user_row(user_id, q.from_user.first_name)
+    opt = context.args[0].lower()
+    if opt not in ("on", "off"):
+        await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
+        return
 
     from database import set_private_profile
-    set_private_profile(user_id, opt == "on")
+    set_private_profile(update.effective_user.id, opt == "on")
 
     if opt == "on":
-        msg = "🔐 <b>Perfil privado ativado!</b>\n\nAgora seu perfil ficará oculto para todos."
+        await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
     else:
-        msg = "🔓 <b>Perfil privado desativado!</b>\n\nAgora seu perfil fica público novamente."
-
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔐 ON", callback_data="privado:set:on"),
-            InlineKeyboardButton("🔓 OFF", callback_data="privado:set:off"),
-        ]
-    ])
-
-    # tenta editar a própria mensagem (quando possível)
-    try:
-        await q.message.edit_text(msg, parse_mode="HTML", reply_markup=kb)
-    except:
-        # se a mensagem original era foto/caption, não dá pra edit_text
-        await q.message.reply_html(msg, reply_markup=kb)
+        await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
 
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -2104,7 +2072,6 @@ def main():
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("privado", privado))
-    app.add_handler(CallbackQueryHandler(callback_privado_set, pattern="^privado:set:"))
     app.add_handler(CommandHandler("adminfoto", adminfoto))
     app.add_handler(CommandHandler("favoritar", favoritar))
     app.add_handler(CommandHandler("desfavoritar", desfavoritar))
@@ -2130,11 +2097,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
