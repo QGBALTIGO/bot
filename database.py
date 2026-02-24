@@ -2,7 +2,7 @@ import os
 import mysql.connector
 
 # ===============================
-# CONEXÃO COM O MYSQL (RAILWAY)
+# CONEXÃO COM MYSQL (RAILWAY)
 # ===============================
 db = mysql.connector.connect(
     host=os.getenv("DB_HOST"),
@@ -10,13 +10,13 @@ db = mysql.connector.connect(
     user=os.getenv("DB_USER"),
     password=os.getenv("DB_PASSWORD"),
     database=os.getenv("DB_NAME"),
-    autocommit=True  # 🔒 garante que não perca dados
+    autocommit=True
 )
 
 cursor = db.cursor(dictionary=True)
 
 # ===============================
-# TABELA DE USUÁRIOS
+# TABELA USERS (SEM ÍNDICES AQUI)
 # ===============================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
@@ -31,14 +31,9 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 
 # ===============================
-# FUNÇÕES UTILITÁRIAS
+# FUNÇÕES
 # ===============================
-
 def get_user(user_id: int, first_name: str):
-    """
-    Busca o usuário.
-    Se não existir, cria automaticamente.
-    """
     cursor.execute(
         "SELECT * FROM users WHERE user_id = %s",
         (user_id,)
@@ -60,14 +55,10 @@ def get_user(user_id: int, first_name: str):
     return user
 
 
-def add_command_and_level(user_id: int):
-    """
-    Soma 1 comando e recalcula o nível.
-    """
+def add_command(user_id: int):
     cursor.execute("""
         UPDATE users
-        SET
-            commands = commands + 1,
+        SET commands = commands + 1,
             level = FLOOR(commands / 100) + 1
         WHERE user_id = %s
     """, (user_id,))
