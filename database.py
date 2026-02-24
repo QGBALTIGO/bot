@@ -3,11 +3,14 @@ import sqlite3
 db = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = db.cursor()
 
-# ===== USUÁRIOS =====
+# =========================
+# USUÁRIOS
+# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     telegram_id INTEGER PRIMARY KEY,
     nick TEXT,
+    collection_name TEXT,
     fav_name TEXT,
     fav_image TEXT,
     commands INTEGER DEFAULT 0,
@@ -15,7 +18,9 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
-# ===== LEVEL / XP =====
+# =========================
+# LEVEL / XP
+# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS user_levels (
     user_id INTEGER PRIMARY KEY,
@@ -46,7 +51,9 @@ def adicionar_xp(user_id: int):
 
     db.commit()
 
-# ===== SPAWN ATIVO =====
+# =========================
+# SPAWN ATIVO
+# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS active_spawns (
     chat_id INTEGER PRIMARY KEY,
@@ -57,7 +64,9 @@ CREATE TABLE IF NOT EXISTS active_spawns (
 )
 """)
 
-# ===== COLEÇÃO =====
+# =========================
+# COLEÇÃO
+# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS user_collection (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,8 +78,4 @@ CREATE TABLE IF NOT EXISTS user_collection (
 )
 """)
 
-db.commit()
-
-cursor.execute("ALTER TABLE users ADD COLUMN collection_name TEXT")
-cursor.execute("ALTER TABLE users ADD COLUMN fav_image TEXT")
 db.commit()
