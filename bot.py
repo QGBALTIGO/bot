@@ -1913,6 +1913,109 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📚 Coleção renomeada para *{nome}*",
         parse_mode="Markdown"
     )
+
+# ================= TROCAS =================
+async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 3:
+        await update.message.reply_text(
+            "Use:\n`/trocar @usuario SEU_ID ID_DELE`",
+            parse_mode="Markdown"
+        )
+        return
+
+    from_user = update.effective_user.id
+    to_username = context.args[0].replace("@", "")
+    from_char = int(context.args[1])
+    to_char = int(context.args[2])
+
+    # pega user_id pelo username
+    cursor.execute(
+        "SELECT user_id FROM users WHERE nick = ?",
+        (to_username,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        await update.message.reply_text("❌ Usuário não encontrado.")
+        return
+    to_user = row[0]
+
+    # verifica posse dos personagens
+    cursor.execute(
+        "SELECT 1 FROM user_collection WHERE user_id=? AND character_id=?",
+        (from_user, from_char)
+    )
+    if not cursor.fetchone():
+        await update.message.reply_text("❌ Esse personagem não é seu.")
+        return
+
+    cursor.execute(
+        "SELECT 1 FROM user_collection WHERE user_id=? AND character_id=?",
+        (to_user, to_char)
+    )
+    if not cursor.fetchone():
+        await update.message.reply_text("❌ O outro usuário não possui esse personagem.")
+        return
+
+    cursor.execute("""
+        INSERT INTO trades
+        (from_user, to_user, from_character_id, to_character_id)
+        VALUES (?, ?, ?, ?)
+    """, (from_user, to_user, from_char, to_char))
+    db.commit()
+
+    await update.message.reply_text(
+        "🔁 Pedido de troca enviado!\n\n"
+        "O outro usuário pode usar:\n"
+        "`/aceitar_troca` ou `/recusar_troca`",
+        parse_mode="Markdown"
+    )
+
+async def aceitar_troca(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    cursor.execute("""
+        SELECT trade_id, from_user, from_character_id, to_character_id
+        FROM trades
+        WHERE to_user=? AND status='pendente'
+        ORDER BY trade_id DESC LIMIT 1
+    """, (user_id,))
+    trade = cursor.fetchone()
+
+    if not trade:
+        await update.message.reply_text("❌ Nenhuma troca pendente.")
+        return
+
+    trade_id, from_user, from_char, to_char = trade
+
+    # troca os personagens
+    cursor.execute(
+        "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
+        (user_id, from_user, from_char)
+    )
+    cursor.execute(
+        "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
+        (from_user, user_id, to_char)
+    )
+
+    cursor.execute(
+        "UPDATE trades SET status='aceita' WHERE trade_id=?",
+        (trade_id,)
+    )
+    db.commit()
+
+    await update.message.reply_text("✅ Troca realizada com sucesso!")
+
+    async def recusar_troca(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    cursor.execute("""
+        UPDATE trades
+        SET status='recusada'
+        WHERE to_user=? AND status='pendente'
+    """, (user_id,))
+    db.commit()
+
+    await update.message.reply_text("❌ Troca recusada.")
     
 # ================= IMPORTS =================
 import random
@@ -2096,10 +2199,6 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         f"**✅ PERSONAGEM DEFINIDO**\n\n"
         f"🧬 Você lutará como **{nome}**",
-
-
-
-
         parse_mode="Markdown"
     )
 
@@ -2252,9 +2351,13 @@ app.add_handler(CommandHandler("batalha", batalha_command))
 app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
+app.add_handler(CommandHandler("trocar", trocar))
+app.add_handler(CommandHandler("aceitar_troca", aceitar_troca))
+app.add_handler(CommandHandler("recusar_troca", recusar_troca))
 
 
 app.run_polling()
+
 
 
 
