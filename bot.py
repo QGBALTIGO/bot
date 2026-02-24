@@ -1696,10 +1696,13 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ================= CONFIG =================
-COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
-ITENS_POR_PAGINA = 10
+import time
+import random
+import asyncio
+import aiohttp
 
-COOLDOWN_DADO = 6 * 60 * 60
+COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
+MAX_ROLLS_DIA = 6
 ITENS_POR_PAGINA = 10
 
 # ================= BUSCAR PERSONAGEM =================
@@ -2232,6 +2235,7 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 
 app.run_polling()
+
 
 
 
