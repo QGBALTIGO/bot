@@ -289,7 +289,7 @@ async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 )
         return
 
-    # Level / XP
+     Level / XP
     cursor.execute(
         "SELECT level, xp FROM user_levels WHERE user_id = ?",
         (user_id,)
@@ -300,25 +300,17 @@ async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xp = level_data[1] if level_data else 0
 
     texto = (
-        texto = (
-    "📚 *Minha Coleção*\n\n"
-    f"👤 *{user.first_name}*\n"
-)
+        f"👤 {user.first_name}\n"
+        f"🏆 Level: {level}\n"
+        f"⭐ XP: {xp}\n"
+        f"📦 Personagens: {len(personagens)}\n\n"
+    )
 
-# se existir nome da coleção
-if nome_colecao:
-    texto += f"🧾 *Coleção:* _{nome_colecao}_\n"
-
-texto += (
-    f"📖 *Página:* `{page}/{total_paginas}`\n"
-    f"📦 *Total:* `{total}` personagens\n\n"
-)
-
-for cid, nome in personagens:
-    texto += f"🧧 `{cid}.` {nome}\n"
+    for i, (nome,) in enumerate(personagens, start=1):
+        texto += f"{i}. {nome}\n"
 
     await update.message.reply_text(texto)
-    
+
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
 # ==================================================
@@ -1952,6 +1944,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
