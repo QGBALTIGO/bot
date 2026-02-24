@@ -117,49 +117,6 @@ async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if message_counter[chat_id] >= SPAWN_INTERVAL:
         message_counter[chat_id] = 0
         await spawn_personagem(update, context)
-        
-# ================= DATABASE =================
-db = sqlite3.connect("bot.db", check_same_thread=False)
-cursor = db.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    telegram_id INTEGER PRIMARY KEY,
-    collection_name TEXT,
-    fav_image TEXT
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS user_levels (
-    user_id INTEGER PRIMARY KEY,
-    xp INTEGER DEFAULT 0,
-    level INTEGER DEFAULT 1
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS active_spawns (
-    chat_id INTEGER PRIMARY KEY,
-    character_id INTEGER,
-    character_name TEXT,
-    image TEXT,
-    expires_at INTEGER
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS user_collection (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    character_id INTEGER,
-    character_name TEXT,
-    image TEXT,
-    captured_at INTEGER
-)
-""")
-
-db.commit()
 
 # ================= XP / LEVEL =================
 def adicionar_xp(user_id: int):
@@ -1996,6 +1953,7 @@ app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
