@@ -2330,6 +2330,188 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+=============================
+# /LOJA
+=============================
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import time
+
+async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    cursor.execute(
+        "SELECT coins FROM users WHERE user_id=?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    coins = row[0] if row else 0
+
+    texto = (
+        "🛒 <b>LOJA</b>\n\n"
+        f"🪙 Coins: <b>{coins}</b>\n\n"
+        "🎲 <b>Comprar 1 giro extra</b>\n"
+        "💰 Custo: <b>2 Coins</b>\n\n"
+        "📦 <b>Vender personagem</b>\n"
+        "💰 Ganha: <b>1 Coin</b>"
+    )
+
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎲 Comprar dado (2🪙)", callback_data="shop:buy_dice")],
+        [InlineKeyboardButton("📦 Vender personagem", callback_data="shop:sell")]
+    ])
+
+    await update.message.reply_text(
+        texto,
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
+=============================
+# CALLBACK DA LOJA
+=============================
+async def callback_loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    data = query.data
+
+    # =============================
+    # 🎲 COMPRAR DADO
+    # =============================
+    if data == "shop:buy_dice":
+        cursor.execute(
+            "SELECT coins FROM users WHERE user_id=?",
+            (user_id,)
+        )
+        coins = cursor.fetchone()[0]
+
+        if coins < 2:
+            await query.message.reply_text("❌ Você não tem coins suficientes.")
+            return
+
+        cursor.execute(
+            "UPDATE users SET coins = coins - 2, last_dado = 0 WHERE user_id=?",
+            (user_id,)
+        )
+        db.commit()
+
+        await query.message.reply_text(
+            "🎲 <b>Dado comprado!</b>\n\n"
+            "Você já pode girar novamente.",
+            parse_mode="HTML"
+        )
+
+    # =============================
+    # 📦 LISTAR PERSONAGENS PARA VENDA
+    # =============================
+    elif data == "shop:sell":
+        cursor.execute("""
+            SELECT character_id, character_name
+            FROM user_collection
+            WHERE user_id=?
+            LIMIT 10
+        """, (user_id,))
+        personagens = cursor.fetchall()
+
+        if not personagens:
+            await query.message.reply_text("📦 Sua coleção está vazia.")
+            return
+
+        botoes = []
+        for cid, nome in personagens:
+            botoes.append([
+                InlineKeyboardButton(
+                    f"🧧 {nome}",
+                    callback_data=f"sell_confirm:{cid}"
+                )
+            ])
+
+        await query.message.reply_text(
+            "📦 <b>Escolha um personagem para vender</b>\n"
+            "⚠️ <i>Essa ação precisa de confirmação</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(botoes)
+        )
+=============================
+# CONFIRMAÇÃO DE VENDA
+=============================
+async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    char_id = int(query.data.split(":")[1])
+
+    cursor.execute("""
+        SELECT character_name
+        FROM user_collection
+        WHERE user_id=? AND character_id=?
+    """, (user_id, char_id))
+    row = cursor.fetchone()
+
+    if not row:
+        await query.message.reply_text("❌ Personagem não encontrado.")
+        return
+
+    nome = row[0]
+
+    teclado = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Confirmar", callback_data=f"sell_yes:{char_id}"),
+            InlineKeyboardButton("❌ Cancelar", callback_data="sell_no")
+        ]
+    ])
+
+    await query.message.reply_text(
+        f"⚠️ <b>Confirmar venda?</b>\n\n"
+        f"🧧 <b>{nome}</b>\n"
+        f"💰 Você receberá <b>1 Coin</b>",
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
+=============================
+# FINALIZAR / CANCELAR VENDA
+=============================
+async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    data = query.data
+
+    if data == "sell_no":
+        await query.message.reply_text("❌ Venda cancelada.")
+        return
+
+    char_id = int(data.split(":")[1])
+
+    cursor.execute("""
+        SELECT character_name, image
+        FROM user_collection
+        WHERE user_id=? AND character_id=?
+    """, (user_id, char_id))
+    row = cursor.fetchone()
+
+    if not row:
+        await query.message.reply_text("❌ Personagem não encontrado.")
+        return
+
+    nome, image = row
+
+    cursor.execute(
+        "DELETE FROM user_collection WHERE user_id=? AND character_id=?",
+        (user_id, char_id)
+    )
+    cursor.execute(
+        "UPDATE users SET coins = coins + 1 WHERE user_id=?",
+        (user_id,)
+    )
+    db.commit()
+
+    await query.message.reply_text(
+        f"✅ <b>Venda concluída!</b>\n\n"
+        f"🧧 {nome}\n"
+        f"🪙 +1 Coin",
+        parse_mode="HTML"
+    )
+
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
@@ -2367,8 +2549,13 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.add_handler(CommandHandler("trocar", trocar))
 app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
 app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
+app.add_handler(CommandHandler("loja", loja))
+app.add_handler(CallbackQueryHandler(callback_loja, pattern="^shop:"))
+app.add_handler(CallbackQueryHandler(callback_confirmar_venda, pattern="^sell_confirm:"))
+app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
 app.run_polling()
+
 
 
 
