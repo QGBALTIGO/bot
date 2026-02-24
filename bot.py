@@ -396,18 +396,13 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await registrar_comando(update)
 
-    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
-
-
+    viewer_id = update.effective_user.id
+    ensure_user_row(viewer_id, update.effective_user.first_name)
 
     # 1) decidir qual perfil mostrar:
-    # - se tiver argumento: /perfil nick
-    # - se não: seu próprio perfil
-    alvo_row = None
-    alvo_nick = None
-
+    # - /perfil nick -> outro
+    # - /perfil -> você
     if context.args:
-        # nick único = 1 palavra
         alvo_nick = context.args[0].strip()
         from database import get_user_by_nick
         alvo_row = get_user_by_nick(alvo_nick)
@@ -421,59 +416,59 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     else:
         from database import get_user_row
-        alvo_row = get_user_row(update.effective_user.id)
+        alvo_row = get_user_row(viewer_id)
 
     # fallback
     if not alvo_row:
         await update.message.reply_text("❌ Não consegui carregar o perfil agora.")
         return
 
-    # 2) dados comuns
+    # 2) dados comuns do alvo
     user_id = int(alvo_row["user_id"])
-    nick = alvo_row["nick"] or "User"
+    nick = alvo_row.get("nick") or "User"
 
     fav_name = alvo_row.get("fav_name")
     fav_image = alvo_row.get("fav_image")
 
-    # 3) se perfil privado e quem está vendo NÃO é o dono
     private_on = bool(alvo_row.get("private_profile"))
 
-    if private_on and user_id != update.effective_user.id:
-    texto = (
-        "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{user['nick']}</b>\n\n"
+    # título (admin/user) do dono do perfil
+    titulo = "👤 | <i>Admin</i>" if is_admin(user_id) else "👤 | <i>User</i>"
+
+    # 3) perfil privado ON = SEMPRE privado (até pra você)
+    if private_on:
+        texto = (
+            "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+            f"{titulo}: <b>{nick}</b>\n\n"
             "🔐 | <b>Private Profile!</b>\n\n"
             "❤️ <b>Favorite:</b>\n"
         )
-    
+
         if fav_name:
             texto += f"🧧 1. <b>{fav_name}</b> ✨"
         else:
             texto += "— Nenhum favorito"
 
-        # mostra com foto do favorito se tiver
-        if fav_image:
-            await update.message.reply_photo(photo=fav_image, caption=texto, parse_mode="HTML")
+        foto = get_admin_photo(user_id) or fav_image
+        if foto:
+            await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
         else:
             await update.message.reply_html(texto)
         return
 
-    # 4) perfil normal (seu ou público)
+    # 4) perfil público (private OFF)
     from database import count_collection
     total_colecao = count_collection(user_id)
 
     coins = int(alvo_row.get("coins") or 0)
     level = int(alvo_row.get("level") or 1)
-    nome_colecao = alvo_row.get("collection_name") or "Minha Coleção"
-
-     titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
 
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{user['nick']}</b>\n\n"
+        f"{titulo}: <b>{nick}</b>\n\n"
         f"📚 | <i>Coleção</i>: <b>{total_colecao}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{user['level']}</b>\n\n"
+        f"⭐ | <i>Nível</i>: <b>{level}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
 
@@ -482,20 +477,20 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         texto += "— Nenhum favorito"
 
-    # foto: mantém sua lógica (admin foto > favorito > sem foto)
     foto = get_admin_photo(user_id) or fav_image
-
     if foto:
         await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
     else:
         await update.message.reply_html(texto)
+
 
 async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
     await registrar_comando(update)
 
-    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
 
     if not context.args:
         await update.message.reply_html(
@@ -513,7 +508,7 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     from database import set_private_profile
-    set_private_profile(update.effective_user.id, opt == "on")
+    set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
@@ -2156,6 +2151,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
