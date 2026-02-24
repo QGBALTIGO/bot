@@ -267,7 +267,6 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== /COLECAO =====
-# ===== /COLECAO =====
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -282,14 +281,10 @@ async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     personagens = cursor.fetchall()
 
     if not personagens:
-        await update.message.reply_text(
-    "📦 *Sua coleção está vazia*\n\n"
-    "_Capture personagens para começar sua jornada!_ ✨",
-    parse_mode="Markdown"
-)
+        await update.message.reply_text("📦 Sua coleção está vazia.")
         return
 
-     Level / XP
+    # Level / XP
     cursor.execute(
         "SELECT level, xp FROM user_levels WHERE user_id = ?",
         (user_id,)
@@ -1944,6 +1939,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
