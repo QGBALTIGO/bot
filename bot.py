@@ -2330,9 +2330,8 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-=============================
 # /LOJA
-=============================
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import time
 
@@ -2365,9 +2364,9 @@ async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=teclado
     )
-=============================
+
 # CALLBACK DA LOJA
-=============================
+
 async def callback_loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2431,9 +2430,9 @@ async def callback_loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(botoes)
         )
-=============================
+
 # CONFIRMAÇÃO DE VENDA
-=============================
+
 async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2467,9 +2466,9 @@ async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT
         parse_mode="HTML",
         reply_markup=teclado
     )
-=============================
+
 # FINALIZAR / CANCELAR VENDA
-=============================
+
 async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2555,6 +2554,7 @@ app.add_handler(CallbackQueryHandler(callback_confirmar_venda, pattern="^sell_co
 app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
 app.run_polling()
+
 
 
 
