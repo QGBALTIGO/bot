@@ -264,7 +264,7 @@ async def buscar_personagem_famoso():
 # ==================================================
 # SPAWN
 # ==================================================
-async def spawn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
     cursor.execute(
@@ -2378,6 +2378,7 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
 
 
