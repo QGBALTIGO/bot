@@ -2,20 +2,23 @@ import os
 import mysql.connector
 from urllib.parse import urlparse
 
-# pega a URL do Railway
-url = urlparse(os.getenv("DATABASE_URL"))
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL não encontrada. Verifique as variáveis no Railway.")
+
+url = urlparse(DATABASE_URL)
 
 db = mysql.connector.connect(
     host=url.hostname,
     user=url.username,
     password=url.password,
-    database=url.path[1:],  # remove a /
-    port=url.port
+    database=url.path.lstrip("/"),
+    port=url.port or 3306  # 👈 fallback de segurança
 )
 
 cursor = db.cursor(dictionary=True)
 
-# cria tabela automaticamente
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id BIGINT PRIMARY KEY,
