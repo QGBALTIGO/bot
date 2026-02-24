@@ -2071,6 +2071,7 @@ def main():
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("privado", privado))
+    app.add_handler(CallbackQueryHandler(callback_privado_set, pattern=r"^privado:set:(on|off)$"))
     app.add_handler(CommandHandler("adminfoto", adminfoto))
     app.add_handler(CommandHandler("favoritar", favoritar))
     app.add_handler(CommandHandler("desfavoritar", desfavoritar))
@@ -2096,6 +2097,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
