@@ -1937,9 +1937,9 @@ app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
-app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
