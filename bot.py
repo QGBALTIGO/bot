@@ -1909,10 +1909,85 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_cards(anime, page, last)
     )
 
+# ================= DADO DA SORTE CASSINO =================
+import asyncio
+
+async def buscar_personagem_por_popularidade(page_min, page_max):
+    query = """
+    query ($page: Int) {
+      Page(page: $page, perPage: 1) {
+        characters(sort: FAVOURITES_DESC) {
+          id
+          name { full }
+          image { large }
+        }
+      }
+    }
+    """
+
+    page = random.randint(page_min, page_max)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"page": page}},
+        ) as response:
+            data = await response.json()
+            return data["data"]["Page"]["characters"][0]
+
+
+async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await update.message.reply_text("🎲 Rolando o dado...")
+
+    # animação fake
+    for _ in range(3):
+        n_fake = random.randint(1, 6)
+        await msg.edit_text(f"🎲 Rolando o dado...\n\n`{n_fake}`")
+        await asyncio.sleep(0.7)
+
+    numero = random.randint(1, 6)
+
+    # define raridade por número
+    if numero == 1:
+        page_min, page_max = 400, 500
+        raridade = "💀 **Personagem Ruim**"
+    elif numero == 2:
+        page_min, page_max = 250, 400
+        raridade = "😐 **Personagem Fraco**"
+    elif numero == 3:
+        page_min, page_max = 150, 250
+        raridade = "⭐ **Personagem Médio**"
+    elif numero == 4:
+        page_min, page_max = 80, 150
+        raridade = "🔥 **Personagem Forte**"
+    elif numero == 5:
+        page_min, page_max = 20, 80
+        raridade = "💎 **Personagem Raro**"
+    else:  # 6
+        page_min, page_max = 1, 20
+        raridade = "👑 **Personagem Lendário**"
+
+    personagem = await buscar_personagem_por_popularidade(page_min, page_max)
+
+    # revela resultado final
+    await msg.delete()
+
+    await update.message.reply_photo(
+        photo=personagem["image"]["large"],
+        caption=(
+            f"🎲 **DADO DA SORTE**\n\n"
+            f"🎯 Número sorteado: `{numero}`\n\n"
+            f"{raridade}\n\n"
+            f"✨ **{personagem['name']['full']}**"
+        ),
+        parse_mode="Markdown"
+    )
+    
 # ===== INICIAR BOT =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("infoanime", infoanime))
+app.add_handler(CommandHandler("dado", dado_command))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CommandHandler("perso", perso))
 app.add_handler(CommandHandler("recomenda", recomenda))
@@ -1939,6 +2014,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
