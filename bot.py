@@ -440,7 +440,8 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if private_on and user_id != update.effective_user.id:
         texto = (
-            f" | User: {nick}\n\n"
+            "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+        f"{titulo}: <b>{user['nick']}</b>\n\n"
             "🔐 | <b>Private Profile!</b>\n\n"
             "❤️ <b>Favorite:</b>\n"
         )
@@ -465,11 +466,11 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome_colecao = alvo_row.get("collection_name") or "Minha Coleção"
 
     texto = (
-        f" | User: {nick}\n\n"
-
+       "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+        f"{titulo}: <b>{user['nick']}</b>\n\n"
         f"📚 | <i>Coleção</i>: <b>{total_colecao}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{level}</b>\n\n"
+        f"⭐ | <i>Nível</i>: <b>{user['level']}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
 
@@ -2097,3 +2098,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
