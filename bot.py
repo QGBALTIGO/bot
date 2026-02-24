@@ -1995,30 +1995,13 @@ from telegram.ext import (
     ContextTypes
 )
 
-# ================= DATABASE =================
+# ================================
+# 📦 DATABASE
+# ================================
+
 db = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = db.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS battles (
-    chat_id INTEGER PRIMARY KEY,
-    player1_id INTEGER,
-    player2_id INTEGER,
-    player1_name TEXT,
-    player2_name TEXT,
-    player1_char TEXT DEFAULT NULL,
-    player2_char TEXT DEFAULT NULL,
-    player1_hp INTEGER,
-    player2_hp INTEGER,
-    turno INTEGER,
-    vez INTEGER
-)
-""")
-db.commit()
-
-# ===================== BATALHA RPG =====================
-
-# ===== TABELA =====
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS battles (
     chat_id INTEGER PRIMARY KEY,
@@ -2031,216 +2014,306 @@ CREATE TABLE IF NOT EXISTS battles (
     player1_hp INTEGER,
     player2_hp INTEGER,
     turno INTEGER,
-    vez INTEGER
+    vez INTEGER,
+    status TEXT
 )
 """)
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS battle_ranking (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    title TEXT DEFAULT '🧑‍🎓 NOVATO'
+)
+""")
+
 db.commit()
 
-# ===== DESAFIAR =====
-async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    user1 = update.effective_user
+# ================================
+# 🏅 TÍTULOS
+# ================================
 
+def definir_titulo(vitorias):
+    if vitorias >= 50:
+        return "👑 LENDÁRIO"
+    elif vitorias >= 30:
+        return "🔥 IMORTAL"
+    elif vitorias >= 15:
+        return "🏆 CAMPEÃO"
+    elif vitorias >= 5:
+        return "⚔️ GUERREIRO"
+    return "🧑‍🎓 NOVATO"
+
+def registrar_vitoria(user_id, username):
+    cursor.execute("SELECT wins FROM battle_ranking WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+
+    if data:
+        wins = data[0] + 1
+        title = definir_titulo(wins)
+        cursor.execute(
+            "UPDATE battle_ranking SET wins = ?, title = ? WHERE user_id = ?",
+            (wins, title, user_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO battle_ranking (user_id, username, wins, losses, title) VALUES (?, ?, 1, 0, ?)",
+            (user_id, username, definir_titulo(1))
+        )
+    db.commit()
+
+def registrar_derrota(user_id):
+    cursor.execute("SELECT losses FROM battle_ranking WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+    if data:
+        cursor.execute(
+            "UPDATE battle_ranking SET losses = ? WHERE user_id = ?",
+            (data[0] + 1, user_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO battle_ranking (user_id, losses) VALUES (?, 1)",
+            (user_id,)
+        )
+    db.commit()
+
+# ================================
+# ⚖️ BALANCEAMENTO
+# ================================
+
+def buscar_vitorias(user_id):
+    cursor.execute("SELECT wins FROM battle_ranking WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+    return data[0] if data else 0
+
+def calcular_dano(w_atk, w_def):
+    base = random.randint(12, 25)
+    diff = w_atk - w_def
+    if diff >= 15:
+        base -= 6
+    elif diff >= 8:
+        base -= 3
+    elif diff <= -15:
+        base += 6
+    elif diff <= -8:
+        base += 3
+    return max(8, base)
+
+# ================================
+# ⚔️ /batalha
+# ================================
+
+async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "**⚔️ COMO DESAFIAR**\n\n"
-            "👉 Responda a mensagem do jogador que deseja desafiar.\n\n"
-            "_A arena aguarda sangue novo..._",
+        return await update.message.reply_text(
+            "**⚠️ Você precisa responder a mensagem da pessoa para desafiá-la.**",
             parse_mode="Markdown"
         )
-        return
 
-    user2 = update.message.reply_to_message.from_user
-    if user1.id == user2.id:
+    p1 = update.effective_user
+    p2 = update.message.reply_to_message.from_user
+    chat_id = update.effective_chat.id
+
+    if p1.id == p2.id:
         return
 
     cursor.execute("""
         INSERT OR REPLACE INTO battles
         (chat_id, player1_id, player2_id, player1_name, player2_name,
-         player1_hp, player2_hp, turno, vez)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        chat.id,
-        user1.id,
-        user2.id,
-        user1.first_name,
-        user2.first_name,
-        100,
-        100,
-        1,
-        user1.id
-    ))
+         player1_hp, player2_hp, turno, vez, status)
+        VALUES (?, ?, ?, ?, ?, 100, 100, 1, ?, 'pending')
+    """, (chat_id, p1.id, p2.id, p1.first_name, p2.first_name, p1.id))
     db.commit()
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚔️ Aceitar Batalha", callback_data="battle:accept")]
+        [
+            InlineKeyboardButton("✅ ACEITAR", callback_data="battle:accept"),
+            InlineKeyboardButton("❌ RECUSAR", callback_data="battle:deny")
+        ]
     ])
 
     await update.message.reply_text(
-        f"**⚔️ DESAFIO LANÇADO!**\n\n"
-        f"🔥 **{user1.first_name}** desafiou **{user2.first_name}**!\n\n"
-        "_Aguardando resposta do oponente..._",
+        f"""━━━━━━━━━━━━━━━━━━━━━━
+⚔️ **DESAFIO DE BATALHA** ⚔️
+━━━━━━━━━━━━━━━━━━━━━━
+🔥 **{p1.first_name} lançou um desafio mortal contra {p2.first_name}!**
+👉 **{p2.first_name}**, você aceita entrar nessa arena?
+━━━━━━━━━━━━━━━━━━━━━━""",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
 
-# ===== ACEITAR =====
-async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# ================================
+# ✅ ACEITAR / ❌ RECUSAR
+# ================================
 
-    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (query.message.chat.id,))
-    batalha = cursor.fetchone()
-    if not batalha:
+async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (q.message.chat.id,))
+    b = cursor.fetchone()
+    if not b:
         return
 
-    _, p1_id, p2_id, p1_name, p2_name, *_ = batalha
+    cursor.execute("UPDATE battles SET status = 'active' WHERE chat_id = ?", (q.message.chat.id,))
+    db.commit()
 
-    # verifica chat privado
-    for uid in [p1_id, p2_id]:
-        try:
-            await context.bot.send_message(uid, "🔔 **Preparando batalha...**", parse_mode="Markdown")
-        except:
-            await query.edit_message_text(
-                "**❌ BATALHA CANCELADA**\n\n"
-                "👉 Ambos os jogadores precisam **abrir o chat privado com o bot**.\n\n"
-                "_Clique no bot, aperte START e tente novamente._",
-                parse_mode="Markdown"
-            )
-            cursor.execute("DELETE FROM battles WHERE chat_id = ?", (query.message.chat.id,))
-            db.commit()
-            return
-
-    # envia DM pros dois
-    for uid in [p1_id, p2_id]:
-        await context.bot.send_message(
-            uid,
-            "**🧙 ESCOLHA SEU PERSONAGEM**\n\n"
-            "Digite:\n"
-            "`/personagem Nome do Personagem`\n\n"
-            "_Sua escolha definirá seu destino..._",
-            parse_mode="Markdown"
-        )
-
-    await query.edit_message_text(
-        "**⚔️ BATALHA ACEITA!**\n\n"
-        "📩 Os guerreiros receberam uma mensagem no privado.\n"
-        "_A batalha começará em instantes..._",
+    await q.edit_message_text(
+        """━━━━━━━━━━━━━━━━━━━━━━
+⚔️ **DESAFIO ACEITO!**
+━━━━━━━━━━━━━━━━━━━━━━
+📩 **IMPORTANTE**
+Abra o **chat privado do bot** agora e escolha seu personagem.
+👉 `/personagem Nome`
+━━━━━━━━━━━━━━━━━━━━━━""",
         parse_mode="Markdown"
     )
 
-# ===== ESCOLHER PERSONAGEM =====
+    for uid in (b[1], b[2]):
+        try:
+            await context.bot.send_message(
+                chat_id=uid,
+                text="🎭 **Escolha seu personagem:**\nDigite:\n`/personagem Nome`",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+async def batalha_recusar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    cursor.execute("DELETE FROM battles WHERE chat_id = ?", (q.message.chat.id,))
+    db.commit()
+    await q.edit_message_text(
+        "❌ **DESAFIO RECUSADO**\nTalvez em outra vida…",
+        parse_mode="Markdown"
+    )
+
+# ================================
+# 🎭 /personagem
+# ================================
+
 async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
     if not context.args:
         return
 
     nome = " ".join(context.args)
+    user = update.effective_user
 
     cursor.execute("""
         SELECT chat_id, player1_id, player2_id
         FROM battles
-        WHERE player1_id = ? OR player2_id = ?
+        WHERE status = 'active' AND (player1_id = ? OR player2_id = ?)
     """, (user.id, user.id))
-    batalha = cursor.fetchone()
-    if not batalha:
+    data = cursor.fetchone()
+    if not data:
         return
 
-    chat_id, p1_id, p2_id = batalha
-    campo = "player1_char" if user.id == p1_id else "player2_char"
+    chat_id, p1, p2 = data
 
-    cursor.execute(f"""
-        UPDATE battles SET {campo} = ?
-        WHERE chat_id = ?
-    """, (nome, chat_id))
+    if user.id == p1:
+        cursor.execute("UPDATE battles SET player1_char = ? WHERE chat_id = ?", (nome, chat_id))
+    else:
+        cursor.execute("UPDATE battles SET player2_char = ? WHERE chat_id = ?", (nome, chat_id))
     db.commit()
 
     await update.message.reply_text(
-        f"**✅ PERSONAGEM DEFINIDO**\n\n"
-        f"🧬 Você lutará como **{nome}**",
+        f"""━━━━━━━━━━━━━━━━━━━━━━
+🎭 **PERSONAGEM ESCOLHIDO**
+━━━━━━━━━━━━━━━━━━━━━━
+✨ **{nome}**
+⏳ Aguardando o outro combatente…
+━━━━━━━━━━━━━━━━━━━━━━""",
         parse_mode="Markdown"
     )
 
-    cursor.execute("""
-        SELECT player1_char, player2_char
-        FROM battles WHERE chat_id = ?
-    """, (chat_id,))
-    c1, c2 = cursor.fetchone()
-
-    if c1 and c2:
+    cursor.execute("SELECT player1_char, player2_char FROM battles WHERE chat_id = ?", (chat_id,))
+    if all(cursor.fetchone()):
         await iniciar_batalha(context, chat_id)
 
-# ===== INICIAR BATALHA =====
+# ================================
+# 🔥 INICIAR BATALHA
+# ================================
+
 async def iniciar_batalha(context, chat_id):
     cursor.execute("""
-        SELECT player1_name, player2_name, player1_char, player2_char, player1_id
+        SELECT player1_name, player2_name, player1_char, player2_char
         FROM battles WHERE chat_id = ?
     """, (chat_id,))
-    p1, p2, c1, c2, vez = cursor.fetchone()
-
-    cursor.execute("UPDATE battles SET vez = ? WHERE chat_id = ?", (vez, chat_id))
-    db.commit()
+    p1, p2, c1, c2 = cursor.fetchone()
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]
+        [InlineKeyboardButton("⚔️ ATACAR", callback_data="battle:attack")]
     ])
 
     await context.bot.send_message(
         chat_id=chat_id,
-        text=(
-            "**🔥 A BATALHA COMEÇOU!**\n\n"
-            f"🧙 **{p1}** → *{c1}*\n"
-            f"🧛 **{p2}** → *{c2}*\n\n"
-            "**⚔️ TURNO 1**\n"
-            f"👉 **Vez de {p1}**"
-        ),
+        text=f"""━━━━━━━━━━━━━━━━━━━━━━
+🔥 **A BATALHA COMEÇOU!**
+━━━━━━━━━━━━━━━━━━━━━━
+⚔️ **{p1} VS {p2}**
+🧙‍♂️ **{p1}**: *{c1}*
+🧙‍♂️ **{p2}**: *{c2}*
+━━━━━━━━━━━━━━━━━━━━━━
+👉 **É a vez de {p1}**
+━━━━━━━━━━━━━━━━━━━━━━""",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
 
-# ===== ATAQUE =====
-async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# ================================
+# 💥 ATAQUE
+# ================================
 
-    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (query.message.chat.id,))
+async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    cursor.execute("SELECT * FROM battles WHERE chat_id = ?", (q.message.chat.id,))
     b = cursor.fetchone()
     if not b:
         return
 
     (
         chat_id, p1_id, p2_id, p1_name, p2_name,
-        p1_char, p2_char, p1_hp, p2_hp, turno, vez
+        c1, c2, hp1, hp2, turno, vez, _
     ) = b
 
-    if query.from_user.id != vez:
+    if q.from_user.id != vez:
         return
 
-    dano = random.randint(10, 30)
-    erro = random.randint(1, 100)
+    atk_w = buscar_vitorias(vez)
+    def_id = p2_id if vez == p1_id else p1_id
+    def_w = buscar_vitorias(def_id)
+    dano = calcular_dano(atk_w, def_w)
 
-    if erro <= 20:
-        resultado = "**❌ O ATAQUE ERROU!**"
+    if vez == p1_id:
+        hp2 -= dano
+        vez = p2_id
+        atacante = p1_name
     else:
-        if vez == p1_id:
-            p2_hp -= dano
-            resultado = f"**💥 {p1_name} atacou causando {dano} de dano!**"
-            vez = p2_id
-        else:
-            p1_hp -= dano
-            resultado = f"**💥 {p2_name} atacou causando {dano} de dano!**"
-            vez = p1_id
+        hp1 -= dano
+        vez = p1_id
+        atacante = p2_name
 
     turno += 1
 
-    if p1_hp <= 0 or p2_hp <= 0:
-        vencedor = p1_name if p1_hp > 0 else p2_name
-        await query.edit_message_text(
-            f"**🏆 FIM DA BATALHA!**\n\n"
-            f"👑 **Vencedor:** {vencedor}\n\n"
-            f"🧙 {p1_name} ({p1_char}) — {max(p1_hp,0)} HP\n"
-            f"🧛 {p2_name} ({p2_char}) — {max(p2_hp,0)} HP\n\n"
-            f"🔢 Turnos: {turno}",
+    if hp1 <= 0 or hp2 <= 0:
+        vencedor = p1_name if hp1 > 0 else p2_name
+        registrar_vitoria(p1_id if hp1 > 0 else p2_id, vencedor)
+        registrar_derrota(p2_id if hp1 > 0 else p1_id)
+
+        await q.edit_message_text(
+            f"""━━━━━━━━━━━━━━━━━━━━━━
+🏆 **FIM DO DUELO**
+━━━━━━━━━━━━━━━━━━━━━━
+👑 **VENCEDOR:** **{vencedor}**
+━━━━━━━━━━━━━━━━━━━━━━
+✨ *Uma batalha digna de lendas…*
+━━━━━━━━━━━━━━━━━━━━━━""",
             parse_mode="Markdown"
         )
         cursor.execute("DELETE FROM battles WHERE chat_id = ?", (chat_id,))
@@ -2249,23 +2322,26 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.execute("""
         UPDATE battles
-        SET player1_hp=?, player2_hp=?, turno=?, vez=?
-        WHERE chat_id=?
-    """, (p1_hp, p2_hp, turno, vez, chat_id))
+        SET player1_hp = ?, player2_hp = ?, turno = ?, vez = ?
+        WHERE chat_id = ?
+    """, (hp1, hp2, turno, vez, chat_id))
     db.commit()
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]
+        [InlineKeyboardButton("⚔️ ATACAR", callback_data="battle:attack")]
     ])
 
-    prox = p1_name if vez == p1_id else p2_name
+    await q.edit_message_text(
+        f"""💥 **ATAQUE EXECUTADO!**
+⚔️ **{atacante} causou {dano} de dano!**
 
-    await query.edit_message_text(
-        f"{resultado}\n\n"
-        f"❤️ {p1_name}: {p1_hp} HP\n"
-        f"❤️ {p2_name}: {p2_hp} HP\n\n"
-        f"**🔄 TURNO {turno}**\n"
-        f"👉 **Vez de {prox}**",
+❤️ **Status**
+💚 {p1_name}: **{hp1} HP**
+💚 {p2_name}: **{hp2} HP**
+
+🔁 **Turno {turno}**
+👉 **Vez de {p1_name if vez == p1_id else p2_name}**
+""",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
@@ -2303,8 +2379,10 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem)
 app.add_handler(CommandHandler("batalha", batalha_command))
 app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
-app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
+app.add_handler(CallbackQueryHandler(batalha_recusar_callback, pattern="battle:deny"))
+app.add_handler(CallbackQueryHandler(batalha_callback, pattern="battle:attack"))
 app.run_polling()
+
 
 
 
