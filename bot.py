@@ -439,8 +439,6 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     private_on = bool(alvo_row.get("private_profile"))
 
     if private_on and user_id != update.effective_user.id:
-        titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
-
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
         f"{titulo}: <b>{user['nick']}</b>\n\n"
@@ -2158,6 +2156,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
