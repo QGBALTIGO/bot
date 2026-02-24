@@ -1917,28 +1917,32 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # ================= TROCAR =================
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 3:
+    if not update.message.reply_to_message:
         await update.message.reply_text(
-            "🔁 *Troca de personagens*\n\n"
-            "Use:\n"
-            "`/trocar @usuario SEU_ID ID_DELE`",
+            "❌ Você precisa **responder a mensagem do usuário** para trocar.\n\n"
+            "Exemplo:\n"
+            "`(responder mensagem)`\n"
+            "`/trocar 10 25`",
+            parse_mode="Markdown"
+        )
+        return
+
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "Use:\n`/trocar SEU_ID ID_DELE`",
             parse_mode="Markdown"
         )
         return
 
     from_user = update.effective_user.id
-    to_username = context.args[0].replace("@", "")
-    from_char = int(context.args[1])
-    to_char = int(context.args[2])
+    to_user = update.message.reply_to_message.from_user.id
+    from_char = int(context.args[0])
+    to_char = int(context.args[1])
 
-    cursor.execute("SELECT user_id FROM users WHERE nick = ?", (to_username,))
-    row = cursor.fetchone()
-    if not row:
-        await update.message.reply_text("❌ Usuário não encontrado.")
-        return
-    to_user = row[0]
-
+    # verifica posse
     cursor.execute(
         "SELECT 1 FROM user_collection WHERE user_id=? AND character_id=?",
         (from_user, from_char)
@@ -1960,78 +1964,72 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (from_user, to_user, from_character_id, to_character_id)
         VALUES (?, ?, ?, ?)
     """, (from_user, to_user, from_char, to_char))
-    trade_id = cursor.lastrowid
     db.commit()
 
     teclado = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Aceitar", callback_data=f"trade_accept:{trade_id}"),
-            InlineKeyboardButton("❌ Recusar", callback_data=f"trade_reject:{trade_id}")
+            InlineKeyboardButton("✅ Aceitar", callback_data="trade_accept"),
+            InlineKeyboardButton("❌ Recusar", callback_data="trade_reject")
         ]
     ])
 
     await update.message.reply_text(
-        "🔔 *Pedido de troca enviado!*\n\n"
-        f"Você oferece: `{from_char}`\n"
-        f"Você quer: `{to_char}`\n\n"
-        "⏳ Aguardando resposta...",
+        "🔁 **Pedido de troca enviado!**\n\n"
+        "Apenas o usuário marcado pode responder.",
         parse_mode="Markdown",
         reply_markup=teclado
     )
 
 # ================= CALLBACK TROCA =================
-async def callback_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
-    acao, trade_id = query.data.split(":")
-    trade_id = int(trade_id)
     user_id = query.from_user.id
 
     cursor.execute("""
-        SELECT from_user, to_user, from_character_id, to_character_id, status
-        FROM trades WHERE trade_id=?
-    """, (trade_id,))
+        SELECT trade_id, from_user, from_character_id, to_character_id
+        FROM trades
+        WHERE to_user=? AND status='pendente'
+        ORDER BY trade_id DESC LIMIT 1
+    """, (user_id,))
     trade = cursor.fetchone()
 
     if not trade:
-        await query.edit_message_text("❌ Troca não encontrada.")
+        await query.answer("Nenhuma troca pendente.", show_alert=True)
         return
 
-    from_user, to_user, from_char, to_char, status = trade
+    trade_id, from_user, from_char, to_char = trade
 
-    if user_id != to_user:
-        await query.answer("⛔ Só quem recebeu a troca pode responder.", show_alert=True)
-        return
+    cursor.execute(
+        "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
+        (user_id, from_user, from_char)
+    )
+    cursor.execute(
+        "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
+        (from_user, user_id, to_char)
+    )
 
-    if status != "pendente":
-        await query.edit_message_text("⚠️ Essa troca já foi finalizada.")
-        return
+    cursor.execute(
+        "UPDATE trades SET status='aceita' WHERE trade_id=?",
+        (trade_id,)
+    )
+    db.commit()
 
-    if acao == "trade_accept":
-        cursor.execute(
-            "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
-            (to_user, from_user, from_char)
-        )
-        cursor.execute(
-            "UPDATE user_collection SET user_id=? WHERE user_id=? AND character_id=?",
-            (from_user, to_user, to_char)
-        )
-        cursor.execute(
-            "UPDATE trades SET status='aceita' WHERE trade_id=?",
-            (trade_id,)
-        )
-        db.commit()
+    await query.message.edit_text("✅ **Troca realizada com sucesso!**", parse_mode="Markdown")
 
-        await query.edit_message_text("✅ *Troca realizada com sucesso!*", parse_mode="Markdown")
+async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
 
-    elif acao == "trade_reject":
-        cursor.execute(
-            "UPDATE trades SET status='recusada' WHERE trade_id=?",
-            (trade_id,)
-        )
-        db.commit()
-        await query.edit_message_text("❌ *Troca recusada.*", parse_mode="Markdown")
+    cursor.execute("""
+        UPDATE trades
+        SET status='recusada'
+        WHERE to_user=? AND status='pendente'
+    """, (user_id,))
+    db.commit()
+
+    await query.message.edit_text("❌ **Troca recusada.**", parse_mode="Markdown")
+
+
 # ================= IMPORTS =================
 import random
 import sqlite3
@@ -2367,10 +2365,11 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.add_handler(CommandHandler("trocar", trocar))
-app.add_handler(CallbackQueryHandler(callback_trade, pattern="^trade_"))
-
+app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
+app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
 
 app.run_polling()
+
 
 
 
