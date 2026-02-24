@@ -63,7 +63,6 @@ CREATE TABLE IF NOT EXISTS shop_sales (
     created_at INTEGER
 )
 """)
-db.commit()
 
 # ================= TABELA DE TROCAS =================
 cursor.execute("""
