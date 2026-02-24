@@ -53,6 +53,17 @@ CREATE TABLE IF NOT EXISTS user_levels (
 )
 """)
 
+# ================= TABELA DA LOJA =================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS shop_sales (
+    user_id INTEGER,
+    character_id INTEGER,
+    character_name TEXT,
+    image TEXT,
+    created_at INTEGER
+)
+""")
+db.commit()
 
 # ================= TABELA DE TROCAS =================
 cursor.execute("""
@@ -66,4 +77,5 @@ CREATE TABLE IF NOT EXISTS trades (
 )
 """)
 db.commit()
+
 
