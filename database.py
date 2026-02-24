@@ -1,9 +1,6 @@
 import os
 import mysql.connector
 
-# ===============================
-# CONEXÃO COM MYSQL (RAILWAY)
-# ===============================
 db = mysql.connector.connect(
     host=os.getenv("DB_HOST"),
     port=int(os.getenv("DB_PORT")),
@@ -15,24 +12,6 @@ db = mysql.connector.connect(
 
 cursor = db.cursor(dictionary=True)
 
-# ===============================
-# TABELA USERS (SEM ÍNDICES AQUI)
-# ===============================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id BIGINT PRIMARY KEY,
-    nick VARCHAR(255),
-    fav_character_name TEXT,
-    fav_character_image TEXT,
-    commands INT DEFAULT 0,
-    level INT DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-
-# ===============================
-# FUNÇÕES
-# ===============================
 def get_user(user_id: int, first_name: str):
     cursor.execute(
         "SELECT * FROM users WHERE user_id = %s",
