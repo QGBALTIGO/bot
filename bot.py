@@ -868,18 +868,11 @@ async def buscar_anilist_manga_por_id(manga_id: int):
 
 # ===== COMANDO INFOMANGA =====
 async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-     # 🔒 VERIFICA CANAL OBRIGATÓRIO
-    if not await checar_canal(update, context):
-        return
-
     if not context.args:
         await update.message.reply_html(
             "❌ <b>Faltou o nome!</b>\n\n"
             "Use assim:\n"
-            "<code>/infomanga nome do mangá</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/infomanga Naruto</code>"
+            "<code>/infomanga nome do mangá</code>"
         )
         return
 
@@ -906,8 +899,7 @@ async def infomanga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
     await msg.edit_text(
-        "📌 <b>Encontrei várias versões</b>\n\n"
-        "Escolha qual você quer ver:",
+        "📌 <b>Encontrei várias versões</b>\n\nEscolha uma:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(botoes)
     )
@@ -920,7 +912,6 @@ async def callback_info_manga(update: Update, context: ContextTypes.DEFAULT_TYPE
     manga_id = int(query.data.split(":")[1])
     media = await buscar_anilist_manga_por_id(manga_id)
 
-    # 🔥 APAGA a mensagem com os botões
     await query.message.delete()
 
     titulo = (
@@ -928,9 +919,11 @@ async def callback_info_manga(update: Update, context: ContextTypes.DEFAULT_TYPE
         or media["title"]["romaji"]
         or media["title"]["native"]
     )
+
     score = media.get("averageScore", "N/A")
     status = media.get("status", "N/A")
     genres = ", ".join(media.get("genres", [])) or "N/A"
+
     data = media.get("startDate", {})
     start_date = f"{data.get('day','?')}/{data.get('month','?')}/{data.get('year','?')}"
 
@@ -938,25 +931,23 @@ async def callback_info_manga(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"<b>{titulo}</b>\n\n"
         f"<b>Pontuação:</b> <code>{score}</code>\n"
         f"<b>Situação:</b> <code>{status}</code>\n"
-        f"<b>Gênero:</b> <code>{genres}</code>\n"
+        f"<b>Gêneros:</b> <code>{genres}</code>\n"
         f"<b>Lançamento:</b> <code>{start_date}</code>"
     )
 
     imagem = f"https://img.anili.st/media/{media['id']}"
 
     teclado = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📖 Ver no AniList", url=media["siteUrl"])
-        ]
+        [InlineKeyboardButton("📖 Ver no AniList", url=media["siteUrl"])]
     ])
 
-    await query.message.reply_photo(
+    await context.bot.send_photo(
+        chat_id=query.message.chat.id,
         photo=imagem,
         caption=texto,
         parse_mode="HTML",
         reply_markup=teclado
     )
-
 # ===== ANILIST PERSONAGENS =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -990,7 +981,6 @@ async def buscar_multiplos_personagens(nome: str):
         ) as resp:
             data = await resp.json()
             return data["data"]["Page"]["characters"]
-
 
 # ===== BUSCAR PERSONAGEM POR ID =====
 async def buscar_personagem_por_id(char_id: int):
@@ -2321,5 +2311,6 @@ app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:ac
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 app.run_polling()
+
 
 
