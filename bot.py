@@ -1699,7 +1699,10 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
 ITENS_POR_PAGINA = 10
 
-# ================= DADO / PERSONAGEM =================
+COOLDOWN_DADO = 6 * 60 * 60
+ITENS_POR_PAGINA = 10
+
+# ================= BUSCAR PERSONAGEM =================
 async def buscar_personagem_por_popularidade(page_min, page_max):
     query = """
     query ($page: Int) {
@@ -1721,7 +1724,7 @@ async def buscar_personagem_por_popularidade(page_min, page_max):
             data = await resp.json()
             return data["data"]["Page"]["characters"][0]
 
-# ================= COMANDO DADO =================
+# ================= DADO =================
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -1825,7 +1828,7 @@ async def enviar_colecao(update, context, page):
         (user_id,)
     )
     row = cursor.fetchone()
-    nome_colecao = row[0] if row and row[0] else "Minha Coleção"
+    nome = row[0] if row and row[0] else "Minha Coleção"
 
     cursor.execute("""
         SELECT character_id, character_name
@@ -1834,8 +1837,8 @@ async def enviar_colecao(update, context, page):
         ORDER BY character_id ASC
         LIMIT ? OFFSET ?
     """, (user_id, ITENS_POR_PAGINA, offset))
-    personagens = cursor.fetchall()
 
+    personagens = cursor.fetchall()
     if not personagens:
         await update.message.reply_text("📦 Sua coleção está vazia.")
         return
@@ -1847,9 +1850,9 @@ async def enviar_colecao(update, context, page):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITENS_POR_PAGINA + 1
 
-    texto = f"📚 *{nome_colecao}*\n📖 | *{page}/{total_paginas}*\n\n"
-    for cid, nome in personagens:
-        texto += f"🧧 `{cid}.` {nome}\n"
+    texto = f"📚 *{nome}*\n📖 | *{page}/{total_paginas}*\n\n"
+    for cid, nomep in personagens:
+        texto += f"🧧 `{cid}.` {nomep}\n"
 
     botoes = []
     if page > 1:
@@ -1867,7 +1870,7 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     page = int(query.data.split(":")[1])
-    await enviar_colecao(query, context, page)
+    await enviar_colecao(update, context, page)
 
 # ================= NOME DA COLEÇÃO =================
 async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1877,14 +1880,12 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return
-
     nome = " ".join(context.args)
     cursor.execute(
         "UPDATE users SET collection_name=? WHERE user_id=?",
         (nome, update.effective_user.id)
     )
     db.commit()
-
     await update.message.reply_text(
         f"📚 Coleção renomeada para *{nome}*",
         parse_mode="Markdown"
@@ -2231,6 +2232,7 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 
 app.run_polling()
+
 
 
 
