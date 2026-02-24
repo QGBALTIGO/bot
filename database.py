@@ -1,34 +1,48 @@
-import os
-import mysql.connector
+db = sqlite3.connect("bot.db", check_same_thread=False)
+cursor = db.cursor()
 
+# =========================
+# USUÁRIOS
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    telegram_id INTEGER PRIMARY KEY,
+    nick TEXT,
+    collection_name TEXT,
+    fav_name TEXT,
+    fav_image TEXT,
+    commands INTEGER DEFAULT 0,
+    last_pedido INTEGER DEFAULT 0
+)
+""")
 
+# =========================
+# LEVEL / XP
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_levels (
+    user_id INTEGER PRIMARY KEY,
+@@ -46,7 +51,9 @@ def adicionar_xp(user_id: int):
 
+    db.commit()
 
-db = mysql.connector.connect(
-    host=os.getenv("DB_HOST"),
-    port=int(os.getenv("DB_PORT")),
-@@ -15,24 +12,6 @@
+# =========================
+# SPAWN ATIVO
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS active_spawns (
+    chat_id INTEGER PRIMARY KEY,
+@@ -57,7 +64,9 @@ def adicionar_xp(user_id: int):
+)
+""")
 
-cursor = db.cursor(dictionary=True)
+# =========================
+# COLEÇÃO
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_collection (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+@@ -70,7 +79,3 @@ def adicionar_xp(user_id: int):
+""")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def get_user(user_id: int, first_name: str):
-    cursor.execute(
-        "SELECT * FROM users WHERE user_id = %s",
+db.commit()
