@@ -267,6 +267,7 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ================= COLEÇÃO =================
+
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await enviar_pagina(update, context, update.effective_user.id, 1)
 
@@ -282,8 +283,15 @@ async def enviar_pagina(update, context, user_id, page, edit=False):
     """, (user_id, ITEMS_POR_PAGINA, offset))
 
     personagens = cursor.fetchall()
+
+    # ===== COLEÇÃO VAZIA =====
     if not personagens:
-        await update.message.reply_text("📦 **Sua coleção está vazia**")
+        texto = "📦 Sua coleção está vazia."
+
+        if edit:
+            await update.callback_query.edit_message_text(texto)
+        else:
+            await update.message.reply_text(texto)
         return
 
     cursor.execute(
@@ -293,31 +301,46 @@ async def enviar_pagina(update, context, user_id, page, edit=False):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    texto = f"📚 *Minha Coleção*\n\n📖 *{page}/{total_paginas}*\n\n"
+    texto = f"📚 Minha Coleção\n\n📖 {page}/{total_paginas}\n\n"
+
     for cid, nome in personagens:
-        texto += f"🧧 `{cid}.` {nome}\n"
+        texto += f"🧧 {cid}. {nome}\n"
 
     botoes = []
+
     if page > 1:
-        botoes.append(InlineKeyboardButton("◀️", callback_data=f"colecao:{page-1}"))
+        botoes.append(
+            InlineKeyboardButton("◀️", callback_data=f"colecao:{page-1}")
+        )
+
     if page < total_paginas:
-        botoes.append(InlineKeyboardButton("▶️", callback_data=f"colecao:{page+1}"))
+        botoes.append(
+            InlineKeyboardButton("▶️", callback_data=f"colecao:{page+1}")
+        )
 
     markup = InlineKeyboardMarkup([botoes]) if botoes else None
 
     if edit:
         await update.callback_query.edit_message_text(
-            texto, reply_markup=markup, parse_mode="Markdown"
+            texto,
+            reply_markup=markup
         )
     else:
         await update.message.reply_text(
-            texto, reply_markup=markup, parse_mode="Markdown"
+            texto,
+            reply_markup=markup
         )
 
 async def colecao_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     page = int(update.callback_query.data.split(":")[1])
-    await enviar_pagina(update, context, update.callback_query.from_user.id, page, True)
+    await enviar_pagina(
+        update,
+        context,
+        update.callback_query.from_user.id,
+        page,
+        edit=True
+    )
     
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1953,6 +1976,7 @@ app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
