@@ -293,3 +293,18 @@ def battle_damage(chat_id: int, target: str, damage: int):
     else:
         cursor.execute("UPDATE battles SET player2_hp = GREATEST(player2_hp - %s, 0) WHERE chat_id=%s", (damage, chat_id))
     db.commit()
+
+# adiciona a coluna private_profile se não existir
+cursor.execute("""
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
+""")
+db.commit()
+def set_private_profile(user_id: int, is_private: bool):
+    cursor.execute("UPDATE users SET private_profile=%s WHERE user_id=%s", (is_private, user_id))
+    db.commit()
+
+def get_user_by_nick(nick: str):
+    # nick é único (você já fez a regra), então retorna 1
+    cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (nick,))
+    return cursor.fetchone()
