@@ -260,6 +260,46 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 {user.mention_html()} capturou <b>{char_name}</b>!",
         parse_mode="HTML"
     )
+
+# ===== /COLECAO =====
+async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+
+    cursor.execute("""
+        SELECT character_name 
+        FROM user_collection 
+        WHERE user_id = ?
+        ORDER BY captured_at DESC
+        LIMIT 50
+    """, (user_id,))
+
+    personagens = cursor.fetchall()
+
+    if not personagens:
+        await update.message.reply_text("📦 Sua coleção está vazia.")
+        return
+
+    # Level / XP
+    cursor.execute(
+        "SELECT level, xp FROM user_levels WHERE user_id = ?",
+        (user_id,)
+    )
+    level_data = cursor.fetchone()
+    level = level_data[0] if level_data else 1
+    xp = level_data[1] if level_data else 0
+
+    texto = (
+        f"👤 {user.first_name}\n"
+        f"🏆 Level: {level}\n"
+        f"⭐ XP: {xp}\n"
+        f"📦 Personagens: {len(personagens)}\n\n"
+    )
+
+    for i, (nome,) in enumerate(personagens, start=1):
+        texto += f"{i}. {nome}\n"
+
+    await update.message.reply_text(texto)
      
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1892,7 +1932,9 @@ app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("capturar", capturar_command))
+app.add_handler(CommandHandler("colecao", colecao_command))
 app.run_polling()
+
 
 
 
