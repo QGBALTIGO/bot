@@ -1729,77 +1729,200 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.commit()
 
     # ===== DADO REAL DO TELEGRAM =====
-    dice_msg = await context.bot.send_dice(chat_id=chat_id, emoji="🎲")
-    await asyncio.sleep(3)
-    numero = dice_msg.dice.value
+ COOLDOWN_DADO = 6 * 60 * 60  # 6 horas
 
-    # ===== RARIDADE =====
-    if numero == 1:
-        page_min, page_max = 400, 600
-        raridade = "💀 *Personagem Ruim*"
-    elif numero == 2:
-        page_min, page_max = 250, 400
-        raridade = "😐 *Personagem Fraco*"
-    elif numero == 3:
-        page_min, page_max = 150, 250
-        raridade = "⭐ *Personagem Médio*"
-    elif numero == 4:
-        page_min, page_max = 80, 150
-        raridade = "🔥 *Personagem Forte*"
-    elif numero == 5:
-        page_min, page_max = 20, 80
-        raridade = "💎 *Personagem Raro*"
+async def buscar_personagem_por_popularidade(page_min, page_max):
+    query = """
+    query ($page: Int) {
+      Page(page: $page, perPage: 1) {
+        characters(sort: FAVOURITES_DESC) {
+          id
+          name { full }
+          image { large }
+        }
+      }
+    }
+    """
+    page = random.randint(page_min, page_max)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"page": page}}
+        ) as resp:
+            data = await resp.json()
+            return data["data"]["Page"]["characters"][0]
+
+async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    agora = int(time.time())
+
+    cursor.execute(
+        "SELECT last_dado, coins FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        cursor.execute(
+            "INSERT INTO users (user_id, nick) VALUES (?, ?)",
+            (user_id, update.effective_user.first_name)
+        )
+        db.commit()
+        last_dado = 0
+        coins = 0
     else:
-        page_min, page_max = 1, 20
-        raridade = "👑 *Personagem Lendário*"
+        last_dado, coins = row
 
+    if agora - last_dado < COOLDOWN_DADO:
+        falta = COOLDOWN_DADO - (agora - last_dado)
+        horas = falta // 3600
+        minutos = (falta % 3600) // 60
+        await update.message.reply_text(
+            f"⏳ Você já girou o dado!\n\n"
+            f"🎲 Tente novamente em **{horas}h {minutos}m**",
+            parse_mode="Markdown"
+        )
+        return
+
+    dice = await context.bot.send_dice(chat_id=chat_id, emoji="🎲")
+    await asyncio.sleep(3)
+    numero = dice.dice.value
+
+    raridades = {
+        1: (400, 500, "💀 *Ruim*"),
+        2: (250, 400, "😐 *Fraco*"),
+        3: (150, 250, "⭐ *Médio*"),
+        4: (80, 150, "🔥 *Forte*"),
+        5: (20, 80, "💎 *Raro*"),
+        6: (1, 20, "👑 *Lendário*")
+    }
+
+    page_min, page_max, raridade = raridades[numero]
     personagem = await buscar_personagem_por_popularidade(page_min, page_max)
-    cid = personagem["id"]
-    nome = personagem["name"]["full"]
-    imagem = personagem["image"]["large"]
 
-    # ===== VERIFICA REPETIDO =====
     cursor.execute(
         "SELECT 1 FROM user_collection WHERE user_id=? AND character_id=?",
-        (user_id, cid)
+        (user_id, personagem["id"])
     )
     repetido = cursor.fetchone()
 
     if repetido:
-        cursor.execute(
-            "UPDATE users SET coins = coins + 1 WHERE user_id=?",
-            (user_id,)
-        )
-        db.commit()
-        resultado = "♻️ *Repetido!* → +1 🪙 Coin"
+        coins += 1
+        resultado = "🪙 Personagem repetido → +1 Coin"
     else:
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO user_collection
-            (user_id, character_id, character_name, character_image)
+            (user_id, character_id, character_name, image)
             VALUES (?, ?, ?, ?)
-            """,
-            (user_id, cid, nome, imagem)
-        )
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
-            (user_id,)
-        )
-        db.commit()
-        resultado = "🧩 *Adicionado à sua coleção!*"
+        """, (
+            user_id,
+            personagem["id"],
+            personagem["name"]["full"],
+            personagem["image"]["large"]
+        ))
+        resultado = "📦 Adicionado à coleção!"
 
-    # ===== ENVIO =====
+    cursor.execute(
+        "UPDATE users SET last_dado=?, coins=? WHERE user_id=?",
+        (agora, coins, user_id)
+    )
+    db.commit()
+
     await update.message.reply_photo(
-        photo=imagem,
+        photo=personagem["image"]["large"],
         caption=(
             "🎰 *DADO DA SORTE*\n\n"
             f"🎲 Número: `{numero}`\n"
             f"{raridade}\n\n"
-            f"✨ *{nome}*\n\n"
-            f"{resultado}"
+            f"✨ *{personagem['name']['full']}*\n\n"
+            f"{resultado}\n"
+            f"🪙 Coins: `{coins}`"
         ),
         parse_mode="Markdown"
     )
+
+   from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+ITENS_POR_PAGINA = 10
+
+async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await enviar_colecao(update, context, 1)
+
+async def enviar_colecao(update, context, page):
+    user_id = update.effective_user.id
+    offset = (page - 1) * ITENS_POR_PAGINA
+
+    cursor.execute(
+        "SELECT collection_name FROM users WHERE user_id=?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    nome_colecao = row[0] if row and row[0] else "Minha Coleção"
+
+    cursor.execute("""
+        SELECT character_id, character_name
+        FROM user_collection
+        WHERE user_id=?
+        ORDER BY character_id ASC
+        LIMIT ? OFFSET ?
+    """, (user_id, ITENS_POR_PAGINA, offset))
+    personagens = cursor.fetchall()
+
+    if not personagens:
+        await update.message.reply_text("📦 Sua coleção está vazia.")
+        return
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM user_collection WHERE user_id=?",
+        (user_id,)
+    )
+    total = cursor.fetchone()[0]
+    total_paginas = (total - 1) // ITENS_POR_PAGINA + 1
+
+    texto = (
+        f"📚 *{nome_colecao}*\n"
+        f"📖 | *{page}/{total_paginas}*\n\n"
+    )
+
+    for cid, nome in personagens:
+        texto += f"🧧 `{cid}.` {nome}\n"
+
+    botoes = []
+    if page > 1:
+        botoes.append(InlineKeyboardButton("◀️", callback_data=f"colecao:{page-1}"))
+    if page < total_paginas:
+        botoes.append(InlineKeyboardButton("▶️", callback_data=f"colecao:{page+1}"))
+
+    await update.message.reply_text(
+        texto,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([botoes]) if botoes else None
+    )
+
+async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    page = int(query.data.split(":")[1])
+    await enviar_colecao(query, context, page)
+
+sync def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Use: `/nomecolecao Nome da Coleção`",
+            parse_mode="Markdown"
+        )
+        return
+
+    nome = " ".join(context.args)
+    cursor.execute(
+        "UPDATE users SET collection_name=? WHERE user_id=?",
+        (nome, update.effective_user.id)
+    )
+    db.commit()
+
+    await update.message.reply_text(f"📚 Coleção renomeada para *{nome}*", parse_mode="Markdown")
+    
 # ================= IMPORTS =================
 import random
 import sqlite3
@@ -2109,6 +2232,9 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("anime", anime))
 app.add_handler(CommandHandler("infoanime", infoanime))
 app.add_handler(CommandHandler("dado", dado_command))
+app.add_handler(CommandHandler("colecao", colecao_command))
+app.add_handler(CallbackQueryHandler(callback_colecao, pattern="^colecao:"))
+app.add_handler(CommandHandler("nomecolecao", nomecolecao))
 app.add_handler(CommandHandler("infomanga", infomanga))
 app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
 app.add_handler(CommandHandler("perso", perso))
@@ -2136,7 +2262,9 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
+
 app.run_polling()
+
 
 
 
