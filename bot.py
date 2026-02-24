@@ -293,26 +293,79 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
-    await registrar_comando(update)
 
+    await registrar_comando(update)
+    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
+
+    # se mandar só /nick
     if not context.args:
         await update.message.reply_html(
-            "✏️ <b>Alterar nick</b>\n\n"
-            "Use assim:\n"
-            "<code>/nick SeuNome</code>\n\n"
+            "✏️ <b>DEFINIR NICK</b>\n\n"
+            "Seu nick precisa ser:\n"
+            "• <b>Uma palavra</b> (sem espaços)\n"
+            "• <b>Único</b> (ninguém mais pode ter)\n\n"
+            "📌 <b>Como usar:</b>\n"
+            "<code>/nick bredesozail</code>\n\n"
+            "✅ Permitido: letras, números e _ (underline)\n"
+            "❌ Não pode: espaços, acentos e símbolos"
+        )
+        return
+
+    # pega o nick como 1 palavra (se vier mais de 1, rejeita)
+    if len(context.args) != 1:
+        await update.message.reply_html(
+            "❌ <b>Nick inválido</b>\n\n"
+            "Seu nick deve ser <b>apenas uma palavra</b>.\n\n"
             "📌 Exemplo:\n"
-            "<code>/nick Kayky</code>"
+            "<code>/nick bredesozail</code>"
+        )
+        return
+
+    raw = context.args[0].strip()
+
+    # normaliza para comparar (e salvar) em minúsculo
+    nick_novo = raw.lower()
+
+    # regras: 3 a 16 chars (ajuste se quiser)
+    if not (3 <= len(nick_novo) <= 16):
+        await update.message.reply_html(
+            "❌ <b>Tamanho inválido</b>\n\n"
+            "Seu nick precisa ter entre <code>3</code> e <code>16</code> caracteres."
+        )
+        return
+
+    # só letras/números/underscore
+    if not re.fullmatch(r"[a-z0-9_]+", nick_novo):
+        await update.message.reply_html(
+            "❌ <b>Formato inválido</b>\n\n"
+            "Use apenas:\n"
+            "• letras (a-z)\n"
+            "• números (0-9)\n"
+            "• underline (_) \n\n"
+            "📌 Exemplo:\n"
+            "<code>/nick rei_dos_piratas</code>"
         )
         return
 
     user_id = update.effective_user.id
-    ensure_user_row(user_id, update.effective_user.first_name)
-    novo = " ".join(context.args).strip()
-    set_user_nick(user_id, novo)
+
+    # tenta salvar — se já existir, o Postgres vai bloquear por causa do índice UNIQUE
+    try:
+        cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        await update.message.reply_html(
+            "🚫 <b>Nick indisponível</b>\n\n"
+            f"O nick <code>{nick_novo}</code> já está em uso.\n"
+            "Tente outro 🙂"
+        )
+        return
 
     await update.message.reply_html(
-        "✨ <b>Nick atualizado!</b>\n\n"
-        f"👤 Agora você é <b>{novo}</b>"
+        "✅ <b>Nick definido!</b>\n\n"
+        f"Agora seu nick é: <code>{nick_novo}</code>"
     )
 
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1975,5 +2028,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
