@@ -2265,7 +2265,7 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.edit_message_text(
                 "**❌ BATALHA CANCELADA**\n\n"
                 "👉 Ambos os jogadores precisam **abrir o chat privado com o bot**.\n\n"
-                "_Clique no bot, aperte START e tente novamente._",
+                "_Abra o bot no privado._",
                 parse_mode="Markdown"
             )
             cursor.execute("DELETE FROM battles WHERE chat_id = ?", (query.message.chat.id,))
@@ -2470,4 +2470,5 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
