@@ -396,57 +396,122 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await registrar_comando(update)
 
-    user_id = update.effective_user.id
-    ensure_user_row(user_id, update.effective_user.first_name)
-    row = get_user_row(user_id)
+    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
 
-    admin = is_admin(user_id)
-    admin_photo = get_admin_photo(user_id)
+    # 1) decidir qual perfil mostrar:
+    # - se tiver argumento: /perfil nick
+    # - se não: seu próprio perfil
+    alvo_row = None
+    alvo_nick = None
 
-    coins = int(row["coins"] or 0)
-    nome_colecao = row["collection_name"] or "Minha Coleção"
+    if context.args:
+        # nick único = 1 palavra
+        alvo_nick = context.args[0].strip()
+        from database import get_user_by_nick
+        alvo_row = get_user_by_nick(alvo_nick)
+
+        if not alvo_row:
+            await update.message.reply_html(
+                "❌ <b>Usuário não encontrado</b>\n\n"
+                "Verifique se o nick está correto.\n"
+                "📌 Exemplo: <code>/perfil bredesozail</code>"
+            )
+            return
+    else:
+        from database import get_user_row
+        alvo_row = get_user_row(update.effective_user.id)
+
+    # fallback
+    if not alvo_row:
+        await update.message.reply_text("❌ Não consegui carregar o perfil agora.")
+        return
+
+    # 2) dados comuns
+    user_id = int(alvo_row["user_id"])
+    nick = alvo_row["nick"] or "User"
+
+    fav_name = alvo_row.get("fav_name")
+    fav_image = alvo_row.get("fav_image")
+
+    # 3) se perfil privado e quem está vendo NÃO é o dono
+    private_on = bool(alvo_row.get("private_profile"))
+
+    if private_on and user_id != update.effective_user.id:
+        texto = (
+            f" | User: {nick}\n\n"
+            "🔐 | <b>Private Profile!</b>\n\n"
+            "❤️ <b>Favorite:</b>\n"
+        )
+        if fav_name:
+            texto += f"🧧 1. <b>{fav_name}</b> ✨"
+        else:
+            texto += "— Nenhum favorito"
+
+        # mostra com foto do favorito se tiver
+        if fav_image:
+            await update.message.reply_photo(photo=fav_image, caption=texto, parse_mode="HTML")
+        else:
+            await update.message.reply_html(texto)
+        return
+
+    # 4) perfil normal (seu ou público)
+    from database import count_collection
     total_colecao = count_collection(user_id)
 
-    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
+    coins = int(alvo_row.get("coins") or 0)
+    level = int(alvo_row.get("level") or 1)
+    nome_colecao = alvo_row.get("collection_name") or "Minha Coleção"
 
     texto = (
-        "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{row['nick']}</b>\n\n"
+        f" | User: {nick}\n\n"
         f"📚 | <i>Coleção</i>: <b>{total_colecao}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{int(row['level'] or 1)}</b>\n\n"
+        f"⭐ | <i>Nível</i>: <b>{level}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
 
-    fav_name = row["fav_name"]
-    fav_image = row["fav_image"]
-    texto += f"🧧 <b>{fav_name} ✨</b>" if fav_name else "— Nenhum favorito"
+    if fav_name:
+        texto += f"🧧 1. <b>{fav_name}</b> ✨"
+    else:
+        texto += "— Nenhum favorito"
 
-    foto = admin_photo or (fav_image if fav_image else None)
+    # foto: mantém sua lógica (admin foto > favorito > sem foto)
+    foto = get_admin_photo(user_id) or fav_image
 
     if foto:
         await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
     else:
         await update.message.reply_html(texto)
 
-async def buscar_personagem(nome: str) -> Optional[dict]:
-    query = """
-    query ($search: String) {
-      Character(search: $search) {
-        id
-        name { full }
-        image { large }
-      }
-    }
-    """
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": {"search": nome}},
-            timeout=aiohttp.ClientTimeout(total=10)
-        ) as resp:
-            data = await resp.json()
-            return data.get("data", {}).get("Character")
+async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
+
+    if not context.args:
+        await update.message.reply_html(
+            "🔐 <b>PERFIL PRIVADO</b>\n\n"
+            "Ative para esconder suas infos (os outros só veem “Private Profile” + favorito).\n\n"
+            "✅ <b>Como usar:</b>\n"
+            "<code>/privado on</code>\n"
+            "<code>/privado off</code>"
+        )
+        return
+
+    opt = context.args[0].lower()
+    if opt not in ("on", "off"):
+        await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
+        return
+
+    from database import set_private_profile
+    set_private_profile(update.effective_user.id, opt == "on")
+
+    if opt == "on":
+        await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
+    else:
+        await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
 
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -2003,6 +2068,7 @@ def main():
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("perfil", perfil))
+    app.add_handler(CommandHandler("privado", privado))
     app.add_handler(CommandHandler("adminfoto", adminfoto))
     app.add_handler(CommandHandler("favoritar", favoritar))
     app.add_handler(CommandHandler("desfavoritar", desfavoritar))
@@ -2028,6 +2094,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
