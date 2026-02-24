@@ -330,35 +330,55 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
-# /PERFIL
+# /PERFIL (INTEGRADO COM COLEÇÃO + COINS)
 # ==================================================
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    # 🔒 VERIFICA CANAL OBRIGATÓRIO
     if not await checar_canal(update, context):
         return
 
     await registrar_comando(update)
 
     user_id = update.effective_user.id
-    user = get_user(user_id, update.effective_user.first_name)
 
+    # ===== DADOS DO USUÁRIO =====
+    user = get_user(user_id, update.effective_user.first_name)
     fav = user["fav_character"]
+
     admin = is_admin(user_id)
     admin_photo = get_admin_photo(user_id)
 
+    # ===== BUSCA COINS E NOME DA COLEÇÃO =====
+    cursor.execute(
+        "SELECT coins, collection_name FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    coins = row[0] if row else 0
+    nome_colecao = row[1] if row and row[1] else "Minha Coleção"
+
+    # ===== TOTAL DE PERSONAGENS NA COLEÇÃO =====
+    cursor.execute(
+        "SELECT COUNT(*) FROM user_collection WHERE user_id = ?",
+        (user_id,)
+    )
+    total_colecao = cursor.fetchone()[0]
+
+    # ===== TEXTO PERFIL =====
     titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
 
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
         f"{titulo}: <b>{user['nick']}</b>\n\n"
-        f"📚 | <i>Coleção</i>: <b>0</b>\n"
+        f"📚 | <i>Coleção</i>: <b>{total_colecao}</b>\n"
+        f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
         f"⭐ | <i>Nível</i>: <b>{user['level']}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
 
     texto += f"🧧 <b>{fav['name']} ✨</b>" if fav else "— Nenhum favorito"
 
+    # ===== FOTO =====
     foto = admin_photo or (fav["image"] if fav else None)
 
     if foto:
@@ -2235,6 +2255,7 @@ app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 
 app.run_polling()
+
 
 
 
