@@ -447,6 +447,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔐 | <b>Private Profile!</b>\n\n"
             "❤️ <b>Favorite:</b>\n"
         )
+    
         if fav_name:
             texto += f"🧧 1. <b>{fav_name}</b> ✨"
         else:
@@ -2157,5 +2158,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
