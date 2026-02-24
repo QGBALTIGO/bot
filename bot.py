@@ -102,210 +102,6 @@ async def login(update, context):
         reply_markup=keyboard
     )
 
-# ===== CONTADOR DE MENSAGENS =====
-message_counter = {}
-SPAWN_INTERVAL = 40
-
-async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-
-    if chat_id not in message_counter:
-        message_counter[chat_id] = 0
-
-    message_counter[chat_id] += 1
-
-    if message_counter[chat_id] >= SPAWN_INTERVAL:
-        message_counter[chat_id] = 0
-        await spawn_personagem(update, context)
-
-# ================= XP / LEVEL =================
-def adicionar_xp(user_id: int):
-    cursor.execute("SELECT xp FROM user_levels WHERE user_id = ?", (user_id,))
-    data = cursor.fetchone()
-
-    if data:
-        xp = data[0] + 1
-        level = (xp // 5) + 1
-        cursor.execute(
-            "UPDATE user_levels SET xp = ?, level = ? WHERE user_id = ?",
-            (xp, level, user_id)
-        )
-    else:
-        cursor.execute(
-            "INSERT INTO user_levels (user_id, xp, level) VALUES (?, ?, ?)",
-            (user_id, 1, 1)
-        )
-    db.commit()
-
-# ================= ANILIST =================
-async def buscar_personagem_famoso():
-    query = """
-    query ($page: Int) {
-      Page(page: $page, perPage: 1) {
-        characters(sort: FAVOURITES_DESC) {
-          id
-          name { full }
-          image { large }
-        }
-      }
-    }
-    """
-    page = random.randint(1, 50)
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://graphql.anilist.co",
-            json={"query": query, "variables": {"page": page}},
-        ) as response:
-            data = await response.json()
-            char = data["data"]["Page"]["characters"][0]
-            return {
-                "id": char["id"],
-                "name": char["name"]["full"],
-                "image": char["image"]["large"]
-            }
-
-# ================= SPAWN =================
-async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-
-    cursor.execute("SELECT 1 FROM active_spawns WHERE chat_id = ?", (chat_id,))
-    if cursor.fetchone():
-        return
-
-    personagem = await buscar_personagem_famoso()
-    expires_at = int(time.time()) + 300
-
-    cursor.execute("""
-        INSERT OR REPLACE INTO active_spawns
-        VALUES (?, ?, ?, ?, ?)
-    """, (
-        chat_id,
-        personagem["id"],
-        personagem["name"],
-        personagem["image"],
-        expires_at
-    ))
-    db.commit()
-
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=personagem["image"],
-        caption=(
-            "✨ **Um personagem famoso apareceu!**\n\n"
-            "🎯 Use:\n"
-            "`/capturar nome`\n\n"
-            "⏳ *5 minutos*"
-        ),
-        parse_mode="Markdown"
-    )
-
-async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await spawn_personagem(update, context)
-
-# ================= CONTADOR =================
-message_counter = {}
-
-async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    message_counter[chat_id] = message_counter.get(chat_id, 0) + 1
-
-    if message_counter[chat_id] >= SPAWN_INTERVAL:
-        message_counter[chat_id] = 0
-        await spawn_personagem(update, context)
-
-# ================= CAPTURAR =================
-async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-
-    if not context.args:
-        await update.message.reply_text(
-            "❌ Use:\n`/capturar nome_do_personagem`",
-            parse_mode="Markdown"
-        )
-        return
-
-    nome = " ".join(context.args).lower()
-
-    cursor.execute("""
-        SELECT character_id, character_name, image, expires_at
-        FROM active_spawns WHERE chat_id = ?
-    """, (chat_id,))
-    spawn = cursor.fetchone()
-
-    if not spawn:
-        await update.message.reply_text("⚠️ Não há personagem ativo.")
-        return
-
-    cid, cname, img, exp = spawn
-
-    if time.time() > exp:
-        cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
-        db.commit()
-        await update.message.reply_text("⌛ O personagem fugiu!")
-        return
-
-    if nome not in cname.lower():
-        await update.message.reply_text("❌ Nome incorreto!")
-        return
-
-    cursor.execute("""
-        INSERT INTO user_collection
-        (user_id, character_id, character_name, image, captured_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (user.id, cid, cname, img, int(time.time())))
-
-    cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
-    db.commit()
-
-    adicionar_xp(user.id)
-
-    await update.message.reply_text(
-        f"🏆 **{user.first_name} capturou {cname}!**",
-        parse_mode="Markdown"
-    )
-
-# ===== /COLECAO =====
-async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-
-    cursor.execute("""
-        SELECT character_name 
-        FROM user_collection 
-        WHERE user_id = ?
-        ORDER BY captured_at DESC
-        LIMIT 50
-    """, (user_id,))
-    personagens = cursor.fetchall()
-
-    if not personagens:
-        await update.message.reply_text("📦 Sua coleção está vazia.")
-        return
-
-    # Level / XP
-    cursor.execute(
-        "SELECT level, xp FROM user_levels WHERE user_id = ?",
-        (user_id,)
-    )
-    level_data = cursor.fetchone()
-
-    level = level_data[0] if level_data else 1
-    xp = level_data[1] if level_data else 0
-
-    texto = (
-        f"👤 {user.first_name}\n"
-        f"🏆 Level: {level}\n"
-        f"⭐ XP: {xp}\n"
-        f"📦 Personagens: {len(personagens)}\n\n"
-    )
-
-    for i, (nome,) in enumerate(personagens, start=1):
-        texto += f"{i}. {nome}\n"
-
-    await update.message.reply_text(texto)
-
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
 # ==================================================
@@ -1899,47 +1695,47 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=teclado_cards(anime, page, last)
     )
 
-# ================= DADO DA SORTE CASSINO =================
-async def buscar_personagem_por_popularidade(page_min, page_max):
-    query = """
-    query ($page: Int) {
-      Page(page: $page, perPage: 1) {
-        characters(sort: FAVOURITES_DESC) {
-          id
-          name { full }
-          image { large }
-        }
-      }
-    }
-    """
-
-    page = random.randint(page_min, page_max)
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://graphql.anilist.co",
-            json={"query": query, "variables": {"page": page}},
-        ) as response:
-            data = await response.json()
-            return data["data"]["Page"]["characters"][0]
-
-import asyncio
-import random
+MAX_ROLLS_DIA = 6
 
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     chat_id = update.effective_chat.id
+    hoje = datetime.date.today().isoformat()
 
-    # 🎲 DADO REAL DO TELEGRAM
+    # ===== VERIFICA LIMITE DIÁRIO =====
+    cursor.execute(
+        "SELECT rolls FROM daily_dice WHERE user_id=? AND date=?",
+        (user_id, hoje)
+    )
+    row = cursor.fetchone()
+
+    if row and row[0] >= MAX_ROLLS_DIA:
+        await update.message.reply_text(
+            "⛔ Você já usou suas **6 rolagens de hoje**.\n\n"
+            "🕛 Tente novamente amanhã!"
+        )
+        return
+
+    if not row:
+        cursor.execute(
+            "INSERT INTO daily_dice (user_id, date, rolls) VALUES (?, ?, 0)",
+            (user_id, hoje)
+        )
+
+    cursor.execute(
+        "UPDATE daily_dice SET rolls = rolls + 1 WHERE user_id=? AND date=?",
+        (user_id, hoje)
+    )
+    db.commit()
+
+    # ===== DADO REAL DO TELEGRAM =====
     dice_msg = await context.bot.send_dice(chat_id=chat_id, emoji="🎲")
-
-    # espera a animação terminar (telegram leva ~3s)
     await asyncio.sleep(3)
+    numero = dice_msg.dice.value
 
-    numero = dice_msg.dice.value  # ← VALOR REAL (1 a 6)
-
-    # define raridade pelo número
+    # ===== RARIDADE =====
     if numero == 1:
-        page_min, page_max = 400, 500
+        page_min, page_max = 400, 600
         raridade = "💀 *Personagem Ruim*"
     elif numero == 2:
         page_min, page_max = 250, 400
@@ -1953,23 +1749,57 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif numero == 5:
         page_min, page_max = 20, 80
         raridade = "💎 *Personagem Raro*"
-    else:  # 6
+    else:
         page_min, page_max = 1, 20
         raridade = "👑 *Personagem Lendário*"
 
     personagem = await buscar_personagem_por_popularidade(page_min, page_max)
+    cid = personagem["id"]
+    nome = personagem["name"]["full"]
+    imagem = personagem["image"]["large"]
 
+    # ===== VERIFICA REPETIDO =====
+    cursor.execute(
+        "SELECT 1 FROM user_collection WHERE user_id=? AND character_id=?",
+        (user_id, cid)
+    )
+    repetido = cursor.fetchone()
+
+    if repetido:
+        cursor.execute(
+            "UPDATE users SET coins = coins + 1 WHERE user_id=?",
+            (user_id,)
+        )
+        db.commit()
+        resultado = "♻️ *Repetido!* → +1 🪙 Coin"
+    else:
+        cursor.execute(
+            """
+            INSERT INTO user_collection
+            (user_id, character_id, character_name, character_image)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, cid, nome, imagem)
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+            (user_id,)
+        )
+        db.commit()
+        resultado = "🧩 *Adicionado à sua coleção!*"
+
+    # ===== ENVIO =====
     await update.message.reply_photo(
-        photo=personagem["image"]["large"],
+        photo=imagem,
         caption=(
             "🎰 *DADO DA SORTE*\n\n"
-            f"🎲 Número sorteado: `{numero}`\n\n"
+            f"🎲 Número: `{numero}`\n"
             f"{raridade}\n\n"
-            f"✨ *{personagem['name']['full']}*"
+            f"✨ *{nome}*\n\n"
+            f"{resultado}"
         ),
         parse_mode="Markdown"
     )
-
 # ================= IMPORTS =================
 import random
 import sqlite3
@@ -2301,16 +2131,13 @@ app.add_handler(CommandHandler("nivel", nivel))
 app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
-app.add_handler(CommandHandler("spawn", spawn_command))
-app.add_handler(CommandHandler("capturar", capturar_command))
-app.add_handler(CommandHandler("colecao", colecao_command))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("batalha", batalha_command))
 app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 
 app.run_polling()
+
 
 
 
