@@ -227,7 +227,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⚔️ QG Baltigo ", url="t.me/QG_BALTIGO")]
     ])
 
-    await update.message.reply_html(texto, reply_markup=teclado)
+    await update.message.reply_photo(
+        photo="https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg",
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado
+    )
 
 # ==================================================
 # 9) /login (AniList OAuth)
@@ -1968,3 +1973,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
