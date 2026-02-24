@@ -80,39 +80,40 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     return True
 
 # ===== BANCO DE DADOS =====
+
+COMANDOS_POR_NIVEL = 100
+
 def get_user_db(user_id: int, first_name: str):
     cursor.execute(
-        "SELECT user_id, nick, fav_character_name, fav_character_image, commands, level FROM users WHERE user_id = ?",
+        """
+        SELECT user_id, nick, fav_name, fav_image, commands, level
+        FROM users
+        WHERE user_id = %s
+        """,
         (user_id,)
     )
-    row = cursor.fetchone()
+    user = cursor.fetchone()
 
-    if not row:
-        cursor.execute("""
+    if not user:
+        cursor.execute(
+            """
             INSERT INTO users (user_id, nick, commands, level)
-            VALUES (?, ?, 0, 1)
-        """, (user_id, first_name))
-        db.commit()
+            VALUES (%s, %s, 0, 1)
+            """,
+            (user_id, first_name)
+        )
 
         return {
             "user_id": user_id,
             "nick": first_name,
-            "fav_character_name": None,
-            "fav_character_image": None,
+            "fav_name": None,
+            "fav_image": None,
             "commands": 0,
             "level": 1
         }
 
-    return {
-        "user_id": row[0],
-        "nick": row[1],
-        "fav_character_name": row[2],
-        "fav_character_image": row[3],
-        "commands": row[4],
-        "level": row[5]
-    }
+    return user
 
-COMANDOS_POR_NIVEL = 100
 
 async def registrar_comando(update: Update):
     user_id = update.effective_user.id
@@ -123,19 +124,21 @@ async def registrar_comando(update: Update):
     novos_comandos = user["commands"] + 1
     novo_nivel = (novos_comandos // COMANDOS_POR_NIVEL) + 1
 
-    cursor.execute("""
+    cursor.execute(
+        """
         UPDATE users
-        SET commands = ?, level = ?
-        WHERE user_id = ?
-    """, (novos_comandos, novo_nivel, user_id))
-    db.commit()
+        SET commands = %s, level = %s
+        WHERE user_id = %s
+        """,
+        (novos_comandos, novo_nivel, user_id)
+    )
 
-    if novo_nivel > user["level"]:
+    if novo_nivel > user["level"] and update.message:
         await update.message.reply_html(
             f"🎉 <b>LEVEL UP!</b>\n\n"
             f"✨ {user['nick']} agora é nível <b>{novo_nivel}</b>!"
         )
-
+        
 # ===== LOGIN =====
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -2470,5 +2473,6 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
 
