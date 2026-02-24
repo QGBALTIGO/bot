@@ -118,25 +118,82 @@ async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_counter[chat_id] = 0
         await spawn_personagem(update, context)
         
-# ===== GACHA =====
+# ================= DATABASE =================
+db = sqlite3.connect("bot.db", check_same_thread=False)
+cursor = db.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    telegram_id INTEGER PRIMARY KEY,
+    collection_name TEXT,
+    fav_image TEXT
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_levels (
+    user_id INTEGER PRIMARY KEY,
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS active_spawns (
+    chat_id INTEGER PRIMARY KEY,
+    character_id INTEGER,
+    character_name TEXT,
+    image TEXT,
+    expires_at INTEGER
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_collection (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    character_id INTEGER,
+    character_name TEXT,
+    image TEXT,
+    captured_at INTEGER
+)
+""")
+
+db.commit()
+
+# ================= XP / LEVEL =================
+def adicionar_xp(user_id: int):
+    cursor.execute("SELECT xp FROM user_levels WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+
+    if data:
+        xp = data[0] + 1
+        level = (xp // 5) + 1
+        cursor.execute(
+            "UPDATE user_levels SET xp = ?, level = ? WHERE user_id = ?",
+            (xp, level, user_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO user_levels (user_id, xp, level) VALUES (?, ?, ?)",
+            (user_id, 1, 1)
+        )
+    db.commit()
+
+# ================= ANILIST =================
 async def buscar_personagem_famoso():
     query = """
     query ($page: Int) {
       Page(page: $page, perPage: 1) {
         characters(sort: FAVOURITES_DESC) {
           id
-          name {
-            full
-          }
-          image {
-            large
-          }
+          name { full }
+          image { large }
         }
       }
     }
     """
-
-    page = random.randint(1, 50)  # personagens famosos
+    page = random.randint(1, 50)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -145,62 +202,71 @@ async def buscar_personagem_famoso():
         ) as response:
             data = await response.json()
             char = data["data"]["Page"]["characters"][0]
-
             return {
                 "id": char["id"],
                 "name": char["name"]["full"],
                 "image": char["image"]["large"]
             }
 
-# ===== SPAWN =====
+# ================= SPAWN =================
 async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
-    # verifica se já existe spawn ativo
-    cursor.execute(
-        "SELECT 1 FROM active_spawns WHERE chat_id = ?",
-        (chat_id,)
-    )
+    cursor.execute("SELECT 1 FROM active_spawns WHERE chat_id = ?", (chat_id,))
     if cursor.fetchone():
         return
 
     personagem = await buscar_personagem_famoso()
-    expires_at = int(time.time()) + 300  # 5 minutos
+    expires_at = int(time.time()) + 300
 
     cursor.execute("""
         INSERT OR REPLACE INTO active_spawns
-        (chat_id, character_id, character_name, image, expires_at)
         VALUES (?, ?, ?, ?, ?)
     """, (
         chat_id,
         personagem["id"],
-        personagem["name"].lower(),
+        personagem["name"],
         personagem["image"],
         expires_at
     ))
-
     db.commit()
 
     await context.bot.send_photo(
         chat_id=chat_id,
         photo=personagem["image"],
         caption=(
-            "✨ Um personagem famoso apareceu!\n\n"
-            "Use:\n"
-            "/capturar nome"
-        )
+            "✨ **Um personagem famoso apareceu!**\n\n"
+            "🎯 Use:\n"
+            "`/capturar nome`\n\n"
+            "⏳ *5 minutos*"
+        ),
+        parse_mode="Markdown"
     )
 
-# ===== COMANDO /spawn =====
 async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await spawn_personagem(update, context)
 
-# ================ CAPTURAR =================
+# ================= CONTADOR =================
+message_counter = {}
+
+async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    message_counter[chat_id] = message_counter.get(chat_id, 0) + 1
+
+    if message_counter[chat_id] >= SPAWN_INTERVAL:
+        message_counter[chat_id] = 0
+        await spawn_personagem(update, context)
+
+# ================= CAPTURAR =================
 async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
 
     if not context.args:
+        await update.message.reply_text(
+            "❌ Use:\n`/capturar nome_do_personagem`",
+            parse_mode="Markdown"
+        )
         return
 
     nome = " ".join(context.args).lower()
@@ -212,6 +278,7 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     spawn = cursor.fetchone()
 
     if not spawn:
+        await update.message.reply_text("⚠️ Não há personagem ativo.")
         return
 
     cid, cname, img, exp = spawn
@@ -219,9 +286,11 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if time.time() > exp:
         cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
         db.commit()
+        await update.message.reply_text("⌛ O personagem fugiu!")
         return
 
-    if nome not in cname:
+    if nome not in cname.lower():
+        await update.message.reply_text("❌ Nome incorreto!")
         return
 
     cursor.execute("""
@@ -236,27 +305,16 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     adicionar_xp(user.id)
 
     await update.message.reply_text(
-        f"🏆 {user.first_name} capturou **{cname}**!",
+        f"🏆 **{user.first_name} capturou {cname}!**",
         parse_mode="Markdown"
     )
 
 # ================= COLEÇÃO =================
-ITEMS_POR_PAGINA = 15
-
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await enviar_pagina_colecao(update, context, update.effective_user.id, 1)
+    await enviar_pagina(update, context, update.effective_user.id, 1)
 
-async def enviar_pagina_colecao(update, context, user_id, page, edit=False):
+async def enviar_pagina(update, context, user_id, page, edit=False):
     offset = (page - 1) * ITEMS_POR_PAGINA
-
-    cursor.execute("""
-        SELECT collection_name, fav_image
-        FROM users WHERE telegram_id = ?
-    """, (user_id,))
-    user_data = cursor.fetchone()
-
-    collection_name = user_data[0] if user_data and user_data[0] else "Minha Coleção"
-    fav_image = user_data[1]
 
     cursor.execute("""
         SELECT character_id, character_name
@@ -267,10 +325,8 @@ async def enviar_pagina_colecao(update, context, user_id, page, edit=False):
     """, (user_id, ITEMS_POR_PAGINA, offset))
 
     personagens = cursor.fetchall()
-
     if not personagens:
-        if not edit:
-            await update.message.reply_text("📦 Sua coleção está vazia.")
+        await update.message.reply_text("📦 **Sua coleção está vazia**")
         return
 
     cursor.execute(
@@ -280,14 +336,9 @@ async def enviar_pagina_colecao(update, context, user_id, page, edit=False):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    texto = (
-        f"*📚 {collection_name}*\n"
-        f"_Coleção pessoal_\n\n"
-        f"📖 *{page}/{total_paginas}*\n\n"
-    )
-
-    for char_id, nome in personagens:
-        texto += f"🧧 `{char_id}.` {nome.title()}\n"
+    texto = f"📚 *Minha Coleção*\n\n📖 *{page}/{total_paginas}*\n\n"
+    for cid, nome in personagens:
+        texto += f"🧧 `{cid}.` {nome}\n"
 
     botoes = []
     if page > 1:
@@ -298,32 +349,18 @@ async def enviar_pagina_colecao(update, context, user_id, page, edit=False):
     markup = InlineKeyboardMarkup([botoes]) if botoes else None
 
     if edit:
-        await update.callback_query.edit_message_caption(
-            caption=texto,
-            reply_markup=markup,
-            parse_mode="Markdown"
+        await update.callback_query.edit_message_text(
+            texto, reply_markup=markup, parse_mode="Markdown"
         )
     else:
-        if fav_image:
-            await update.message.reply_photo(
-                photo=fav_image,
-                caption=texto,
-                reply_markup=markup,
-                parse_mode="Markdown"
-            )
-        else:
-            await update.message.reply_text(
-                texto,
-                reply_markup=markup,
-                parse_mode="Markdown"
-            )
+        await update.message.reply_text(
+            texto, reply_markup=markup, parse_mode="Markdown"
+        )
 
 async def colecao_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    page = int(query.data.split(":")[1])
-    await enviar_pagina_colecao(update, context, query.from_user.id, page, edit=True)
+    await update.callback_query.answer()
+    page = int(update.callback_query.data.split(":")[1])
+    await enviar_pagina(update, context, update.callback_query.from_user.id, page, True)
     
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1954,11 +1991,12 @@ app.add_handler(CommandHandler("cards", cards))
 app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
 app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
 app.add_handler(CommandHandler("spawn", spawn_command))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
