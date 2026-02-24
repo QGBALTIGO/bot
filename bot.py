@@ -485,35 +485,32 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_html(texto)
 
-async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
-        return
-    await registrar_comando(update)
+async def callback_privado_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
-    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
+    # privado:set:on | privado:set:off
+    _, _, opt = q.data.split(":")
 
-    if not context.args:
-        await update.message.reply_html(
-            "🔐 <b>PERFIL PRIVADO</b>\n\n"
-            "Ative para esconder suas infos (os outros só veem “Private Profile” + favorito).\n\n"
-            "✅ <b>Como usar:</b>\n"
-            "<code>/privado on</code>\n"
-            "<code>/privado off</code>"
-        )
-        return
-
-    opt = context.args[0].lower()
-    if opt not in ("on", "off"):
-        await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
-        return
+    user_id = q.from_user.id
+    ensure_user_row(user_id, q.from_user.first_name)
 
     from database import set_private_profile
-    set_private_profile(update.effective_user.id, opt == "on")
+    set_private_profile(user_id, opt == "on")
 
     if opt == "on":
-        await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
+        msg = "🔐 <b>Perfil privado ativado!</b>\n\nAgora seu perfil ficará oculto para todos."
     else:
-        await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
+        msg = "🔓 <b>Perfil privado desativado!</b>\n\nAgora seu perfil fica público novamente."
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔐 ON", callback_data="privado:set:on"),
+            InlineKeyboardButton("🔓 OFF", callback_data="privado:set:off"),
+        ]
+    ])
+
+    await q.message.edit_text(msg, parse_mode="HTML", reply_markup=kb)
 
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -2071,7 +2068,7 @@ def main():
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("privado", privado))
-    app.add_handler(CallbackQueryHandler(callback_privado_set, pattern=r"^privado:set:(on|off)$"))
+    aapp.add_handler(CallbackQueryHandler(callback_privado_set, pattern="^privado:set:"))
     app.add_handler(CommandHandler("adminfoto", adminfoto))
     app.add_handler(CommandHandler("favoritar", favoritar))
     app.add_handler(CommandHandler("desfavoritar", desfavoritar))
@@ -2097,6 +2094,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
