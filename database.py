@@ -1,6 +1,9 @@
 import os
 import mysql.connector
 
+# =========================
+# CONEXÃO
+# =========================
 db = mysql.connector.connect(
     host=os.getenv("DB_HOST"),
     port=int(os.getenv("DB_PORT")),
@@ -12,6 +15,24 @@ db = mysql.connector.connect(
 
 cursor = db.cursor(dictionary=True)
 
+# =========================
+# CRIAR TABELAS (AUTO)
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+    nick VARCHAR(255),
+    fav_name VARCHAR(255),
+    fav_image TEXT,
+    commands INT DEFAULT 0,
+    level INT DEFAULT 1
+)
+""")
+
+# =========================
+# USUÁRIO
+# =========================
 def get_user(user_id: int, first_name: str):
     cursor.execute(
         "SELECT * FROM users WHERE user_id = %s",
@@ -33,11 +54,14 @@ def get_user(user_id: int, first_name: str):
 
     return user
 
-
+# =========================
+# COMANDOS / NÍVEL
+# =========================
 def add_command(user_id: int):
     cursor.execute("""
         UPDATE users
-        SET commands = commands + 1,
+        SET 
+            commands = commands + 1,
             level = FLOOR(commands / 100) + 1
         WHERE user_id = %s
     """, (user_id,))
