@@ -195,111 +195,95 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await spawn_personagem(update, context)
 
-# ===== /CAPTURAR =====
+# ================ CAPTURAR =================
 async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
-    user_id = user.id
 
     if not context.args:
-        await update.message.reply_text("❌ Use: /capturar nome")
         return
 
-    nome_digitado = " ".join(context.args).lower().strip()
+    nome = " ".join(context.args).lower()
 
-    # Busca spawn ativo
-    cursor.execute(
-        "SELECT character_id, character_name, image, expires_at FROM active_spawns WHERE chat_id = ?",
-        (chat_id,)
-    )
+    cursor.execute("""
+        SELECT character_id, character_name, image, expires_at
+        FROM active_spawns WHERE chat_id = ?
+    """, (chat_id,))
     spawn = cursor.fetchone()
 
     if not spawn:
-        await update.message.reply_text("❌ Não há personagem ativo agora.")
         return
 
-    char_id, char_name, image, expires_at = spawn
+    cid, cname, img, exp = spawn
 
-    # Expiração
-    if time.time() > expires_at:
+    if time.time() > exp:
         cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
         db.commit()
-        await update.message.reply_text("⌛ O personagem fugiu!")
         return
 
-    # ❌ Errou o nome → não faz nada (igual bots famosos)
-    if nome_digitado not in char_name.lower():
+    if nome not in cname:
         return
 
-    # ✅ ACERTOU → GANHA O PERSONAGEM
     cursor.execute("""
         INSERT INTO user_collection
         (user_id, character_id, character_name, image, captured_at)
         VALUES (?, ?, ?, ?, ?)
-    """, (
-        user_id,
-        char_id,
-        char_name,
-        image,
-        int(time.time())
-    ))
+    """, (user.id, cid, cname, img, int(time.time())))
 
-    # Remove spawn imediatamente
-    cursor.execute(
-        "DELETE FROM active_spawns WHERE chat_id = ?",
-        (chat_id,)
-    )
-
+    cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
     db.commit()
 
-    # XP / LEVEL
-    adicionar_xp(user_id)
+    adicionar_xp(user.id)
 
-    # Mensagem de vitória
     await update.message.reply_text(
-        f"🏆 {user.mention_html()} capturou <b>{char_name}</b>!",
-        parse_mode="HTML"
+        f"🏆 {user.first_name} capturou **{cname}**!",
+        parse_mode="Markdown"
     )
 
-# ===== /COLECAO =====
+# ================= COLEÇÃO =================
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
+    await enviar_pagina(update, context, update.effective_user.id, 1)
+
+async def enviar_pagina(update, context, user_id, page, edit=False):
+    offset = (page - 1) * ITEMS_POR_PAGINA
 
     cursor.execute("""
-        SELECT character_name 
-        FROM user_collection 
+        SELECT character_name FROM user_collection
         WHERE user_id = ?
         ORDER BY captured_at DESC
-        LIMIT 50
-    """, (user_id,))
+        LIMIT ? OFFSET ?
+    """, (user_id, ITEMS_POR_PAGINA, offset))
 
-    personagens = cursor.fetchall()
-
-    if not personagens:
-        await update.message.reply_text("📦 Sua coleção está vazia.")
+    itens = cursor.fetchall()
+    if not itens:
         return
 
-    # Level / XP
-    cursor.execute(
-        "SELECT level, xp FROM user_levels WHERE user_id = ?",
-        (user_id,)
-    )
-    level_data = cursor.fetchone()
-    level = level_data[0] if level_data else 1
-    xp = level_data[1] if level_data else 0
+    cursor.execute("SELECT COUNT(*) FROM user_collection WHERE user_id = ?", (user_id,))
+    total = cursor.fetchone()[0]
+    total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    texto = (
-        f"👤 {user.first_name}\n"
-        f"🏆 Level: {level}\n"
-        f"⭐ XP: {xp}\n"
-        f"📦 Personagens: {len(personagens)}\n\n"
-    )
+    texto = f"📦 **Coleção**\n📄 Página {page}/{total_paginas}\n\n"
+    for i, (n,) in enumerate(itens, start=offset + 1):
+        texto += f"{i}. {n}\n"
 
-    for i, (nome,) in enumerate(personagens, start=1):
-        texto += f"{i}. {nome}\n"
+    botoes = []
+    if page > 1:
+        botoes.append(InlineKeyboardButton("◀", callback_data=f"colecao:{page-1}"))
+    if page < total_paginas:
+        botoes.append(InlineKeyboardButton("▶", callback_data=f"colecao:{page+1}"))
 
-    await update.message.reply_text(texto)
+    markup = InlineKeyboardMarkup([botoes]) if botoes else None
+
+    if edit:
+        await update.callback_query.edit_message_text(texto, reply_markup=markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(texto, reply_markup=markup, parse_mode="Markdown")
+
+async def colecao_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    page = int(q.data.split(":")[1])
+    await enviar_pagina(update, context, q.from_user.id, page, edit=True)
      
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1933,7 +1917,9 @@ app.add_handler(CommandHandler("spawn", spawn_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
+app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
 app.run_polling()
+
 
 
 
