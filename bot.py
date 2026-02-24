@@ -512,6 +512,42 @@ async def callback_privado_set(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await q.message.edit_text(msg, parse_mode="HTML", reply_markup=kb)
 
+# ==================================================
+# Callback dos botões do /privado (ON/OFF)
+# ==================================================
+async def callback_privado_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    # privado:set:on | privado:set:off
+    parts = q.data.split(":")
+    opt = parts[2]  # on/off
+
+    user_id = q.from_user.id
+    ensure_user_row(user_id, q.from_user.first_name)
+
+    from database import set_private_profile
+    set_private_profile(user_id, opt == "on")
+
+    if opt == "on":
+        msg = "🔐 <b>Perfil privado ativado!</b>\n\nAgora seu perfil ficará oculto para todos."
+    else:
+        msg = "🔓 <b>Perfil privado desativado!</b>\n\nAgora seu perfil fica público novamente."
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔐 ON", callback_data="privado:set:on"),
+            InlineKeyboardButton("🔓 OFF", callback_data="privado:set:off"),
+        ]
+    ])
+
+    # tenta editar a própria mensagem (quando possível)
+    try:
+        await q.message.edit_text(msg, parse_mode="HTML", reply_markup=kb)
+    except:
+        # se a mensagem original era foto/caption, não dá pra edit_text
+        await q.message.reply_html(msg, reply_markup=kb)
+
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
@@ -2068,7 +2104,7 @@ def main():
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("privado", privado))
-    aapp.add_handler(CallbackQueryHandler(callback_privado_set, pattern="^privado:set:"))
+    app.add_handler(CallbackQueryHandler(callback_privado_set, pattern="^privado:set:"))
     app.add_handler(CommandHandler("adminfoto", adminfoto))
     app.add_handler(CommandHandler("favoritar", favoritar))
     app.add_handler(CommandHandler("desfavoritar", desfavoritar))
@@ -2094,6 +2130,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
