@@ -241,50 +241,90 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ================= COLEÇÃO =================
-async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await enviar_pagina(update, context, update.effective_user.id, 1)
+ITEMS_POR_PAGINA = 15
 
-async def enviar_pagina(update, context, user_id, page, edit=False):
+async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await enviar_pagina_colecao(update, context, update.effective_user.id, 1)
+
+async def enviar_pagina_colecao(update, context, user_id, page, edit=False):
     offset = (page - 1) * ITEMS_POR_PAGINA
 
     cursor.execute("""
-        SELECT character_name FROM user_collection
+        SELECT collection_name, fav_image
+        FROM users WHERE telegram_id = ?
+    """, (user_id,))
+    user_data = cursor.fetchone()
+
+    collection_name = user_data[0] if user_data and user_data[0] else "Minha Coleção"
+    fav_image = user_data[1]
+
+    cursor.execute("""
+        SELECT character_id, character_name
+        FROM user_collection
         WHERE user_id = ?
-        ORDER BY captured_at DESC
+        ORDER BY character_id ASC
         LIMIT ? OFFSET ?
     """, (user_id, ITEMS_POR_PAGINA, offset))
 
-    itens = cursor.fetchall()
-    if not itens:
+    personagens = cursor.fetchall()
+
+    if not personagens:
+        if not edit:
+            await update.message.reply_text("📦 Sua coleção está vazia.")
         return
 
-    cursor.execute("SELECT COUNT(*) FROM user_collection WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT COUNT(*) FROM user_collection WHERE user_id = ?",
+        (user_id,)
+    )
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    texto = f"📦 **Coleção**\n📄 Página {page}/{total_paginas}\n\n"
-    for i, (n,) in enumerate(itens, start=offset + 1):
-        texto += f"{i}. {n}\n"
+    texto = (
+        f"*📚 {collection_name}*\n"
+        f"_Coleção pessoal_\n\n"
+        f"📖 *{page}/{total_paginas}*\n\n"
+    )
+
+    for char_id, nome in personagens:
+        texto += f"🧧 `{char_id}.` {nome.title()}\n"
 
     botoes = []
     if page > 1:
-        botoes.append(InlineKeyboardButton("◀", callback_data=f"colecao:{page-1}"))
+        botoes.append(InlineKeyboardButton("◀️", callback_data=f"colecao:{page-1}"))
     if page < total_paginas:
-        botoes.append(InlineKeyboardButton("▶", callback_data=f"colecao:{page+1}"))
+        botoes.append(InlineKeyboardButton("▶️", callback_data=f"colecao:{page+1}"))
 
     markup = InlineKeyboardMarkup([botoes]) if botoes else None
 
     if edit:
-        await update.callback_query.edit_message_text(texto, reply_markup=markup, parse_mode="Markdown")
+        await update.callback_query.edit_message_caption(
+            caption=texto,
+            reply_markup=markup,
+            parse_mode="Markdown"
+        )
     else:
-        await update.message.reply_text(texto, reply_markup=markup, parse_mode="Markdown")
+        if fav_image:
+            await update.message.reply_photo(
+                photo=fav_image,
+                caption=texto,
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                texto,
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
 
 async def colecao_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    page = int(q.data.split(":")[1])
-    await enviar_pagina(update, context, q.from_user.id, page, edit=True)
-     
+    query = update.callback_query
+    await query.answer()
+
+    page = int(query.data.split(":")[1])
+    await enviar_pagina_colecao(update, context, query.from_user.id, page, edit=True)
+    
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
 # ==================================================
@@ -1919,6 +1959,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(CallbackQueryHandler(colecao_callback, pattern="^colecao:"))
 app.run_polling()
+
 
 
 
