@@ -272,13 +272,11 @@ ITEMS_POR_PAGINA = 10
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await enviar_colecao(update, context, update.effective_user.id, page=1)
 
-
 async def enviar_colecao(update, context, user_id, page: int):
     offset = (page - 1) * ITEMS_POR_PAGINA
 
-    # ===== BUSCA PERSONAGENS =====
     cursor.execute("""
-        SELECT character_id, character_name, character_image, is_favorite
+        SELECT character_id, character_name, image, is_favorite
         FROM user_collection
         WHERE user_id = ?
         ORDER BY character_id ASC
@@ -289,13 +287,12 @@ async def enviar_colecao(update, context, user_id, page: int):
 
     if not personagens:
         await update.message.reply_text(
-            "📦 *Sua coleção está vazia*\n\n"
-            "_Capture personagens para começar sua coleção._",
-            parse_mode="Markdown"
+            "📦 <b>Sua coleção está vazia</b>\n\n"
+            "<i>Capture personagens para começar sua coleção.</i>",
+            parse_mode="HTML"
         )
         return
 
-    # ===== TOTAL =====
     cursor.execute(
         "SELECT COUNT(*) FROM user_collection WHERE user_id = ?",
         (user_id,)
@@ -303,10 +300,8 @@ async def enviar_colecao(update, context, user_id, page: int):
     total = cursor.fetchone()[0]
     total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    # ===== DADOS DO USUÁRIO =====
     user = update.effective_user
 
-    # Nome personalizado da coleção (se existir)
     cursor.execute(
         "SELECT collection_name FROM user_profiles WHERE user_id = ?",
         (user_id,)
@@ -314,31 +309,29 @@ async def enviar_colecao(update, context, user_id, page: int):
     row = cursor.fetchone()
     nome_colecao = row[0] if row and row[0] else "Minha Coleção"
 
-    # ===== TEXTO =====
     texto = (
-        f"📚 *{nome_colecao}*\n"
-        f"👤 *{user.first_name}*\n\n"
-        f"📖 | *{page}/{total_paginas}*\n\n"
+        f"📚 <b>{nome_colecao}</b>\n"
+        f"👤 {user.first_name}\n\n"
+        f"📖 | <b>{page}/{total_paginas}</b>\n\n"
     )
 
     imagem_favorito = None
 
     for cid, nome, imagem, favorito in personagens:
-        texto += f"🧧 `{cid}.` *{nome}*\n"
+        texto += f"🧧 <code>{cid}.</code> {nome}\n"
         if favorito and imagem:
             imagem_favorito = imagem
 
-    # ===== ENVIO =====
     if imagem_favorito:
         await update.message.reply_photo(
             photo=imagem_favorito,
             caption=texto,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     else:
         await update.message.reply_text(
             texto,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     
 # ==================================================
@@ -1974,6 +1967,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
