@@ -211,20 +211,22 @@ async def registrar_comando(update: Update):
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
-        "🏴‍☠️ <b>Ahoy! Eu sou o Source Baltigo</b>\n\n"
-        "⚡ Seu bot definitivo de <b>animes, mangás e personagens</b>.\n\n"
-        "✨ O que eu sei fazer?\n\n"
-        "• 🔍 Buscar infos completas de animes e mangás\n"
-        "• 🎭 Mostrar personagens detalhados\n"
-        "• 🔥 Rankings em alta\n"
-        "• 🎲 Recomendações inteligentes e surpresas\n\n"
-        "📢 <b>Onde eu brilho de verdade?</b>\n"
-        "👉 Em <b>grupos</b>! Me adiciona em um grupo e deixa a mágica acontecer ✨"
+        "🏴‍☠️ <b>Source Baltigo</b>\n"
+        "Seu hub de <b>animes, mangás e personagens</b>.\n\n"
+        "✨ <b>Comandos rápidos</b>\n"
+        "• <code>/anime</code> — buscar anime no canal\n"
+        "• <code>/manga</code> — buscar mangá no canal\n"
+        "• <code>/infoanime</code> — info completa do anime\n"
+        "• <code>/infomanga</code> — info completa do mangá\n"
+        "• <code>/perso</code> — info do personagem\n"
+        "• <code>/recomenda</code> — recomendações\n"
+        "• <code>/emalta</code> — ranking do momento\n\n"
+        "📢 Me adicione em um grupo pra aproveitar melhor."
     )
 
     teclado = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Adicionar em um grupo", url="https://t.me/SourceBaltigo_bot?startgroup=start")],
-        [InlineKeyboardButton("⚔️ QG Baltigo ", url="t.me/QG_BALTIGO")]
+        [InlineKeyboardButton("⚔️ QG Baltigo", url="t.me/QG_BALTIGO")]
     ])
 
     await update.message.reply_photo(
@@ -1973,4 +1975,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
