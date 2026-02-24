@@ -515,86 +515,56 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
 
-# ==================================================
-# /favoritar (somente se tiver na coleção)
-# ==================================================
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
     await registrar_comando(update)
 
-    user_id = update.effective_user.id
-    ensure_user_row(user_id, update.effective_user.first_name)
-
-    # ✅ se enviar só /favoritar
     if not context.args:
         await update.message.reply_html(
-            "❤️ <b>FAVORITAR PERSONAGEM</b>\n\n"
-            "Você só pode favoritar personagens que estão na sua coleção.\n\n"
-            "📌 <b>Como usar:</b>\n"
-            "<code>/favoritar ID</code>\n\n"
-            "✨ <b>Exemplo:</b>\n"
-            "<code>/favoritar 12</code>"
+            "❤️ <b>Favoritar personagem</b>\n\n"
+            "Use o nome <b>COMPLETO</b>:\n"
+            "<code>/favoritar Monkey D. Luffy</code>"
         )
         return
 
-    # precisa ser 1 número
-    if len(context.args) != 1:
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+    row = get_user_row(user_id)
+
+    if row["fav_name"]:
         await update.message.reply_html(
-            "❌ <b>Formato inválido</b>\n\n"
-            "Use apenas o ID do personagem.\n\n"
-            "📌 Exemplo:\n"
-            "<code>/favoritar 12</code>"
+            "⚠️ Você já tem um personagem favorito.\n"
+            "Use <code>/desfavoritar</code> para trocar."
         )
         return
 
-    try:
-        char_id = int(context.args[0])
-    except:
+    nome = " ".join(context.args)
+    personagem = await buscar_personagem(nome)
+
+    if not personagem:
         await update.message.reply_html(
-            "❌ <b>ID inválido</b>\n\n"
-            "O ID precisa ser um número.\n\n"
-            "📌 Exemplo:\n"
-            "<code>/favoritar 12</code>"
+            "❌ <b>Personagem não encontrado</b>\n\n"
+            "Verifique se o nome está completo e correto."
         )
         return
 
-    # ✅ verifica se o personagem está na coleção do usuário
     cursor.execute(
-        "SELECT char_id, nome, image_url FROM collection WHERE user_id=%s AND char_id=%s LIMIT 1",
-        (user_id, char_id)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        await update.message.reply_html(
-            "🚫 <b>Você não possui esse personagem!</b>\n\n"
-            "Você só pode favoritar personagens que estão na sua coleção.\n\n"
-            "📌 Dica: use <code>/colecao</code> pra ver seus IDs."
-        )
-        return
-
-    # pega nome/imagen se existir
-    # (se seu cursor retorna dict ou tuple, isso cobre os 2)
-    if isinstance(row, dict):
-        nome = row.get("nome") or f"ID {char_id}"
-        image = row.get("image_url")
-    else:
-        # ajuste conforme sua ordem real de colunas
-        _, nome, image = row[0], row[1], row[2] if len(row) > 2 else None
-
-    # ✅ salva favorito no users
-    cursor.execute(
-        "UPDATE users SET fav_id=%s, fav_name=%s, fav_image=%s WHERE user_id=%s",
-        (char_id, nome, image, user_id)
+        "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
+        (personagem["name"]["full"], personagem["image"]["large"], user_id)
     )
     db.commit()
 
-    await update.message.reply_html(
-        "✅ <b>Favorito definido!</b>\n\n"
-        f"❤️ Agora seu favorito é:\n"
-        f"🧧 <b>{nome}</b> (ID <code>{char_id}</code>)"
+    await update.message.reply_photo(
+        photo=personagem["image"]["large"],
+        caption=(
+            "❤️ <b>PERSONAGEM FAVORITADO!</b>\n\n"
+            f"🧧 <b>{personagem['name']['full']}</b>\n\n"
+            "🎴 Agora ele é a capa do seu perfil!"
+        ),
+        parse_mode="HTML"
     )
+
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
@@ -1655,298 +1625,74 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_collection_name(user_id, nome)
     await update.message.reply_text(f"📚 Coleção renomeada para *{nome}*", parse_mode="Markdown")
 
-# ===================== TROCAS + FAVORITAR (POSTGRES) =====================
-
-TRADE_PHOTO = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
-
-# Guarda trocas pendentes por chat (1 por grupo)
-pending_trades = {}
-
-
-def _row_get(row, key, idx=None, default=None):
-    """Compatível com cursor dict e tuple."""
-    if row is None:
-        return default
-    if isinstance(row, dict):
-        return row.get(key, default)
-    if idx is not None and isinstance(row, (list, tuple)) and len(row) > idx:
-        return row[idx]
-    return default
-
-
-def _user_has_char(user_id: int, char_id: int) -> bool:
-    try:
-        cursor.execute(
-            "SELECT 1 FROM collection WHERE user_id = %s AND char_id = %s LIMIT 1",
-            (user_id, char_id)
-        )
-        return cursor.fetchone() is not None
-    except Exception as e:
-        print("ERRO _user_has_char:", e)
-        try:
-            db.rollback()
-        except:
-            pass
-        return False
-
-
-def _get_char_info(user_id: int, char_id: int):
-    """
-    Retorna (nome, image_url) se existir.
-    Espera collection(user_id, char_id, nome, image_url opcional)
-    """
-    try:
-        cursor.execute(
-            "SELECT nome, image_url FROM collection WHERE user_id = %s AND char_id = %s LIMIT 1",
-            (user_id, char_id)
-        )
-        r = cursor.fetchone()
-        if not r:
-            return (f"ID {char_id}", None)
-        nome = _row_get(r, "nome", 0, f"ID {char_id}")
-        img = _row_get(r, "image_url", 1, None)
-        return (nome or f"ID {char_id}", img)
-    except Exception as e:
-        print("ERRO _get_char_info:", e)
-        try:
-            db.rollback()
-        except:
-            pass
-        return (f"ID {char_id}", None)
-
-
-def _trade_busy_user(user_id: int) -> bool:
-    """Opcional: impede o mesmo user ter 2 trocas pendentes em chats diferentes."""
-    for t in pending_trades.values():
-        if t["from_id"] == user_id or t["to_id"] == user_id:
-            return True
-    return False
-
-
 # ==================================================
-# /trocar
-# Uso: responder alguém e mandar /trocar IDmeu IDdele
+# 21) /trocar (POSTGRES)
 # ==================================================
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    user1 = update.effective_user
-
-    if chat.type == "private":
-        await update.message.reply_html("⚠️ Use este comando em um grupo.")
-        return
-
     if not update.message.reply_to_message:
-        await update.message.reply_html(
-            "🔁 <b>TROCA</b>\n\n"
-            "👉 Responda a mensagem do usuário com quem você quer trocar.\n\n"
-            "📌 <b>Como usar:</b>\n"
-            "<code>/trocar ID_DO_SEU_PERSONAGEM ID_DO_PERSONAGEM_DELE</code>\n\n"
-            "✨ <b>Exemplo:</b>\n"
-            "<code>/trocar 12 55</code>"
+        await update.message.reply_text(
+            "❌ Você precisa **responder a mensagem do usuário** para trocar.\n\n"
+            "Exemplo:\n"
+            "`(responder mensagem)`\n"
+            "`/trocar 10 25`",
+            parse_mode="Markdown"
         )
         return
 
     if len(context.args) != 2:
-        await update.message.reply_html(
-            "🔁 <b>TROCA</b>\n\n"
-            "📌 <b>Como usar:</b>\n"
-            "<code>/trocar ID_DO_SEU_PERSONAGEM ID_DO_PERSONAGEM_DELE</code>\n\n"
-            "✨ <b>Exemplo:</b>\n"
-            "<code>/trocar 12 55</code>"
-        )
+        await update.message.reply_text("Use:\n`/trocar SEU_ID ID_DELE`", parse_mode="Markdown")
         return
 
-    # IDs
-    try:
-        my_char_id = int(context.args[0])
-        other_char_id = int(context.args[1])
-    except:
-        await update.message.reply_html("❌ IDs inválidos. Use apenas números.")
+    from_user = update.effective_user.id
+    to_user = update.message.reply_to_message.from_user.id
+    from_char = int(context.args[0])
+    to_char = int(context.args[1])
+
+    if not user_has_character(from_user, from_char):
+        await update.message.reply_text("❌ Esse personagem não é seu.")
+        return
+    if not user_has_character(to_user, to_char):
+        await update.message.reply_text("❌ O outro usuário não possui esse personagem.")
         return
 
-    user2 = update.message.reply_to_message.from_user
-    if user2.id == user1.id:
-        return
+    create_trade(from_user, to_user, from_char, to_char)
 
-    ensure_user_row(user1.id, user1.first_name)
-    ensure_user_row(user2.id, user2.first_name)
+    teclado = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Aceitar", callback_data="trade_accept"),
+        InlineKeyboardButton("❌ Recusar", callback_data="trade_reject"),
+    ]])
 
-    # 1 troca por chat (pra não bagunçar)
-    if chat.id in pending_trades:
-        await update.message.reply_html(
-            "⚠️ <b>Já existe uma troca pendente neste chat.</b>\n\n"
-            "Finalize a troca atual antes de iniciar outra."
-        )
-        return
-
-    # opcional: impede user ficar abrindo várias trocas em chats diferentes
-    if _trade_busy_user(user1.id) or _trade_busy_user(user2.id):
-        await update.message.reply_html(
-            "⚠️ <b>Um dos usuários já está com uma troca pendente.</b>\n\n"
-            "Finalize a troca atual antes de criar outra."
-        )
-        return
-
-    # valida coleção dos dois
-    if not _user_has_char(user1.id, my_char_id):
-        await update.message.reply_html(
-            "❌ <b>Você não possui esse personagem na sua coleção.</b>\n\n"
-            "📌 Dica: use <code>/colecao</code> para ver seus IDs."
-        )
-        return
-
-    if not _user_has_char(user2.id, other_char_id):
-        await update.message.reply_html(
-            "❌ <b>O outro usuário não possui esse personagem na coleção.</b>\n\n"
-            "Tente outro ID."
-        )
-        return
-
-    my_name, _ = _get_char_info(user1.id, my_char_id)
-    other_name, _ = _get_char_info(user2.id, other_char_id)
-
-    pending_trades[chat.id] = {
-        "chat_id": chat.id,
-        "from_id": user1.id,
-        "from_name": user1.first_name,
-        "to_id": user2.id,
-        "to_name": user2.first_name,
-        "from_char_id": my_char_id,
-        "to_char_id": other_char_id,
-        "from_char_name": my_name,
-        "to_char_name": other_name,
-    }
-
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Aceitar", callback_data="trade_accept"),
-            InlineKeyboardButton("❌ Rejeitar", callback_data="trade_reject"),
-        ]
-    ])
-
-    texto = (
-        "🔁 <b>TROCA PROPOSTA</b>\n\n"
-        f"🤝 <b>{user1.first_name}</b> quer trocar\n"
-        f"🧧 <b>{my_name}</b> (ID <code>{my_char_id}</code>)\n\n"
-        "por\n\n"
-        f"🧧 <b>{other_name}</b> (ID <code>{other_char_id}</code>)\n"
-        f"👤 de <b>{user2.first_name}</b>\n\n"
-        f"📌 <b>{user2.first_name}</b>, aceite ou rejeite essa troca:"
+    await update.message.reply_text(
+        "🔁 **Pedido de troca enviado!**\n\n"
+        "Apenas o usuário marcado pode responder.",
+        parse_mode="Markdown",
+        reply_markup=teclado
     )
 
-    await update.message.reply_photo(
-        photo=TRADE_PHOTO,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
-
-# ==================================================
-# Callback: aceitar troca
-# ==================================================
 async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+    query = update.callback_query
+    user_id = query.from_user.id
 
-    trade = pending_trades.get(q.message.chat.id)
+    trade = get_latest_pending_trade_for_to_user(user_id)
     if not trade:
-        await q.answer("Essa troca já expirou.", show_alert=True)
+        await query.answer("Nenhuma troca pendente.", show_alert=True)
         return
 
-    if q.from_user.id != trade["to_id"]:
-        await q.answer("Apenas quem recebeu a troca pode aceitar.", show_alert=True)
-        return
+    trade_id, from_user, from_char, to_char = trade
+    swap_trade_execute(trade_id, from_user, user_id, from_char, to_char)
+    await query.message.edit_text("✅ **Troca realizada com sucesso!**", parse_mode="Markdown")
 
-    # revalida
-    if not _user_has_char(trade["from_id"], trade["from_char_id"]):
-        await q.message.edit_caption(
-            caption="❌ <b>Troca cancelada:</b>\n\nO proponente não possui mais o personagem.",
-            parse_mode="HTML"
-        )
-        pending_trades.pop(q.message.chat.id, None)
-        return
-
-    if not _user_has_char(trade["to_id"], trade["to_char_id"]):
-        await q.message.edit_caption(
-            caption="❌ <b>Troca cancelada:</b>\n\nO receptor não possui mais o personagem.",
-            parse_mode="HTML"
-        )
-        pending_trades.pop(q.message.chat.id, None)
-        return
-
-    # executa troca (trocando o user_id dos dois char_id)
-    # ⚠️ Se você permite DUPLICADOS do mesmo char_id por usuário, a troca ideal precisa do ID único do card.
-    try:
-        cursor.execute(
-            "UPDATE collection SET user_id = %s WHERE user_id = %s AND char_id = %s",
-            (trade["to_id"], trade["from_id"], trade["from_char_id"])
-        )
-        cursor.execute(
-            "UPDATE collection SET user_id = %s WHERE user_id = %s AND char_id = %s",
-            (trade["from_id"], trade["to_id"], trade["to_char_id"])
-        )
-        db.commit()
-    except Exception as e:
-        print("ERRO troca accept:", e)
-        try:
-            db.rollback()
-        except:
-            pass
-        await q.message.edit_caption(
-            caption="❌ Ocorreu um erro ao concluir a troca. Tente novamente.",
-            parse_mode="HTML"
-        )
-        pending_trades.pop(q.message.chat.id, None)
-        return
-
-    texto_ok = (
-        "✅ <b>TROCA CONCLUÍDA!</b>\n\n"
-        "🤝 Excelente! Parece que o acordo entre vocês foi selado.\n\n"
-        f"👤 <b>{trade['from_name']}</b> recebeu: <b>{trade['to_char_name']}</b> "
-        f"(ID <code>{trade['to_char_id']}</code>)\n"
-        f"👤 <b>{trade['to_name']}</b> recebeu: <b>{trade['from_char_name']}</b> "
-        f"(ID <code>{trade['from_char_id']}</code>)"
-    )
-
-    await q.message.edit_caption(caption=texto_ok, parse_mode="HTML")
-    pending_trades.pop(q.message.chat.id, None)
-
-
-# ==================================================
-# Callback: rejeitar troca
-# ==================================================
 async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    trade = pending_trades.get(q.message.chat.id)
+    query = update.callback_query
+    user_id = query.from_user.id
+    trade = get_latest_pending_trade_for_to_user(user_id)
     if not trade:
-        await q.answer("Essa troca já expirou.", show_alert=True)
+        await query.answer("Nenhuma troca pendente.", show_alert=True)
         return
 
-    if q.from_user.id != trade["to_id"]:
-        await q.answer("Apenas quem recebeu a troca pode rejeitar.", show_alert=True)
-        return
-
-    texto_no = (
-        "❌ <b>TROCA REJEITADA</b>\n\n"
-        f"👤 <b>{trade['to_name']}</b> rejeitou a troca.\n"
-        "📌 Você pode tentar outra proposta."
-    )
-    await q.message.edit_caption(caption=texto_no, parse_mode="HTML")
-
-    # mensagem extra no chat
-    await context.bot.send_message(
-        chat_id=trade["chat_id"],
-        text=(
-            f"⚠️ <b>TROCA CANCELADA</b>\n\n"
-            f"👤 <b>{trade['to_name']}</b> não aceitou a troca de <b>{trade['from_name']}</b>."
-        ),
-        parse_mode="HTML"
-    )
-
-    pending_trades.pop(q.message.chat.id, None)
+    trade_id, *_ = trade
+    mark_trade_status(trade_id, "recusada")
+    await query.message.edit_text("❌ **Troca recusada.**", parse_mode="Markdown")
 
 # ==================================================
 # 22) /loja (POSTGRES) — SIMPLES
@@ -2097,12 +1843,12 @@ async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     await query.message.reply_text("✅ Ok!")
 
-# ==================================================
-# 23) /batalha (POSTGRES) — SEMPRE NO GRUPO + FOTO
-# ==================================================
+# ===================== BATALHA RPG =====================
+
+
 BATTLE_PHOTO = "https://photo.chelpbot.me/AgACAgEAAxkBZpH_wWmeJej3td1ktZvlFNrVTgqI5WKZAAIlDGsbjP7wRKQwEJtuQrQ4AQADAgADeQADOgQ/photo.jpg"
 
-# ===================== BATALHA RPG =====================
+
 
 # ===== TABELA =====
 cursor.execute("""
@@ -2120,8 +1866,15 @@ CREATE TABLE IF NOT EXISTS battles (
     vez INTEGER
 )
 """)
-
 db.commit()
+
+# ===== TRAVA GLOBAL =====
+def usuario_em_batalha(user_id: int):
+    cursor.execute("""
+        SELECT chat_id FROM battles
+        WHERE player1_id = ? OR player2_id = ?
+    """, (user_id, user_id))
+    return cursor.fetchone()
 
 # ===== DESAFIAR =====
 async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2131,8 +1884,8 @@ async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         await update.message.reply_text(
             "**⚔️ COMO DESAFIAR**\n\n"
-            "👉 Responda a mensagem do jogador que deseja desafiar.\n\n"
-            "_A arena aguarda sangue novo..._",
+            "👉 Responda a mensagem do jogador que deseja desafiar.",
+
             parse_mode="Markdown"
         )
         return
@@ -2142,8 +1895,15 @@ async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user1.id == user2.id:
         return
 
+    # trava batalha ativa
+    if usuario_em_batalha(user1.id) or usuario_em_batalha(user2.id):
+        await update.message.reply_text(
+            "❌ Um dos jogadores já está em uma batalha ativa."
+        )
+        return
+
     cursor.execute("""
-        INSERT OR REPLACE INTO battles
+        INSERT INTO battles
         (chat_id, player1_id, player2_id, player1_name, player2_name,
          player1_hp, player2_hp, turno, vez)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2164,10 +1924,13 @@ async def batalha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⚔️ Aceitar Batalha", callback_data="battle:accept")]
     ])
 
-    await update.message.reply_text(
-        f"**⚔️ DESAFIO LANÇADO!**\n\n"
-        f"🔥 **{user1.first_name}** desafiou **{user2.first_name}**!\n\n"
-        "_Aguardando resposta do oponente..._",
+    await update.message.reply_photo(
+        photo=BATTLE_PHOTO,
+        caption=(
+            f"⚔️ **DESAFIO LANÇADO!**\n\n"
+            f"🔥 **{user1.first_name}** desafiou **{user2.first_name}**!\n\n"
+            "_Aguardando resposta do oponente..._"
+        ),
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
@@ -2184,47 +1947,58 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
 
     _, p1_id, p2_id, p1_name, p2_name, *_ = batalha
 
-    # verifica chat privado
+    # verifica se ambos abriram PV
     for uid in [p1_id, p2_id]:
         try:
-            await context.bot.send_message(uid, "🔔 **Preparando batalha...**", parse_mode="Markdown")
+            await context.bot.send_message(uid, "🔔 Preparando batalha...")
         except:
-            await query.edit_message_text(
-                "**❌ BATALHA CANCELADA**\n\n"
-                "👉 Ambos os jogadores precisam **abrir o chat privado com o bot**.\n\n"
-                "_Clique no bot, aperte START e tente novamente._",
+            await query.edit_message_caption(
+                caption="❌ Ambos precisam abrir o PV com o bot.",
+
+
                 parse_mode="Markdown"
             )
             cursor.execute("DELETE FROM battles WHERE chat_id = ?", (query.message.chat.id,))
             db.commit()
             return
 
-    # envia DM pros dois
+    # envia PV
     for uid in [p1_id, p2_id]:
         await context.bot.send_message(
             uid,
             "**🧙 ESCOLHA SEU PERSONAGEM**\n\n"
             "Digite:\n"
-            "`/personagem Nome do Personagem`\n\n"
-            "_Sua escolha definirá seu destino..._",
+            "`/personagem Nome do Personagem`",
+
             parse_mode="Markdown"
         )
 
-    await query.edit_message_text(
-        "**⚔️ BATALHA ACEITA!**\n\n"
-        "📩 Os guerreiros receberam uma mensagem no privado.\n"
-        "_A batalha começará em instantes..._",
+    await query.edit_message_caption(
+        caption="⚔️ **BATALHA ACEITA!**\n\n📩 Escolha enviada no privado.",
+
+
         parse_mode="Markdown"
     )
 
 # ===== ESCOLHER PERSONAGEM =====
 async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+
     if not context.args:
         return
 
     nome = " ".join(context.args)
 
+    # verifica coleção
+    cursor.execute("""
+        SELECT 1 FROM collection
+        WHERE user_id = ? AND LOWER(nome) = LOWER(?)
+    """, (user.id, nome))
+    tem = cursor.fetchone()
+
+    if not tem:
+        await update.message.reply_text("❌ Você não possui esse personagem na coleção.")
+        return
 
     cursor.execute("""
         SELECT chat_id, player1_id, player2_id
@@ -2245,8 +2019,8 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db.commit()
 
     await update.message.reply_text(
-        f"**✅ PERSONAGEM DEFINIDO**\n\n"
-        f"🧬 Você lutará como **{nome}**",
+        f"**✅ PERSONAGEM DEFINIDO**\n\n🧬 Você lutará como **{nome}**",
+
         parse_mode="Markdown"
     )
 
@@ -2275,9 +2049,10 @@ async def iniciar_batalha(context, chat_id):
         [InlineKeyboardButton("⚔️ Atacar", callback_data="atacar")]
     ])
 
-    await context.bot.send_message(
+    await context.bot.send_photo(
         chat_id=chat_id,
-        text=(
+        photo=BATTLE_PHOTO,
+        caption=(
             "**🔥 A BATALHA COMEÇOU!**\n\n"
             f"🧙 **{p1}** → *{c1}*\n"
             f"🧛 **{p2}** → *{c2}*\n\n"
@@ -2313,31 +2088,36 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     dano = random.randint(10, 30)
     erro = random.randint(1, 100)
+
     if erro <= 20:
         resultado = "**❌ O ATAQUE ERROU!**"
 
     else:
         if vez == p1_id:
             p2_hp -= dano
-            resultado = f"**💥 {p1_name} atacou causando {dano} de dano!**"
+            resultado = f"**💥 {p1_name} causou {dano} de dano!**"
             vez = p2_id
         else:
             p1_hp -= dano
-            resultado = f"**💥 {p2_name} atacou causando {dano} de dano!**"
+            resultado = f"**💥 {p2_name} causou {dano} de dano!**"
             vez = p1_id
 
     turno += 1
 
     if p1_hp <= 0 or p2_hp <= 0:
         vencedor = p1_name if p1_hp > 0 else p2_name
-        await query.edit_message_text(
-            f"**🏆 FIM DA BATALHA!**\n\n"
-            f"👑 **Vencedor:** {vencedor}\n\n"
-            f"🧙 {p1_name} ({p1_char}) — {max(p1_hp,0)} HP\n"
-            f"🧛 {p2_name} ({p2_char}) — {max(p2_hp,0)} HP\n\n"
-            f"🔢 Turnos: {turno}",
+
+        await query.edit_message_caption(
+            caption=(
+                f"🏆 **FIM DA BATALHA!**\n\n"
+                f"👑 **Vencedor:** {vencedor}\n\n"
+                f"🧙 {p1_name} ({p1_char}) — {max(p1_hp,0)} HP\n"
+                f"🧛 {p2_name} ({p2_char}) — {max(p2_hp,0)} HP\n\n"
+                f"🔢 Turnos: {turno}"
+            ),
             parse_mode="Markdown"
         )
+
         cursor.execute("DELETE FROM battles WHERE chat_id = ?", (chat_id,))
         db.commit()
         return
@@ -2355,16 +2135,18 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     prox = p1_name if vez == p1_id else p2_name
 
-    await query.edit_message_text(
-        f"{resultado}\n\n"
-        f"❤️ {p1_name}: {p1_hp} HP\n"
-        f"❤️ {p2_name}: {p2_hp} HP\n\n"
-        f"**🔄 TURNO {turno}**\n"
-        f"👉 **Vez de {prox}**",
+    await query.edit_message_caption(
+        caption=(
+            f"{resultado}\n\n"
+            f"❤️ {p1_name}: {p1_hp} HP\n"
+            f"❤️ {p2_name}: {p2_hp} HP\n\n"
+            f"**🔄 TURNO {turno}**\n"
+            f"👉 **Vez de {prox}**"
+        ),
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
-        
+
 # ==================================================
 # 24) /personagem (placeholder simples)
 # ==================================================
@@ -2433,5 +2215,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
