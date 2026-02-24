@@ -267,44 +267,79 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== /COLECAO =====
-async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
+ITEMS_POR_PAGINA = 10
 
+async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await enviar_colecao(update, context, update.effective_user.id, page=1)
+
+
+async def enviar_colecao(update, context, user_id, page: int):
+    offset = (page - 1) * ITEMS_POR_PAGINA
+
+    # ===== BUSCA PERSONAGENS =====
     cursor.execute("""
-        SELECT character_name 
-        FROM user_collection 
+        SELECT character_id, character_name, character_image, is_favorite
+        FROM user_collection
         WHERE user_id = ?
-        ORDER BY captured_at DESC
-        LIMIT 50
-    """, (user_id,))
+        ORDER BY character_id ASC
+        LIMIT ? OFFSET ?
+    """, (user_id, ITEMS_POR_PAGINA, offset))
+
     personagens = cursor.fetchall()
 
     if not personagens:
-        await update.message.reply_text("📦 Sua coleção está vazia.")
+        await update.message.reply_text(
+            "📦 *Sua coleção está vazia*\n\n"
+            "_Capture personagens para começar sua coleção._",
+            parse_mode="Markdown"
+        )
         return
 
-    # Level / XP
+    # ===== TOTAL =====
     cursor.execute(
-        "SELECT level, xp FROM user_levels WHERE user_id = ?",
+        "SELECT COUNT(*) FROM user_collection WHERE user_id = ?",
         (user_id,)
     )
-    level_data = cursor.fetchone()
+    total = cursor.fetchone()[0]
+    total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
 
-    level = level_data[0] if level_data else 1
-    xp = level_data[1] if level_data else 0
+    # ===== DADOS DO USUÁRIO =====
+    user = update.effective_user
 
+    # Nome personalizado da coleção (se existir)
+    cursor.execute(
+        "SELECT collection_name FROM user_profiles WHERE user_id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    nome_colecao = row[0] if row and row[0] else "Minha Coleção"
+
+    # ===== TEXTO =====
     texto = (
-        f"👤 {user.first_name}\n"
-        f"🏆 Level: {level}\n"
-        f"⭐ XP: {xp}\n"
-        f"📦 Personagens: {len(personagens)}\n\n"
+        f"📚 *{nome_colecao}*\n"
+        f"👤 *{user.first_name}*\n\n"
+        f"📖 | *{page}/{total_paginas}*\n\n"
     )
 
-    for i, (nome,) in enumerate(personagens, start=1):
-        texto += f"{i}. {nome}\n"
+    imagem_favorito = None
 
-    await update.message.reply_text(texto)
+    for cid, nome, imagem, favorito in personagens:
+        texto += f"🧧 `{cid}.` *{nome}*\n"
+        if favorito and imagem:
+            imagem_favorito = imagem
+
+    # ===== ENVIO =====
+    if imagem_favorito:
+        await update.message.reply_photo(
+            photo=imagem_favorito,
+            caption=texto,
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            texto,
+            parse_mode="Markdown"
+        )
     
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -1939,6 +1974,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
