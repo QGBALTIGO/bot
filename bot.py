@@ -435,55 +435,31 @@ async def registrar_comando(update: Update):
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
 
-    # 🔎 Busca usuário no banco
-    cursor.execute("""
-        SELECT nick, commands, level
-        FROM users
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
+    cursor.execute(
+        "SELECT nick, commands, level FROM users WHERE user_id=%s",
+        (user_id,)
+    )
+    user = cursor.fetchone()
 
-    # 🆕 Se não existir, cria corretamente
-    if not row:
-        cursor.execute("""
-            INSERT INTO users (user_id, nick, commands, level)
-            VALUES (?, ?, 0, 1)
-        """, (user_id, first_name))
-        db.commit()
+    if not user:
+        cursor.execute(
+            "INSERT INTO users (user_id, nick, commands, level) VALUES (%s,%s,1,1)",
+            (user_id, first_name)
+        )
         return
 
-    nick, commands, level_atual = row
-    nick = nick or first_name  # fallback seguro
-
-    # ➕ Soma comando
-    novos_comandos = commands + 1
+    novos_comandos = user["commands"] + 1
     novo_nivel = (novos_comandos // COMANDOS_POR_NIVEL) + 1
 
-    # 💾 Atualiza banco
-    cursor.execute("""
-        UPDATE users
-        SET commands = ?, level = ?
-        WHERE user_id = ?
-    """, (novos_comandos, novo_nivel, user_id))
-    db.commit()
+    cursor.execute(
+        "UPDATE users SET commands=%s, level=%s WHERE user_id=%s",
+        (novos_comandos, novo_nivel, user_id)
+    )
 
-    # 🎉 LEVEL UP
-    if novo_nivel > level_atual:
-        mensagem = (
-            "🎉 <b>LEVEL UP!</b>\n\n"
-            f"✨ Parabéns <b>{nick}</b>!\n"
-            f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
-            "🚀 Continue usando o bot!"
+    if novo_nivel > user["level"] and update.message:
+        await update.message.reply_html(
+            f"🎉 <b>LEVEL UP!</b>\n\n✨ {user['nick']} agora é nível <b>{novo_nivel}</b>"
         )
-
-        if update.message:
-            await update.message.reply_html(mensagem)
-        else:
-            await update.effective_user.send_message(
-                mensagem,
-                parse_mode="HTML"
-            )
-
 # ==================================================
 # BUSCAR PERSONAGEM NO ANILIST
 # ==================================================
@@ -510,82 +486,47 @@ async def buscar_personagem(nome: str):
 # /FAVORITAR (COM BANCO DE DADOS)
 # ==================================================
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # 🔒 VERIFICA CANAL OBRIGATÓRIO
-    if not await checar_canal(update, context):
-        return
-
-    # 📈 registra uso do comando (nível / XP)
     await registrar_comando(update)
 
     if not context.args:
         await update.message.reply_html(
-            "❤️ <b>Favoritar personagem</b>\n\n"
-            "Use o nome <b>COMPLETO</b>:\n"
-            "<code>/favoritar Monkey D. Luffy</code>"
+            "Use: <code>/favoritar Nome Completo</code>"
         )
         return
 
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
 
-    # 🔎 busca usuário no banco
-    cursor.execute("""
-        SELECT fav_character_name
-        FROM users
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
+    cursor.execute(
+        "SELECT fav_name FROM users WHERE user_id=%s",
+        (user_id,)
+    )
+    user = cursor.fetchone()
 
-    # 🆕 cria usuário se não existir
-    if not row:
-        cursor.execute("""
-            INSERT INTO users (user_id, nick)
-            VALUES (?, ?)
-        """, (user_id, first_name))
-        db.commit()
-        fav_atual = None
-    else:
-        fav_atual = row[0]
-
-    # 🚫 já tem favorito
-    if fav_atual:
+    if not user:
+        cursor.execute(
+            "INSERT INTO users (user_id, nick) VALUES (%s,%s)",
+            (user_id, first_name)
+        )
+    elif user["fav_name"]:
         await update.message.reply_html(
-            "⚠️ Você já tem um personagem favorito.\n"
-            "Use <code>/desfavoritar</code> para trocar."
+            "⚠️ Você já tem um personagem favorito.\nUse <code>/desfavoritar</code>"
         )
         return
 
-    # 🔍 busca personagem
-    nome = " ".join(context.args)
-    personagem = await buscar_personagem(nome)
-
+    personagem = await buscar_personagem(" ".join(context.args))
     if not personagem:
-        await update.message.reply_html(
-            "❌ <b>Personagem não encontrado</b>\n\n"
-            "Verifique se o nome está completo e correto."
-        )
+        await update.message.reply_html("❌ Personagem não encontrado.")
         return
 
-    nome_personagem = personagem["name"]["full"]
-    imagem_personagem = personagem["image"]["large"]
+    cursor.execute(
+        "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
+        (personagem["name"]["full"], personagem["image"]["large"], user_id)
+    )
 
-    # 💾 salva favorito no banco
-    cursor.execute("""
-        UPDATE users
-        SET fav_character_name = ?, fav_character_image = ?
-        WHERE user_id = ?
-    """, (nome_personagem, imagem_personagem, user_id))
-    db.commit()
-
-    # 📸 resposta final
     await update.message.reply_photo(
-        photo=imagem_personagem,
-        caption=(
-            "❤️ <b>PERSONAGEM FAVORITADO!</b>\n\n"
-            f"🧧 <b>{nome_personagem}</b>\n\n"
-            "🎴 Agora ele é a capa do seu perfil!"
-        ),
+        photo=personagem["image"]["large"],
+        caption=f"❤️ <b>{personagem['name']['full']}</b> favoritado!",
         parse_mode="HTML"
     )
     
@@ -612,158 +553,74 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html("💔 Personagem removido.")
 
 # ==================================================
-# /NICK (COM BANCO DE DADOS)
+# /NICK
 # ==================================================
+
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # 🔒 VERIFICA CANAL OBRIGATÓRIO
-    if not await checar_canal(update, context):
-        return
-
     await registrar_comando(update)
 
     if not context.args:
-        await update.message.reply_html(
-            "✏️ Use:\n<code>/nick SeuNome</code>"
-        )
+        await update.message.reply_html("Use: <code>/nick Nome</code>")
         return
 
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
-    novo_nick = " ".join(context.args)
-
-    # 🆕 cria usuário se não existir
     cursor.execute(
-        "SELECT user_id FROM users WHERE user_id = ?",
-        (user_id,)
+        "UPDATE users SET nick=%s WHERE user_id=%s",
+        (" ".join(context.args), update.effective_user.id)
     )
-    if not cursor.fetchone():
-        cursor.execute("""
-            INSERT INTO users (user_id, nick)
-            VALUES (?, ?)
-        """, (user_id, first_name))
 
-    # 💾 atualiza nick
-    cursor.execute("""
-        UPDATE users
-        SET nick = ?
-        WHERE user_id = ?
-    """, (novo_nick, user_id))
-    db.commit()
+    await update.message.reply_html("✨ Nick atualizado!")
 
-    await update.message.reply_html(
-        f"✨ Nick atualizado para <b>{novo_nick}</b>"
-    )
-    
 # ==================================================
-# /PERFIL (COM BANCO DE DADOS)
+# /PERFIL
 # ==================================================
+
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # 🔒 VERIFICA CANAL OBRIGATÓRIO
-    if not await checar_canal(update, context):
-        return
-
     await registrar_comando(update)
 
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
+    cursor.execute(
+        "SELECT nick, level, fav_name, fav_image FROM users WHERE user_id=%s",
+        (update.effective_user.id,)
+    )
+    user = cursor.fetchone()
 
-    # 🔎 busca usuário
-    cursor.execute("""
-        SELECT nick, level, fav_character_name, fav_character_image
-        FROM users
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
-
-    # 🆕 cria se não existir
-    if not row:
-        cursor.execute("""
-            INSERT INTO users (user_id, nick)
-            VALUES (?, ?)
-        """, (user_id, first_name))
-        db.commit()
-
-        nick = first_name
-        level = 1
-        fav_name = None
-        fav_image = None
-    else:
-        nick, level, fav_name, fav_image = row
-
-    admin = is_admin(user_id)
-    admin_photo = get_admin_photo(user_id)
-
-    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
+    titulo = "👤 | <i>Admin</i>" if is_admin(update.effective_user.id) else "👤 | <i>User</i>"
 
     texto = (
-        "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"{titulo}: <b>{nick}</b>\n\n"
-        f"📚 | <i>Coleção</i>: <b>0</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{level}</b>\n\n"
-        "❤️ <i>Favorito</i>:\n"
+        "🎴 <b>PERFIL</b>\n\n"
+        f"{titulo}: <b>{user['nick']}</b>\n"
+        f"⭐ Nível: <b>{user['level']}</b>\n\n"
+        "❤️ Favorito:\n"
+        f"{user['fav_name'] or '— Nenhum'}"
     )
 
-    texto += f"🧧 <b>{fav_name} ✨</b>" if fav_name else "— Nenhum favorito"
-
-    foto = admin_photo or fav_image
+    foto = get_admin_photo(update.effective_user.id) or user["fav_image"]
 
     if foto:
-        await update.message.reply_photo(
-            photo=foto,
-            caption=texto,
-            parse_mode="HTML"
-        )
+        await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
     else:
         await update.message.reply_html(texto)
 
 # ==================================================
-# /NIVEL (COM BANCO DE DADOS)
+# /NIVEL
 # ==================================================
+
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # 🔒 VERIFICA CANAL OBRIGATÓRIO
-    if not await checar_canal(update, context):
-        return
-
     await registrar_comando(update)
 
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
+    cursor.execute(
+        "SELECT nick, commands, level FROM users WHERE user_id=%s",
+        (update.effective_user.id,)
+    )
+    user = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT nick, commands, level
-        FROM users
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
-
-    # 🆕 cria se não existir
-    if not row:
-        cursor.execute("""
-            INSERT INTO users (user_id, nick, commands, level)
-            VALUES (?, ?, 0, 1)
-        """, (user_id, first_name))
-        db.commit()
-
-        nick = first_name
-        comandos = 0
-        nivel_atual = 1
-    else:
-        nick, comandos, nivel_atual = row
-
-    proximo = nivel_atual * COMANDOS_POR_NIVEL
-    faltam = max(proximo - comandos, 0)
+    faltam = max((user["level"] * COMANDOS_POR_NIVEL) - user["commands"], 0)
 
     await update.message.reply_html(
-        "📊 <b>SEU PROGRESSO</b>\n\n"
-        f"👤 <b>{nick}</b>\n\n"
-        f"⭐ <i>Nível</i>: <b>{nivel_atual}</b>\n"
-        f"⌨️ <i>Comandos usados</i>: <b>{comandos}</b>\n"
-        f"⏳ <i>Faltam</i>: <b>{faltam}</b> comandos"
+        f"⭐ <b>{user['nick']}</b>\n"
+        f"Nível: <b>{user['level']}</b>\n"
+        f"Comandos: <b>{user['commands']}</b>\n"
+        f"Faltam: <b>{faltam}</b>"
     )
-
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -2473,6 +2330,7 @@ app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
 app.run_polling()
+
 
 
 
