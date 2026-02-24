@@ -1,59 +1,31 @@
 import sqlite3
 
+# ==================================================
+# CONEXÃO COM O BANCO
+# ==================================================
 db = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = db.cursor()
 
-# =========================
-# USUÁRIOS
-# =========================
+# ==================================================
+# TABELA PRINCIPAL DE USUÁRIOS (UNIFICADA)
+# ==================================================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    telegram_id INTEGER PRIMARY KEY,
-    nick TEXT,
-    collection_name TEXT,
-    fav_name TEXT,
-    fav_image TEXT,
-    commands INTEGER DEFAULT 0,
-    last_pedido INTEGER DEFAULT 0
+    user_id INTEGER PRIMARY KEY,              -- telegram_id
+    nick TEXT,                                -- nickname do usuário
+    collection_name TEXT,                     -- nome da coleção (se usar)
+    fav_character_name TEXT,                  -- personagem favorito
+    fav_character_image TEXT,                 -- imagem do favorito
+    commands INTEGER DEFAULT 0,               -- comandos usados
+    level INTEGER DEFAULT 1,                  -- nível atual
+    xp INTEGER DEFAULT 0,                     -- XP acumulado
+    last_pedido INTEGER DEFAULT 0             -- cooldown / controle
 )
 """)
 
-# =========================
-# LEVEL / XP
-# =========================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS user_levels (
-    user_id INTEGER PRIMARY KEY,
-    xp INTEGER DEFAULT 0,
-    level INTEGER DEFAULT 1
-)
-""")
-
-def adicionar_xp(user_id: int):
-    cursor.execute(
-        "SELECT xp FROM user_levels WHERE user_id = ?",
-        (user_id,)
-    )
-    data = cursor.fetchone()
-
-    if data:
-        xp = data[0] + 1
-        level = (xp // 5) + 1
-        cursor.execute(
-            "UPDATE user_levels SET xp = ?, level = ? WHERE user_id = ?",
-            (xp, level, user_id)
-        )
-    else:
-        cursor.execute(
-            "INSERT INTO user_levels (user_id, xp, level) VALUES (?, ?, ?)",
-            (user_id, 1, 1)
-        )
-
-    db.commit()
-
-# =========================
-# SPAWN ATIVO
-# =========================
+# ==================================================
+# SPAWN ATIVO (EVENTOS / DROP)
+# ==================================================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS active_spawns (
     chat_id INTEGER PRIMARY KEY,
@@ -64,9 +36,9 @@ CREATE TABLE IF NOT EXISTS active_spawns (
 )
 """)
 
-# =========================
-# COLEÇÃO
-# =========================
+# ==================================================
+# COLEÇÃO DE PERSONAGENS
+# ==================================================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS user_collection (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
