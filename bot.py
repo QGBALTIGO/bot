@@ -267,6 +267,7 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ===== /COLECAO =====
+# ===== /COLECAO =====
 ITEMS_POR_PAGINA = 10
 
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,9 +288,9 @@ async def enviar_colecao(update, context, user_id, page: int):
 
     if not personagens:
         await update.message.reply_text(
-            "📦 <b>Sua coleção está vazia</b>\n\n"
-            "<i>Capture personagens para começar sua coleção.</i>",
-            parse_mode="HTML"
+            "📦 *Sua coleção está vazia*\n\n"
+            "_Capture personagens para começar._",
+            parse_mode="Markdown"
         )
         return
 
@@ -302,6 +303,7 @@ async def enviar_colecao(update, context, user_id, page: int):
 
     user = update.effective_user
 
+    # Nome da coleção (opcional)
     cursor.execute(
         "SELECT collection_name FROM user_profiles WHERE user_id = ?",
         (user_id,)
@@ -310,28 +312,37 @@ async def enviar_colecao(update, context, user_id, page: int):
     nome_colecao = row[0] if row and row[0] else "Minha Coleção"
 
     texto = (
-        f"📚 <b>{nome_colecao}</b>\n"
-        f"👤 {user.first_name}\n\n"
-        f"📖 | <b>{page}/{total_paginas}</b>\n\n"
+        f"📚 *{nome_colecao}*\n"
+        f"👤 *{user.first_name}*\n\n"
+        f"📖 | *{page}/{total_paginas}*\n\n"
     )
 
     imagem_favorito = None
 
     for cid, nome, imagem, favorito in personagens:
-        texto += f"🧧 <code>{cid}.</code> {nome}\n"
-        if favorito and imagem:
+        texto += f"🧧 `{cid}.` *{nome}*\n"
+        if favorito and imagem and imagem.startswith("http"):
             imagem_favorito = imagem
 
-    if imagem_favorito:
-        await update.message.reply_photo(
-            photo=imagem_favorito,
-            caption=texto,
-            parse_mode="HTML"
-        )
-    else:
+    # ===== ENVIO SEGURO =====
+    try:
+        if imagem_favorito:
+            await update.message.reply_photo(
+                photo=imagem_favorito,
+                caption=texto[:1024],  # 🔒 limite seguro
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                texto,
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        # 🔥 SE DER QUALQUER ERRO, NÃO MATA O BOT
+        print("Erro ao enviar imagem:", e)
         await update.message.reply_text(
             texto,
-            parse_mode="HTML"
+            parse_mode="Markdown"
         )
     
 # ==================================================
@@ -1967,6 +1978,7 @@ app.add_handler(CommandHandler("capturar", capturar_command))
 app.add_handler(CommandHandler("colecao", colecao_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, contar_mensagem))
 app.run_polling()
+
 
 
 
