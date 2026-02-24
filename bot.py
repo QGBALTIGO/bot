@@ -79,44 +79,6 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 
     return True
 
-# ===== BANCO DE DADOS =====
-
-COMANDOS_POR_NIVEL = 100
-
-  File "/app/.venv/lib/python3.11/site-packages/telegram/ext/_application.py", line 1234, in process_update
-    await coroutine
-  File "/app/.venv/lib/python3.11/site-packages/telegram/ext/_basehandler.py", line 157, in handle_update
-    return await self.callback(update, context)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/bot.py", line 1347, in start
-    await update.message.reply_html(
-  File "/app/.venv/lib/python3.11/site-packages/telegram/_message.py", line 1278, in reply_html
-    return await self.get_bot().send_message(
-No error handlers are registered, logging exception.
-
-        async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await registrar_comando(update)
-
-    cursor.execute(
-        "SELECT nick, commands, level FROM users WHERE user_id=%s",
-        (update.effective_user.id,)
-    )
-    user = cursor.fetchone()
-
-    if not user:
-        await update.message.reply_text("❌ Usuário não encontrado.")
-        return
-
-    nick, commands, level = user
-    faltam = max((level * COMANDOS_POR_NIVEL) - commands, 0)
-
-    await update.message.reply_html(
-        f"⭐ <b>{nick}</b>\n"
-        f"Nível: <b>{level}</b>\n"
-        f"Comandos: <b>{commands}</b>\n"
-        f"Faltam: <b>{faltam}</b>"
-    )
-        
 # ===== LOGIN =====
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -156,62 +118,26 @@ async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_counter[chat_id] = 0
         await spawn_personagem(update, context)
 
-# ==================================================
-# USUÁRIO / LEVEL
-# ==================================================
-def get_user_db(user_id: int, first_name: str):
-    cursor.execute("""
-        SELECT user_id, nick, fav_name, fav_image, commands, level
-        FROM users
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
+# ================= XP / LEVEL =================
+def adicionar_xp(user_id: int):
+    cursor.execute("SELECT xp FROM user_levels WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
 
-    if not row:
-        cursor.execute("""
-            INSERT INTO users (user_id, nick, commands, level)
-            VALUES (?, ?, 0, 1)
-        """, (user_id, first_name))
-        db.commit()
-        return {
-            "user_id": user_id,
-            "nick": first_name,
-            "fav_name": None,
-            "fav_image": None,
-            "commands": 0,
-            "level": 1
-        }
-
-    return {
-        "user_id": row[0],
-        "nick": row[1],
-        "fav_name": row[2],
-        "fav_image": row[3],
-        "commands": row[4],
-        "level": row[5]
-    }
-
-async def registrar_comando(update: Update):
-    user = update.effective_user
-    data = get_user_db(user.id, user.first_name)
-
-    novos = data["commands"] + 1
-    novo_nivel = (novos // COMANDOS_POR_NIVEL) + 1
-
-    cursor.execute("""
-        UPDATE users SET commands = ?, level = ?
-        WHERE user_id = ?
-    """, (novos, novo_nivel, user.id))
+    if data:
+        xp = data[0] + 1
+        level = (xp // 5) + 1
+        cursor.execute(
+            "UPDATE user_levels SET xp = ?, level = ? WHERE user_id = ?",
+            (xp, level, user_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO user_levels (user_id, xp, level) VALUES (?, ?, ?)",
+            (user_id, 1, 1)
+        )
     db.commit()
 
-    if novo_nivel > data["level"] and update.message:
-        await update.message.reply_html(
-            f"🎉 <b>LEVEL UP!</b>\n✨ {data['nick']} agora é nível <b>{novo_nivel}</b>"
-        )
-
-# ==================================================
-# ANI LIST — PERSONAGEM ALEATÓRIO
-# ==================================================
+# ================= ANILIST =================
 async def buscar_personagem_famoso():
     query = """
     query ($page: Int) {
@@ -228,43 +154,37 @@ async def buscar_personagem_famoso():
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": {"page": page}}
-        ) as r:
-            data = await r.json()
-            c = data["data"]["Page"]["characters"][0]
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"page": page}},
+        ) as response:
+            data = await response.json()
+            char = data["data"]["Page"]["characters"][0]
             return {
-                "id": c["id"],
-                "name": c["name"]["full"],
-                "image": c["image"]["large"]
+                "id": char["id"],
+                "name": char["name"]["full"],
+                "image": char["image"]["large"]
             }
 
-# ==================================================
-# SPAWN
-# ==================================================
-async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= SPAWN =================
+async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
-    cursor.execute(
-        "SELECT 1 FROM active_spawns WHERE chat_id = ?",
-        (chat_id,)
-    )
+    cursor.execute("SELECT 1 FROM active_spawns WHERE chat_id = ?", (chat_id,))
     if cursor.fetchone():
         return
 
     personagem = await buscar_personagem_famoso()
-    expira = int(time.time()) + 300
+    expires_at = int(time.time()) + 300
 
     cursor.execute("""
-        INSERT INTO active_spawns
-        (chat_id, character_id, character_name, image, expires_at)
+        INSERT OR REPLACE INTO active_spawns
         VALUES (?, ?, ?, ?, ?)
     """, (
         chat_id,
         personagem["id"],
         personagem["name"],
         personagem["image"],
-        expira
+        expires_at
     ))
     db.commit()
 
@@ -272,7 +192,7 @@ async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=chat_id,
         photo=personagem["image"],
         caption=(
-            "✨ *Um personagem apareceu!*\n\n"
+            "✨ **Um personagem famoso apareceu!**\n\n"
             "🎯 Use:\n"
             "`/capturar nome`\n\n"
             "⏳ *5 minutos*"
@@ -280,30 +200,28 @@ async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ==================================================
-# CONTADOR DE MENSAGENS
-# ==================================================
+async def spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await spawn_personagem(update, context)
+
+# ================= CONTADOR =================
 message_counter = {}
 
 async def contar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat.id
-    message_counter[chat] = message_counter.get(chat, 0) + 1
+    chat_id = update.effective_chat.id
+    message_counter[chat_id] = message_counter.get(chat_id, 0) + 1
 
-    if message_counter[chat] >= SPAWN_INTERVAL:
-        message_counter[chat] = 0
+    if message_counter[chat_id] >= SPAWN_INTERVAL:
+        message_counter[chat_id] = 0
         await spawn_personagem(update, context)
 
-# ==================================================
-# CAPTURAR
-# ==================================================
+# ================= CAPTURAR =================
 async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await registrar_comando(update)
     chat_id = update.effective_chat.id
     user = update.effective_user
 
     if not context.args:
         await update.message.reply_text(
-            "❌ Use:\n`/capturar nome`",
+            "❌ Use:\n`/capturar nome_do_personagem`",
             parse_mode="Markdown"
         )
         return
@@ -341,53 +259,52 @@ async def capturar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("DELETE FROM active_spawns WHERE chat_id = ?", (chat_id,))
     db.commit()
 
+    adicionar_xp(user.id)
+
     await update.message.reply_text(
         f"🏆 **{user.first_name} capturou {cname}!**",
         parse_mode="Markdown"
     )
 
-# ==================================================
-# /COLECAO — TEXTO BONITO
-# ==================================================
+# ===== /COLECAO =====
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
-    page = 1
-
-    offset = (page - 1) * ITEMS_POR_PAGINA
 
     cursor.execute("""
-        SELECT character_id, character_name
-        FROM user_collection
+        SELECT character_name 
+        FROM user_collection 
         WHERE user_id = ?
-        ORDER BY character_id ASC
-        LIMIT ? OFFSET ?
-    """, (user_id, ITEMS_POR_PAGINA, offset))
+        ORDER BY captured_at DESC
+        LIMIT 50
+    """, (user_id,))
     personagens = cursor.fetchall()
 
     if not personagens:
-        await update.message.reply_markdown(
-            "📦 *Sua coleção está vazia*\n\n_Capture personagens para começar._"
-        )
+        await update.message.reply_text("📦 Sua coleção está vazia.")
         return
 
+    # Level / XP
     cursor.execute(
-        "SELECT COUNT(*) FROM user_collection WHERE user_id = ?",
+        "SELECT level, xp FROM user_levels WHERE user_id = ?",
         (user_id,)
     )
-    total = cursor.fetchone()[0]
-    total_paginas = (total - 1) // ITEMS_POR_PAGINA + 1
+    level_data = cursor.fetchone()
+
+    level = level_data[0] if level_data else 1
+    xp = level_data[1] if level_data else 0
 
     texto = (
-        f"📚 *Minha Coleção*\n"
-        f"👤 *{user.first_name}*\n\n"
-        f"📖 | *{page}/{total_paginas}*\n\n"
+        f"👤 {user.first_name}\n"
+        f"🏆 Level: {level}\n"
+        f"⭐ XP: {xp}\n"
+        f"📦 Personagens: {len(personagens)}\n\n"
     )
 
-    for cid, nome in personagens:
-        texto += f"🧧 `{cid}.` *{nome}*\n"
+    for i, (nome,) in enumerate(personagens, start=1):
+        texto += f"{i}. {nome}\n"
 
-    await update.message.reply_markdown(texto)
+    await update.message.reply_text(texto)
 
 # ==================================================
 # CONFIGURAÇÃO ANI LIST
@@ -395,10 +312,12 @@ async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ANILIST_API = "https://graphql.anilist.co"
 
 # ==================================================
+# ==================================================
 # CONFIGURAÇÃO DE ADMINS
 # ==================================================
+
 ADMINS = {
-    1852596083, 6978699297, 5940138617, 7722180159,
+    1852596083, 6978699297, 5940138617, 7722180159, # coloque seus IDs aqui
 }
 
 ADMIN_PHOTOS = {
@@ -412,21 +331,24 @@ def get_admin_photo(user_id: int):
     return ADMIN_PHOTOS.get(user_id)
 
 # ==================================================
-# /ADMINFOTO
+# /ADMINFOTO — DEFINIR FOTO PERSONALIZADA DE ADMIN
 # ==================================================
 async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not is_admin(user_id):
         await update.message.reply_html(
-            "⛔ <b>Acesso negado</b>\n\nSomente admins."
+            "⛔ <b>Acesso negado</b>\n\n"
+            "Este comando é exclusivo para <b>admins</b>."
         )
         return
 
     if not context.args:
         await update.message.reply_html(
             "👑 <b>Foto de Admin</b>\n\n"
-            "<code>/adminfoto https://imagem.jpg</code>"
+            "Envie um link direto de imagem:\n"
+            "<code>/adminfoto https://imagem.jpg</code>\n\n"
+            "📌 Essa imagem será a <b>capa do seu perfil</b>."
         )
         return
 
@@ -435,9 +357,28 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_photo(
         photo=url,
-        caption="👑 <b>Foto de admin definida!</b>",
+        caption=(
+            "👑 <b>Foto de admin definida!</b>\n\n"
+            "✨ Agora seu perfil usará essa imagem.\n"
+            "👀 Veja com <code>/perfil</code>"
+        ),
         parse_mode="HTML"
     )
+
+# ==================================================
+# BANCO DE DADOS (MEMÓRIA)
+# ==================================================
+USERS = {}
+
+def get_user(user_id: int, name: str):
+    if user_id not in USERS:
+        USERS[user_id] = {
+            "nick": name,
+            "fav_character": None,
+            "commands": 0,
+            "level": 1
+        }
+    return USERS[user_id]
 
 # ==================================================
 # SISTEMA DE NÍVEL
@@ -445,37 +386,31 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 COMANDOS_POR_NIVEL = 100
 
 async def registrar_comando(update: Update):
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
-
-    cursor.execute(
-        "SELECT nick, commands, level FROM users WHERE user_id = ?",
-        (user_id,)
+    user = get_user(
+        update.effective_user.id,
+        update.effective_user.first_name
     )
-    row = cursor.fetchone()
 
-    if not row:
-        cursor.execute(
-            "INSERT INTO users (user_id, nick, commands, level) VALUES (?, ?, 1, 1)",
-            (user_id, first_name)
+    user["commands"] += 1
+    novo_nivel = (user["commands"] // COMANDOS_POR_NIVEL) + 1
+
+    if novo_nivel > user["level"]:
+        user["level"] = novo_nivel
+
+        mensagem = (
+            "🎉 <b>LEVEL UP!</b>\n\n"
+            f"✨ Parabéns <b>{user['nick']}</b>!\n"
+            f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
+            "🚀 Continue usando o bot!"
         )
-        db.commit()
-        return
 
-    nick, commands, level = row
-    commands += 1
-    novo_nivel = (commands // COMANDOS_POR_NIVEL) + 1
-
-    cursor.execute(
-        "UPDATE users SET commands = ?, level = ? WHERE user_id = ?",
-        (commands, novo_nivel, user_id)
-    )
-    db.commit()
-
-    if novo_nivel > level and update.message:
-        await update.message.reply_html(
-            f"🎉 <b>LEVEL UP!</b>\n✨ {nick} agora é nível <b>{novo_nivel}</b>"
-        )
+        if update.message:
+            await update.message.reply_html(mensagem)
+        else:
+            await update.effective_user.send_message(
+                mensagem,
+                parse_mode="HTML"
+            )
 
 # ==================================================
 # BUSCAR PERSONAGEM NO ANILIST
@@ -490,7 +425,6 @@ async def buscar_personagem(nome: str):
       }
     }
     """
-
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ANILIST_API,
@@ -504,50 +438,52 @@ async def buscar_personagem(nome: str):
 # /FAVORITAR
 # ==================================================
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+
     await registrar_comando(update)
 
     if not context.args:
         await update.message.reply_html(
-            "Use: <code>/favoritar Nome Completo</code>"
+            "❤️ <b>Favoritar personagem</b>\n\n"
+            "Use o nome <b>COMPLETO</b>:\n"
+            "<code>/favoritar Monkey D. Luffy</code>"
         )
         return
 
-    user_id = update.effective_user.id
-    first_name = update.effective_user.first_name
+    user = get_user(update.effective_user.id, update.effective_user.first_name)
 
-    cursor.execute(
-        "SELECT fav_name FROM users WHERE user_id = ?",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        cursor.execute(
-            "INSERT INTO users (user_id, nick) VALUES (?, ?)",
-            (user_id, first_name)
-        )
-        db.commit()
-    elif row[0]:
+    if user["fav_character"]:
         await update.message.reply_html(
-            "⚠️ Você já tem favorito.\nUse <code>/desfavoritar</code>"
+            "⚠️ Você já tem um personagem favorito.\n"
+            "Use <code>/desfavoritar</code> para trocar."
         )
         return
 
-    personagem = await buscar_personagem(" ".join(context.args))
+    nome = " ".join(context.args)
+    personagem = await buscar_personagem(nome)
 
     if not personagem:
-        await update.message.reply_html("❌ Personagem não encontrado.")
+        await update.message.reply_html(
+            "❌ <b>Personagem não encontrado</b>\n\n"
+            "Verifique se o nome está completo e correto."
+        )
         return
 
-    cursor.execute(
-        "UPDATE users SET fav_name = ?, fav_image = ? WHERE user_id = ?",
-        (personagem["name"]["full"], personagem["image"]["large"], user_id)
-    )
-    db.commit()
+    user["fav_character"] = {
+        "name": personagem["name"]["full"],
+        "image": personagem["image"]["large"]
+    }
 
     await update.message.reply_photo(
         photo=personagem["image"]["large"],
-        caption=f"❤️ <b>{personagem['name']['full']}</b> favoritado!",
+        caption=(
+            "❤️ <b>PERSONAGEM FAVORITADO!</b>\n\n"
+            f"🧧 <b>{personagem['name']['full']}</b>\n\n"
+            "🎴 Agora ele é a capa do seu perfil!"
+        ),
         parse_mode="HTML"
     )
 
@@ -555,74 +491,86 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /DESFAVORITAR
 # ==================================================
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await registrar_comando(update)
 
-    cursor.execute(
-        "SELECT fav_name FROM users WHERE user_id = ?",
-        (update.effective_user.id,)
-    )
-    row = cursor.fetchone()
-
-    if not row or not row[0]:
-        await update.message.reply_html("💔 Você não tem favorito.")
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
         return
 
-    cursor.execute(
-        "UPDATE users SET fav_name = NULL, fav_image = NULL WHERE user_id = ?",
-        (update.effective_user.id,)
-    )
-    db.commit()
+    await registrar_comando(update)
 
+    user = USERS.get(update.effective_user.id)
+
+    if not user or not user["fav_character"]:
+        await update.message.reply_html(
+            "💔 Você não tem personagem favorito."
+        )
+        return
+
+    user["fav_character"] = None
     await update.message.reply_html("💔 Personagem removido.")
 
 # ==================================================
 # /NICK
 # ==================================================
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+
     await registrar_comando(update)
 
     if not context.args:
-        await update.message.reply_html("Use: <code>/nick Nome</code>")
+        await update.message.reply_html(
+            "✏️ Use:\n<code>/nick SeuNome</code>"
+        )
         return
 
-    cursor.execute(
-        "UPDATE users SET nick = ? WHERE user_id = ?",
-        (" ".join(context.args), update.effective_user.id)
-    )
-    db.commit()
+    user = get_user(update.effective_user.id, update.effective_user.first_name)
+    user["nick"] = " ".join(context.args)
 
-    await update.message.reply_html("✨ Nick atualizado!")
+    await update.message.reply_html(
+        f"✨ Nick atualizado para <b>{user['nick']}</b>"
+    )
 
 # ==================================================
 # /PERFIL
 # ==================================================
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await registrar_comando(update)
 
-    cursor.execute(
-        "SELECT nick, level, fav_name, fav_image FROM users WHERE user_id = ?",
-        (update.effective_user.id,)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        await update.message.reply_html("❌ Perfil não encontrado.")
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
         return
 
-    nick, level, fav_name, fav_image = row
-    titulo = "👑 <i>Admin</i>" if is_admin(update.effective_user.id) else "👤 <i>User</i>"
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    user = get_user(user_id, update.effective_user.first_name)
+
+    fav = user["fav_character"]
+    admin = is_admin(user_id)
+    admin_photo = get_admin_photo(user_id)
+
+    titulo = "👤 | <i>Admin</i>" if admin else "👤 | <i>User</i>"
 
     texto = (
-        "🎴 <b>PERFIL</b>\n\n"
-        f"{titulo}: <b>{nick}</b>\n"
-        f"⭐ Nível: <b>{level}</b>\n\n"
-        f"❤️ Favorito:\n{fav_name or '— Nenhum'}"
+        "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
+        f"{titulo}: <b>{user['nick']}</b>\n\n"
+        f"📚 | <i>Coleção</i>: <b>0</b>\n"
+        f"⭐ | <i>Nível</i>: <b>{user['level']}</b>\n\n"
+        "❤️ <i>Favorito</i>:\n"
     )
 
-    foto = get_admin_photo(update.effective_user.id) or fav_image
+    texto += f"🧧 <b>{fav['name']} ✨</b>" if fav else "— Nenhum favorito"
+
+    foto = admin_photo or (fav["image"] if fav else None)
 
     if foto:
-        await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
+        await update.message.reply_photo(
+            photo=foto,
+            caption=texto,
+            parse_mode="HTML"
+        )
     else:
         await update.message.reply_html(texto)
 
@@ -630,23 +578,29 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /NIVEL
 # ==================================================
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+     # 🔒 VERIFICA CANAL OBRIGATÓRIO
+    if not await checar_canal(update, context):
+        return
+
     await registrar_comando(update)
 
-    cursor.execute(
-        "SELECT nick, commands, level FROM users WHERE user_id = ?",
-        (update.effective_user.id,)
-    )
-    nick, commands, level = cursor.fetchone()
+    user = get_user(update.effective_user.id, update.effective_user.first_name)
 
-    faltam = max((level * COMANDOS_POR_NIVEL) - commands, 0)
+    comandos = user["commands"]
+    nivel_atual = user["level"]
+
+    proximo = nivel_atual * COMANDOS_POR_NIVEL
+    faltam = max(proximo - comandos, 0)
 
     await update.message.reply_html(
-        f"⭐ <b>{nick}</b>\n"
-        f"Nível: <b>{level}</b>\n"
-        f"Comandos: <b>{commands}</b>\n"
-        f"Faltam: <b>{faltam}</b>"
+        "📊 <b>SEU PROGRESSO</b>\n\n"
+        f"👤 <b>{user['nick']}</b>\n\n"
+        f"⭐ <i>Nível</i>: <b>{nivel_atual}</b>\n"
+        f"⌨️ <i>Comandos usados</i>: <b>{comandos}</b>\n"
+        f"⏳ <i>Faltam</i>: <b>{faltam}</b> comandos"
     )
-    
+
 # ===== ANILIST =====
 ANILIST_API = "https://graphql.anilist.co"
 
@@ -2058,6 +2012,7 @@ CREATE TABLE IF NOT EXISTS battles (
     player2_hp INTEGER,
     turno INTEGER,
     vez INTEGER
+
 )
 """)
 db.commit()
@@ -2080,6 +2035,7 @@ CREATE TABLE IF NOT EXISTS battles (
     vez INTEGER
 )
 """)
+
 db.commit()
 
 # ===== DESAFIAR =====
@@ -2151,7 +2107,7 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.edit_message_text(
                 "**❌ BATALHA CANCELADA**\n\n"
                 "👉 Ambos os jogadores precisam **abrir o chat privado com o bot**.\n\n"
-                "_Abra o bot no privado._",
+                "_Clique no bot, aperte START e tente novamente._",
                 parse_mode="Markdown"
             )
             cursor.execute("DELETE FROM battles WHERE chat_id = ?", (query.message.chat.id,))
@@ -2169,14 +2125,10 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="Markdown"
         )
 
-
     await query.edit_message_text(
         "**⚔️ BATALHA ACEITA!**\n\n"
         "📩 Os guerreiros receberam uma mensagem no privado.\n"
         "_A batalha começará em instantes..._",
-
-
-
         parse_mode="Markdown"
     )
 
@@ -2187,6 +2139,7 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     nome = " ".join(context.args)
+
 
     cursor.execute("""
         SELECT chat_id, player1_id, player2_id
@@ -2209,6 +2162,10 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         f"**✅ PERSONAGEM DEFINIDO**\n\n"
         f"🧬 Você lutará como **{nome}**",
+
+
+
+
         parse_mode="Markdown"
     )
 
@@ -2220,6 +2177,7 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if c1 and c2:
         await iniciar_batalha(context, chat_id)
+
 
 # ===== INICIAR BATALHA =====
 async def iniciar_batalha(context, chat_id):
@@ -2245,11 +2203,16 @@ async def iniciar_batalha(context, chat_id):
             "**⚔️ TURNO 1**\n"
             f"👉 **Vez de {p1}**"
         ),
+
+
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
 
 # ===== ATAQUE =====
+
+
+
 async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2269,9 +2232,9 @@ async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     dano = random.randint(10, 30)
     erro = random.randint(1, 100)
-
     if erro <= 20:
         resultado = "**❌ O ATAQUE ERROU!**"
+
     else:
         if vez == p1_id:
             p2_hp -= dano
@@ -2355,13 +2318,5 @@ app.add_handler(CommandHandler("batalha", batalha_command))
 app.add_handler(CommandHandler("personagem", personagem_command))
 app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
 app.add_handler(CallbackQueryHandler(batalha_callback, pattern="atacar"))
+
 app.run_polling()
-
-
-
-
-
-
-
-
-
