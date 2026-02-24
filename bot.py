@@ -155,10 +155,9 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
         f"{titulo}: <b>{row['nick']}</b>\n\n"
-        f"📚 | <i>Coleção</i> (<i>{nome_colecao}</i>): <b>{total}</b>\n"
+        f"📚 | <i>Coleção</i>: <b>{total}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{coins}</b>\n"
-        f"⭐ | <i>Nível</i>: <b>{row['level']}</b>\n"
-        f"⌨️ | <i>Comandos</i>: <b>{row['commands']}</b>\n\n"
+        f"⭐ | <i>Nível</i>: <b>{row['level']}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
     texto += f"🧧 <b>{row['fav_name']} ✨</b>" if row["fav_name"] else "— Nenhum favorito"
@@ -573,3 +572,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
