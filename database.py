@@ -70,3 +70,7 @@ CREATE TABLE IF NOT EXISTS user_collection (
 """)
 
 db.commit()
+
+cursor.execute("ALTER TABLE users ADD COLUMN collection_name TEXT")
+cursor.execute("ALTER TABLE users ADD COLUMN fav_image TEXT")
+db.commit()
