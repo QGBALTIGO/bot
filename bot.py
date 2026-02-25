@@ -39,28 +39,34 @@ from database import (
     init_db,
     ensure_user_row,
     get_user_row,
+    get_user_by_nick,
     set_user_nick,
     add_coin,
     set_collection_name,
     get_collection_name,
+    set_private_profile,
     count_collection,
     get_collection_page,
     user_has_character,
     add_character_to_collection,
-    swap_trade_execute,
+    remove_one_from_collection,
     create_trade,
     get_latest_pending_trade_for_to_user,
     mark_trade_status,
+    swap_trade_execute,
+    shop_list_user_chars,
+    shop_create_sale,
+    shop_get_sale,
+    shop_delete_sale,
     upsert_battle,
     get_battle,
     delete_battle,
     battle_set_char,
     battle_set_turn,
     battle_damage,
-    shop_create_sale,
-    shop_get_sale,
-    shop_delete_sale,
-    shop_list_user_chars,
+    save_anilist_token,
+    get_anilist_token,
+    delete_anilist_token,
 )
 
 # ==================================================
@@ -2187,6 +2193,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
