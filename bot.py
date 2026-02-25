@@ -270,7 +270,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
 
 # ==================================================
-# 10) /adminfoto
+# 10) /adminfoto (PERSISTENTE + TESTE)
 # ==================================================
 async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -291,18 +291,45 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    url = context.args[0]
-    ADMIN_PHOTOS[user_id] = url
+    url = context.args[0].strip()
 
-    await update.message.reply_photo(
-        photo=url,
-        caption=(
-            "👑 <b>Foto de admin definida!</b>\n\n"
-            "✨ Agora seu perfil usará essa imagem.\n"
-            "👀 Veja com <code>/perfil</code>"
-        ),
-        parse_mode="HTML"
-    )
+    if not (url.startswith("http://") or url.startswith("https://")):
+        await update.message.reply_html("❌ Envie um link válido começando com http:// ou https://")
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    # salva no banco
+    from database import set_admin_photo
+    set_admin_photo(user_id, url)
+
+    # confirma que salvou (lê de volta)
+    from database import get_admin_photo_db
+    saved = get_admin_photo_db(user_id)
+
+    if not saved:
+        await update.message.reply_html("❌ Não consegui salvar sua foto agora.")
+        return
+
+    # tenta enviar a foto — se o link não for direto, o Telegram vai falhar aqui
+    try:
+        await update.message.reply_photo(
+            photo=saved,
+            caption=(
+                "👑 <b>Foto de admin definida!</b>\n\n"
+                "✨ Agora seu perfil usará essa imagem.\n"
+                "👀 Veja com <code>/perfil</code>"
+            ),
+            parse_mode="HTML"
+        )
+    except Exception:
+        # Se não conseguir mandar como foto, manda como texto (mas a foto ficou salva)
+        await update.message.reply_html(
+            "⚠️ Salvei sua foto, mas o Telegram não conseguiu enviar a prévia.\n\n"
+            "Isso acontece quando o link não é uma imagem direta.\n"
+            "Tente um link que termine com <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>.\n\n"
+            f"✅ Link salvo:\n<code>{saved}</code>"
+        )
 
 # ==================================================
 # 11) PERFIL / NICK / NIVEL / FAVORITO (POSTGRES)
@@ -2174,4 +2201,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
