@@ -31,10 +31,11 @@ from telegram.ext import (
 )
 
 from database import (
+    db,
+    cursor,
     init_db,
     ensure_user_row,
     get_user_row,
-    get_user_by_nick,
     set_user_nick,
     add_coin,
     set_collection_name,
@@ -43,7 +44,6 @@ from database import (
     get_collection_page,
     user_has_character,
     add_character_to_collection,
-    remove_one_from_collection,
     swap_trade_execute,
     create_trade,
     get_latest_pending_trade_for_to_user,
@@ -58,13 +58,6 @@ from database import (
     shop_get_sale,
     shop_delete_sale,
     shop_list_user_chars,
-    update_commands_and_level,
-    update_commands_only,
-    set_last_dado,
-    set_last_pedido,
-    set_favorite,
-    clear_favorite,
-    set_private_profile,
 )
 
 # ==================================================
@@ -183,39 +176,35 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 # ==================================================
 COMANDOS_POR_NIVEL = 100
 
-# ==================================================
-# DB helper (evita bloquear o event loop)
-# ==================================================
-async def db_call(func, *args, **kwargs):
-    return await asyncio.to_thread(func, *args, **kwargs)
-
 async def registrar_comando(update: Update):
     user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
 
-    await db_call(ensure_user_row, user_id, update.effective_user.first_name)
-    row = await db_call(get_user_row, user_id)
-
+    row = get_user_row(user_id)
     commands = int(row["commands"] or 0) + 1
     level = int(row["level"] or 1)
 
     novo_nivel = (commands // COMANDOS_POR_NIVEL) + 1
-
     if novo_nivel > level:
-        await db_call(update_commands_and_level, user_id, commands, novo_nivel)
+        # atualiza
+        cursor.execute(
+            "UPDATE users SET commands=%s, level=%s WHERE user_id=%s",
+            (commands, novo_nivel, user_id)
+        )
+        db.commit()
 
         mensagem = (
-            "🎉 <b>SUPERE O NÍVEL!</b>\n\n"
+            "🎉 <b>LEVEL UP!</b>\n\n"
             f"✨ Parabéns <b>{row['nick']}</b>!\n"
             f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
             "🚀 Continue usando o bot!"
         )
-
         if update.message:
             await update.message.reply_html(mensagem)
-
         return
 
-    await db_call(update_commands_only, user_id, commands)
+    cursor.execute("UPDATE users SET commands=%s WHERE user_id=%s", (commands, user_id))
+    db.commit()
 
 # ==================================================
 # 8) /start
@@ -362,9 +351,11 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # tenta salvar — se já existir, o Postgres vai bloquear por causa do índice UNIQUE
     try:
-        await db_call(set_user_nick, user_id, nick_novo)
+        cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
+        db.commit()
 
     except Exception:
+        db.rollback()
         await update.message.reply_html(
             "🚫 <b>Nick indisponível</b>\n\n"
             f"O nick <code>{nick_novo}</code> já está em uso.\n"
@@ -383,7 +374,7 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await registrar_comando(update)
 
     user_id = update.effective_user.id
-    await db_call(ensure_user_row, user_id, update.effective_user.first_name)
+    ensure_user_row(user_id, update.effective_user.first_name)
     row = get_user_row(user_id)
 
     comandos = int(row["commands"] or 0)
@@ -418,7 +409,8 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
 
         alvo_nick = context.args[0].strip()
-        alvo_row = await db_call(get_user_by_nick, alvo_nick)
+        from database import get_user_by_nick
+        alvo_row = get_user_by_nick(alvo_nick)
 
         if not alvo_row:
             await update.message.reply_html(
@@ -428,7 +420,8 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
     else:
-        alvo_row = await db_call(get_user_row, viewer_id)
+        from database import get_user_row
+        alvo_row = get_user_row(viewer_id)
 
     # fallback
     if not alvo_row:
@@ -470,7 +463,8 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 4) perfil público (private OFF)
-    total_colecao = await db_call(count_collection, user_id)
+    from database import count_collection
+    total_colecao = count_collection(user_id)
 
     coins = int(alvo_row.get("coins") or 0)
     level = int(alvo_row.get("level") or 1)
@@ -524,7 +518,8 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
 
-    await db_call(set_private_profile, user_id, opt == "on")
+    from database import set_private_profile
+    set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
@@ -565,7 +560,11 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await db_call(set_favorite, user_id, personagem["name"]["full"], personagem["image"]["large"])
+    cursor.execute(
+        "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
+        (personagem["name"]["full"], personagem["image"]["large"], user_id)
+    )
+    db.commit()
 
     await update.message.reply_photo(
         photo=personagem["image"]["large"],
@@ -590,7 +589,8 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("💔 Você não tem personagem favorito.")
         return
 
-    await db_call(clear_favorite, user_id)
+    cursor.execute("UPDATE users SET fav_name=NULL, fav_image=NULL WHERE user_id=%s", (user_id,))
+    db.commit()
     await update.message.reply_html("💔 Personagem removido.")
 
 # ==================================================
@@ -697,9 +697,9 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 COOLDOWN_PEDIDO = 12 * 60 * 60  # 12h
 
-async def pode_pedir(user_id: int) -> bool:
-    await db_call(ensure_user_row, user_id, "User")
-    row = await db_call(get_user_row, user_id)
+def pode_pedir(user_id: int) -> bool:
+    ensure_user_row(user_id, "User")
+    row = get_user_row(user_id)
     last_pedido = int(row["last_pedido"] or 0)
     agora = int(time.time())
     return (agora - last_pedido) >= COOLDOWN_PEDIDO
@@ -714,7 +714,7 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
-    if not await pode_pedir(user_id):
+    if not pode_pedir(user_id):
         await update.message.reply_html(
             "⏳ <b>Pedido recente detectado</b>\n\n"
             "Você já fez um pedido nas últimas <b>12 horas</b>.\n"
@@ -754,8 +754,9 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-    await db_call(ensure_user_row, user_id, user.first_name)
-    await db_call(set_last_pedido, user_id, int(time.time()))
+    ensure_user_row(user_id, user.first_name)
+    cursor.execute("UPDATE users SET last_pedido=%s WHERE user_id=%s", (int(time.time()), user_id))
+    db.commit()
 
     await update.message.reply_html(
         f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
@@ -1561,9 +1562,10 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         resultado = "📦 Adicionado à coleção!"
 
-    await db_call(set_last_dado, user_id, agora)
+    cursor.execute("UPDATE users SET last_dado=%s WHERE user_id=%s", (agora, user_id))
+    db.commit()
 
-    row2 = await db_call(get_user_row, user_id)
+    row2 = get_user_row(user_id)
     coins2 = int(row2["coins"] or 0)
 
     await update.message.reply_photo(
@@ -1682,28 +1684,25 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = query.from_user.id
 
-    trade = await db_call(get_latest_pending_trade_for_to_user, user_id)
+    trade = get_latest_pending_trade_for_to_user(user_id)
     if not trade:
         await query.answer("Nenhuma troca pendente.", show_alert=True)
         return
 
     trade_id, from_user, from_char, to_char = trade
-    ok = await db_call(swap_trade_execute, trade_id, from_user, user_id, from_char, to_char)
-    if not ok:
-        await query.answer("Troca falhou: alguém não tem mais o personagem.", show_alert=True)
-        return
+    swap_trade_execute(trade_id, from_user, user_id, from_char, to_char)
     await query.message.edit_text("✅ **Troca realizada com sucesso!**", parse_mode="Markdown")
 
 async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    trade = await db_call(get_latest_pending_trade_for_to_user, user_id)
+    trade = get_latest_pending_trade_for_to_user(user_id)
     if not trade:
         await query.answer("Nenhuma troca pendente.", show_alert=True)
         return
 
     trade_id, *_ = trade
-    await db_call(mark_trade_status, trade_id, "recusada")
+    mark_trade_status(trade_id, "recusada")
     await query.message.edit_text("❌ **Troca recusada.**", parse_mode="Markdown")
 
 # ==================================================
@@ -1789,12 +1788,12 @@ async def callback_loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "sell":
         char_id = int(parts[2])
-        if not await db_call(user_has_character, user_id, char_id):
+        if not user_has_character(user_id, char_id):
             await query.answer("Você não tem esse personagem.", show_alert=True)
             return
 
         # cria uma "venda pendente"
-        sale_id = await db_call(shop_create_sale, user_id, char_id)
+        sale_id = shop_create_sale(user_id, char_id)
 
         teclado = InlineKeyboardMarkup([[
             InlineKeyboardButton("✅ Confirmar", callback_data=f"sell_confirm:{sale_id}:yes"),
@@ -1817,7 +1816,7 @@ async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT
     _, sale_id, decision = query.data.split(":")
     sale_id = int(sale_id)
 
-    sale = await db_call(shop_get_sale, sale_id)
+    sale = shop_get_sale(sale_id)
     if not sale:
         await query.answer("Venda expirada.", show_alert=True)
         return
@@ -1828,18 +1827,24 @@ async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT
         return
 
     if decision == "no":
-        await db_call(shop_delete_sale, sale_id)
+        shop_delete_sale(sale_id)
         await query.message.edit_text("❌ Venda cancelada.", parse_mode="HTML")
         return
 
     # yes
-    if not await db_call(user_has_character, user_id, char_id):
-        await db_call(shop_delete_sale, sale_id)
+    if not user_has_character(user_id, char_id):
+        shop_delete_sale(sale_id)
         await query.message.edit_text("⚠️ Você não tem mais esse personagem.", parse_mode="HTML")
-        return    # remove 1 unidade da coleção
-    await db_call(remove_one_from_collection, user_id, char_id)
-    await db_call(add_coin, user_id, 1)
-    await db_call(shop_delete_sale, sale_id)
+        return
+
+    # remove da coleção (delete linha)
+    cursor.execute(
+        "DELETE FROM user_collection WHERE user_id=%s AND character_id=%s",
+        (user_id, char_id)
+    )
+    add_coin(user_id, 1)
+    shop_delete_sale(sale_id)
+    db.commit()
 
     await query.message.edit_text("✅ Venda concluída! 🪙 +1 coin", parse_mode="HTML")
 
@@ -1854,9 +1859,9 @@ async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYP
 # ==================================================
 BATTLE_PHOTO = "https://photo.chelpbot.me/AgACAgEAAxkBZpH_wWmeJej3td1ktZvlFNrVTgqI5WKZAAIlDGsbjP7wRKQwEJtuQrQ4AQADAgADeQADOgQ/photo.jpg"
 
-async def _battle_pick_keyboard(user_id: int) -> InlineKeyboardMarkup:
+def _battle_pick_keyboard(user_id: int) -> InlineKeyboardMarkup:
     # pega até 8 primeiros personagens do user pra escolher
-    chars, total, total_pages = await db_call(shop_list_user_chars, user_id, 1, 8)
+    chars, total, total_pages = shop_list_user_chars(user_id, 1, 8)
 
     rows = []
     for cid, cname in chars:
@@ -1947,7 +1952,7 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
         photo=BATTLE_PHOTO,
         caption=f"🧩 <b>{battle['player1_name']}</b>, escolha seu personagem:",
         parse_mode="HTML",
-        reply_markup=await _battle_pick_keyboard(battle["player1_id"])
+        reply_markup=_battle_pick_keyboard(battle["player1_id"])
     )
 
     # player2 escolhe no grupo
@@ -1956,7 +1961,7 @@ async def batalha_aceite_callback(update: Update, context: ContextTypes.DEFAULT_
         photo=BATTLE_PHOTO,
         caption=f"🧩 <b>{battle['player2_name']}</b>, escolha seu personagem:",
         parse_mode="HTML",
-        reply_markup=await _battle_pick_keyboard(battle["player2_id"])
+        reply_markup=_battle_pick_keyboard(battle["player2_id"])
     )
 
 async def batalha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2100,24 +2105,12 @@ async def personagem_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # ==================================================
-# Error handler (log)
-# ==================================================
-async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        print("⚠️ Erro:", repr(context.error))
-    except Exception:
-        pass
-
-
-# ==================================================
 # 25) MAIN (handlers EXATOS como você pediu)
 # ==================================================
 def main():
     init_db()
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_error_handler(_on_error)
 
     # ===== HANDLERS (EXATOS DA SUA LISTA) =====
     app.add_handler(CommandHandler("anime", anime))
@@ -2165,10 +2158,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
     print("✅ Bot rodando...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
-
-
-
