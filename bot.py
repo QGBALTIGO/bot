@@ -1429,13 +1429,7 @@ def _is_direct_image_url(url: str) -> bool:
 
 
 # ==================================================
-# 19) /cards + callback_cards  (AniList GraphQL) + filtro coleção (AJUSTADO)
-#    /cards Nome do Anime
-#    /cards s Nome do Anime  -> só os que TEM
-#    /cards f Nome do Anime  -> só os que FALTA
-#    Também aceita Anime por ID:
-#      /cards 15125
-#      /cards s 15125
+# 19) /cards + callback_cards  (AniList GraphQL) + filtro coleção (ARRUMADO)
 # ==================================================
 
 import base64
@@ -1446,29 +1440,20 @@ import aiohttp
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 
-# usa seu ANILIST_API e checar_canal
-# do database a gente usa cursor
-from database import cursor
-
+from database import cursor  # usa seu cursor RealDictCursor
 
 # ---------------- B64 helpers ----------------
 def _b64e(s: str) -> str:
     return base64.urlsafe_b64encode(s.encode("utf-8")).decode("ascii").rstrip("=")
 
-
 def _b64d(s: str) -> str:
     pad = "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode((s + pad).encode("ascii")).decode("utf-8")
 
-
 # ---------------- DB helper: pega quantidades em batch ----------------
 def _get_user_qty_map(user_id: int, char_ids: List[int]) -> Dict[int, int]:
-    """
-    Retorna {character_id: quantity} para os IDs informados.
-    """
     if not char_ids:
         return {}
-
     placeholders = ",".join(["%s"] * len(char_ids))
     sql = f"""
         SELECT character_id, quantity
@@ -1482,7 +1467,6 @@ def _get_user_qty_map(user_id: int, char_ids: List[int]) -> Dict[int, int]:
         out[int(r["character_id"])] = int(r.get("quantity") or 0)
     return out
 
-
 # ---------------- AniList fetch ----------------
 async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
     query = """
@@ -1495,9 +1479,7 @@ async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
           coverImage { large }
           characters(page: $page, perPage: 15) {
             pageInfo { total currentPage lastPage }
-            edges {
-              node { id name { full } }
-            }
+            edges { node { id name { full } } }
           }
         }
       }
@@ -1505,12 +1487,10 @@ async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
     """
     variables = {"search": anime_nome, "page": int(page)}
     timeout = aiohttp.ClientTimeout(total=15)
-
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(ANILIST_API, json={"query": query, "variables": variables}) as resp:
                 data = await resp.json()
-
         media_list = data.get("data", {}).get("Page", {}).get("media", []) or []
         if not media_list:
             return None
@@ -1520,7 +1500,6 @@ async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
         return media
     except Exception:
         return None
-
 
 async def buscar_cards_por_id(anime_id: int, page: int) -> Optional[dict]:
     query = """
@@ -1532,21 +1511,17 @@ async def buscar_cards_por_id(anime_id: int, page: int) -> Optional[dict]:
         coverImage { large }
         characters(page: $page, perPage: 15) {
           pageInfo { total currentPage lastPage }
-          edges {
-            node { id name { full } }
-          }
+          edges { node { id name { full } } }
         }
       }
     }
     """
     variables = {"id": int(anime_id), "page": int(page)}
     timeout = aiohttp.ClientTimeout(total=15)
-
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(ANILIST_API, json={"query": query, "variables": variables}) as resp:
                 data = await resp.json()
-
         media = data.get("data", {}).get("Media")
         if not media or not media.get("characters") or not media["characters"].get("edges"):
             return None
@@ -1554,23 +1529,13 @@ async def buscar_cards_por_id(anime_id: int, page: int) -> Optional[dict]:
     except Exception:
         return None
 
-
-# ---------------- Format + teclado ----------------
+# ---------------- Format ----------------
 def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -> Tuple[str, int]:
     """
-    Cabeçalho (AJUSTADO):
-      📁 | NOME
-      ℹ️ | ID DO ANIME
-      🗂 | X/X
-
-    mode:
-      a = all (normal)
-      s = só os que tem (✅)
-      f = só os que falta (✖️)
-
-    Retorna (texto, linhas_listadas)
+    Retorna (texto, qtd_linhas_listadas)
+    mode: a (todos) | s (só tem) | f (só falta)
     """
-    chars = media["characters"]["edges"]
+    edges = media["characters"]["edges"]
     info = media["characters"]["pageInfo"]
 
     titulo = (media.get("title") or {}).get("romaji") or "Anime"
@@ -1584,8 +1549,8 @@ def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -
     )
 
     linhas = 0
-    for c in chars:
-        node = c.get("node") or {}
+    for e in edges:
+        node = e.get("node") or {}
         cid = node.get("id")
         nome = ((node.get("name") or {}).get("full")) or "—"
         if cid is None:
@@ -1595,17 +1560,21 @@ def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -
         qty = int(qty_map.get(cid, 0))
         tem = qty > 0
 
-        # filtro
         if mode == "s" and not tem:
             continue
         if mode == "f" and tem:
             continue
 
         mark = "✅" if tem else "✖️"
-        texto += f"{mark} <b>{cid}.</b> {nome} <i>({qty}x)</i>\n"
+
+        # sem (0x). Só mostra quantidade se tiver.
+        if tem:
+            texto += f"{mark} 🧧 <b>{cid}.</b> {nome} <i>({qty}x)</i>\n"
+        else:
+            texto += f"{mark} 🧧 <b>{cid}.</b> {nome}\n"
+
         linhas += 1
 
-    # mensagens quando não listou nada (SEM BOTÕES)
     if linhas == 0:
         if mode == "s":
             texto += "⚠️ Você não tem nenhum personagem desse anime na sua coleção."
@@ -1616,21 +1585,14 @@ def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -
 
     return texto, linhas
 
-
+# ---------------- Teclado ----------------
 def teclado_cards(mode: str, kind: str, anime_key: str, page: int, last: int) -> Optional[InlineKeyboardMarkup]:
-    """
-    callback: cards:{mode}:{kind}:{anime_key}:{page}
-      mode: a|s|f
-      kind: q|id
-      anime_key: b64(nome) OU numero (id)
-    """
     botoes = []
     if page > 1:
         botoes.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{mode}:{kind}:{anime_key}:{page-1}"))
     if page < last:
         botoes.append(InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{mode}:{kind}:{anime_key}:{page+1}"))
     return InlineKeyboardMarkup([botoes]) if botoes else None
-
 
 # ---------------- /cards ----------------
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1649,7 +1611,6 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # mode opcional
     mode = "a"
     first = context.args[0].strip().lower()
     if first in ("s", "f"):
@@ -1664,16 +1625,14 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     termo = " ".join(args).strip()
 
-    # decide se é ID ou nome
     kind = "q"
-    anime_key: str
-    anime_id: Optional[int] = None
+    anime_key = ""
+    media = None
 
     if re.fullmatch(r"\d+", termo):
         kind = "id"
-        anime_id = int(termo)
-        anime_key = str(anime_id)
-        media = await buscar_cards_por_id(anime_id, 1)
+        anime_key = termo
+        media = await buscar_cards_por_id(int(termo), 1)
     else:
         kind = "q"
         anime_key = _b64e(termo)
@@ -1688,9 +1647,9 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    char_ids = []
-    for c in media["characters"]["edges"]:
-        node = c.get("node") or {}
+    char_ids: List[int] = []
+    for e in media["characters"]["edges"]:
+        node = e.get("node") or {}
         if node.get("id") is not None:
             char_ids.append(int(node["id"]))
 
@@ -1700,9 +1659,9 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last = int(media["characters"]["pageInfo"].get("lastPage") or 1)
     foto = media.get("bannerImage") or (media.get("coverImage") or {}).get("large")
 
-    # SEM BOTÕES se:
-    # - não tem próxima página
-    # - ou mode s/f e não listou nada
+    # regras do teclado:
+    # - sem teclado se só tem 1 página
+    # - sem teclado se mode s/f e não listou nada
     kb = None
     if last > 1 and not (mode in ("s", "f") and linhas == 0):
         kb = teclado_cards(mode, kind, anime_key, 1, last)
@@ -1711,7 +1670,6 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML", reply_markup=kb)
     else:
         await update.message.reply_html(texto, reply_markup=kb)
-
 
 # ---------------- callback ----------------
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1745,9 +1703,9 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = q.from_user.id
 
-    char_ids = []
-    for c in media["characters"]["edges"]:
-        node = c.get("node") or {}
+    char_ids: List[int] = []
+    for e in media["characters"]["edges"]:
+        node = e.get("node") or {}
         if node.get("id") is not None:
             char_ids.append(int(node["id"]))
 
@@ -1764,144 +1722,9 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if q.message.photo:
             await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
         else:
-            await q.message.edit_text(text=texto, parse_mode="HTML", reply_markup=kb)
+            await q.message.edit_text(texto, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await q.message.reply_html(texto, reply_markup=kb)
-
-# ==================================================
-# /cards
-# ==================================================
-async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_html(
-            "📁 <b>Cards de personagens</b>\n\n"
-            "Use:\n"
-            "<code>/cards Nome do Anime</code>\n"
-            "<code>/cards s Nome do Anime</code> (só os que você tem)\n"
-            "<code>/cards f Nome do Anime</code> (só os que faltam)\n\n"
-            "Também aceita anime por ID:\n"
-            "<code>/cards 15125</code>\n"
-            "<code>/cards s 15125</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/cards One Piece</code>"
-        )
-        return
-
-    # modo
-    mode = "a"
-    args = list(context.args)
-
-    if args[0].lower() in ("s", "f"):
-        mode = args[0].lower()
-        args = args[1:]
-
-    if not args:
-        await update.message.reply_html("❌ Faltou o nome (ou ID) do anime.")
-        return
-
-    termo = " ".join(args).strip()
-
-    # decide se é ID ou nome
-    kind = "q"
-    media = None
-
-    if termo.isdigit():
-        kind = "id"
-        media = await buscar_cards_por_id(int(termo), 1)
-        anime_key = termo  # fica como string numérica mesmo
-    else:
-        media = await buscar_cards_por_nome(termo, 1)
-        anime_key = _b64e(termo)
-
-    if not media:
-        await update.message.reply_html(
-            "❌ <b>Anime não encontrado</b>\n\n"
-            "💡 Tente usar o nome mais conhecido ou o ID do AniList."
-        )
-        return
-
-    # ids da página
-    edges = media["characters"]["edges"]
-    ids = []
-    for e in edges:
-        n = (e.get("node") or {})
-        if n.get("id") is not None:
-            ids.append(int(n["id"]))
-
-    user_id = update.effective_user.id
-    qty_map = _get_user_qty_map(user_id, ids)
-
-    texto = formatar_cards(media, 1, mode, qty_map)
-    last = int(media["characters"]["pageInfo"].get("lastPage") or 1)
-    foto = media.get("bannerImage") or (media.get("coverImage") or {}).get("large")
-
-    kb = teclado_cards(mode, kind, anime_key, 1, last)
-
-    if foto:
-        await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML", reply_markup=kb)
-    else:
-        await update.message.reply_html(texto, reply_markup=kb)
-
-
-# ==================================================
-# callback_cards
-# ==================================================
-async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    # cards:{mode}:{kind}:{anime_key}:{page}
-    try:
-        _, mode, kind, anime_key, page_s = q.data.split(":")
-        page = int(page_s)
-    except Exception:
-        await q.answer("Erro ao carregar página.", show_alert=True)
-        return
-
-    # refaz busca
-    media = None
-    anime_nome = None
-
-    if kind == "id":
-        if not anime_key.isdigit():
-            await q.answer("ID inválido.", show_alert=True)
-            return
-        media = await buscar_cards_por_id(int(anime_key), page)
-    else:
-        anime_nome = _b64d(anime_key)
-        media = await buscar_cards_por_nome(anime_nome, page)
-
-    if not media:
-        await q.answer("Não consegui carregar agora.", show_alert=True)
-        return
-
-    edges = media["characters"]["edges"]
-    ids = []
-    for e in edges:
-        n = (e.get("node") or {})
-        if n.get("id") is not None:
-            ids.append(int(n["id"]))
-
-    user_id = q.from_user.id
-    qty_map = _get_user_qty_map(user_id, ids)
-
-    texto = formatar_cards(media, page, mode, qty_map)
-    last = int(media["characters"]["pageInfo"].get("lastPage") or 1)
-    foto = media.get("bannerImage") or (media.get("coverImage") or {}).get("large")
-
-    kb = teclado_cards(mode, kind, anime_key, page, last)
-
-    try:
-        if foto and q.message.photo:
-            await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
-        else:
-            await q.message.edit_text(text=texto, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        await q.message.reply_html(texto, reply_markup=kb)
-
 
 # ==================================================
 # HELPERS ANILIST — Character por ID ou Nome
