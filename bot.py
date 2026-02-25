@@ -2939,68 +2939,233 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# 21) /trocar (POSTGRES)
+# TROCA (MELHORADO) — bonito + anti-falhas + nomes + ofertas + imagem
 # ==================================================
+
+TRADE_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
+
+
+def _mention_html(user) -> str:
+    name = (user.full_name or user.first_name or "User").strip()
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
+
+
+async def _get_char_label(user_id: int, char_id: int) -> str:
+    """
+    Pega o nome do personagem no DB (se tiver), senão mostra só o ID.
+    """
+    try:
+        from database import get_collection_character_full
+        item = get_collection_character_full(user_id, int(char_id))
+        if item and item.get("character_name"):
+            nm = str(item["character_name"]).strip()
+            if nm:
+                return f"<code>{int(char_id)}</code>. <b>{nm}</b>"
+    except Exception:
+        pass
+    return f"<code>{int(char_id)}</code>"
+
+
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ Você precisa **responder a mensagem do usuário** para trocar.\n\n"
+    # precisa responder alguém
+    if not update.message or not update.message.reply_to_message:
+        await update.message.reply_html(
+            "❌ <b>Troca inválida</b>\n\n"
+            "Você precisa <b>responder a mensagem</b> do usuário.\n\n"
             "Exemplo:\n"
-            "`(responder mensagem)`\n"
-            "`/trocar 10 25`",
-            parse_mode="Markdown"
+            "<code>(responder a mensagem)</code>\n"
+            "<code>/trocar 10 25</code>\n\n"
+            "📌 <i>10 = seu personagem | 25 = personagem dele</i>"
         )
         return
 
-    if len(context.args) != 2:
-        await update.message.reply_text("Use:\n`/trocar SEU_ID ID_DELE`", parse_mode="Markdown")
+    # validar args
+    if len(context.args) != 2 or (not context.args[0].isdigit()) or (not context.args[1].isdigit()):
+        await update.message.reply_html(
+            "❌ <b>Uso correto</b>\n\n"
+            "<code>/trocar SEU_ID ID_DELE</code>\n\n"
+            "Exemplo:\n"
+            "<code>/trocar 10 25</code>"
+        )
         return
 
-    from_user = update.effective_user.id
-    to_user = update.message.reply_to_message.from_user.id
+    from_user = update.effective_user
+    to_user = update.message.reply_to_message.from_user
 
-    if (not context.args[0].isdigit()) or (not context.args[1].isdigit()):
-        await update.message.reply_text("❌ Use apenas IDs numéricos.", parse_mode="Markdown")
+    # evita trocar com bot ou consigo mesmo
+    if not to_user or getattr(to_user, "is_bot", False):
+        await update.message.reply_html("❌ Você não pode fazer troca com bot.")
+        return
+    if int(to_user.id) == int(from_user.id):
+        await update.message.reply_html("❌ Você não pode trocar com você mesmo.")
         return
 
     from_char = int(context.args[0])
     to_char = int(context.args[1])
 
-    if not user_has_character(from_user, from_char):
-        await update.message.reply_text("❌ Esse personagem não é seu.")
+    # checa posse
+    if not user_has_character(from_user.id, from_char):
+        await update.message.reply_html(
+            "❌ <b>Troca cancelada</b>\n\n"
+            "Esse personagem <b>não é seu</b>."
+        )
         return
-    if not user_has_character(to_user, to_char):
-        await update.message.reply_text("❌ O outro usuário não possui esse personagem.")
+    if not user_has_character(to_user.id, to_char):
+        await update.message.reply_html(
+            "❌ <b>Troca cancelada</b>\n\n"
+            "O outro usuário <b>não possui</b> esse personagem."
+        )
         return
 
-    create_trade(from_user, to_user, from_char, to_char)
+    # cria trade e tenta pegar trade_id de volta (se não retornar, usa fallback por get_latest...)
+    trade_id = None
+    try:
+        # RECOMENDADO: altere create_trade no database.py para retornar trade_id (RETURNING)
+        # mas aqui a gente faz fallback caso ainda não tenha.
+        create_trade(from_user.id, to_user.id, from_char, to_char)
+        # tenta descobrir o último pendente do "to_user" (pode haver concorrência, mas ajuda)
+        t = get_latest_pending_trade_for_to_user(to_user.id)
+        if t:
+            trade_id = int(t[0])
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
+        return
+
+    # labels bonitos
+    a_name = await _get_char_label(from_user.id, from_char)
+    b_name = await _get_char_label(to_user.id, to_char)
+
+    # callback com trade_id (se tiver), senão fica genérico (mas ainda funciona)
+    accept_cb = f"trade_accept:{trade_id}" if trade_id else "trade_accept"
+    reject_cb = f"trade_reject:{trade_id}" if trade_id else "trade_reject"
 
     teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Aceitar", callback_data="trade_accept"),
-        InlineKeyboardButton("❌ Recusar", callback_data="trade_reject"),
+        InlineKeyboardButton("✅ Aceitar", callback_data=accept_cb),
+        InlineKeyboardButton("❌ Recusar", callback_data=reject_cb),
     ]])
 
-    await update.message.reply_text(
-        "🔁 **Pedido de troca enviado!**\n\n"
-        "Apenas o usuário marcado pode responder.",
-        parse_mode="Markdown",
-        reply_markup=teclado
+    texto = (
+        "🔁 <b>PROPOSTA DE TROCA</b>\n\n"
+        f"👤 <b>De:</b> {_mention_html(from_user)}\n"
+        f"👤 <b>Para:</b> {_mention_html(to_user)}\n\n"
+        "🎴 <b>Oferta</b>\n"
+        f"➡️ {_mention_html(from_user)} oferece: {a_name}\n"
+        f"⬅️ {_mention_html(to_user)} oferece: {b_name}\n\n"
+        "⚠️ <i>Apenas o usuário marcado pode aceitar/recusar.</i>"
     )
 
+    # envia com imagem
+    try:
+        await update.message.reply_photo(
+            photo=TRADE_BANNER,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=teclado
+        )
+    except Exception:
+        # fallback sem foto
+        await update.message.reply_html(texto, reply_markup=teclado)
 
+
+# ==================================================
+# CALLBACKS — agora aceitam trade_id e são anti-falhas
+# ==================================================
 async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     user_id = q.from_user.id
 
-    trade = get_latest_pending_trade_for_to_user(user_id)
+    # aceita padrão antigo "trade_accept" e novo "trade_accept:ID"
+    trade_id = None
+    try:
+        parts = (q.data or "").split(":")
+        if len(parts) == 2 and parts[1].isdigit():
+            trade_id = int(parts[1])
+    except Exception:
+        trade_id = None
+
+    trade = None
+    if trade_id:
+        # RECOMENDADO: crie get_trade_by_id no database.py
+        try:
+            from database import get_trade_by_id
+            trade = get_trade_by_id(trade_id)  # deve retornar dict/row com trade
+        except Exception:
+            trade = None
+
     if not trade:
-        await q.answer("Nenhuma troca pendente.", show_alert=True)
+        # fallback: pega última pendente para esse usuário
+        t = get_latest_pending_trade_for_to_user(user_id)
+        if not t:
+            await q.answer("Nenhuma troca pendente.", show_alert=True)
+            return
+        trade_id, from_user_id, from_char, to_char = t
+    else:
+        # normaliza do row
+        try:
+            trade_id = int(trade["trade_id"])
+            from_user_id = int(trade["from_user"])
+            to_user_id = int(trade["to_user"])
+            from_char = int(trade["from_character_id"])
+            to_char = int(trade["to_character_id"])
+            if int(to_user_id) != int(user_id):
+                await q.answer("Essa troca não é para você.", show_alert=True)
+                return
+        except Exception:
+            await q.answer("Erro ao ler a troca.", show_alert=True)
+            return
+
+    # checa status (anti clique duplicado)
+    try:
+        if trade_id:
+            from database import get_trade_status
+            st = get_trade_status(trade_id)  # crie se quiser; se não existir cai no except
+            if st and st != "pendente":
+                await q.answer("Essa troca já foi finalizada.", show_alert=True)
+                return
+    except Exception:
+        pass
+
+    # tenta executar (anti-falha por re-checagem)
+    try:
+        if (not user_has_character(from_user_id, from_char)) or (not user_has_character(user_id, to_char)):
+            try:
+                mark_trade_status(trade_id, "falhou")
+            except Exception:
+                pass
+            await q.message.edit_caption(
+                caption=(q.message.caption or q.message.text or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
+                parse_mode="HTML",
+                reply_markup=None
+            )
+            return
+
+        swap_trade_execute(trade_id, from_user_id, user_id, from_char, to_char)
+
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
         return
 
-    trade_id, from_user, from_char, to_char = trade
-    swap_trade_execute(trade_id, from_user, user_id, from_char, to_char)
-    await q.message.edit_text("✅ **Troca realizada com sucesso!**", parse_mode="Markdown")
+    # mensagem final bonita
+    try:
+        await q.message.edit_caption(
+            caption="✅ <b>Troca realizada com sucesso!</b>\n\n🎉 Boa! Os personagens foram trocados.",
+            parse_mode="HTML",
+            reply_markup=None
+        )
+    except Exception:
+        try:
+            await q.message.edit_text("✅ <b>Troca realizada com sucesso!</b>", parse_mode="HTML", reply_markup=None)
+        except Exception:
+            pass
 
 
 async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3008,14 +3173,43 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
     await q.answer()
     user_id = q.from_user.id
 
-    trade = get_latest_pending_trade_for_to_user(user_id)
-    if not trade:
-        await q.answer("Nenhuma troca pendente.", show_alert=True)
+    trade_id = None
+    try:
+        parts = (q.data or "").split(":")
+        if len(parts) == 2 and parts[1].isdigit():
+            trade_id = int(parts[1])
+    except Exception:
+        trade_id = None
+
+    # se tiver trade_id, tenta marcar direto; senão pega última pendente
+    if not trade_id:
+        t = get_latest_pending_trade_for_to_user(user_id)
+        if not t:
+            await q.answer("Nenhuma troca pendente.", show_alert=True)
+            return
+        trade_id = int(t[0])
+
+    try:
+        mark_trade_status(trade_id, "recusada")
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        await q.answer("⚠️ Não consegui recusar agora.", show_alert=True)
         return
 
-    trade_id, *_ = trade
-    mark_trade_status(trade_id, "recusada")
-    await q.message.edit_text("❌ **Troca recusada.**", parse_mode="Markdown")
+    try:
+        await q.message.edit_caption(
+            caption="❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
+            parse_mode="HTML",
+            reply_markup=None
+        )
+    except Exception:
+        try:
+            await q.message.edit_text("❌ <b>Troca recusada.</b>", parse_mode="HTML", reply_markup=None)
+        except Exception:
+            pass
 
 
 # ==================================================
@@ -3089,6 +3283,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
