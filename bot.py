@@ -2189,6 +2189,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
     print("✅ Bot rodando...")
+    
    def build_app():
     init_db()
 
@@ -2208,6 +2209,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
