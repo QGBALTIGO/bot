@@ -1,5 +1,5 @@
 # ================================
-# database.py — Postgres (Railway) (PRONTO)
+# database.py — Postgres (Railway) (PRONTO + LOJA)
 # ================================
 
 import os
@@ -15,6 +15,34 @@ if not DATABASE_URL:
 
 db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 cursor = db.cursor()
+
+
+def init_shop_extras():
+    # coluna para rodadas extras de dado
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
+    """)
+
+    # coluna para foto custom no personagem
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS custom_image TEXT;
+    """)
+
+    # pedidos de troca de foto
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS photo_requests (
+        request_id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        character_id INT NOT NULL,
+        new_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        created_at BIGINT NOT NULL
+    );
+    """)
+
+    db.commit()
 
 
 def init_db():
@@ -76,7 +104,7 @@ def init_db():
     );
     """)
 
-    # LOJA (vendas pendentes simples)
+    # LOJA (vendas pendentes simples) - pode manter mesmo que você não use mais botões
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS shop_sales (
         sale_id SERIAL PRIMARY KEY,
@@ -99,6 +127,9 @@ def init_db():
     """)
 
     db.commit()
+
+    # garante colunas/tabelas da loja nova
+    init_shop_extras()
 
 
 # ---------------- USERS ----------------
@@ -237,6 +268,16 @@ def remove_one_from_collection(user_id: int, char_id: int) -> bool:
     return True
 
 
+def get_collection_character_full(user_id: int, char_id: int):
+    cursor.execute("""
+        SELECT character_id, character_name, image, custom_image, quantity
+        FROM user_collection
+        WHERE user_id=%s AND character_id=%s
+        LIMIT 1
+    """, (user_id, char_id))
+    return cursor.fetchone()
+
+
 # ---------------- FAVORITO POR ID (somente se tiver na coleção) ----------------
 def get_collection_character(user_id: int, char_id: int):
     cursor.execute("""
@@ -258,6 +299,67 @@ def set_favorite_from_collection(user_id: int, char_name: str, image: str):
 
 def clear_favorite(user_id: int):
     cursor.execute("UPDATE users SET fav_name=NULL, fav_image=NULL WHERE user_id=%s", (user_id,))
+    db.commit()
+
+
+# ---------------- LOJA: dado extra ----------------
+def add_extra_dado(user_id: int, amount: int):
+    cursor.execute(
+        "UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s",
+        (amount, user_id)
+    )
+    db.commit()
+
+
+def get_extra_dado(user_id: int) -> int:
+    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
+    row = cursor.fetchone()
+    return int(row["x"] if row else 0)
+
+
+def consume_extra_dado(user_id: int) -> bool:
+    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
+    row = cursor.fetchone()
+    x = int(row["x"] if row else 0)
+    if x <= 0:
+        return False
+    cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (user_id,))
+    db.commit()
+    return True
+
+
+# ---------------- LOJA: foto custom com aprovação ----------------
+def set_character_custom_image(user_id: int, char_id: int, url: str):
+    cursor.execute("""
+        UPDATE user_collection
+        SET custom_image=%s
+        WHERE user_id=%s AND character_id=%s
+    """, (url, user_id, char_id))
+    db.commit()
+
+
+def create_photo_request(user_id: int, char_id: int, new_url: str) -> int:
+    cursor.execute("""
+        INSERT INTO photo_requests (user_id, character_id, new_url, status, created_at)
+        VALUES (%s, %s, %s, 'pendente', %s)
+        RETURNING request_id
+    """, (user_id, char_id, new_url, int(time.time())))
+    rid = int(cursor.fetchone()["request_id"])
+    db.commit()
+    return rid
+
+
+def get_photo_request(request_id: int):
+    cursor.execute("""
+        SELECT request_id, user_id, character_id, new_url, status, created_at
+        FROM photo_requests
+        WHERE request_id=%s
+    """, (request_id,))
+    return cursor.fetchone()
+
+
+def set_photo_request_status(request_id: int, status: str):
+    cursor.execute("UPDATE photo_requests SET status=%s WHERE request_id=%s", (status, request_id))
     db.commit()
 
 
@@ -304,110 +406,46 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
     db.commit()
 
 
-# LOJA: dado extra + foto custom com aprovação
-# ================================
+# ---------------- LOJA (lista antiga, pode manter) ----------------
+def shop_list_user_chars(user_id: int, page: int, per_page: int):
+    offset = (page - 1) * per_page
+    cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (user_id,))
+    total = int(cursor.fetchone()["c"])
+    total_pages = (total - 1) // per_page + 1 if total else 1
 
-def init_shop_extras():
-    # coluna para rodadas extras de dado
     cursor.execute("""
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
-    """)
-
-    # coluna para foto custom no personagem
-    cursor.execute("""
-    ALTER TABLE user_collection
-    ADD COLUMN IF NOT EXISTS custom_image TEXT;
-    """)
-
-    # pedidos de troca de foto
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS photo_requests (
-        request_id SERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        character_id INT NOT NULL,
-        new_url TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente', -- pendente/aceita/recusada
-        created_at BIGINT NOT NULL
-    );
-    """)
-
-    db.commit()
-
-
-def add_extra_dado(user_id: int, amount: int):
-    cursor.execute(
-        "UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s",
-        (amount, user_id)
-    )
-    db.commit()
-
-
-def get_extra_dado(user_id: int) -> int:
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
-    row = cursor.fetchone()
-    return int(row["x"] if row else 0)
-
-
-def consume_extra_dado(user_id: int) -> bool:
-    """
-    Consome 1 dado extra se tiver.
-    Retorna True se consumiu, False se não tinha.
-    """
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
-    row = cursor.fetchone()
-    x = int(row["x"] if row else 0)
-    if x <= 0:
-        return False
-    cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (user_id,))
-    db.commit()
-    return True
-
-
-def set_character_custom_image(user_id: int, char_id: int, url: str):
-    cursor.execute("""
-        UPDATE user_collection
-        SET custom_image=%s
-        WHERE user_id=%s AND character_id=%s
-    """, (url, user_id, char_id))
-    db.commit()
-
-
-def get_collection_character_full(user_id: int, char_id: int):
-    """
-    Retorna character_id, character_name, image, custom_image, quantity
-    """
-    cursor.execute("""
-        SELECT character_id, character_name, image, custom_image, quantity
+        SELECT character_id, character_name
         FROM user_collection
-        WHERE user_id=%s AND character_id=%s
-        LIMIT 1
-    """, (user_id, char_id))
-    return cursor.fetchone()
+        WHERE user_id=%s
+        ORDER BY character_id ASC
+        LIMIT %s OFFSET %s
+    """, (user_id, per_page, offset))
+    rows = cursor.fetchall()
+    chars = [(int(r["character_id"]), r["character_name"]) for r in rows]
+    return chars, total, total_pages
 
 
-def create_photo_request(user_id: int, char_id: int, new_url: str) -> int:
+def shop_create_sale(user_id: int, char_id: int) -> int:
     cursor.execute("""
-        INSERT INTO photo_requests (user_id, character_id, new_url, status, created_at)
-        VALUES (%s, %s, %s, 'pendente', %s)
-        RETURNING request_id
-    """, (user_id, char_id, new_url, int(time.time())))
-    rid = int(cursor.fetchone()["request_id"])
+        INSERT INTO shop_sales (user_id, character_id, created_at)
+        VALUES (%s, %s, %s)
+        RETURNING sale_id
+    """, (user_id, char_id, int(time.time())))
+    sale_id = int(cursor.fetchone()["sale_id"])
     db.commit()
-    return rid
+    return sale_id
 
 
-def get_photo_request(request_id: int):
-    cursor.execute("""
-        SELECT request_id, user_id, character_id, new_url, status, created_at
-        FROM photo_requests
-        WHERE request_id=%s
-    """, (request_id,))
-    return cursor.fetchone()
+def shop_get_sale(sale_id: int):
+    cursor.execute("SELECT user_id, character_id FROM shop_sales WHERE sale_id=%s", (sale_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return (int(row["user_id"]), int(row["character_id"]))
 
 
-def set_photo_request_status(request_id: int, status: str):
-    cursor.execute("UPDATE photo_requests SET status=%s WHERE request_id=%s", (status, request_id))
+def shop_delete_sale(sale_id: int):
+    cursor.execute("DELETE FROM shop_sales WHERE sale_id=%s", (sale_id,))
     db.commit()
 
 
