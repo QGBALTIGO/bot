@@ -1628,7 +1628,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# /card — CARD global (foto global se existir)
+# /card ID — CARD GLOBAL POR PERSONAGEM
 # ==================================================
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -1638,36 +1638,58 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ensure_user_row(user_id, update.effective_user.first_name)
 
-    from database import get_random_character_from_collection_full, get_global_character_image
-    item = get_random_character_from_collection_full(user_id)
-
-    if not item:
+    # precisa mandar ID
+    if not context.args or not context.args[0].isdigit():
         await update.message.reply_html(
-            "📦 Sua coleção está vazia.\n"
-            "Use <code>/dado</code> para conseguir personagens."
+            "👤 <b>Card</b>\n\n"
+            "Use:\n"
+            "<code>/card ID</code>\n\n"
+            "Exemplo:\n"
+            "<code>/card 20</code>"
         )
         return
 
-    cid = int(item["character_id"])
+    char_id = int(context.args[0])
+
+    from database import (
+        get_collection_character_full,
+        get_global_character_image,
+    )
+
+    item = get_collection_character_full(user_id, char_id)
+
+    if not item:
+        await update.message.reply_html(
+            "❌ Você não possui esse personagem na coleção."
+        )
+        return
+
     nome = item["character_name"]
+    anime = item.get("anime_title") or "—"
     qty = int(item.get("quantity") or 0)
 
-    anime_title = item.get("anime_title")
-    anime_line = f"<i>{anime_title}</i>" if anime_title else "<i>—</i>"
-
+    # ✔️ marca
     mark = "✅" if qty > 0 else "✖️"
 
-    foto = get_global_character_image(cid) or item.get("image")
+    # foto GLOBAL > fallback anilist
+    foto = get_global_character_image(char_id) or item.get("image")
 
+    # ============================
+    # TEXTO NOVO (EXATAMENTE COMO PEDIU)
+    # ============================
     caption = (
-        "👤 | Card Cr.\n\n"
-        f"🧧 <code>{cid}</code>. <b>{nome}</b>\n"
-        f"{anime_line}\n\n"
-        f"{mark} (0x) ({qty}x)"
+        "👤 | Card Cr.\n\n\n"
+        f"🧧 <code>{char_id}</code>. <b>{nome}</b>\n"
+        f"{anime}\n\n\n"
+        f"{mark} ({qty}x)"
     )
 
     if foto:
-        await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML")
+        await update.message.reply_photo(
+            photo=foto,
+            caption=caption,
+            parse_mode="HTML"
+        )
     else:
         await update.message.reply_html(caption)
 
@@ -2050,5 +2072,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
