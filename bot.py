@@ -1678,9 +1678,9 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TEXTO NOVO (EXATAMENTE COMO PEDIU)
     # ============================
     caption = (
-        "👤 | Card Cr.\n\n\n"
+        "👤 | Card Cr.\n\n"
         f"🧧 <code>{char_id}</code>. <b>{nome}</b>\n"
-        f"{anime}\n\n\n"
+        f"<code>{obra}</code>\n\n"
         f"{mark} ({qty}x)"
     )
 
@@ -2072,6 +2072,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
