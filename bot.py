@@ -1670,7 +1670,7 @@ async def buscar_obra_do_personagem(char_id: int) -> str:
         return "—"
 
 # ==================================================
-# /card ID — CARD GLOBAL POR PERSONAGEM (obra via AniList)
+# /card ID ou NOME — GLOBAL (mostra mesmo sem ter na coleção)
 # ==================================================
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -1680,51 +1680,64 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ensure_user_row(user_id, update.effective_user.first_name)
 
-    if not context.args or not context.args[0].isdigit():
+    if not context.args:
         await update.message.reply_html(
             "👤 <b>Card</b>\n\n"
             "Use:\n"
-            "<code>/card ID</code>\n\n"
-            "Exemplo:\n"
-            "<code>/card 20</code>"
+            "<code>/card ID</code>\n"
+            "<code>/card Nome do personagem</code>\n\n"
+            "Exemplos:\n"
+            "<code>/card 20</code>\n"
+            "<code>/card Monkey D. Luffy</code>"
         )
         return
 
-    char_id = int(context.args[0])
+    termo = " ".join(context.args).strip()
 
-    from database import get_collection_character_full, get_global_character_image
+    # 1) por ID (se for numérico)
+    if termo.isdigit():
+        info = await _anilist_character_by_id(int(termo))
+    else:
+        # 2) por nome (igual /perso)
+        info = await _anilist_character_by_name(termo)
 
-    item = get_collection_character_full(user_id, char_id)
-    if not item:
-        await update.message.reply_html("❌ Você não possui esse personagem na coleção.")
+    if not info:
+        await update.message.reply_html("❌ Não encontrei esse personagem no AniList.")
         return
 
-    nome = item["character_name"]
-    qty = int(item.get("quantity") or 0)
-    mark = "✅" if qty > 0 else "✖️"
+    char_id = int(info["id"])
 
-    # obra (puxa do AniList igual /perso)
-    obra = await buscar_obra_do_personagem(char_id)
+    from database import (
+        get_collection_character_full,
+        get_global_character_image,
+    )
 
-    # foto GLOBAL > fallback anilist
-    foto = get_global_character_image(char_id) or item.get("image")
+    # checa se o usuário tem na coleção
+    item = get_collection_character_full(user_id, char_id)
+    tem = item is not None
+    qty = int(item.get("quantity") or 0) if tem else 0
+    mark = "✅" if tem else "✖️"
+
+    # foto: global > anilist
+    foto = get_global_character_image(char_id) or info.get("image")
 
     caption = (
-        "👤 | Card Cr.\n\n"
-        f"🧧 <code>{char_id}</code>. <b>{nome}</b>\n"
-        f"{obra}\n\n"
+        "👤 | <b>Card Cr.<b>\n\n"
+        f"🧧 <code>{char_id}</code>. <b>{info['name']}</b>\n"
+        f"{info['obra']}\n\n"
         f"{mark} ({qty}x)"
     )
 
-    teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("❤️ Favoritar", callback_data=f"cardfav:{user_id}:{char_id}")
-    ]])
+    reply_markup = None
+    if tem:
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("❤️ Favoritar", callback_data=f"cardfav:{user_id}:{char_id}")
+        ]])
 
     if foto:
-        await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=teclado)
+        await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
     else:
-        await update.message.reply_html(caption, reply_markup=teclado)
-
+        await update.message.reply_html(caption, reply_markup=reply_markup)
 # ==================================================
 # CALLBACK: botão ❤️ Favoritar do /card
 # ==================================================
@@ -2158,6 +2171,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
