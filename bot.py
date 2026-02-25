@@ -11,9 +11,6 @@ import time
 import json
 import random
 import asyncio
-import hmac
-import hashlib
-import base64
 from typing import Optional, Dict, Any, List, Tuple
 
 import aiohttp
@@ -39,34 +36,28 @@ from database import (
     init_db,
     ensure_user_row,
     get_user_row,
-    get_user_by_nick,
     set_user_nick,
     add_coin,
     set_collection_name,
     get_collection_name,
-    set_private_profile,
     count_collection,
     get_collection_page,
     user_has_character,
     add_character_to_collection,
-    remove_one_from_collection,
+    swap_trade_execute,
     create_trade,
     get_latest_pending_trade_for_to_user,
     mark_trade_status,
-    swap_trade_execute,
-    shop_list_user_chars,
-    shop_create_sale,
-    shop_get_sale,
-    shop_delete_sale,
     upsert_battle,
     get_battle,
     delete_battle,
     battle_set_char,
     battle_set_turn,
     battle_damage,
-    save_anilist_token,
-    get_anilist_token,
-    delete_anilist_token,
+    shop_create_sale,
+    shop_get_sale,
+    shop_delete_sale,
+    shop_list_user_chars,
 )
 
 # ==================================================
@@ -86,10 +77,6 @@ URL_CANAL_OBRIGATORIO = os.getenv("URL_CANAL_OBRIGATORIO", "https://t.me/Sourcer
 ADMINS_RAW = os.getenv("ADMINS", "").strip()
 
 ANILIST_API = "https://graphql.anilist.co"
-
-ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
-OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
 
 # ==================================================
 # 2) VALIDADORES BÁSICOS
@@ -131,7 +118,7 @@ def anti_spam(user_id: int) -> bool:
     return True
 
 # ==================================================
-# 5) ADMINS
+ # 5) ADMINS
 # ==================================================
 def parse_admins(raw: str) -> set:
     if not raw:
@@ -185,7 +172,7 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     return True
 
 # ==================================================
-# 7) SISTEMA DE NÍVEL (SALVO NO POSTGRES)
+ # 7) SISTEMA DE NÍVEL (SALVO NO POSTGRES)
 # ==================================================
 COMANDOS_POR_NIVEL = 100
 
@@ -220,7 +207,7 @@ async def registrar_comando(update: Update):
     db.commit()
 
 # ==================================================
-# 8) /start
+ # 8) /start
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
@@ -252,13 +239,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 # 9) /login (AniList OAuth)
 # ==================================================
+import hmac, hashlib, base64
+
+ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
+OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
+
 def make_state(user_id: int) -> str:
+    # state = user_id.timestamp.signature  (simples e suficiente)
     ts = str(int(time.time()))
     payload = f"{user_id}.{ts}".encode()
     sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload, hashlib.sha256).digest()
-    data = payload + b"." + sig
-    return base64.urlsafe_b64encode(data).decode().rstrip("=")
-
+    return base64.urlsafe_b64encode(payload + b"." + sig).decode().rstrip("=")
 
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
@@ -274,15 +266,9 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"&state={state}"
     )
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔐 Conectar com AniList", url=url)]
-    ])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Conectar com AniList", url=url)]])
+    await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
 
-    await update.message.reply_text(
-        "🔑 Clique para conectar sua conta AniList:",
-        reply_markup=keyboard
-    )
-    
 # ==================================================
 # 10) /adminfoto
 # ==================================================
@@ -2189,22 +2175,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
     print("✅ Bot rodando...")
-    
-   # ==================================================
-# Local run (se você rodar bot.py direto)
-# ==================================================
-def main():
-    app = build_app()
-    app.run_polling(drop_pending_updates=True)
-
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
