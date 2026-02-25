@@ -1793,7 +1793,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     foto = get_global_character_image(char_id) or info.get("image")
 
     caption = (
-        "👤 | Card Cr.\n\n"
+        "👤 | <b>Card Cr.<b>\n\n"
         f"🧧 <code>{char_id}</code>. <b>{info['name']}</b>\n"
         f"{info['obra']}\n\n"
         f"{mark} ({qty}x)"
@@ -2243,6 +2243,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
