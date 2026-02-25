@@ -192,6 +192,61 @@ def get_admin_photo_db(user_id: int):
     return row["admin_photo"] if row and row["admin_photo"] else None
 
 
+# ================================
+# CARD: foto global por personagem
+# ================================
+
+def init_card_global():
+    # tabela global: 1 foto por character_id (vale pra todos)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS character_images (
+        character_id INT PRIMARY KEY,
+        image_url TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        updated_by BIGINT
+    );
+    """)
+
+    # (opcional) guardar anime no user_collection
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS anime_title TEXT;
+    """)
+
+    db.commit()
+
+
+def set_global_character_image(character_id: int, image_url: str, updated_by: int | None = None):
+    cursor.execute("""
+        INSERT INTO character_images (character_id, image_url, updated_at, updated_by)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (character_id) DO UPDATE SET
+            image_url = EXCLUDED.image_url,
+            updated_at = EXCLUDED.updated_at,
+            updated_by = EXCLUDED.updated_by
+    """, (character_id, image_url, int(time.time()), updated_by))
+    db.commit()
+
+
+def get_global_character_image(character_id: int):
+    cursor.execute("SELECT image_url FROM character_images WHERE character_id=%s", (character_id,))
+    row = cursor.fetchone()
+    return row["image_url"] if row and row["image_url"] else None
+
+
+def get_random_character_from_collection_full(user_id: int):
+    """
+    Retorna: character_id, character_name, image, quantity, anime_title
+    (a foto global é puxada por get_global_character_image no bot)
+    """
+    cursor.execute("""
+        SELECT character_id, character_name, image, quantity, anime_title
+        FROM user_collection
+        WHERE user_id=%s
+        ORDER BY RANDOM()
+        LIMIT 1
+    """, (user_id,))
+    
 # ---------------- COLEÇÃO ----------------
 def count_collection(user_id: int) -> int:
     cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (user_id,))
