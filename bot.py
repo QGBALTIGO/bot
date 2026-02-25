@@ -1628,7 +1628,7 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# /card ID — CARD GLOBAL POR PERSONAGEM
+# /card ID — mostra card do personagem (da sua coleção) + botão Favoritar
 # ==================================================
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -1651,47 +1651,97 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     char_id = int(context.args[0])
 
-    from database import (
-        get_collection_character_full,
-        get_global_character_image,
-    )
+    from database import get_collection_character_full, get_global_character_image
 
     item = get_collection_character_full(user_id, char_id)
-
     if not item:
-        await update.message.reply_html(
-            "❌ Você não possui esse personagem na coleção."
-        )
+        await update.message.reply_html("❌ Você não possui esse personagem na coleção.")
         return
 
     nome = item["character_name"]
-    anime = item.get("anime_title") or "—"
+    obra = (item.get("anime_title") or "").strip() or "—"
     qty = int(item.get("quantity") or 0)
 
-    # ✔️ marca
     mark = "✅" if qty > 0 else "✖️"
 
     # foto GLOBAL > fallback anilist
     foto = get_global_character_image(char_id) or item.get("image")
 
-    # ============================
-    # TEXTO NOVO (EXATAMENTE COMO PEDIU)
-    # ============================
     caption = (
-        "👤 | Card Cr.\n\n"
+        "👤 | Card Cr.\n\n\n"
         f"🧧 <code>{char_id}</code>. <b>{nome}</b>\n"
-        f"<code>{obra}</code>\n\n"
+        f"{obra}\n\n\n"
         f"{mark} ({qty}x)"
     )
+
+    # botão favoritar (vai mandar callback com user_id e char_id)
+    teclado = InlineKeyboardMarkup([[
+        InlineKeyboardButton("❤️ Favoritar", callback_data=f"cardfav:{user_id}:{char_id}")
+    ]])
 
     if foto:
         await update.message.reply_photo(
             photo=foto,
             caption=caption,
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=teclado
         )
     else:
-        await update.message.reply_html(caption)
+        await update.message.reply_html(caption, reply_markup=teclado)
+
+# ==================================================
+# CALLBACK: botão ❤️ Favoritar do /card
+# ==================================================
+async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    # cardfav:OWNER_ID:CHAR_ID
+    try:
+        _, owner_id, char_id = q.data.split(":")
+        owner_id = int(owner_id)
+        char_id = int(char_id)
+    except Exception:
+        return
+
+    # só o dono do card pode clicar
+    if q.from_user.id != owner_id:
+        await q.answer("Esse botão não é seu.", show_alert=True)
+        return
+
+    from database import (
+        get_collection_character_full,
+        set_favorite_from_collection,
+        get_global_character_image,
+    )
+
+    item = get_collection_character_full(owner_id, char_id)
+    if not item:
+        await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
+        return
+
+    # favorito usa foto GLOBAL se existir
+    fav_img = get_global_character_image(char_id) or item.get("image")
+    set_favorite_from_collection(owner_id, item["character_name"], fav_img)
+
+    await q.answer("Favorito definido!", show_alert=True)
+
+    # opcional: tenta “marcar” no texto que foi favoritado
+    try:
+        if q.message.caption:
+            await q.edit_message_caption(
+                caption=q.message.caption + "\n\n❤️ <b>Definido como favorito!</b>",
+                parse_mode="HTML",
+                reply_markup=q.message.reply_markup
+            )
+        else:
+            await q.edit_message_text(
+                text=(q.message.text or "") + "\n\n❤️ <b>Definido como favorito!</b>",
+                parse_mode="HTML",
+                reply_markup=q.message.reply_markup
+            )
+    except Exception:
+        pass
 
 
 # ==================================================
@@ -2057,6 +2107,7 @@ def main():
 
     # /card (card único)
     app.add_handler(CommandHandler("card", card))
+    app.add_handler(CallbackQueryHandler(callback_cardfav, pattern="^cardfav:"))
 
     # admin global
     app.add_handler(CommandHandler("setfoto", setfoto))
@@ -2072,6 +2123,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
