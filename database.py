@@ -572,3 +572,49 @@ def battle_damage(chat_id: int, target: str, damage: int):
             (damage, chat_id)
         )
     db.commit()
+
+# ================================
+# BLOQUEIO GLOBAL DE PERSONAGENS
+# ================================
+
+def init_blacklist():
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS banned_characters (
+        character_id INT PRIMARY KEY,
+        reason TEXT,
+        created_at BIGINT NOT NULL,
+        created_by BIGINT
+    );
+    """)
+    db.commit()
+
+
+def ban_character(character_id: int, reason: str | None = None, created_by: int | None = None):
+    cursor.execute("""
+        INSERT INTO banned_characters (character_id, reason, created_at, created_by)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (character_id) DO UPDATE SET
+            reason = EXCLUDED.reason,
+            created_at = EXCLUDED.created_at,
+            created_by = EXCLUDED.created_by
+    """, (character_id, reason, int(time.time()), created_by))
+    db.commit()
+
+
+def unban_character(character_id: int):
+    cursor.execute("DELETE FROM banned_characters WHERE character_id=%s", (character_id,))
+    db.commit()
+
+
+def is_banned_character(character_id: int) -> bool:
+    cursor.execute("SELECT 1 FROM banned_characters WHERE character_id=%s", (character_id,))
+    return cursor.fetchone() is not None
+
+
+# ================================
+# FOTO GLOBAL: deletar
+# ================================
+
+def delete_global_character_image(character_id: int):
+    cursor.execute("DELETE FROM character_images WHERE character_id=%s", (character_id,))
+    db.commit()
