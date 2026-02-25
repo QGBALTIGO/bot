@@ -492,7 +492,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if fav_name:
-            texto += f"🧧 1. <b>{fav_name}</b> ✨"
+            texto += f"🧧 <b>{fav_name}</b> ✨"
         else:
             texto += "— Nenhum favorito"
 
@@ -517,7 +517,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if fav_name:
-        texto += f"🧧 1. <b>{fav_name}</b> ✨"
+        texto += f"🧧 <b>{fav_name}</b> ✨"
     else:
         texto += "— Nenhum favorito"
 
@@ -1628,7 +1628,49 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# /card ID — mostra card do personagem (da sua coleção) + botão Favoritar
+# /card ID — CARD GLOBAL POR PERSONAGEM (obra via AniList)
+# ==================================================
+async def buscar_obra_do_personagem(char_id: int) -> str:
+    """
+    Puxa do AniList uma 'obra' (anime/mangá) ligada ao personagem.
+    Retorna string (ex: "Naruto") ou "—" se não achar.
+    """
+    query = """
+    query ($id: Int) {
+      Character(id: $id) {
+        media(perPage: 1, sort: POPULARITY_DESC) {
+          nodes {
+            title { romaji english native }
+          }
+        }
+      }
+    }
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": {"id": char_id}},
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as resp:
+                data = await resp.json()
+
+        nodes = (
+            data.get("data", {})
+            .get("Character", {})
+            .get("media", {})
+            .get("nodes", [])
+        )
+        if not nodes:
+            return "—"
+
+        t = nodes[0].get("title") or {}
+        return (t.get("romaji") or t.get("english") or t.get("native") or "—").strip() or "—"
+    except Exception:
+        return "—"
+
+# ==================================================
+# /card ID — CARD GLOBAL POR PERSONAGEM (obra via AniList)
 # ==================================================
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -1638,7 +1680,6 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ensure_user_row(user_id, update.effective_user.first_name)
 
-    # precisa mandar ID
     if not context.args or not context.args[0].isdigit():
         await update.message.reply_html(
             "👤 <b>Card</b>\n\n"
@@ -1659,91 +1700,31 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nome = item["character_name"]
-    obra = (item.get("anime_title") or "").strip() or "—"
     qty = int(item.get("quantity") or 0)
-
     mark = "✅" if qty > 0 else "✖️"
+
+    # obra (puxa do AniList igual /perso)
+    obra = await buscar_obra_do_personagem(char_id)
 
     # foto GLOBAL > fallback anilist
     foto = get_global_character_image(char_id) or item.get("image")
 
     caption = (
-        "👤 | Card Cr.\n\n\n"
+        "👤 | Card Cr.\n\n"
         f"🧧 <code>{char_id}</code>. <b>{nome}</b>\n"
-        f"{obra}\n\n\n"
+        f"{obra}\n\n"
         f"{mark} ({qty}x)"
     )
 
-    # botão favoritar (vai mandar callback com user_id e char_id)
     teclado = InlineKeyboardMarkup([[
         InlineKeyboardButton("❤️ Favoritar", callback_data=f"cardfav:{user_id}:{char_id}")
     ]])
 
     if foto:
-        await update.message.reply_photo(
-            photo=foto,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=teclado
-        )
+        await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=teclado)
     else:
         await update.message.reply_html(caption, reply_markup=teclado)
-
-# ==================================================
-# CALLBACK: botão ❤️ Favoritar do /card
-# ==================================================
-async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    # cardfav:OWNER_ID:CHAR_ID
-    try:
-        _, owner_id, char_id = q.data.split(":")
-        owner_id = int(owner_id)
-        char_id = int(char_id)
-    except Exception:
-        return
-
-    # só o dono do card pode clicar
-    if q.from_user.id != owner_id:
-        await q.answer("Esse botão não é seu.", show_alert=True)
-        return
-
-    from database import (
-        get_collection_character_full,
-        set_favorite_from_collection,
-        get_global_character_image,
-    )
-
-    item = get_collection_character_full(owner_id, char_id)
-    if not item:
-        await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
-        return
-
-    # favorito usa foto GLOBAL se existir
-    fav_img = get_global_character_image(char_id) or item.get("image")
-    set_favorite_from_collection(owner_id, item["character_name"], fav_img)
-
-    await q.answer("Favorito definido!", show_alert=True)
-
-    # opcional: tenta “marcar” no texto que foi favoritado
-    try:
-        if q.message.caption:
-            await q.edit_message_caption(
-                caption=q.message.caption + "\n\n❤️ <b>Definido como favorito!</b>",
-                parse_mode="HTML",
-                reply_markup=q.message.reply_markup
-            )
-        else:
-            await q.edit_message_text(
-                text=(q.message.text or "") + "\n\n❤️ <b>Definido como favorito!</b>",
-                parse_mode="HTML",
-                reply_markup=q.message.reply_markup
-            )
-    except Exception:
-        pass
-
-
+        
 # ==================================================
 # HELPERS (link direto)
 # ==================================================
@@ -2123,6 +2104,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
