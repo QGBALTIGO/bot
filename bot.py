@@ -2766,47 +2766,160 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML"
     )
 
-async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int):
-    user_id = update.effective_user.id
-    ensure_user_row(user_id, update.effective_user.first_name)
+# COLECAO 
 
-    nome = get_collection_name(user_id) or "Minha Coleção"
-    itens, total, total_paginas = get_collection_page(user_id, page, ITENS_POR_PAGINA)
+ITENS_POR_PAGINA = 15
+COLECAO_BTN_ANTIFLOOD = 1.2  # segundos
+_colecao_btn_last: dict[int, float] = {}
+
+def _colecao_can_click(owner_id: int, user_id: int) -> bool:
+    return int(owner_id) == int(user_id)
+
+
+def _colecao_keyboard(page: int, total_pages: int, owner_id: int):
+    if total_pages <= 1:
+        return None
+
+    row = []
+    if page > 1:
+        row.append(InlineKeyboardButton("⬅️", callback_data=f"colecao:{owner_id}:{page-1}"))
+    row.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
+    if page < total_pages:
+        row.append(InlineKeyboardButton("➡️", callback_data=f"colecao:{owner_id}:{page+1}"))
+
+    return InlineKeyboardMarkup([row])
+
+
+def _format_colecao_text(nome_colecao: str, total: int, page: int, total_paginas: int, itens: list[tuple[int, str]]) -> str:
+    texto = (
+        f"📚 <b>{nome_colecao}</b>\n"
+        f"📦 <i>Total:</i> <b>{total}</b>\n"
+        f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n\n"
+    )
+    for cid, nomep in itens:
+        texto += f"🧧 <code>{cid}</code>. {nomep}\n"
+    return texto
+
+
+async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int, *, edit: bool = False):
+    owner_id = update.effective_user.id
+    ensure_user_row(owner_id, update.effective_user.first_name)
+
+    nome = get_collection_name(owner_id) or "Minha Coleção"
+    itens, total, total_paginas = get_collection_page(owner_id, page, ITENS_POR_PAGINA)
 
     if not itens:
-        if update.message:
-            await update.message.reply_text("📦 Sua coleção está vazia.")
+        target = update.callback_query.message if update.callback_query else update.message
+        if edit and update.callback_query:
+            # edita o que der (caption se tiver foto, texto se não)
+            try:
+                if target.photo:
+                    await target.edit_caption(caption="📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+                else:
+                    await target.edit_text("📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+            except Exception:
+                pass
         else:
-            await update.callback_query.message.reply_text("📦 Sua coleção está vazia.")
+            await target.reply_html("📦 <b>Sua coleção está vazia.</b>")
         return
 
-    texto = f"📚 *{nome}*\n\n📖 | *{page}/{total_paginas}*\n\n"
-    for cid, nomep in itens:
-        texto += f"🧧 `{cid}.` {nomep}\n"
+    texto = _format_colecao_text(nome, total, page, total_paginas, itens)
+    kb = _colecao_keyboard(page, total_paginas, owner_id=owner_id)
 
-    botoes = []
-    if page > 1:
-        botoes.append(InlineKeyboardButton("◀️", callback_data=f"colecao:{page-1}"))
-    if page < total_paginas:
-        botoes.append(InlineKeyboardButton("▶️", callback_data=f"colecao:{page+1}"))
+    # pega foto do favorito (se tiver)
+    row = get_user_row(owner_id)
+    fav_image = (row.get("fav_image") if row else None) or None
 
-    target = update.message if update.message else update.callback_query.message
-    await target.reply_text(
-        texto,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([botoes]) if botoes else None
-    )
+    if edit and update.callback_query:
+        msg = update.callback_query.message
+        try:
+            if msg.photo:
+                await msg.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
+            else:
+                await msg.edit_text(texto, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await update.callback_query.answer("Não consegui atualizar. Envie /colecao de novo.", show_alert=True)
+        return
+
+    # primeira mensagem
+    if fav_image:
+        try:
+            await update.message.reply_photo(
+                photo=fav_image,
+                caption=texto,
+                parse_mode="HTML",
+                reply_markup=kb
+            )
+            return
+        except Exception:
+            # se o link não for um direct image, cai no texto
+            pass
+
+    await update.message.reply_text(texto, parse_mode="HTML", reply_markup=kb)
 
 
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await enviar_colecao(update, context, 1)
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+    await enviar_colecao(update, context, 1, edit=False)
 
 
 async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
+
+    if q.data == "noop":
+        await q.answer()
+        return
+
+    # antiflood leve
+    now = time.time()
+    last = _colecao_btn_last.get(q.from_user.id, 0.0)
+    if now - last < COLECAO_BTN_ANTIFLOOD:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+    _colecao_btn_last[q.from_user.id] = now
+
     await q.answer()
-    page = int(q.data.split(":")[1])
-    await enviar_colecao(update, context, page)
+
+    # colecao:OWNER_ID:PAGE
+    try:
+        _, owner_s, page_s = q.data.split(":")
+        owner_id = int(owner_s)
+        page = int(page_s)
+    except Exception:
+        await q.answer("Erro na coleção.", show_alert=True)
+        return
+
+    if not _colecao_can_click(owner_id, q.from_user.id):
+        await q.answer("Só quem abriu a coleção pode mexer 🙂", show_alert=True)
+        return
+
+    # carrega coleção do dono e edita a mesma msg
+    ensure_user_row(owner_id, q.from_user.first_name)
+    nome = get_collection_name(owner_id) or "Minha Coleção"
+    itens, total, total_paginas = get_collection_page(owner_id, page, ITENS_POR_PAGINA)
+
+    if not itens:
+        try:
+            if q.message.photo:
+                await q.message.edit_caption(caption="📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+            else:
+                await q.message.edit_text("📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    texto = _format_colecao_text(nome, total, page, total_paginas, itens)
+    kb = _colecao_keyboard(page, total_paginas, owner_id=owner_id)
+
+    try:
+        if q.message.photo:
+            await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
+        else:
+            await q.message.edit_text(texto, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await q.answer("Não consegui atualizar. Envie /colecao de novo.", show_alert=True)
 
 
 async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2976,6 +3089,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
