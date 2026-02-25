@@ -11,6 +11,9 @@ import time
 import json
 import random
 import asyncio
+import hmac
+import hashlib
+import base64
 from typing import Optional, Dict, Any, List, Tuple
 
 import aiohttp
@@ -77,6 +80,10 @@ URL_CANAL_OBRIGATORIO = os.getenv("URL_CANAL_OBRIGATORIO", "https://t.me/Sourcer
 ADMINS_RAW = os.getenv("ADMINS", "").strip()
 
 ANILIST_API = "https://graphql.anilist.co"
+
+ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
+OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
 
 # ==================================================
 # 2) VALIDADORES BÁSICOS
@@ -239,20 +246,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 # 9) /login (AniList OAuth)
 # ==================================================
-import hmac, hashlib, base64
-
-ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
-OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
-
 def make_state(user_id: int) -> str:
-    # state = user_id.timestamp.signature  (simples e suficiente)
     ts = str(int(time.time()))
     payload = f"{user_id}.{ts}".encode()
     sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload, hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(payload + b"." + sig).decode().rstrip("=")
+    data = payload + b"." + sig
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
     state = make_state(telegram_id)
@@ -268,7 +269,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Conectar com AniList", url=url)]])
     await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
-
+    
 # ==================================================
 # 10) /adminfoto
 # ==================================================
@@ -2179,4 +2180,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
