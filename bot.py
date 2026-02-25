@@ -416,17 +416,11 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     viewer_id = update.effective_user.id
     ensure_user_row(viewer_id, update.effective_user.first_name)
 
-
     # 1) decidir qual perfil mostrar:
     # - /perfil nick -> outro
     # - /perfil -> você
-
-
-
     if context.args:
-
         alvo_nick = context.args[0].strip()
-        from database import get_user_by_nick
         alvo_row = get_user_by_nick(alvo_nick)
 
         if not alvo_row:
@@ -437,7 +431,6 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
     else:
-        from database import get_user_row
         alvo_row = get_user_row(viewer_id)
 
     # fallback
@@ -452,11 +445,14 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fav_name = alvo_row.get("fav_name")
     fav_image = alvo_row.get("fav_image")
 
-
     private_on = bool(alvo_row.get("private_profile"))
 
     # título (admin/user) do dono do perfil
     titulo = "👤 | <i>Admin</i>" if is_admin(user_id) else "👤 | <i>User</i>"
+
+    # foto: admin_photo (do banco) tem prioridade, depois fav_image
+    from database import get_admin_photo_db
+    foto = get_admin_photo_db(user_id) or fav_image
 
     # 3) perfil privado ON = SEMPRE privado (até pra você)
     if private_on:
@@ -472,7 +468,6 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             texto += "— Nenhum favorito"
 
-        foto = get_admin_photo(user_id) or fav_image
         if foto:
             await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
         else:
@@ -480,14 +475,9 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 4) perfil público (private OFF)
-    from database import count_collection
     total_colecao = count_collection(user_id)
-
     coins = int(alvo_row.get("coins") or 0)
     level = int(alvo_row.get("level") or 1)
-
-
-
 
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
@@ -502,9 +492,6 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto += f"🧧 1. <b>{fav_name}</b> ✨"
     else:
         texto += "— Nenhum favorito"
-
-
-    foto = get_admin_photo(user_id) or fav_image
 
     if foto:
         await update.message.reply_photo(photo=foto, caption=texto, parse_mode="HTML")
@@ -535,13 +522,13 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
 
-    from database import set_private_profile
     set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
     else:
         await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
+
 
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -551,12 +538,22 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html(
             "❤️ <b>Favoritar personagem</b>\n\n"
-            "Use o nome <b>COMPLETO</b>:\n"
-            "<code>/favoritar Monkey D. Luffy</code>"
+            "Use o ID do personagem que você já tem na coleção:\n"
+            "<code>/favoritar 12345</code>"
+        )
+        return
+
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_html(
+            "❌ Use apenas o ID numérico.\n\n"
+            "Exemplo:\n"
+            "<code>/favoritar 12345</code>"
         )
         return
 
     user_id = update.effective_user.id
+    char_id = int(context.args[0])
+
     ensure_user_row(user_id, update.effective_user.first_name)
     row = get_user_row(user_id)
 
@@ -567,31 +564,28 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    nome = " ".join(context.args)
-    personagem = await buscar_personagem(nome)
+    from database import get_collection_character, set_favorite_from_collection
 
-    if not personagem:
+    item = get_collection_character(user_id, char_id)
+    if not item:
         await update.message.reply_html(
-            "❌ <b>Personagem não encontrado</b>\n\n"
-            "Verifique se o nome está completo e correto."
+            "❌ <b>Você não tem esse personagem na sua coleção.</b>\n\n"
+            "Só dá pra favoritar personagens que você já possui."
         )
         return
 
-    cursor.execute(
-        "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
-        (personagem["name"]["full"], personagem["image"]["large"], user_id)
-    )
-    db.commit()
+    set_favorite_from_collection(user_id, item["character_name"], item["image"])
 
     await update.message.reply_photo(
-        photo=personagem["image"]["large"],
+        photo=item["image"],
         caption=(
             "❤️ <b>PERSONAGEM FAVORITADO!</b>\n\n"
-            f"🧧 <b>{personagem['name']['full']}</b>\n\n"
+            f"🧧 <b>{item['character_name']}</b>\n\n"
             "🎴 Agora ele é a capa do seu perfil!"
         ),
         parse_mode="HTML"
     )
+
 
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -606,12 +600,13 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("💔 Você não tem personagem favorito.")
         return
 
-    cursor.execute("UPDATE users SET fav_name=NULL, fav_image=NULL WHERE user_id=%s", (user_id,))
-    db.commit()
-    await update.message.reply_html("💔 Personagem removido.")
+    from database import clear_favorite
+    clear_favorite(user_id)
 
+    await update.message.reply_html("💔 Personagem removido.")
+    
 # ==================================================
-# 12) /anime e /manga (busca no canal)
+ # 12) /anime e /manga (busca no canal)
 # ==================================================
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2179,3 +2174,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
