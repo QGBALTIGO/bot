@@ -1,6 +1,5 @@
-
 # ================================
-# database.py — Postgres (Railway)
+# database.py — Postgres (Railway) (ARRUMADO)
 # ================================
 
 import os
@@ -16,6 +15,7 @@ if not DATABASE_URL:
 
 db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 cursor = db.cursor()
+
 
 def init_db():
     # USERS
@@ -86,16 +86,23 @@ def init_db():
     );
     """)
 
+    # LOGIN (AniList OAuth)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS anilist_tokens (
+        user_id BIGINT PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        created_at BIGINT NOT NULL
+    );
+    """)
+
+    # adiciona a coluna private_profile se não existir
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
+    """)
+
     db.commit()
 
-# LOGIN 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS anilist_tokens (
-    user_id BIGINT PRIMARY KEY,
-    access_token TEXT NOT NULL,
-    created_at BIGINT NOT NULL
-);
-""")
 
 # ---------------- USERS ----------------
 def ensure_user_row(user_id: int, default_name: str):
@@ -103,36 +110,53 @@ def ensure_user_row(user_id: int, default_name: str):
     if cursor.fetchone():
         return
     cursor.execute(
-        "INSERT INTO users (user_id, nick) VALUES (%s, %s)",
-        (user_id, default_name)
+        "INSERT INTO users (user_id, nick, collection_name) VALUES (%s, %s, %s)",
+        (user_id, default_name, "Minha Coleção")
     )
     db.commit()
+
 
 def get_user_row(user_id: int):
     cursor.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
     return cursor.fetchone()
 
+
+def get_user_by_nick(nick: str):
+    cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (nick,))
+    return cursor.fetchone()
+
+
 def set_user_nick(user_id: int, nick: str):
     cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick, user_id))
     db.commit()
+
 
 def add_coin(user_id: int, amount: int):
     cursor.execute("UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s", (amount, user_id))
     db.commit()
 
+
 def set_collection_name(user_id: int, name: str):
     cursor.execute("UPDATE users SET collection_name=%s WHERE user_id=%s", (name, user_id))
     db.commit()
 
+
 def get_collection_name(user_id: int):
     cursor.execute("SELECT collection_name FROM users WHERE user_id=%s", (user_id,))
     row = cursor.fetchone()
-    return row["collection_name"] if row else None
+    return row["collection_name"] if row and row["collection_name"] else "Minha Coleção"
+
+
+def set_private_profile(user_id: int, is_private: bool):
+    cursor.execute("UPDATE users SET private_profile=%s WHERE user_id=%s", (is_private, user_id))
+    db.commit()
+
 
 # ---------------- COLEÇÃO ----------------
 def count_collection(user_id: int) -> int:
     cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (user_id,))
     return int(cursor.fetchone()["c"])
+
 
 def get_collection_page(user_id: int, page: int, per_page: int):
     offset = (page - 1) * per_page
@@ -151,12 +175,14 @@ def get_collection_page(user_id: int, page: int, per_page: int):
     itens = [(int(r["character_id"]), r["character_name"]) for r in cursor.fetchall()]
     return itens, total, total_pages
 
+
 def user_has_character(user_id: int, char_id: int) -> bool:
     cursor.execute(
         "SELECT 1 FROM user_collection WHERE user_id=%s AND character_id=%s",
         (user_id, char_id)
     )
     return cursor.fetchone() is not None
+
 
 def add_character_to_collection(user_id: int, char_id: int, name: str, image: str):
     cursor.execute(
@@ -176,27 +202,59 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
         """, (user_id, char_id, name, image))
     db.commit()
 
-     # ---------------- LOGIN ----------------
-  def save_anilist_token(user_id: int, token: str, created_at: int):
-    with get_cursor(commit=True) as cur:
-        cur.execute("""
-            INSERT INTO anilist_tokens (user_id, access_token, created_at)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET
-                access_token = EXCLUDED.access_token,
-                created_at = EXCLUDED.created_at
-        """, (user_id, token, created_at))
+
+def remove_one_from_collection(user_id: int, char_id: int) -> bool:
+    """
+    Remove 1 unidade do personagem.
+    Se quantity virar 0, deleta a linha.
+    """
+    cursor.execute(
+        "SELECT quantity FROM user_collection WHERE user_id=%s AND character_id=%s",
+        (user_id, char_id)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return False
+
+    q = int(row["quantity"] or 0)
+    if q <= 1:
+        cursor.execute(
+            "DELETE FROM user_collection WHERE user_id=%s AND character_id=%s",
+            (user_id, char_id)
+        )
+    else:
+        cursor.execute(
+            "UPDATE user_collection SET quantity=quantity-1 WHERE user_id=%s AND character_id=%s",
+            (user_id, char_id)
+        )
+
+    db.commit()
+    return True
+
+
+# ---------------- LOGIN (AniList) ----------------
+def save_anilist_token(user_id: int, token: str, created_at: int):
+    cursor.execute("""
+        INSERT INTO anilist_tokens (user_id, access_token, created_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            created_at = EXCLUDED.created_at
+    """, (user_id, token, created_at))
+    db.commit()
+
 
 def get_anilist_token(user_id: int):
-    with get_cursor() as cur:
-        cur.execute("SELECT access_token FROM anilist_tokens WHERE user_id=%s", (user_id,))
-        row = cur.fetchone()
-        return row["access_token"] if row else None
+    cursor.execute("SELECT access_token FROM anilist_tokens WHERE user_id=%s", (user_id,))
+    row = cursor.fetchone()
+    return row["access_token"] if row else None
+
 
 def delete_anilist_token(user_id: int):
-    with get_cursor(commit=True) as cur:
-        cur.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,)))
-        
+    cursor.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,))
+    db.commit()
+
+
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("""
@@ -204,6 +262,7 @@ def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
         VALUES (%s, %s, %s, %s, 'pendente')
     """, (from_user, to_user, from_char, to_char))
     db.commit()
+
 
 def get_latest_pending_trade_for_to_user(to_user: int):
     cursor.execute("""
@@ -218,12 +277,14 @@ def get_latest_pending_trade_for_to_user(to_user: int):
         return None
     return (int(row["trade_id"]), int(row["from_user"]), int(row["from_character_id"]), int(row["to_character_id"]))
 
+
 def mark_trade_status(trade_id: int, status: str):
     cursor.execute("UPDATE trades SET status=%s WHERE trade_id=%s", (status, trade_id))
     db.commit()
 
+
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
-    # troca dono dos registros da coleção
+    # troca dono dos registros da coleção (ATENÇÃO: se o destino já tiver o personagem, pode dar erro)
     cursor.execute("""
         UPDATE user_collection SET user_id=%s
         WHERE user_id=%s AND character_id=%s
@@ -236,6 +297,7 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
 
     cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (trade_id,))
     db.commit()
+
 
 # ---------------- LOJA ----------------
 def shop_list_user_chars(user_id: int, page: int, per_page: int):
@@ -255,6 +317,7 @@ def shop_list_user_chars(user_id: int, page: int, per_page: int):
     chars = [(int(r["character_id"]), r["character_name"]) for r in rows]
     return chars, total, total_pages
 
+
 def shop_create_sale(user_id: int, char_id: int) -> int:
     cursor.execute("""
         INSERT INTO shop_sales (user_id, character_id, created_at)
@@ -265,6 +328,7 @@ def shop_create_sale(user_id: int, char_id: int) -> int:
     db.commit()
     return sale_id
 
+
 def shop_get_sale(sale_id: int):
     cursor.execute("SELECT user_id, character_id FROM shop_sales WHERE sale_id=%s", (sale_id,))
     row = cursor.fetchone()
@@ -272,9 +336,11 @@ def shop_get_sale(sale_id: int):
         return None
     return (int(row["user_id"]), int(row["character_id"]))
 
+
 def shop_delete_sale(sale_id: int):
     cursor.execute("DELETE FROM shop_sales WHERE sale_id=%s", (sale_id,))
     db.commit()
+
 
 # ---------------- BATALHAS ----------------
 def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: str,
@@ -296,13 +362,16 @@ def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: s
     """, (chat_id, p1_id, p2_id, p1_name, p2_name, player1_char, player2_char, player1_hp, player2_hp, vez))
     db.commit()
 
+
 def get_battle(chat_id: int):
     cursor.execute("SELECT * FROM battles WHERE chat_id=%s", (chat_id,))
     return cursor.fetchone()
 
+
 def delete_battle(chat_id: int):
     cursor.execute("DELETE FROM battles WHERE chat_id=%s", (chat_id,))
     db.commit()
+
 
 def battle_set_char(chat_id: int, user_id: int, char_value: str):
     battle = get_battle(chat_id)
@@ -314,30 +383,21 @@ def battle_set_char(chat_id: int, user_id: int, char_value: str):
         cursor.execute("UPDATE battles SET player2_char=%s WHERE chat_id=%s", (char_value, chat_id))
     db.commit()
 
+
 def battle_set_turn(chat_id: int, vez: int):
     cursor.execute("UPDATE battles SET vez=%s WHERE chat_id=%s", (vez, chat_id))
     db.commit()
 
+
 def battle_damage(chat_id: int, target: str, damage: int):
     if target == "p1":
-        cursor.execute("UPDATE battles SET player1_hp = GREATEST(player1_hp - %s, 0) WHERE chat_id=%s", (damage, chat_id))
+        cursor.execute(
+            "UPDATE battles SET player1_hp = GREATEST(player1_hp - %s, 0) WHERE chat_id=%s",
+            (damage, chat_id)
+        )
     else:
-        cursor.execute("UPDATE battles SET player2_hp = GREATEST(player2_hp - %s, 0) WHERE chat_id=%s", (damage, chat_id))
+        cursor.execute(
+            "UPDATE battles SET player2_hp = GREATEST(player2_hp - %s, 0) WHERE chat_id=%s",
+            (damage, chat_id)
+        )
     db.commit()
-
-# adiciona a coluna private_profile se não existir
-cursor.execute("""
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
-""")
-db.commit()
-def set_private_profile(user_id: int, is_private: bool):
-    cursor.execute("UPDATE users SET private_profile=%s WHERE user_id=%s", (is_private, user_id))
-    db.commit()
-
-def get_user_by_nick(nick: str):
-    # nick é único (você já fez a regra), então retorna 1
-    cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (nick,))
-    return cursor.fetchone()
-
-   
