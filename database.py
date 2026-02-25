@@ -167,6 +167,13 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
         """, (user_id, char_id, name, image))
     db.commit()
 
+     # ---------------- LOGIN ----------------
+    CREATE TABLE IF NOT EXISTS anilist_tokens (
+  user_id BIGINT PRIMARY KEY,
+  access_token TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("""
@@ -309,3 +316,5 @@ def get_user_by_nick(nick: str):
     # nick é único (você já fez a regra), então retorna 1
     cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (nick,))
     return cursor.fetchone()
+
+   
