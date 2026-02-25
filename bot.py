@@ -618,7 +618,7 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
    from database import set_private_profile
-set_private_profile(user_id, opt == "on")
+   set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
@@ -2477,6 +2477,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
