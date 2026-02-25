@@ -75,6 +75,9 @@ from database import (
     consume_extra_dado,
 )
 
+from zoneinfo import ZoneInfo
+from datetime import datetime
+
 # ==================================================
 # 1) CONFIG (TUDO VIA VARIÁVEIS DO RAILWAY)
 # ==================================================
@@ -2325,6 +2328,8 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 20) /dado + /colecao + /nomecolecao (POSTGRES)
 # ==================================================
 SP_TZ = ZoneInfo("America/Sao_Paulo")
+from zoneinfo import ZoneInfo
+from datetime import datetime
 
 DADO_MAX_BALANCE = 18
 DADO_NEW_USER_START = 4
@@ -2971,5 +2976,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
