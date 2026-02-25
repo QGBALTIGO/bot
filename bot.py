@@ -3211,7 +3211,241 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             pass
 
+# ==================================================
+# LOJA (PV) — VENDER pro BOT (+1 coin) / COMPRAR GIRO (-2 coins -> +1 giro)
+# ==================================================
 
+SHOP_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
+
+SHOP_SELL_GAIN = 1          # vende pro bot -> +1 coin
+SHOP_GIRO_PRICE = 2         # compra giro -> -2 coins
+ITENS_POR_PAGINA_SHOP = 8
+
+SHOP_BTN_FLOOD = 1.5
+_SHOP_BTN_LAST: dict[int, float] = {}
+_SHOP_STATE: dict[int, dict] = {}  # user_id -> {mode: "...", ...}
+
+def _shop_btn_ok(user_id: int) -> bool:
+    now = time.time()
+    last = _SHOP_BTN_LAST.get(user_id, 0.0)
+    if now - last < SHOP_BTN_FLOOD:
+        return False
+    _SHOP_BTN_LAST[user_id] = now
+    return True
+
+def _shop_only_private_text() -> str:
+    return (
+        "🛒 <b>LOJA</b>\n\n"
+        "Use a loja <b>somente no privado</b> do bot.\n"
+        "👉 Abra o bot no PV e use <code>/loja</code>."
+    )
+
+def _shop_main_text(user_name: str, coins: int, giros: int) -> str:
+    return (
+        "🛒 <b>LOJA BALTIGO</b>\n"
+        f"👤 <b>{user_name}</b>\n\n"
+        "Escolha uma opção 👇\n\n"
+        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+        "📌 <i>Venda personagens repetidos e compre giros!</i>"
+    )
+
+def _shop_main_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Vender personagem (+1 coin)", callback_data="shop:sell_menu:1")],
+        [InlineKeyboardButton("🎡 Comprar GIRO (2 coins)", callback_data="shop:buy_giro")],
+    ])
+
+def _sell_menu_text(page: int) -> str:
+    return (
+        "📦 <b>VENDER PERSONAGEM (pro BOT)</b>\n\n"
+        "Escolha um personagem da sua coleção.\n"
+        f"✅ Ao vender, você recebe <b>+{SHOP_SELL_GAIN} coin</b>.\n"
+        "⚠️ Vende <b>1 unidade</b> (se tiver quantity > 1, só diminui 1).\n\n"
+        f"📄 Página: <b>{page}</b>"
+    )
+
+def _sell_kb(items: list[tuple[int, str]], page: int, total_pages: int) -> InlineKeyboardMarkup:
+    rows = []
+    for cid, name in items:
+        rows.append([InlineKeyboardButton(f"🧧 {cid}. {name}", callback_data=f"shop:sell_pick:{cid}:{page}")])
+
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("⬅️", callback_data=f"shop:sell_menu:{page-1}"))
+    nav.append(InlineKeyboardButton("🏠 Voltar", callback_data="shop:home"))
+    if page < total_pages:
+        nav.append(InlineKeyboardButton("➡️", callback_data=f"shop:sell_menu:{page+1}"))
+    rows.append(nav)
+
+    return InlineKeyboardMarkup(rows)
+
+def _confirm_sell_text(char_id: int, name: str, qty: int) -> str:
+    return (
+        "✅ <b>CONFIRMAR VENDA</b>\n\n"
+        f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+        f"📦 Você tem: <b>{qty}</b>\n\n"
+        f"Você vai vender <b>1</b> unidade pro bot e ganhar <b>+{SHOP_SELL_GAIN} coin</b>.\n"
+        "Confirmar?"
+    )
+
+def _confirm_sell_kb(char_id: int, page: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirmar venda", callback_data=f"shop:sell_confirm:{char_id}:{page}")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data=f"shop:sell_menu:{page}")],
+    ])
+
+async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type != "private":
+        await update.message.reply_html(_shop_only_private_text())
+        return
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    coins = get_user_coins(user_id)
+    giros = get_extra_dado(user_id)
+
+    await update.message.reply_photo(
+        photo=SHOP_IMAGE,
+        caption=_shop_main_text(update.effective_user.full_name, coins, giros),
+        parse_mode="HTML",
+        reply_markup=_shop_main_kb()
+    )
+
+# ---------------- Shop callback router ----------------
+async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    user_id = q.from_user.id
+
+    if not _shop_btn_ok(user_id):
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    await q.answer()
+
+    data = q.data
+
+    # HOME
+    if data == "shop:home":
+        ensure_user_row(user_id, q.from_user.first_name)
+        coins = get_user_coins(user_id)
+        giros = get_extra_dado(user_id)
+        await q.message.edit_caption(
+            caption=_shop_main_text(q.from_user.full_name, coins, giros),
+            parse_mode="HTML",
+            reply_markup=_shop_main_kb()
+        )
+        return
+
+    # BUY GIRO
+    if data == "shop:buy_giro":
+        ensure_user_row(user_id, q.from_user.first_name)
+
+        ok = try_spend_coins(user_id, SHOP_GIRO_PRICE)
+        if not ok:
+            await q.answer("Você não tem coins suficientes.", show_alert=True)
+            return
+
+        add_extra_dado(user_id, 1)
+
+        coins = get_user_coins(user_id)
+        giros = get_extra_dado(user_id)
+
+        await q.message.edit_caption(
+            caption=(
+                "🎡 <b>GIRO COMPRADO!</b>\n\n"
+                "✅ Você recebeu <b>+1 giro</b>.\n\n"
+                f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+                f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+                "Quer mais alguma coisa? 👇"
+            ),
+            parse_mode="HTML",
+            reply_markup=_shop_main_kb()
+        )
+        return
+
+    # SELL MENU (paginação)
+    if data.startswith("shop:sell_menu:"):
+        page = int(data.split(":")[2])
+        ensure_user_row(user_id, q.from_user.first_name)
+
+        itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
+        if not itens:
+            await q.answer("Sua coleção está vazia.", show_alert=True)
+            return
+
+        await q.message.edit_caption(
+            caption=_sell_menu_text(page),
+            parse_mode="HTML",
+            reply_markup=_sell_kb(itens, page, total_pages)
+        )
+        return
+
+    # SELL PICK -> confirmação
+    if data.startswith("shop:sell_pick:"):
+        # shop:sell_pick:CHAR_ID:PAGE
+        _, _, cid_s, page_s = data.split(":")
+        char_id = int(cid_s)
+        page = int(page_s)
+
+        item = get_collection_character_full(user_id, char_id)
+        if not item:
+            await q.answer("Você não tem esse personagem.", show_alert=True)
+            return
+
+        name = item["character_name"]
+        qty = int(item.get("quantity") or 1)
+
+        await q.message.edit_caption(
+            caption=_confirm_sell_text(char_id, name, qty),
+            parse_mode="HTML",
+            reply_markup=_confirm_sell_kb(char_id, page)
+        )
+        return
+
+    # SELL CONFIRM
+    if data.startswith("shop:sell_confirm:"):
+        # shop:sell_confirm:CHAR_ID:PAGE
+        _, _, cid_s, page_s = data.split(":")
+        char_id = int(cid_s)
+        page = int(page_s)
+
+        # revalida no banco (anti falhas)
+        item = get_collection_character_full(user_id, char_id)
+        if not item:
+            await q.answer("Você não tem mais esse personagem.", show_alert=True)
+            # volta pro menu
+            await callback_shop(update, context)  # tenta render home/menu
+            return
+
+        # remove 1 unidade e paga +1 coin
+        ok = remove_one_from_collection(user_id, char_id)
+        if not ok:
+            await q.answer("Não consegui vender agora. Tente de novo.", show_alert=True)
+            return
+
+        add_coin(user_id, SHOP_SELL_GAIN)
+
+        coins = get_user_coins(user_id)
+        giros = get_extra_dado(user_id)
+
+        await q.message.edit_caption(
+            caption=(
+                "✅ <b>VENDA CONCLUÍDA!</b>\n\n"
+                f"🧧 <code>{char_id}</code>. <b>{item['character_name']}</b>\n"
+                f"🪙 Você ganhou <b>+{SHOP_SELL_GAIN} coin</b>\n\n"
+                f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+                f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+                "Quer fazer mais alguma coisa? 👇"
+            ),
+            parse_mode="HTML",
+            reply_markup=_shop_main_kb()
+        )
+        await q.answer("Vendido! ✅")
+        return
+        
 # ==================================================
 # 25) MAIN (handlers)
 # ==================================================
@@ -3277,12 +3511,17 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
     app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
 
+     # loja
+    app.add_handler(CommandHandler("loja", loja))
+    app.add_handler(CallbackQueryHandler(callback_shop, pattern=r"^shop:"))
+
     print("✅ Bot rodando...")
     app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
