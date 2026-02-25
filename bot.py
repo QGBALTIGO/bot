@@ -2190,18 +2190,9 @@ def main():
 
     print("✅ Bot rodando...")
     
-   def build_app():
-    init_db()
-
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # (cole aqui TODOS os seus handlers exatamente como já estão)
-    # app.add_handler(...)
-    # ...
-
-    return app
-
-
+   # ==================================================
+# Local run (se você rodar bot.py direto)
+# ==================================================
 def main():
     app = build_app()
     app.run_polling(drop_pending_updates=True)
@@ -2209,6 +2200,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
