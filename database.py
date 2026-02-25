@@ -179,7 +179,26 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
             created_at BIGINT NOT NULL
         );
         """)
+def save_anilist_token(user_id: int, token: str, created_at: int):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO anilist_tokens (user_id, access_token, created_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                access_token = EXCLUDED.access_token,
+                created_at = EXCLUDED.created_at
+        """, (user_id, token, created_at))
 
+def get_anilist_token(user_id: int) -> str | None:
+    with get_cursor() as cur:
+        cur.execute("SELECT access_token FROM anilist_tokens WHERE user_id=%s", (user_id,))
+        row = cur.fetchone()
+        return row["access_token"] if row else None
+
+def delete_anilist_token(user_id: int):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,))
+        
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("""
