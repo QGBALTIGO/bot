@@ -199,22 +199,18 @@ async def registrar_comando(update: Update):
 
     novo_nivel = (commands // COMANDOS_POR_NIVEL) + 1
     if novo_nivel > level:
-        await db_call(update_commands_and_level, user_id, commands, novo_nivel)
+ await db_call(update_commands_and_level, user_id, commands, novo_nivel)
 
-        mensagem = (
-            "🎉 <b>SUPERE O NÍVEL!</b>\n"
-"
-            f"✨ Parabéns <b>{row['nick']}</b>!
-"
-            f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!
-"
-            "🚀 Continue usando o bot!"
-        )
-        if update.message:
-            await update.message.reply_html(mensagem)
-        return
+mensagem = (
+    "🎉 <b>SUPERE O NÍVEL!</b>\n\n"
+    f"✨ Parabéns <b>{row['nick']}</b>!\n"
+    f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
+    "🚀 Continue usando o bot!"
+)
 
-    await db_call(update_commands_only, user_id, commands)
+if update.message:
+    await update.message.reply_html(mensagem)
+return
 
 # ==================================================
 # 8) /start
@@ -2168,4 +2164,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
