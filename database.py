@@ -538,12 +538,27 @@ def set_dice_roll_status(roll_id: int, status: str):
 # ================================
 # TROCAS / BATALHAS / SHOP
 # ================================
-def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
+# ==================================================
+# TROCAS (database.py) — implementado com RETURNING + get_trade_by_id
+# ==================================================
+
+def create_trade(from_user: int, to_user: int, from_char: int, to_char: int) -> int:
+    """
+    Cria uma troca e retorna o trade_id (pra callbacks ficarem 100% certinhos).
+    """
     cursor.execute("""
         INSERT INTO trades (from_user, to_user, from_character_id, to_character_id, status)
         VALUES (%s, %s, %s, %s, 'pendente')
-    """, (from_user, to_user, from_char, to_char))
+        RETURNING trade_id
+    """, (int(from_user), int(to_user), int(from_char), int(to_char)))
+    row = cursor.fetchone()
     _commit()
+    return int(row["trade_id"]) if row and row.get("trade_id") is not None else 0
+
+
+def get_trade_by_id(trade_id: int):
+    cursor.execute("SELECT * FROM trades WHERE trade_id=%s", (int(trade_id),))
+    return cursor.fetchone()
 
 
 def get_latest_pending_trade_for_to_user(to_user: int):
@@ -553,7 +568,7 @@ def get_latest_pending_trade_for_to_user(to_user: int):
         WHERE to_user=%s AND status='pendente'
         ORDER BY trade_id DESC
         LIMIT 1
-    """, (to_user,))
+    """, (int(to_user),))
     row = cursor.fetchone()
     if not row:
         return None
@@ -561,15 +576,63 @@ def get_latest_pending_trade_for_to_user(to_user: int):
 
 
 def mark_trade_status(trade_id: int, status: str):
-    cursor.execute("UPDATE trades SET status=%s WHERE trade_id=%s", (status, trade_id))
+    cursor.execute("UPDATE trades SET status=%s WHERE trade_id=%s", (str(status), int(trade_id)))
     _commit()
 
 
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
-    cursor.execute("UPDATE user_collection SET user_id=%s WHERE user_id=%s AND character_id=%s", (to_user, from_user, from_char))
-    cursor.execute("UPDATE user_collection SET user_id=%s WHERE user_id=%s AND character_id=%s", (from_user, to_user, to_char))
-    cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (trade_id,))
-    _commit()
+    """
+    Executa a troca de forma mais segura:
+    - Só troca se ambos ainda possuem os chars no momento da execução
+    - Atualiza status pra 'aceita' somente se deu certo
+    Retorna True/False.
+    """
+    # trava as linhas pra evitar corrida (Postgres)
+    cursor.execute("BEGIN")
+
+    # garante que a troca ainda está pendente
+    cursor.execute("SELECT status FROM trades WHERE trade_id=%s FOR UPDATE", (int(trade_id),))
+    tr = cursor.fetchone()
+    if not tr or tr.get("status") != "pendente":
+        cursor.execute("ROLLBACK")
+        return False
+
+    # checa posse atual (com lock)
+    cursor.execute("""
+        SELECT 1 FROM user_collection
+        WHERE user_id=%s AND character_id=%s
+        FOR UPDATE
+    """, (int(from_user), int(from_char)))
+    a_ok = cursor.fetchone() is not None
+
+    cursor.execute("""
+        SELECT 1 FROM user_collection
+        WHERE user_id=%s AND character_id=%s
+        FOR UPDATE
+    """, (int(to_user), int(to_char)))
+    b_ok = cursor.fetchone() is not None
+
+    if not a_ok or not b_ok:
+        cursor.execute("UPDATE trades SET status='falhou' WHERE trade_id=%s", (int(trade_id),))
+        cursor.execute("COMMIT")
+        return False
+
+    # troca de dono (mantém character_id igual, muda user_id)
+    cursor.execute("""
+        UPDATE user_collection
+        SET user_id=%s
+        WHERE user_id=%s AND character_id=%s
+    """, (int(to_user), int(from_user), int(from_char)))
+
+    cursor.execute("""
+        UPDATE user_collection
+        SET user_id=%s
+        WHERE user_id=%s AND character_id=%s
+    """, (int(from_user), int(to_user), int(to_char)))
+
+    cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (int(trade_id),))
+    cursor.execute("COMMIT")
+    return True
 
 
 def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: str,
