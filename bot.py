@@ -253,7 +253,8 @@ def make_state(user_id: int) -> str:
     data = payload + b"." + sig
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
-    async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
 
     state = make_state(telegram_id)
@@ -2186,6 +2187,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
