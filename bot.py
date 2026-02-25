@@ -1724,6 +1724,60 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=teclado)
     else:
         await update.message.reply_html(caption, reply_markup=teclado)
+
+# ==================================================
+# CALLBACK: botão ❤️ Favoritar do /card
+# ==================================================
+async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    # cardfav:OWNER_ID:CHAR_ID
+    try:
+        _, owner_id, char_id = q.data.split(":")
+        owner_id = int(owner_id)
+        char_id = int(char_id)
+    except Exception:
+        return
+
+    # só o dono do card pode clicar
+    if q.from_user.id != owner_id:
+        await q.answer("Esse botão não é seu.", show_alert=True)
+        return
+
+    from database import (
+        get_collection_character_full,
+        set_favorite_from_collection,
+        get_global_character_image,
+    )
+
+    item = get_collection_character_full(owner_id, char_id)
+    if not item:
+        await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
+        return
+
+    # favorito usa foto GLOBAL se existir
+    fav_img = get_global_character_image(char_id) or item.get("image")
+    set_favorite_from_collection(owner_id, item["character_name"], fav_img)
+
+    await q.answer("Favorito definido!", show_alert=True)
+
+    # opcional: tenta “marcar” no texto que foi favoritado
+    try:
+        if q.message.caption:
+            await q.edit_message_caption(
+                caption=q.message.caption + "\n\n❤️ <b>Definido como favorito!</b>",
+                parse_mode="HTML",
+                reply_markup=q.message.reply_markup
+            )
+        else:
+            await q.edit_message_text(
+                text=(q.message.text or "") + "\n\n❤️ <b>Definido como favorito!</b>",
+                parse_mode="HTML",
+                reply_markup=q.message.reply_markup
+            )
+    except Exception:
+        pass
         
 # ==================================================
 # HELPERS (link direto)
@@ -2104,6 +2158,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
