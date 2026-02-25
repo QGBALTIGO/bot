@@ -1749,150 +1749,353 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
 # 22) /loja (POSTGRES) — SIMPLES
 #     - lista personagens do usuário e permite vender
 # ==================================================
-def _shop_keyboard(chars: List[Tuple[int, str]], page: int, total_pages: int) -> InlineKeyboardMarkup:
-    rows = []
-    for cid, cname in chars:
-        rows.append([InlineKeyboardButton(f"🧧 {cid}. {cname}", callback_data=f"shop:sell:{cid}")])
+# ============================================
+# CONFIG LOJA
+# ============================================
+SHOP_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZpydPGme6ex9UvvySmLWraopcWIZuKkRAAKCC2sbjP74RD8B5HgSNJ17AQADAgADeQADOgQ/photo.jpg"
 
-    nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton("⏪", callback_data=f"shop:page:{page-1}"))
-    nav.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="shop:noop"))
-    if page < total_pages:
-        nav.append(InlineKeyboardButton("⏩", callback_data=f"shop:page:{page+1}"))
-    rows.append(nav)
+# ID do canal/grupo onde os admins aprovam/recusam pedidos
+# Ex: -1001234567890
+PEDIDOS_CHAT_ID = int(os.getenv("PEDIDOS_CHAT_ID", "0"))
 
-    return InlineKeyboardMarkup(rows)
+# ============================================
+# HELPERS
+# ============================================
+def _is_direct_image_url(url: str) -> bool:
+    url = (url or "").strip().lower()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return False
+    # Telegram costuma falhar com links que não são diretos
+    return url.endswith(".jpg") or url.endswith(".jpeg") or url.endswith(".png") or url.endswith(".webp")
 
 async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+
     user_id = update.effective_user.id
     ensure_user_row(user_id, update.effective_user.first_name)
 
+    # banner
+    try:
+        await update.message.reply_photo(photo=SHOP_BANNER_URL)
+    except Exception:
+        pass
+
     page = 1
-    per_page = 8
+    per_page = 12
     chars, total, total_pages = shop_list_user_chars(user_id, page, per_page)
 
-    if not chars:
-        await update.message.reply_html(
-            "🛒 <b>LOJA</b>\n\n"
-            "📦 Sua coleção está vazia.\n"
-            "Use <code>/dado</code> para conseguir personagens."
-        )
-        return
-
-    await update.message.reply_html(
+    texto = (
         "🛒 <b>LOJA</b>\n\n"
-        "Escolha um personagem para vender.\n"
-        "⚠️ Ao vender, você recebe <b>+1 coin</b> e o personagem sai da coleção.",
-        reply_markup=_shop_keyboard(chars, page, total_pages)
+        "🎲 <b>Dado extra</b> — <b>2 coins</b>\n"
+        "➡️ <code>/comprardado</code>\n\n"
+        "🖼️ <b>Trocar foto do personagem</b> — <b>5 coins</b>\n"
+        "➡️ <code>/fotopersonagem ID LINK</code>\n\n"
+        "⚠️ Regras da foto:\n"
+        "• <b>Só aceita link direto</b> (tem que terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>)\n"
+        "• A foto deve ser <b>somente do personagem principal</b> (sem outros personagens)\n"
+        "• Vai para aprovação no canal de pedidos\n\n"
+        "💰 <b>Vender personagem</b> — ganha <b>+1 coin</b>\n"
+        "➡️ <code>/vender ID</code>\n\n"
+        "📦 <b>Seus personagens (IDs):</b>\n"
     )
 
-async def callback_loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split(":")
-    # shop:page:X | shop:sell:CID | shop:noop
-    action = parts[1]
-
-    user_id = query.from_user.id
-    ensure_user_row(user_id, query.from_user.first_name)
-
-    if action == "noop":
+    if not chars:
+        texto += "\nSua coleção está vazia. Use <code>/dado</code> para conseguir personagens."
+        await update.message.reply_html(texto)
         return
 
-    if action == "page":
-        page = int(parts[2])
-        per_page = 8
-        chars, total, total_pages = shop_list_user_chars(user_id, page, per_page)
+    for cid, cname in chars:
+        texto += f"\n• <code>{cid}</code> — {cname}"
 
-        if not chars:
-            await query.message.edit_text(
-                "🛒 <b>LOJA</b>\n\n"
-                "📦 Sua coleção está vazia.\n"
-                "Use <code>/dado</code> para conseguir personagens.",
-                parse_mode="HTML"
-            )
-            return
+    if total_pages > 1:
+        texto += f"\n\n📄 Mostrando página {page}/{total_pages}"
 
-        await query.message.edit_text(
-            "🛒 <b>LOJA</b>\n\n"
-            "Escolha um personagem para vender.\n"
-            "⚠️ Ao vender, você recebe <b>+1 coin</b> e o personagem sai da coleção.",
-            parse_mode="HTML",
-            reply_markup=_shop_keyboard(chars, page, total_pages)
+    await update.message.reply_html(texto)
+
+
+async def vender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    if not context.args or len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_html(
+            "🛒 <b>Vender personagem</b>\n\n"
+            "Use:\n"
+            "<code>/vender ID</code>\n\n"
+            "Exemplo:\n"
+            "<code>/vender 12345</code>"
         )
         return
 
-    if action == "sell":
-        char_id = int(parts[2])
-        if not user_has_character(user_id, char_id):
-            await query.answer("Você não tem esse personagem.", show_alert=True)
-            return
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
 
-        # cria uma "venda pendente"
-        sale_id = shop_create_sale(user_id, char_id)
+    char_id = int(context.args[0])
 
-        teclado = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Confirmar", callback_data=f"sell_confirm:{sale_id}:yes"),
-            InlineKeyboardButton("❌ Cancelar", callback_data=f"sell_confirm:{sale_id}:no"),
-        ]])
+    ok = remove_one_from_collection(user_id, char_id)
+    if not ok:
+        await update.message.reply_html("❌ Você não tem esse personagem.")
+        return
 
-        await query.message.reply_html(
-            "🛒 <b>Confirmar venda</b>\n\n"
-            f"Você quer mesmo vender o personagem <code>{char_id}</code>?\n\n"
-            "✅ Você ganha <b>+1 coin</b>\n"
-            "⚠️ O personagem sai da sua coleção.",
+    add_coin(user_id, 1)
+    await update.message.reply_html("✅ Venda concluída! 🪙 +1 coin")
+
+
+async def comprardado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+    row = get_user_row(user_id)
+
+    coins = int(row.get("coins") or 0)
+    if coins < 2:
+        await update.message.reply_html("❌ Você precisa de <b>2 coins</b> para comprar 1 rodada extra de dado.")
+        return
+
+    add_coin(user_id, -2)
+    add_extra_dado(user_id, 1)
+
+    await update.message.reply_html("✅ Você comprou <b>+1</b> rodada extra de dado! 🎲")
+
+
+async def fotopersonagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    # tem que ser EXATAMENTE 2 argumentos: ID e LINK (sem mais nada)
+    if len(context.args) != 2:
+        await update.message.reply_html(
+            "🖼️ <b>Trocar foto do personagem</b>\n\n"
+            "Use exatamente assim:\n"
+            "<code>/fotopersonagem ID LINK</code>\n\n"
+            "Exemplo:\n"
+            "<code>/fotopersonagem 12345 https://site.com/imagem.jpg</code>\n\n"
+            "⚠️ Regras:\n"
+            "• <b>Só aceita link direto</b> (.jpg/.png/.webp)\n"
+            "• Foto deve ser <b>somente do personagem principal</b>\n"
+            "• Vai para aprovação (admin pode recusar)"
+        )
+        return
+
+    if not context.args[0].isdigit():
+        await update.message.reply_html("❌ O ID precisa ser numérico.\nUse: <code>/fotopersonagem ID LINK</code>")
+        return
+
+    char_id = int(context.args[0])
+    url = context.args[1].strip()
+
+    if not _is_direct_image_url(url):
+        await update.message.reply_html(
+            "❌ <b>Link inválido</b>\n\n"
+            "A imagem precisa ser um link direto terminando em:\n"
+            "<code>.jpg</code> / <code>.png</code> / <code>.webp</code>\n\n"
+            "Exemplo:\n"
+            "<code>/fotopersonagem 12345 https://site.com/imagem.jpg</code>"
+        )
+        return
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+    row = get_user_row(user_id)
+
+    coins = int(row.get("coins") or 0)
+    if coins < 5:
+        await update.message.reply_html("❌ Você precisa de <b>5 coins</b> para pedir troca de foto.")
+        return
+
+    # precisa ter o personagem na coleção
+    item = get_collection_character_full(user_id, char_id)
+    if not item:
+        await update.message.reply_html("❌ Você só pode trocar a foto de um personagem que você tem na coleção.")
+        return
+
+    if PEDIDOS_CHAT_ID == 0:
+        await update.message.reply_html("⚠️ Canal de pedidos não configurado. Fale com um admin.")
+        return
+
+    # cobra agora (se recusar, reembolsa)
+    add_coin(user_id, -5)
+
+    request_id = create_photo_request(user_id, char_id, url)
+
+    teclado = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Aprovar", callback_data=f"photo_req:{request_id}:yes"),
+        InlineKeyboardButton("❌ Recusar", callback_data=f"photo_req:{request_id}:no"),
+    ]])
+
+    texto = (
+        "🖼️ <b>PEDIDO DE TROCA DE FOTO</b>\n\n"
+        f"👤 User ID: <code>{user_id}</code>\n"
+        f"🧧 Personagem: <code>{char_id}</code> — <b>{item['character_name']}</b>\n\n"
+        "⚠️ Regras:\n"
+        "• Link direto (.jpg/.png/.webp)\n"
+        "• Somente o personagem principal (sem outros)\n\n"
+        f"🔗 Link:\n<code>{url}</code>\n\n"
+        f"🧾 Pedido: <code>{request_id}</code>"
+    )
+
+    # manda no canal (com prévia se der)
+    try:
+        await context.bot.send_photo(
+            chat_id=PEDIDOS_CHAT_ID,
+            photo=url,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=teclado
+        )
+    except Exception:
+        await context.bot.send_message(
+            chat_id=PEDIDOS_CHAT_ID,
+            text=texto,
+            parse_mode="HTML",
             reply_markup=teclado
         )
 
-async def callback_confirmar_venda(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    # sell_confirm:SALEID:yes/no
-    _, sale_id, decision = query.data.split(":")
-    sale_id = int(sale_id)
-
-    sale = shop_get_sale(sale_id)
-    if not sale:
-        await query.answer("Venda expirada.", show_alert=True)
-        return
-
-    user_id, char_id = sale
-    if query.from_user.id != user_id:
-        await query.answer("Essa venda não é sua.", show_alert=True)
-        return
-
-    if decision == "no":
-        shop_delete_sale(sale_id)
-        await query.message.edit_text("❌ Venda cancelada.", parse_mode="HTML")
-        return
-
-    # yes
-    if not user_has_character(user_id, char_id):
-        shop_delete_sale(sale_id)
-        await query.message.edit_text("⚠️ Você não tem mais esse personagem.", parse_mode="HTML")
-        return
-
-    # remove da coleção (delete linha)
-    cursor.execute(
-        "DELETE FROM user_collection WHERE user_id=%s AND character_id=%s",
-        (user_id, char_id)
+    await update.message.reply_html(
+        "✅ Pedido enviado para aprovação!\n\n"
+        "Se o admin aprovar, a foto será aplicada.\n"
+        "Se o admin recusar, você recebe <b>+5 coins</b> de volta."
     )
-    add_coin(user_id, 1)
-    shop_delete_sale(sale_id)
-    db.commit()
 
-    await query.message.edit_text("✅ Venda concluída! 🪙 +1 coin", parse_mode="HTML")
 
-async def callback_venda_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # compat com seu handler "sell_yes/sell_no" (fica só como fallback)
+async def callback_photo_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("✅ Ok!")
+
+    # photo_req:REQUEST_ID:yes/no
+    try:
+        _, rid, decision = query.data.split(":")
+        request_id = int(rid)
+    except Exception:
+        return
+
+    if not is_admin(query.from_user.id):
+        await query.answer("Apenas admins podem aprovar/recusar.", show_alert=True)
+        return
+
+    req = get_photo_request(request_id)
+    if not req:
+        await query.answer("Pedido não encontrado.", show_alert=True)
+        return
+
+    if req["status"] != "pendente":
+        await query.answer("Esse pedido já foi decidido.", show_alert=True)
+        return
+
+    user_id = int(req["user_id"])
+    char_id = int(req["character_id"])
+    url = req["new_url"]
+
+    if decision == "yes":
+        # aplica foto custom
+        set_character_custom_image(user_id, char_id, url)
+        set_photo_request_status(request_id, "aceita")
+
+        # marca no canal
+        try:
+            await query.edit_message_caption(
+                (query.message.caption or "") + "\n\n✅ <b>APROVADO</b>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            await query.edit_message_text("✅ APROVADO", parse_mode="HTML")
+
+        # avisa o usuário (opcional, mas útil)
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "✅ <b>Sua troca de foto foi aprovada!</b>\n\n"
+                    f"🧧 Personagem: <code>{char_id}</code>\n"
+                    "🎴 A nova foto já foi aplicada."
+                ),
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+        return
+
+    # decision == "no" -> reembolsa 5 coins
+    add_coin(user_id, 5)
+    set_photo_request_status(request_id, "recusada")
+
+    try:
+        await query.edit_message_caption(
+            (query.message.caption or "") + "\n\n❌ <b>RECUSADO</b>\n🪙 Reembolso: <b>+5 coins</b>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        await query.edit_message_text("❌ RECUSADO — Reembolso +5 coins", parse_mode="HTML")
+
+    # avisa o usuário (opcional)
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "❌ <b>Sua troca de foto foi recusada.</b>\n\n"
+                f"🧧 Personagem: <code>{char_id}</code>\n"
+                "🪙 Você recebeu <b>+5 coins</b> de volta."
+            ),
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+# ============================================
+# ADMIN TESTE — troca foto direto por ID
+# /setfoto USER_ID ID LINK
+# ============================================
+async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_admin = update.effective_user.id
+    if not is_admin(user_id_admin):
+        await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    if len(context.args) != 3:
+        await update.message.reply_html(
+            "🛠️ <b>Admin — setar foto</b>\n\n"
+            "Use exatamente:\n"
+            "<code>/setfoto USER_ID ID LINK</code>\n\n"
+            "Exemplo:\n"
+            "<code>/setfoto 123456789 555 https://site.com/imagem.jpg</code>"
+        )
+        return
+
+    if (not context.args[0].isdigit()) or (not context.args[1].isdigit()):
+        await update.message.reply_html("❌ USER_ID e ID precisam ser numéricos.")
+        return
+
+    target_user_id = int(context.args[0])
+    char_id = int(context.args[1])
+    url = context.args[2].strip()
+
+    if not _is_direct_image_url(url):
+        await update.message.reply_html(
+            "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+        )
+        return
+
+    # precisa existir na coleção do usuário alvo
+    item = get_collection_character_full(target_user_id, char_id)
+    if not item:
+        await update.message.reply_html("❌ Esse usuário não tem esse personagem na coleção.")
+        return
+
+    set_character_custom_image(target_user_id, char_id, url)
+
+    await update.message.reply_html(
+        "✅ <b>Foto aplicada!</b>\n\n"
+        f"👤 User ID: <code>{target_user_id}</code>\n"
+        f"🧧 Personagem: <code>{char_id}</code> — <b>{item['character_name']}</b>"
+    )
 
 # ==================================================
 # 23) /batalha (POSTGRES) — SEMPRE NO GRUPO + FOTO
@@ -2193,12 +2396,15 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
     app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
     app.add_handler(CommandHandler("loja", loja))
-    app.add_handler(CallbackQueryHandler(callback_loja, pattern="^shop:"))
-    app.add_handler(CallbackQueryHandler(callback_confirmar_venda, pattern="^sell_confirm:"))
-    app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
+    app.add_handler(CommandHandler("vender", vender))
+    app.add_handler(CommandHandler("comprardado", comprardado))
+    app.add_handler(CommandHandler("fotopersonagem", fotopersonagem))
+    app.add_handler(CallbackQueryHandler(callback_photo_request, pattern="^photo_req:"))
+    app.add_handler(CommandHandler("setfoto", setfoto))
 
     print("✅ Bot rodando...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
