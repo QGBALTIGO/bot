@@ -602,7 +602,8 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
 
-    set_private_profile(user_id, opt == "on")
+   from database import set_private_profile
+set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
@@ -2461,6 +2462,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
