@@ -1,5 +1,5 @@
 # ================================
-# database.py — Postgres (Railway) (ORGANIZADO + DADO NOVO + CACHE)
+# database.py — Postgres (Railway) (ORGANIZADO + MIGRAÇÃO + DADO NOVO + CACHE)
 # ================================
 
 import os
@@ -19,46 +19,80 @@ cursor = db.cursor()
 
 
 # ================================
-# INIT DB
+# helpers
 # ================================
-def init_db():
-    # USERS
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT PRIMARY KEY,
-        nick TEXT,
-        collection_name TEXT,
-        fav_name TEXT,
-        fav_image TEXT,
-        coins INT DEFAULT 0,
-        commands INT DEFAULT 0,
-        level INT DEFAULT 1,
-        xp INT DEFAULT 0,
-        last_dado BIGINT DEFAULT 0,
-        last_pedido BIGINT DEFAULT 0,
+def _commit():
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
-        private_profile BOOLEAN DEFAULT FALSE,
-        admin_photo TEXT,
 
-        dado_balance INT DEFAULT 0,
-        dado_slot BIGINT DEFAULT -1,
+def _ensure_columns_users():
+    """
+    Migra tabela users antiga sem quebrar.
+    """
+    # colunas antigas e novas
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS collection_name TEXT;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_image TEXT;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins INT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS commands INT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS level INT DEFAULT 1;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_dado BIGINT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_pedido BIGINT DEFAULT 0;""")
 
-        extra_dado INT DEFAULT 0
-    );
-    """)
-    db.commit()
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_photo TEXT;""")
 
-    # Índice unique no nick (opcional). Se falhar, não trava o bot.
+    # DADO NOVO
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_balance INT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT DEFAULT -1;""")
+
+    # extra dado
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;""")
+
+
+def _try_create_indexes():
+    # unique nick (não pode travar o bot)
     try:
         cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS users_nick_unique
         ON users (LOWER(nick))
         WHERE nick IS NOT NULL;
         """)
-        db.commit()
+        _commit()
     except Exception as e:
         db.rollback()
         print("⚠️ Não consegui criar índice users_nick_unique (ok continuar). Erro:", e)
+
+    # índices úteis (não precisa try/except)
+    cursor.execute("CREATE INDEX IF NOT EXISTS user_collection_user_idx ON user_collection (user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS trades_to_user_idx ON trades (to_user);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS shop_sales_user_idx ON shop_sales (user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS top_anime_cache_rank_idx ON top_anime_cache (rank);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);")
+    _commit()
+
+
+# ================================
+# INIT DB (com migração)
+# ================================
+def init_db():
+    # USERS (mínimo)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id BIGINT PRIMARY KEY
+    );
+    """)
+    _commit()
+
+    # MIGRA users antiga
+    _ensure_columns_users()
+    _commit()
 
     # COLEÇÃO
     cursor.execute("""
@@ -73,7 +107,7 @@ def init_db():
         PRIMARY KEY (user_id, character_id)
     );
     """)
-    db.commit()
+    _commit()
 
     # TROCAS
     cursor.execute("""
@@ -86,7 +120,7 @@ def init_db():
         status TEXT DEFAULT 'pendente'
     );
     """)
-    db.commit()
+    _commit()
 
     # BATALHAS
     cursor.execute("""
@@ -104,7 +138,7 @@ def init_db():
         vez INT DEFAULT 0
     );
     """)
-    db.commit()
+    _commit()
 
     # LOJA
     cursor.execute("""
@@ -115,7 +149,7 @@ def init_db():
         created_at BIGINT
     );
     """)
-    db.commit()
+    _commit()
 
     # imagens globais
     cursor.execute("""
@@ -126,7 +160,7 @@ def init_db():
         updated_by BIGINT
     );
     """)
-    db.commit()
+    _commit()
 
     # ban
     cursor.execute("""
@@ -137,7 +171,7 @@ def init_db():
         created_by BIGINT
     );
     """)
-    db.commit()
+    _commit()
 
     # cache top 500
     cursor.execute("""
@@ -148,7 +182,7 @@ def init_db():
         updated_at BIGINT NOT NULL
     );
     """)
-    db.commit()
+    _commit()
 
     # rolls dado
     cursor.execute("""
@@ -161,8 +195,9 @@ def init_db():
         created_at BIGINT NOT NULL
     );
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);")
-    db.commit()
+    _commit()
+
+    _try_create_indexes()
 
 
 # ================================
@@ -189,7 +224,7 @@ def ensure_user_row(user_id: int, default_name: str, new_user_dice: int = 0):
         VALUES (%s, %s, %s, %s, %s)
     """, (user_id, nick.lower(), "Minha Coleção", int(new_user_dice or 0), -1))
 
-    db.commit()
+    _commit()
 
 
 def get_user_row(user_id: int):
@@ -204,17 +239,17 @@ def get_user_by_nick(nick: str):
 
 def set_user_nick(user_id: int, nick: str):
     cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick, user_id))
-    db.commit()
+    _commit()
 
 
 def add_coin(user_id: int, amount: int):
     cursor.execute("UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s", (amount, user_id))
-    db.commit()
+    _commit()
 
 
 def set_collection_name(user_id: int, name: str):
     cursor.execute("UPDATE users SET collection_name=%s WHERE user_id=%s", (name, user_id))
-    db.commit()
+    _commit()
 
 
 def get_collection_name(user_id: int) -> str:
@@ -225,12 +260,12 @@ def get_collection_name(user_id: int) -> str:
 
 def set_private_profile(user_id: int, is_private: bool):
     cursor.execute("UPDATE users SET private_profile=%s WHERE user_id=%s", (is_private, user_id))
-    db.commit()
+    _commit()
 
 
 def set_admin_photo(user_id: int, url: str):
     cursor.execute("UPDATE users SET admin_photo=%s WHERE user_id=%s", (url, user_id))
-    db.commit()
+    _commit()
 
 
 def get_admin_photo_db(user_id: int) -> Optional[str]:
@@ -251,7 +286,7 @@ def set_global_character_image(character_id: int, image_url: str, updated_by: Op
             updated_at = EXCLUDED.updated_at,
             updated_by = EXCLUDED.updated_by
     """, (int(character_id), image_url, int(time.time()), updated_by))
-    db.commit()
+    _commit()
 
 
 def get_global_character_image(character_id: int) -> Optional[str]:
@@ -262,7 +297,7 @@ def get_global_character_image(character_id: int) -> Optional[str]:
 
 def delete_global_character_image(character_id: int):
     cursor.execute("DELETE FROM character_images WHERE character_id=%s", (int(character_id),))
-    db.commit()
+    _commit()
 
 
 # ================================
@@ -277,12 +312,12 @@ def ban_character(character_id: int, reason: Optional[str] = None, created_by: O
             created_at=EXCLUDED.created_at,
             created_by=EXCLUDED.created_by
     """, (int(character_id), reason, int(time.time()), created_by))
-    db.commit()
+    _commit()
 
 
 def unban_character(character_id: int):
     cursor.execute("DELETE FROM banned_characters WHERE character_id=%s", (int(character_id),))
-    db.commit()
+    _commit()
 
 
 def is_banned_character(character_id: int) -> bool:
@@ -335,7 +370,7 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
             INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
             VALUES (%s, %s, %s, %s, %s, 1)
         """, (user_id, char_id, name, image, anime_title))
-    db.commit()
+    _commit()
 
 
 def get_collection_character_full(user_id: int, char_id: int):
@@ -373,7 +408,7 @@ def remove_one_from_collection(user_id: int, char_id: int) -> bool:
             SET quantity=quantity-1
             WHERE user_id=%s AND character_id=%s
         """, (user_id, char_id))
-    db.commit()
+    _commit()
     return True
 
 
@@ -385,12 +420,12 @@ def set_favorite_from_collection(user_id: int, char_name: str, image: str):
         "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
         (char_name, image, user_id)
     )
-    db.commit()
+    _commit()
 
 
 def clear_favorite(user_id: int):
     cursor.execute("UPDATE users SET fav_name=NULL, fav_image=NULL WHERE user_id=%s", (user_id,))
-    db.commit()
+    _commit()
 
 
 # ================================
@@ -398,7 +433,7 @@ def clear_favorite(user_id: int):
 # ================================
 def add_extra_dado(user_id: int, amount: int):
     cursor.execute("UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s", (amount, user_id))
-    db.commit()
+    _commit()
 
 
 def get_extra_dado(user_id: int) -> int:
@@ -414,7 +449,7 @@ def consume_extra_dado(user_id: int) -> bool:
     if x <= 0:
         return False
     cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (user_id,))
-    db.commit()
+    _commit()
     return True
 
 
@@ -431,7 +466,7 @@ def get_dado_state(user_id: int) -> Optional[Dict[str, int]]:
 
 def set_dado_state(user_id: int, balance: int, slot: int):
     cursor.execute("UPDATE users SET dado_balance=%s, dado_slot=%s WHERE user_id=%s", (int(balance), int(slot), user_id))
-    db.commit()
+    _commit()
 
 
 def inc_dado_balance(user_id: int, amount: int, max_balance: int = 18):
@@ -440,7 +475,7 @@ def inc_dado_balance(user_id: int, amount: int, max_balance: int = 18):
     b = int(row["b"] if row else 0)
     b2 = min(int(max_balance), b + int(amount))
     cursor.execute("UPDATE users SET dado_balance=%s WHERE user_id=%s", (b2, user_id))
-    db.commit()
+    _commit()
 
 
 # ================================
@@ -463,7 +498,7 @@ def replace_top_anime_cache(items: List[Dict[str, Any]]):
             INSERT INTO top_anime_cache (anime_id, title, rank, updated_at)
             VALUES (%s, %s, %s, %s)
         """, (int(it["anime_id"]), str(it["title"]), int(it["rank"]), now))
-    db.commit()
+    _commit()
 
 
 def get_top_anime_list(limit: int = 500) -> List[Dict[str, Any]]:
@@ -486,7 +521,7 @@ def create_dice_roll(user_id: int, dice_value: int, options_json: str) -> int:
         RETURNING roll_id
     """, (int(user_id), int(dice_value), options_json, int(time.time())))
     rid = int(cursor.fetchone()["roll_id"])
-    db.commit()
+    _commit()
     return rid
 
 
@@ -497,18 +532,18 @@ def get_dice_roll(roll_id: int):
 
 def set_dice_roll_status(roll_id: int, status: str):
     cursor.execute("UPDATE dice_rolls SET status=%s WHERE roll_id=%s", (status, int(roll_id)))
-    db.commit()
+    _commit()
 
 
 # ================================
-# TROCAS / BATALHAS / SHOP (mantidas)
+# TROCAS / BATALHAS / SHOP
 # ================================
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("""
         INSERT INTO trades (from_user, to_user, from_character_id, to_character_id, status)
         VALUES (%s, %s, %s, %s, 'pendente')
     """, (from_user, to_user, from_char, to_char))
-    db.commit()
+    _commit()
 
 
 def get_latest_pending_trade_for_to_user(to_user: int):
@@ -527,14 +562,14 @@ def get_latest_pending_trade_for_to_user(to_user: int):
 
 def mark_trade_status(trade_id: int, status: str):
     cursor.execute("UPDATE trades SET status=%s WHERE trade_id=%s", (status, trade_id))
-    db.commit()
+    _commit()
 
 
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("UPDATE user_collection SET user_id=%s WHERE user_id=%s AND character_id=%s", (to_user, from_user, from_char))
     cursor.execute("UPDATE user_collection SET user_id=%s WHERE user_id=%s AND character_id=%s", (from_user, to_user, to_char))
     cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (trade_id,))
-    db.commit()
+    _commit()
 
 
 def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: str,
@@ -554,7 +589,7 @@ def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: s
             player2_hp=COALESCE(EXCLUDED.player2_hp, battles.player2_hp),
             vez=COALESCE(EXCLUDED.vez, battles.vez)
     """, (chat_id, p1_id, p2_id, p1_name, p2_name, player1_char, player2_char, player1_hp, player2_hp, vez))
-    db.commit()
+    _commit()
 
 
 def get_battle(chat_id: int):
@@ -564,7 +599,7 @@ def get_battle(chat_id: int):
 
 def delete_battle(chat_id: int):
     cursor.execute("DELETE FROM battles WHERE chat_id=%s", (chat_id,))
-    db.commit()
+    _commit()
 
 
 def battle_set_char(chat_id: int, user_id: int, char_value: str):
@@ -575,12 +610,12 @@ def battle_set_char(chat_id: int, user_id: int, char_value: str):
         cursor.execute("UPDATE battles SET player1_char=%s WHERE chat_id=%s", (char_value, chat_id))
     elif int(battle["player2_id"]) == int(user_id):
         cursor.execute("UPDATE battles SET player2_char=%s WHERE chat_id=%s", (char_value, chat_id))
-    db.commit()
+    _commit()
 
 
 def battle_set_turn(chat_id: int, vez: int):
     cursor.execute("UPDATE battles SET vez=%s WHERE chat_id=%s", (vez, chat_id))
-    db.commit()
+    _commit()
 
 
 def battle_damage(chat_id: int, target: str, damage: int):
@@ -588,7 +623,7 @@ def battle_damage(chat_id: int, target: str, damage: int):
         cursor.execute("UPDATE battles SET player1_hp = GREATEST(player1_hp - %s, 0) WHERE chat_id=%s", (damage, chat_id))
     else:
         cursor.execute("UPDATE battles SET player2_hp = GREATEST(player2_hp - %s, 0) WHERE chat_id=%s", (damage, chat_id))
-    db.commit()
+    _commit()
 
 
 def shop_create_sale(user_id: int, char_id: int) -> int:
@@ -598,7 +633,7 @@ def shop_create_sale(user_id: int, char_id: int) -> int:
         RETURNING sale_id
     """, (user_id, char_id, int(time.time())))
     sale_id = int(cursor.fetchone()["sale_id"])
-    db.commit()
+    _commit()
     return sale_id
 
 
@@ -612,7 +647,7 @@ def shop_get_sale(sale_id: int):
 
 def shop_delete_sale(sale_id: int):
     cursor.execute("DELETE FROM shop_sales WHERE sale_id=%s", (sale_id,))
-    db.commit()
+    _commit()
 
 
 def shop_list_user_chars(user_id: int, page: int, per_page: int):
