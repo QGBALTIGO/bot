@@ -36,6 +36,7 @@ from database import (
     init_db,
     ensure_user_row,
     get_user_row,
+    get_user_by_nick,
     set_user_nick,
     add_coin,
     set_collection_name,
@@ -44,6 +45,10 @@ from database import (
     get_collection_page,
     user_has_character,
     add_character_to_collection,
+    remove_one_from_collection,
+    set_private_profile,
+    set_admin_photo,
+    get_admin_photo_db,
     swap_trade_execute,
     create_trade,
     get_latest_pending_trade_for_to_user,
@@ -58,6 +63,16 @@ from database import (
     shop_get_sale,
     shop_delete_sale,
     shop_list_user_chars,
+    add_extra_dado,
+    get_extra_dado,
+    consume_extra_dado,
+    create_photo_request,
+    get_photo_request,
+    set_photo_request_status,
+    set_global_character_image,
+    get_global_character_image,
+    get_collection_character_full,
+    get_random_character_from_collection_full,
 )
 
 # ==================================================
@@ -2462,6 +2477,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
