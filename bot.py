@@ -36,7 +36,6 @@ from database import (
     init_db,
     ensure_user_row,
     get_user_row,
-    get_user_by_nick,
     set_user_nick,
     add_coin,
     set_collection_name,
@@ -45,10 +44,6 @@ from database import (
     get_collection_page,
     user_has_character,
     add_character_to_collection,
-    remove_one_from_collection,
-    set_private_profile,
-    set_admin_photo,
-    get_admin_photo_db,
     swap_trade_execute,
     create_trade,
     get_latest_pending_trade_for_to_user,
@@ -63,16 +58,6 @@ from database import (
     shop_get_sale,
     shop_delete_sale,
     shop_list_user_chars,
-    add_extra_dado,
-    get_extra_dado,
-    consume_extra_dado,
-    create_photo_request,
-    get_photo_request,
-    set_photo_request_status,
-    set_global_character_image,
-    get_global_character_image,
-    get_collection_character_full,
-    get_random_character_from_collection_full,
 )
 
 # ==================================================
@@ -617,14 +602,12 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
 
-   from database import set_private_profile
-   set_private_profile(user_id, opt == "on")
+    set_private_profile(user_id, opt == "on")
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
     else:
         await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
-
 
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -2043,7 +2026,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
     else:
         await update.message.reply_html(caption, reply_markup=reply_markup)
-        
+
 # ==================================================
 # CALLBACK: botão ❤️ Favoritar do /card
 # ==================================================
@@ -2097,7 +2080,7 @@ async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception:
         pass
-        
+
 # ==================================================
 # HELPERS (link direto)
 # ==================================================
@@ -2477,21 +2460,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
