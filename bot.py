@@ -1628,20 +1628,17 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================================================
-# /card ID — CARD GLOBAL POR PERSONAGEM (obra via AniList)
+# HELPERS ANILIST — Character por ID ou Nome
 # ==================================================
-async def buscar_obra_do_personagem(char_id: int) -> str:
-    """
-    Puxa do AniList uma 'obra' (anime/mangá) ligada ao personagem.
-    Retorna string (ex: "Naruto") ou "—" se não achar.
-    """
+async def _anilist_character_by_id(char_id: int) -> dict | None:
     query = """
     query ($id: Int) {
       Character(id: $id) {
+        id
+        name { full }
+        image { large }
         media(perPage: 1, sort: POPULARITY_DESC) {
-          nodes {
-            title { romaji english native }
-          }
+          nodes { title { romaji english native } }
         }
       }
     }
@@ -1655,19 +1652,89 @@ async def buscar_obra_do_personagem(char_id: int) -> str:
             ) as resp:
                 data = await resp.json()
 
-        nodes = (
-            data.get("data", {})
-            .get("Character", {})
-            .get("media", {})
-            .get("nodes", [])
-        )
-        if not nodes:
-            return "—"
+        ch = data.get("data", {}).get("Character")
+        if not ch:
+            return None
 
-        t = nodes[0].get("title") or {}
-        return (t.get("romaji") or t.get("english") or t.get("native") or "—").strip() or "—"
+        nodes = (ch.get("media") or {}).get("nodes") or []
+        obra = "—"
+        if nodes:
+            t = nodes[0].get("title") or {}
+            obra = (t.get("romaji") or t.get("english") or t.get("native") or "—").strip() or "—"
+
+        return {
+            "id": int(ch["id"]),
+            "name": (ch.get("name") or {}).get("full") or "—",
+            "image": (ch.get("image") or {}).get("large"),
+            "obra": obra,
+        }
     except Exception:
-        return "—"
+        return None
+
+
+async def _anilist_character_by_name(name: str) -> dict | None:
+    query = """
+    query ($search: String) {
+      Page(page: 1, perPage: 1) {
+        characters(search: $search) {
+          id
+          name { full }
+          image { large }
+          media(perPage: 1, sort: POPULARITY_DESC) {
+            nodes { title { romaji english native } }
+          }
+        }
+      }
+    }
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": {"search": name}},
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as resp:
+                data = await resp.json()
+
+        chars = data.get("data", {}).get("Page", {}).get("characters") or []
+        if not chars:
+            return None
+
+        ch = chars[0]
+        nodes = (ch.get("media") or {}).get("nodes") or []
+        obra = "—"
+        if nodes:
+            t = nodes[0].get("title") or {}
+            obra = (t.get("romaji") or t.get("english") or t.get("native") or "—").strip() or "—"
+
+        return {
+            "id": int(ch["id"]),
+            "name": (ch.get("name") or {}).get("full") or "—",
+            "image": (ch.get("image") or {}).get("large"),
+            "obra": obra,
+        }
+    except Exception:
+        return None
+
+
+def _extract_leading_id(text: str) -> int | None:
+    """
+    Aceita:
+      '20. Naruto'
+      '20 - Naruto'
+      '20) Naruto'
+      '20 Naruto'
+    e retorna 20
+    """
+    text = (text or "").strip()
+    m = re.match(r"^\s*(\d{1,10})\s*([.)-])?\s*(.*)$", text)
+    if not m:
+        return None
+    # só considera "id + resto" se tiver algum resto ou separador
+    if m.group(2) or (m.group(3) and m.group(3).strip()):
+        return int(m.group(1))
+    return None
+
 
 # ==================================================
 # /card ID ou NOME — GLOBAL (mostra mesmo sem ter na coleção)
@@ -1685,21 +1752,28 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👤 <b>Card</b>\n\n"
             "Use:\n"
             "<code>/card ID</code>\n"
-            "<code>/card Nome do personagem</code>\n\n"
+            "<code>/card Nome do personagem</code>\n"
+            "<code>/card ID. Nome</code>\n\n"
             "Exemplos:\n"
             "<code>/card 20</code>\n"
-            "<code>/card Monkey D. Luffy</code>"
+            "<code>/card Naruto</code>\n"
+            "<code>/card 20. Naruto</code>"
         )
         return
 
     termo = " ".join(context.args).strip()
 
-    # 1) por ID (se for numérico)
-    if termo.isdigit():
-        info = await _anilist_character_by_id(int(termo))
+    # 0) se vier "ID. Nome" pega o ID direto
+    leading_id = _extract_leading_id(termo)
+    if leading_id is not None:
+        info = await _anilist_character_by_id(leading_id)
     else:
-        # 2) por nome (igual /perso)
-        info = await _anilist_character_by_name(termo)
+        # 1) por ID (se for numérico puro)
+        if termo.isdigit():
+            info = await _anilist_character_by_id(int(termo))
+        else:
+            # 2) por nome
+            info = await _anilist_character_by_name(termo)
 
     if not info:
         await update.message.reply_html("❌ Não encontrei esse personagem no AniList.")
@@ -1707,12 +1781,9 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     char_id = int(info["id"])
 
-    from database import (
-        get_collection_character_full,
-        get_global_character_image,
-    )
+    from database import get_collection_character_full, get_global_character_image
 
-    # checa se o usuário tem na coleção
+    # se usuário tem na coleção
     item = get_collection_character_full(user_id, char_id)
     tem = item is not None
     qty = int(item.get("quantity") or 0) if tem else 0
@@ -1722,7 +1793,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     foto = get_global_character_image(char_id) or info.get("image")
 
     caption = (
-        "👤 | <b>Card Cr.<b>\n\n"
+        "👤 | Card Cr.\n\n"
         f"🧧 <code>{char_id}</code>. <b>{info['name']}</b>\n"
         f"{info['obra']}\n\n"
         f"{mark} ({qty}x)"
@@ -1738,6 +1809,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
     else:
         await update.message.reply_html(caption, reply_markup=reply_markup)
+        
 # ==================================================
 # CALLBACK: botão ❤️ Favoritar do /card
 # ==================================================
@@ -2171,6 +2243,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
