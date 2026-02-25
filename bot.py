@@ -1429,6 +1429,112 @@ def _is_direct_image_url(url: str) -> bool:
 
 
 # ==================================================
+# 19) /cards e .cards (mantive)
+# ==================================================
+async def buscar_cards(anime_nome: str, page: int = 1) -> Optional[dict]:
+    query = """
+    query ($search: String, $page: Int) {
+      Page(page: 1, perPage: 1) {
+        media(search: $search, type: ANIME) {
+          title { romaji }
+          bannerImage
+          coverImage { large }
+          characters(page: $page, perPage: 15) {
+            pageInfo { total currentPage lastPage }
+            edges {
+              node { id name { full } }
+            }
+          }
+        }
+      }
+    }
+    """
+    variables = {"search": anime_nome, "page": page}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables},
+            timeout=aiohttp.ClientTimeout(total=15)
+        ) as resp:
+            data = await resp.json()
+            media = data.get("data", {}).get("Page", {}).get("media", [])
+            return media[0] if media else None
+
+def formatar_cards(media: dict, page: int) -> str:
+    chars = media["characters"]["edges"]
+    info = media["characters"]["pageInfo"]
+    texto = (
+        f"📁 | <b>{media['title']['romaji']}</b>\n"
+        f"ℹ️ | <b>{info['total']}</b>\n"
+        f"🗂 | <b>{page}/{info['lastPage']}</b>\n\n"
+    )
+    for c in chars:
+        texto += f"🧧 <b>{c['node']['id']}.</b> {c['node']['name']['full']}\n"
+    return texto
+
+def teclado_cards(anime: str, page: int, last: int) -> Optional[InlineKeyboardMarkup]:
+    botoes = []
+    if page > 1:
+        botoes.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}"))
+    if page < last:
+        botoes.append(InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}"))
+    return InlineKeyboardMarkup([botoes]) if botoes else None
+
+async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not await checar_canal(update, context):
+        return
+
+    if not context.args:
+        await update.message.reply_html(
+            "📁 <b>Cards de personagens</b>\n\n"
+            "Use:\n"
+            "<code>/cards Nome do Anime</code>\n\n"
+            "📌 Exemplo:\n"
+            "<code>/cards One Piece</code>"
+        )
+        return
+
+    anime_nome = " ".join(context.args)
+    media = await buscar_cards(anime_nome, 1)
+
+    if not media:
+
+        await update.message.reply_html(
+            "❌ <b>Anime não encontrado</b>\n\n"
+            "💡 Tente usar o nome mais conhecido.\n"
+            "Exemplo: <code>One Piece</code>"
+        )
+        return
+
+    texto = formatar_cards(media, 1)
+    last = media["characters"]["pageInfo"]["lastPage"]
+    foto = media.get("bannerImage") or media["coverImage"]["large"]
+
+    await update.message.reply_photo(
+        photo=foto,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado_cards(anime_nome, 1, last)
+    )
+
+async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    _, anime_nome, page = query.data.split(":")
+    page = int(page)
+    media = await buscar_cards(anime_nome, page)
+    texto = formatar_cards(media, page)
+    last = media["characters"]["pageInfo"]["lastPage"]
+
+    await query.message.edit_caption(
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=teclado_cards(anime_nome, page, last)
+    )
+
+# ==================================================
 # /card — CARD global (foto global se existir)
 # ==================================================
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2387,5 +2493,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
