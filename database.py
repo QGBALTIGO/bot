@@ -196,8 +196,25 @@ def get_admin_photo_db(user_id: int):
 # CARD: foto global por personagem
 # ================================
 
-def init_card_global():
-    # tabela global: 1 foto por character_id (vale pra todos)
+# dado extra
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
+    """)
+
+    # anime_title (pro /card ficar bonito)
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS anime_title TEXT;
+    """)
+
+    # custom_image (se você ainda usa por usuário em alguma parte)
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS custom_image TEXT;
+    """)
+
+    # tabela global de imagem do personagem (vale pra todo mundo no /card)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS character_images (
         character_id INT PRIMARY KEY,
@@ -207,10 +224,16 @@ def init_card_global():
     );
     """)
 
-    # (opcional) guardar anime no user_collection
+    # pedidos de troca de foto (aprovação)
     cursor.execute("""
-    ALTER TABLE user_collection
-    ADD COLUMN IF NOT EXISTS anime_title TEXT;
+    CREATE TABLE IF NOT EXISTS photo_requests (
+        request_id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        character_id INT NOT NULL,
+        new_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        created_at BIGINT NOT NULL
+    );
     """)
 
     db.commit()
