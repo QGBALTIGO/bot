@@ -86,15 +86,6 @@ def init_db():
     );
     """)
 
-    # LOGIN (AniList OAuth)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS anilist_tokens (
-        user_id BIGINT PRIMARY KEY,
-        access_token TEXT NOT NULL,
-        created_at BIGINT NOT NULL
-    );
-    """)
-
     # adiciona a coluna private_profile se não existir
     cursor.execute("""
     ALTER TABLE users
@@ -230,30 +221,6 @@ def remove_one_from_collection(user_id: int, char_id: int) -> bool:
 
     db.commit()
     return True
-
-
-# ---------------- LOGIN (AniList) ----------------
-def save_anilist_token(user_id: int, token: str, created_at: int):
-    cursor.execute("""
-        INSERT INTO anilist_tokens (user_id, access_token, created_at)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET
-            access_token = EXCLUDED.access_token,
-            created_at = EXCLUDED.created_at
-    """, (user_id, token, created_at))
-    db.commit()
-
-
-def get_anilist_token(user_id: int):
-    cursor.execute("SELECT access_token FROM anilist_tokens WHERE user_id=%s", (user_id,))
-    row = cursor.fetchone()
-    return row["access_token"] if row else None
-
-
-def delete_anilist_token(user_id: int):
-    cursor.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,))
-    db.commit()
-
 
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
