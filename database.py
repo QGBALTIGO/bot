@@ -168,11 +168,17 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
     db.commit()
 
      # ---------------- LOGIN ----------------
-    CREATE TABLE IF NOT EXISTS anilist_tokens (
-  user_id BIGINT PRIMARY KEY,
-  access_token TEXT NOT NULL,
-  created_at BIGINT NOT NULL
-);
+   def init_db():
+    with get_cursor(commit=True) as cur:
+        # ... suas tabelas existentes ...
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS anilist_tokens (
+            user_id BIGINT PRIMARY KEY,
+            access_token TEXT NOT NULL,
+            created_at BIGINT NOT NULL
+        );
+        """)
 
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
