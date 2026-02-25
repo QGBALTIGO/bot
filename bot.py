@@ -1421,111 +1421,100 @@ async def callback_recomenda(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=teclado_recomenda(tipo, page)
     )
 
+def _is_direct_image_url(url: str) -> bool:
+    url = (url or "").strip().lower()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return False
+    return url.endswith(".jpg") or url.endswith(".jpeg") or url.endswith(".png") or url.endswith(".webp")
+
+
 # ==================================================
-# 19) /cards e .cards (mantive)
+# /card — CARD global (foto global se existir)
 # ==================================================
-async def buscar_cards(anime_nome: str, page: int = 1) -> Optional[dict]:
-    query = """
-    query ($search: String, $page: Int) {
-      Page(page: 1, perPage: 1) {
-        media(search: $search, type: ANIME) {
-          title { romaji }
-          bannerImage
-          coverImage { large }
-          characters(page: $page, perPage: 15) {
-            pageInfo { total currentPage lastPage }
-            edges {
-              node { id name { full } }
-            }
-          }
-        }
-      }
-    }
-    """
-    variables = {"search": anime_nome, "page": page}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables},
-            timeout=aiohttp.ClientTimeout(total=15)
-        ) as resp:
-            data = await resp.json()
-            media = data.get("data", {}).get("Page", {}).get("media", [])
-            return media[0] if media else None
-
-def formatar_cards(media: dict, page: int) -> str:
-    chars = media["characters"]["edges"]
-    info = media["characters"]["pageInfo"]
-    texto = (
-        f"📁 | <b>{media['title']['romaji']}</b>\n"
-        f"ℹ️ | <b>{info['total']}</b>\n"
-        f"🗂 | <b>{page}/{info['lastPage']}</b>\n\n"
-    )
-    for c in chars:
-        texto += f"🧧 <b>{c['node']['id']}.</b> {c['node']['name']['full']}\n"
-    return texto
-
-def teclado_cards(anime: str, page: int, last: int) -> Optional[InlineKeyboardMarkup]:
-    botoes = []
-    if page > 1:
-        botoes.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"cards:{anime}:{page-1}"))
-    if page < last:
-        botoes.append(InlineKeyboardButton("➡️ Próximo", callback_data=f"cards:{anime}:{page+1}"))
-    return InlineKeyboardMarkup([botoes]) if botoes else None
-
-async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    await registrar_comando(update)
 
-    if not context.args:
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    from database import get_random_character_from_collection_full, get_global_character_image
+    item = get_random_character_from_collection_full(user_id)
+
+    if not item:
         await update.message.reply_html(
-            "📁 <b>Cards de personagens</b>\n\n"
-            "Use:\n"
-            "<code>/cards Nome do Anime</code>\n\n"
-            "📌 Exemplo:\n"
-            "<code>/cards One Piece</code>"
+            "📦 Sua coleção está vazia.\n"
+            "Use <code>/dado</code> para conseguir personagens."
         )
         return
 
-    anime_nome = " ".join(context.args)
-    media = await buscar_cards(anime_nome, 1)
+    cid = int(item["character_id"])
+    nome = item["character_name"]
+    qty = int(item.get("quantity") or 0)
 
-    if not media:
+    anime_title = item.get("anime_title")
+    anime_line = f"<i>{anime_title}</i>" if anime_title else "<i>—</i>"
+
+    # ✅/✖️ + (0x) + quantidade
+    mark = "✅" if qty > 0 else "✖️"
+
+    # foto: global > fallback anilist
+    foto = get_global_character_image(cid) or item.get("image")
+
+    caption = (
+        "👤 | Card Cr.\n\n"
+        f"🧧 <code>{cid}</code>. <b>{nome}</b>\n"
+        f"{anime_line}\n\n"
+        f"{mark} (0x) ({qty}x)"
+    )
+
+    if foto:
+        await update.message.reply_photo(photo=foto, caption=caption, parse_mode="HTML")
+    else:
+        await update.message.reply_html(caption)
+
+
+# ==================================================
+# ADMIN: /setfoto ID LINK  (GLOBAL, pra todo mundo)
+# ==================================================
+async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    if len(context.args) != 2:
         await update.message.reply_html(
-            "❌ <b>Anime não encontrado</b>\n\n"
-            "💡 Tente usar o nome mais conhecido.\n"
-            "Exemplo: <code>One Piece</code>"
+            "🛠️ <b>Admin — setar foto global do personagem</b>\n\n"
+            "Use exatamente:\n"
+            "<code>/setfoto ID LINK</code>\n\n"
+            "Exemplo:\n"
+            "<code>/setfoto 12345 https://site.com/imagem.jpg</code>"
         )
         return
 
-    texto = formatar_cards(media, 1)
-    last = media["characters"]["pageInfo"]["lastPage"]
-    foto = media.get("bannerImage") or media["coverImage"]["large"]
+    if not context.args[0].isdigit():
+        await update.message.reply_html("❌ O ID precisa ser numérico.")
+        return
 
-    await update.message.reply_photo(
-        photo=foto,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=teclado_cards(anime_nome, 1, last)
+    char_id = int(context.args[0])
+    url = context.args[1].strip()
+
+    if not _is_direct_image_url(url):
+        await update.message.reply_html(
+            "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+        )
+        return
+
+    from database import set_global_character_image
+    set_global_character_image(char_id, url, updated_by=update.effective_user.id)
+
+    await update.message.reply_html(
+        "✅ <b>Foto global aplicada!</b>\n\n"
+        f"🧧 Personagem: <code>{char_id}</code>\n"
+        "🎴 Agora o comando <code>/card</code> vai usar essa foto pra todo mundo."
     )
-
-async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    _, anime_nome, page = query.data.split(":")
-    page = int(page)
-
-    media = await buscar_cards(anime_nome, page)
-    texto = formatar_cards(media, page)
-    last = media["characters"]["pageInfo"]["lastPage"]
-
-    await query.message.edit_caption(
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=teclado_cards(anime_nome, page, last)
-    )
-
+    
 # ==================================================
 # 20) /dado + /colecao + /nomecolecao (POSTGRES)
 # ==================================================
@@ -1988,16 +1977,15 @@ async def callback_photo_request(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("Esse pedido já foi decidido.", show_alert=True)
         return
 
-    user_id = int(req["user_id"])
-    char_id = int(req["character_id"])
+    requester_id = int(req["user_id"])       # quem pagou 5 coins
+    char_id = int(req["character_id"])       # personagem GLOBAL
     url = req["new_url"]
 
     if decision == "yes":
-        # aplica foto custom
-        set_character_custom_image(user_id, char_id, url)
+        from database import set_global_character_image
+        set_global_character_image(char_id, url, updated_by=query.from_user.id)
         set_photo_request_status(request_id, "aceita")
 
-        # marca no canal
         try:
             await query.edit_message_caption(
                 (query.message.caption or "") + "\n\n✅ <b>APROVADO</b>",
@@ -2006,24 +1994,23 @@ async def callback_photo_request(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             await query.edit_message_text("✅ APROVADO", parse_mode="HTML")
 
-        # avisa o usuário (opcional, mas útil)
+        # opcional: avisa usuário
         try:
             await context.bot.send_message(
-                chat_id=user_id,
+                chat_id=requester_id,
                 text=(
                     "✅ <b>Sua troca de foto foi aprovada!</b>\n\n"
                     f"🧧 Personagem: <code>{char_id}</code>\n"
-                    "🎴 A nova foto já foi aplicada."
+                    "🎴 O <code>/card</code> agora vai usar essa foto."
                 ),
                 parse_mode="HTML"
             )
         except Exception:
             pass
-
         return
 
-    # decision == "no" -> reembolsa 5 coins
-    add_coin(user_id, 5)
+    # recusou -> reembolso 5 coins
+    add_coin(requester_id, 5)
     set_photo_request_status(request_id, "recusada")
 
     try:
@@ -2034,10 +2021,9 @@ async def callback_photo_request(update: Update, context: ContextTypes.DEFAULT_T
     except Exception:
         await query.edit_message_text("❌ RECUSADO — Reembolso +5 coins", parse_mode="HTML")
 
-    # avisa o usuário (opcional)
     try:
         await context.bot.send_message(
-            chat_id=user_id,
+            chat_id=requester_id,
             text=(
                 "❌ <b>Sua troca de foto foi recusada.</b>\n\n"
                 f"🧧 Personagem: <code>{char_id}</code>\n"
@@ -2047,35 +2033,33 @@ async def callback_photo_request(update: Update, context: ContextTypes.DEFAULT_T
         )
     except Exception:
         pass
-
-
+        
 # ============================================
-# ADMIN TESTE — troca foto direto por ID
-# /setfoto USER_ID ID LINK
+# ADMIN — troca foto GLOBAL do personagem (vale pra todos no /card)
+# /setfoto ID LINK
 # ============================================
 async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id_admin = update.effective_user.id
-    if not is_admin(user_id_admin):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
         return
 
-    if len(context.args) != 3:
+    if len(context.args) != 2:
         await update.message.reply_html(
-            "🛠️ <b>Admin — setar foto</b>\n\n"
+            "🛠️ <b>Admin — setar foto global do personagem</b>\n\n"
             "Use exatamente:\n"
-            "<code>/setfoto USER_ID ID LINK</code>\n\n"
+            "<code>/setfoto ID LINK</code>\n\n"
             "Exemplo:\n"
-            "<code>/setfoto 123456789 555 https://site.com/imagem.jpg</code>"
+            "<code>/setfoto 555 https://site.com/imagem.jpg</code>\n\n"
+            "📌 Essa foto será usada no <code>/card</code> pra todo mundo."
         )
         return
 
-    if (not context.args[0].isdigit()) or (not context.args[1].isdigit()):
-        await update.message.reply_html("❌ USER_ID e ID precisam ser numéricos.")
+    if not context.args[0].isdigit():
+        await update.message.reply_html("❌ O ID precisa ser numérico.")
         return
 
-    target_user_id = int(context.args[0])
-    char_id = int(context.args[1])
-    url = context.args[2].strip()
+    char_id = int(context.args[0])
+    url = context.args[1].strip()
 
     if not _is_direct_image_url(url):
         await update.message.reply_html(
@@ -2083,18 +2067,13 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # precisa existir na coleção do usuário alvo
-    item = get_collection_character_full(target_user_id, char_id)
-    if not item:
-        await update.message.reply_html("❌ Esse usuário não tem esse personagem na coleção.")
-        return
-
-    set_character_custom_image(target_user_id, char_id, url)
+    from database import set_global_character_image
+    set_global_character_image(char_id, url, updated_by=update.effective_user.id)
 
     await update.message.reply_html(
-        "✅ <b>Foto aplicada!</b>\n\n"
-        f"👤 User ID: <code>{target_user_id}</code>\n"
-        f"🧧 Personagem: <code>{char_id}</code> — <b>{item['character_name']}</b>"
+        "✅ <b>Foto global aplicada!</b>\n\n"
+        f"🧧 Personagem: <code>{char_id}</code>\n"
+        "🎴 Agora o comando <code>/card</code> vai usar essa foto pra todo mundo."
     )
 
 # ==================================================
@@ -2383,6 +2362,7 @@ def main():
     app.add_handler(CommandHandler("nick", nick))
     app.add_handler(CommandHandler("nivel", nivel))
     app.add_handler(CommandHandler("cards", cards))
+    app.add_handler(CommandHandler("card", card))
     app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
     app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
     app.add_handler(CommandHandler("batalha", batalha_command))
@@ -2407,4 +2387,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
