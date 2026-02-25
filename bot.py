@@ -239,14 +239,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 # 9) /login (AniList OAuth)
 # ==================================================
+import hmac, hashlib, base64
+
+ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
+OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
+
+def make_state(user_id: int) -> str:
+    # state = user_id.timestamp.signature  (simples e suficiente)
+    ts = str(int(time.time()))
+    payload = f"{user_id}.{ts}".encode()
+    sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(payload + b"." + sig).decode().rstrip("=")
+
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
+
+    state = make_state(telegram_id)
+    redirect_uri = f"{PUBLIC_BASE_URL}/callback"
+
     url = (
         "https://anilist.co/api/v2/oauth/authorize"
-        "?client_id=36358"
-        "&redirect_uri=https://loginbot-production-eb95.up.railway.app/callback"
+        f"?client_id={ANILIST_CLIENT_ID}"
+        f"&redirect_uri={redirect_uri}"
         "&response_type=code"
-        f"&state={telegram_id}"
+        f"&state={state}"
     )
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Conectar com AniList", url=url)]])
@@ -2162,3 +2179,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
