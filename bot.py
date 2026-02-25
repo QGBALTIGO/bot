@@ -2039,25 +2039,10 @@ def main():
     # admin global
     app.add_handler(CommandHandler("setfoto", setfoto))
 
-    # batalha
-    app.add_handler(CommandHandler("batalha", batalha))
-    app.add_handler(CommandHandler("personagem", personagem_command))
-    app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
-    app.add_handler(CallbackQueryHandler(batalha_callback, pattern="^atacar$"))
-    app.add_handler(CallbackQueryHandler(batalha_callback, pattern="^battle:pick:"))
-    app.add_handler(CallbackQueryHandler(batalha_callback, pattern="^battle:ready$"))
-
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
     app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
     app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
-
-    # loja (seu bloco da loja fica aqui — não re-colo pra não duplicar)
-    app.add_handler(CommandHandler("loja", loja))
-    app.add_handler(CommandHandler("vender", vender))
-    app.add_handler(CommandHandler("comprardado", comprardado))
-    app.add_handler(CommandHandler("fotopersonagem", fotopersonagem))
-    app.add_handler(CallbackQueryHandler(callback_photo_request, pattern="^photo_req:"))
 
     print("✅ Bot rodando...")
     app.run_polling(drop_pending_updates=True)
@@ -2065,4 +2050,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
