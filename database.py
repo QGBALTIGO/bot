@@ -1,5 +1,5 @@
 # ================================
-# database.py — Postgres (Railway) (PRONTO + LOJA)
+# database.py — Postgres (Railway) (LIMPO + COMPLETO)
 # ================================
 
 import os
@@ -17,36 +17,16 @@ db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 cursor = db.cursor()
 
 
-def init_shop_extras():
-    # coluna para rodadas extras de dado
-    cursor.execute("""
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
-    """)
-
-    # coluna para foto custom no personagem
-    cursor.execute("""
-    ALTER TABLE user_collection
-    ADD COLUMN IF NOT EXISTS custom_image TEXT;
-    """)
-
-    # pedidos de troca de foto
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS photo_requests (
-        request_id SERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        character_id INT NOT NULL,
-        new_url TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente',
-        created_at BIGINT NOT NULL
-    );
-    """)
-
-    db.commit()
-
-
+# ==================================================
+# INIT / MIGRATIONS
+# ==================================================
 def init_db():
-    # USERS
+    """
+    Cria tabelas base e aplica migrações (ADD COLUMN / CREATE TABLE IF NOT EXISTS).
+    Pode ser chamado sempre no start do bot.
+    """
+
+    # ---------- USERS ----------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY,
@@ -63,19 +43,43 @@ def init_db():
     );
     """)
 
-    # COLEÇÃO
+    # Migrações users
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
+    """)
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS admin_photo TEXT;
+    """)
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
+    """)
+
+    # ---------- COLLECTION ----------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_collection (
-        user_id BIGINT,
-        character_id INT,
-        character_name TEXT,
+        user_id BIGINT NOT NULL,
+        character_id INT NOT NULL,
+        character_name TEXT NOT NULL,
         image TEXT,
         quantity INT DEFAULT 1,
         PRIMARY KEY (user_id, character_id)
     );
     """)
 
-    # TROCAS
+    # Migrações coleção
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS anime_title TEXT;
+    """)
+    cursor.execute("""
+    ALTER TABLE user_collection
+    ADD COLUMN IF NOT EXISTS custom_image TEXT;
+    """)
+
+    # ---------- TRADES ----------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS trades (
         trade_id SERIAL PRIMARY KEY,
@@ -87,7 +91,7 @@ def init_db():
     );
     """)
 
-    # BATALHAS
+    # ---------- BATTLES ----------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS battles (
         chat_id BIGINT PRIMARY KEY,
@@ -104,7 +108,7 @@ def init_db():
     );
     """)
 
-    # LOJA (vendas pendentes simples) - pode manter mesmo que você não use mais botões
+    # ---------- SHOP SALES (legado / opcional) ----------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS shop_sales (
         sale_id SERIAL PRIMARY KEY,
@@ -114,25 +118,34 @@ def init_db():
     );
     """)
 
-    # private_profile
+    # ---------- GLOBAL CHARACTER IMAGES (/card) ----------
     cursor.execute("""
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
+    CREATE TABLE IF NOT EXISTS character_images (
+        character_id INT PRIMARY KEY,
+        image_url TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        updated_by BIGINT
+    );
     """)
 
-    # admin photo (persistente)
+    # ---------- PHOTO REQUESTS (aprovação) ----------
     cursor.execute("""
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS admin_photo TEXT;
+    CREATE TABLE IF NOT EXISTS photo_requests (
+        request_id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        character_id INT NOT NULL,
+        new_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente', -- pendente/aceita/recusada
+        created_at BIGINT NOT NULL
+    );
     """)
 
     db.commit()
 
-    # garante colunas/tabelas da loja nova
-    init_shop_extras()
 
-
-# ---------------- USERS ----------------
+# ==================================================
+# USERS
+# ==================================================
 def ensure_user_row(user_id: int, default_name: str):
     cursor.execute("SELECT 1 FROM users WHERE user_id=%s", (user_id,))
     if cursor.fetchone():
@@ -160,7 +173,10 @@ def set_user_nick(user_id: int, nick: str):
 
 
 def add_coin(user_id: int, amount: int):
-    cursor.execute("UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s", (amount, user_id))
+    cursor.execute(
+        "UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s",
+        (amount, user_id)
+    )
     db.commit()
 
 
@@ -180,7 +196,7 @@ def set_private_profile(user_id: int, is_private: bool):
     db.commit()
 
 
-# ---------------- ADMIN FOTO (persistente) ----------------
+# Admin photo persistente (no DB)
 def set_admin_photo(user_id: int, url: str):
     cursor.execute("UPDATE users SET admin_photo=%s WHERE user_id=%s", (url, user_id))
     db.commit()
@@ -192,85 +208,35 @@ def get_admin_photo_db(user_id: int):
     return row["admin_photo"] if row and row["admin_photo"] else None
 
 
-# ================================
-# CARD: foto global por personagem
-# ================================
-
-# dado extra
-    cursor.execute("""
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;
-    """)
-
-    # anime_title (pro /card ficar bonito)
-    cursor.execute("""
-    ALTER TABLE user_collection
-    ADD COLUMN IF NOT EXISTS anime_title TEXT;
-    """)
-
-    # custom_image (se você ainda usa por usuário em alguma parte)
-    cursor.execute("""
-    ALTER TABLE user_collection
-    ADD COLUMN IF NOT EXISTS custom_image TEXT;
-    """)
-
-    # tabela global de imagem do personagem (vale pra todo mundo no /card)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS character_images (
-        character_id INT PRIMARY KEY,
-        image_url TEXT NOT NULL,
-        updated_at BIGINT NOT NULL,
-        updated_by BIGINT
-    );
-    """)
-
-    # pedidos de troca de foto (aprovação)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS photo_requests (
-        request_id SERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        character_id INT NOT NULL,
-        new_url TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente',
-        created_at BIGINT NOT NULL
-    );
-    """)
-
+# Dado extra
+def add_extra_dado(user_id: int, amount: int):
+    cursor.execute(
+        "UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s",
+        (amount, user_id)
+    )
     db.commit()
 
 
-def set_global_character_image(character_id: int, image_url: str, updated_by: int | None = None):
-    cursor.execute("""
-        INSERT INTO character_images (character_id, image_url, updated_at, updated_by)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (character_id) DO UPDATE SET
-            image_url = EXCLUDED.image_url,
-            updated_at = EXCLUDED.updated_at,
-            updated_by = EXCLUDED.updated_by
-    """, (character_id, image_url, int(time.time()), updated_by))
-    db.commit()
-
-
-def get_global_character_image(character_id: int):
-    cursor.execute("SELECT image_url FROM character_images WHERE character_id=%s", (character_id,))
+def get_extra_dado(user_id: int) -> int:
+    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
     row = cursor.fetchone()
-    return row["image_url"] if row and row["image_url"] else None
+    return int(row["x"] if row else 0)
 
 
-def get_random_character_from_collection_full(user_id: int):
-    """
-    Retorna: character_id, character_name, image, quantity, anime_title
-    (a foto global é puxada por get_global_character_image no bot)
-    """
-    cursor.execute("""
-        SELECT character_id, character_name, image, quantity, anime_title
-        FROM user_collection
-        WHERE user_id=%s
-        ORDER BY RANDOM()
-        LIMIT 1
-    """, (user_id,))
-    
-# ---------------- COLEÇÃO ----------------
+def consume_extra_dado(user_id: int) -> bool:
+    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
+    row = cursor.fetchone()
+    x = int(row["x"] if row else 0)
+    if x <= 0:
+        return False
+    cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (user_id,))
+    db.commit()
+    return True
+
+
+# ==================================================
+# COLLECTION
+# ==================================================
 def count_collection(user_id: int) -> int:
     cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (user_id,))
     return int(cursor.fetchone()["c"])
@@ -302,7 +268,7 @@ def user_has_character(user_id: int, char_id: int) -> bool:
     return cursor.fetchone() is not None
 
 
-def add_character_to_collection(user_id: int, char_id: int, name: str, image: str):
+def add_character_to_collection(user_id: int, char_id: int, name: str, image: str, anime_title: str | None = None):
     cursor.execute(
         "SELECT quantity FROM user_collection WHERE user_id=%s AND character_id=%s",
         (user_id, char_id)
@@ -315,9 +281,9 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
         )
     else:
         cursor.execute("""
-            INSERT INTO user_collection (user_id, character_id, character_name, image, quantity)
-            VALUES (%s, %s, %s, %s, 1)
-        """, (user_id, char_id, name, image))
+            INSERT INTO user_collection (user_id, character_id, character_name, image, quantity, anime_title)
+            VALUES (%s, %s, %s, %s, 1, %s)
+        """, (user_id, char_id, name, image, anime_title))
     db.commit()
 
 
@@ -346,17 +312,6 @@ def remove_one_from_collection(user_id: int, char_id: int) -> bool:
     return True
 
 
-def get_collection_character_full(user_id: int, char_id: int):
-    cursor.execute("""
-        SELECT character_id, character_name, image, custom_image, quantity
-        FROM user_collection
-        WHERE user_id=%s AND character_id=%s
-        LIMIT 1
-    """, (user_id, char_id))
-    return cursor.fetchone()
-
-
-# ---------------- FAVORITO POR ID (somente se tiver na coleção) ----------------
 def get_collection_character(user_id: int, char_id: int):
     cursor.execute("""
         SELECT character_id, character_name, image
@@ -367,6 +322,43 @@ def get_collection_character(user_id: int, char_id: int):
     return cursor.fetchone()
 
 
+def get_collection_character_full(user_id: int, char_id: int):
+    cursor.execute("""
+        SELECT character_id, character_name, image, anime_title, custom_image, quantity
+        FROM user_collection
+        WHERE user_id=%s AND character_id=%s
+        LIMIT 1
+    """, (user_id, char_id))
+    return cursor.fetchone()
+
+
+def set_character_custom_image(user_id: int, char_id: int, url: str):
+    cursor.execute("""
+        UPDATE user_collection
+        SET custom_image=%s
+        WHERE user_id=%s AND character_id=%s
+    """, (url, user_id, char_id))
+    db.commit()
+
+
+def get_random_character_from_collection_full(user_id: int):
+    cursor.execute("""
+        SELECT character_id,
+               character_name,
+               image,
+               quantity,
+               COALESCE(anime_title, '') AS anime_title
+        FROM user_collection
+        WHERE user_id=%s
+        ORDER BY RANDOM()
+        LIMIT 1
+    """, (user_id,))
+    return cursor.fetchone()
+
+
+# ==================================================
+# FAVORITE (somente se tiver na coleção)
+# ==================================================
 def set_favorite_from_collection(user_id: int, char_name: str, image: str):
     cursor.execute(
         "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
@@ -380,42 +372,30 @@ def clear_favorite(user_id: int):
     db.commit()
 
 
-# ---------------- LOJA: dado extra ----------------
-def add_extra_dado(user_id: int, amount: int):
-    cursor.execute(
-        "UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s",
-        (amount, user_id)
-    )
-    db.commit()
-
-
-def get_extra_dado(user_id: int) -> int:
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
-    row = cursor.fetchone()
-    return int(row["x"] if row else 0)
-
-
-def consume_extra_dado(user_id: int) -> bool:
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (user_id,))
-    row = cursor.fetchone()
-    x = int(row["x"] if row else 0)
-    if x <= 0:
-        return False
-    cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (user_id,))
-    db.commit()
-    return True
-
-
-# ---------------- LOJA: foto custom com aprovação ----------------
-def set_character_custom_image(user_id: int, char_id: int, url: str):
+# ==================================================
+# GLOBAL CHARACTER IMAGE (/card)
+# ==================================================
+def set_global_character_image(character_id: int, image_url: str, updated_by: int | None = None):
     cursor.execute("""
-        UPDATE user_collection
-        SET custom_image=%s
-        WHERE user_id=%s AND character_id=%s
-    """, (url, user_id, char_id))
+        INSERT INTO character_images (character_id, image_url, updated_at, updated_by)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (character_id) DO UPDATE SET
+            image_url = EXCLUDED.image_url,
+            updated_at = EXCLUDED.updated_at,
+            updated_by = EXCLUDED.updated_by
+    """, (character_id, image_url, int(time.time()), updated_by))
     db.commit()
 
 
+def get_global_character_image(character_id: int):
+    cursor.execute("SELECT image_url FROM character_images WHERE character_id=%s", (character_id,))
+    row = cursor.fetchone()
+    return row["image_url"] if row and row["image_url"] else None
+
+
+# ==================================================
+# PHOTO REQUESTS (aprovação)
+# ==================================================
 def create_photo_request(user_id: int, char_id: int, new_url: str) -> int:
     cursor.execute("""
         INSERT INTO photo_requests (user_id, character_id, new_url, status, created_at)
@@ -441,7 +421,9 @@ def set_photo_request_status(request_id: int, status: str):
     db.commit()
 
 
-# ---------------- TROCAS ----------------
+# ==================================================
+# TRADES
+# ==================================================
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
     cursor.execute("""
         INSERT INTO trades (from_user, to_user, from_character_id, to_character_id, status)
@@ -484,7 +466,9 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
     db.commit()
 
 
-# ---------------- LOJA (lista antiga, pode manter) ----------------
+# ==================================================
+# SHOP (legado / lista antiga)
+# ==================================================
 def shop_list_user_chars(user_id: int, page: int, per_page: int):
     offset = (page - 1) * per_page
     cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (user_id,))
@@ -527,7 +511,9 @@ def shop_delete_sale(sale_id: int):
     db.commit()
 
 
-# ---------------- BATALHAS ----------------
+# ==================================================
+# BATTLES
+# ==================================================
 def upsert_battle(chat_id: int, p1_id: int, p2_id: int, p1_name: str, p2_name: str,
                   player1_char=None, player2_char=None, player1_hp=None, player2_hp=None, vez=None):
     cursor.execute("""
