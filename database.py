@@ -1,5 +1,5 @@
 # ================================
-# database.py — Postgres (Railway) (ARRUMADO)
+# database.py — Postgres (Railway) (PRONTO)
 # ================================
 
 import os
@@ -86,10 +86,16 @@ def init_db():
     );
     """)
 
-    # adiciona a coluna private_profile se não existir
+    # private_profile
     cursor.execute("""
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;
+    """)
+
+    # admin photo (persistente)
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS admin_photo TEXT;
     """)
 
     db.commit()
@@ -141,6 +147,18 @@ def get_collection_name(user_id: int):
 def set_private_profile(user_id: int, is_private: bool):
     cursor.execute("UPDATE users SET private_profile=%s WHERE user_id=%s", (is_private, user_id))
     db.commit()
+
+
+# ---------------- ADMIN FOTO (persistente) ----------------
+def set_admin_photo(user_id: int, url: str):
+    cursor.execute("UPDATE users SET admin_photo=%s WHERE user_id=%s", (url, user_id))
+    db.commit()
+
+
+def get_admin_photo_db(user_id: int):
+    cursor.execute("SELECT admin_photo FROM users WHERE user_id=%s", (user_id,))
+    row = cursor.fetchone()
+    return row["admin_photo"] if row and row["admin_photo"] else None
 
 
 # ---------------- COLEÇÃO ----------------
@@ -195,10 +213,6 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
 
 
 def remove_one_from_collection(user_id: int, char_id: int) -> bool:
-    """
-    Remove 1 unidade do personagem.
-    Se quantity virar 0, deleta a linha.
-    """
     cursor.execute(
         "SELECT quantity FROM user_collection WHERE user_id=%s AND character_id=%s",
         (user_id, char_id)
@@ -221,6 +235,31 @@ def remove_one_from_collection(user_id: int, char_id: int) -> bool:
 
     db.commit()
     return True
+
+
+# ---------------- FAVORITO POR ID (somente se tiver na coleção) ----------------
+def get_collection_character(user_id: int, char_id: int):
+    cursor.execute("""
+        SELECT character_id, character_name, image
+        FROM user_collection
+        WHERE user_id=%s AND character_id=%s
+        LIMIT 1
+    """, (user_id, char_id))
+    return cursor.fetchone()
+
+
+def set_favorite_from_collection(user_id: int, char_name: str, image: str):
+    cursor.execute(
+        "UPDATE users SET fav_name=%s, fav_image=%s WHERE user_id=%s",
+        (char_name, image, user_id)
+    )
+    db.commit()
+
+
+def clear_favorite(user_id: int):
+    cursor.execute("UPDATE users SET fav_name=NULL, fav_image=NULL WHERE user_id=%s", (user_id,))
+    db.commit()
+
 
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
@@ -251,7 +290,6 @@ def mark_trade_status(trade_id: int, status: str):
 
 
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
-    # troca dono dos registros da coleção (ATENÇÃO: se o destino já tiver o personagem, pode dar erro)
     cursor.execute("""
         UPDATE user_collection SET user_id=%s
         WHERE user_id=%s AND character_id=%s
