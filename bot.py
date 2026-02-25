@@ -2040,7 +2040,7 @@ def main():
     app.add_handler(CommandHandler("setfoto", setfoto))
 
     # batalha
-    app.add_handler(CommandHandler("batalha", batalha_command))
+    app.add_handler(CommandHandler("batalha", batalha))
     app.add_handler(CommandHandler("personagem", personagem_command))
     app.add_handler(CallbackQueryHandler(batalha_aceite_callback, pattern="battle:accept"))
     app.add_handler(CallbackQueryHandler(batalha_callback, pattern="^atacar$"))
@@ -2065,3 +2065,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
