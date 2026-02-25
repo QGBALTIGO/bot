@@ -2407,6 +2407,11 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
     app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
     app.add_handler(CommandHandler("loja", loja))
+    app.add_handler(CommandHandler("vender", vender))
+    app.add_handler(CommandHandler("comprardado", comprardado))
+    app.add_handler(CommandHandler("fotopersonagem", fotopersonagem))
+    app.add_handler(CallbackQueryHandler(callback_photo_request, pattern="^photo_req:"))
+    app.add_handler(CommandHandler("setfoto", setfoto))
     app.add_handler(CallbackQueryHandler(callback_loja, pattern="^shop:"))
     app.add_handler(CallbackQueryHandler(callback_confirmar_venda, pattern="^sell_confirm:"))
     app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
@@ -2416,6 +2421,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
