@@ -2189,7 +2189,22 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_venda_final, pattern="^sell_yes:|^sell_no"))
 
     print("✅ Bot rodando...")
+   def build_app():
+    init_db()
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # (cole aqui TODOS os seus handlers exatamente como já estão)
+    # app.add_handler(...)
+    # ...
+
+    return app
+
+
+def main():
+    app = build_app()
     app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
