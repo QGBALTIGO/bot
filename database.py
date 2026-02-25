@@ -37,25 +37,28 @@ def init_db():
         last_dado BIGINT DEFAULT 0,
         last_pedido BIGINT DEFAULT 0,
 
-        -- perfil
         private_profile BOOLEAN DEFAULT FALSE,
         admin_photo TEXT,
 
-        -- dado novo (saldo + slot)
         dado_balance INT DEFAULT 0,
         dado_slot BIGINT DEFAULT -1,
 
-        -- extra dado (loja)
         extra_dado INT DEFAULT 0
     );
     """)
+    db.commit()
 
-    # UNIQUE nick (case-insensitive) — opcional mas recomendado
-    cursor.execute("""
-    CREATE UNIQUE INDEX IF NOT EXISTS users_nick_unique
-    ON users (LOWER(nick))
-    WHERE nick IS NOT NULL;
-    """)
+    # Índice unique no nick (opcional). Se falhar, não trava o bot.
+    try:
+        cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS users_nick_unique
+        ON users (LOWER(nick))
+        WHERE nick IS NOT NULL;
+        """)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("⚠️ Não consegui criar índice users_nick_unique (ok continuar). Erro:", e)
 
     # COLEÇÃO
     cursor.execute("""
@@ -70,6 +73,7 @@ def init_db():
         PRIMARY KEY (user_id, character_id)
     );
     """)
+    db.commit()
 
     # TROCAS
     cursor.execute("""
@@ -82,6 +86,7 @@ def init_db():
         status TEXT DEFAULT 'pendente'
     );
     """)
+    db.commit()
 
     # BATALHAS
     cursor.execute("""
@@ -99,8 +104,9 @@ def init_db():
         vez INT DEFAULT 0
     );
     """)
+    db.commit()
 
-    # LOJA: vendas pendentes (se você ainda usa)
+    # LOJA
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS shop_sales (
         sale_id SERIAL PRIMARY KEY,
@@ -109,8 +115,9 @@ def init_db():
         created_at BIGINT
     );
     """)
+    db.commit()
 
-    # CARD: imagem global por personagem
+    # imagens globais
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS character_images (
         character_id INT PRIMARY KEY,
@@ -119,8 +126,9 @@ def init_db():
         updated_by BIGINT
     );
     """)
+    db.commit()
 
-    # Banir personagem (remove do bot)
+    # ban
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS banned_characters (
         character_id INT PRIMARY KEY,
@@ -129,8 +137,9 @@ def init_db():
         created_by BIGINT
     );
     """)
+    db.commit()
 
-    # Cache top 500 animes (1x por dia)
+    # cache top 500
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS top_anime_cache (
         anime_id INT PRIMARY KEY,
@@ -139,8 +148,9 @@ def init_db():
         updated_at BIGINT NOT NULL
     );
     """)
+    db.commit()
 
-    # Rolls do dado (pendente / resolvido / expirado)
+    # rolls dado
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS dice_rolls (
         roll_id SERIAL PRIMARY KEY,
@@ -152,7 +162,6 @@ def init_db():
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);")
-
     db.commit()
 
 
