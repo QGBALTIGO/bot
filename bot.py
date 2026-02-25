@@ -58,6 +58,10 @@ from database import (
     shop_get_sale,
     shop_delete_sale,
     shop_list_user_chars,
+    delete_global_character_image,
+    ban_character,
+    unban_character,
+    is_banned_character,
 )
 
 # ==================================================
@@ -2081,55 +2085,228 @@ async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-# ==================================================
-# HELPERS (link direto)
-# ==================================================
-def _is_direct_image_url(url: str) -> bool:
-    url = (url or "").strip().lower()
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return False
-    return url.endswith(".jpg") or url.endswith(".jpeg") or url.endswith(".png") or url.endswith(".webp")
+# ============================================
+# HELPERS (já deve existir _is_direct_image_url)
+# ============================================
+def _parse_setfoto_lines(text: str):
+    """
+    Aceita linhas nos formatos:
+      ID LINK
+      ID - LINK
+      ID | LINK
+      ID: LINK
+    Ignora linhas vazias.
+    Retorna lista de (id:int, url:str) e lista de erros (str).
+    """
+    out = []
+    errs = []
+    if not text:
+        return out, errs
+
+    for i, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+
+        # normaliza separadores pra espaço
+        line2 = line.replace(" - ", " ").replace("-", " ")
+        line2 = line2.replace(" | ", " ").replace("|", " ")
+        line2 = line2.replace(": ", " ").replace(":", " ")
+        parts = [p for p in line2.split() if p.strip()]
+
+        if len(parts) < 2:
+            errs.append(f"Linha {i}: formato inválido.")
+            continue
+
+        if not parts[0].isdigit():
+            errs.append(f"Linha {i}: ID não é numérico.")
+            continue
+
+        cid = int(parts[0])
+        url = parts[1].strip()
+
+        if not _is_direct_image_url(url):
+            errs.append(f"Linha {i}: link não é direto (.jpg/.png/.webp).")
+            continue
+
+        out.append((cid, url))
+
+    return out, errs
 
 
 # ==================================================
-# ADMIN: /setfoto ID LINK  (GLOBAL, pra todo mundo)
+# ADMIN: /setfoto  (GLOBAL, lote opcional)
+# - 1 por comando: /setfoto ID LINK
+# - lote: /setfoto (respondendo msg com várias linhas "ID - LINK")
 # ==================================================
 async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
         return
 
-    if len(context.args) != 2:
+    from database import set_global_character_image
+
+    # MODO 1: /setfoto ID LINK
+    if len(context.args) == 2 and context.args[0].isdigit():
+        char_id = int(context.args[0])
+        url = context.args[1].strip()
+
+        if not _is_direct_image_url(url):
+            await update.message.reply_html(
+                "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+            )
+            return
+
+        set_global_character_image(char_id, url, updated_by=update.effective_user.id)
         await update.message.reply_html(
-            "🛠️ <b>Admin — setar foto global do personagem</b>\n\n"
-            "Use exatamente:\n"
-            "<code>/setfoto ID LINK</code>\n\n"
-            "Exemplo:\n"
-            "<code>/setfoto 12345 https://site.com/imagem.jpg</code>\n\n"
-            "📌 Essa foto será usada no <code>/card</code> pra todo mundo."
+            "✅ <b>Foto global aplicada!</b>\n\n"
+            f"🧧 Personagem: <code>{char_id}</code>\n"
+            "🎴 Agora o <code>/card</code> vai usar essa foto pra todo mundo."
         )
         return
 
-    if not context.args[0].isdigit():
-        await update.message.reply_html("❌ O ID precisa ser numérico.")
+    # MODO 2: lote via reply
+    if len(context.args) == 0 and update.message and update.message.reply_to_message:
+        base_text = update.message.reply_to_message.text or update.message.reply_to_message.caption or ""
+        items, errs = _parse_setfoto_lines(base_text)
+
+        if not items and errs:
+            await update.message.reply_html(
+                "❌ Não consegui ler nenhuma linha válida.\n\n"
+                "Use linhas assim:\n"
+                "<code>12345 - https://site.com/img.jpg</code>\n"
+                "<code>12345 https://site.com/img.png</code>\n\n"
+                "Erros:\n" + "\n".join(f"• {e}" for e in errs[:15])
+            )
+            return
+
+        if not items:
+            await update.message.reply_html(
+                "🛠️ <b>Setar foto (lote)</b>\n\n"
+                "Responda uma mensagem com linhas no formato:\n"
+                "<code>ID - LINK</code>\n\n"
+                "Exemplo:\n"
+                "<code>123 - https://site.com/a.jpg</code>\n"
+                "<code>456 - https://site.com/b.png</code>"
+            )
+            return
+
+        # segurança: evita travar se mandar 500 linhas
+        MAX_LOTE = 50
+        items = items[:MAX_LOTE]
+
+        ok = 0
+        for (cid, url) in items:
+            set_global_character_image(cid, url, updated_by=update.effective_user.id)
+            ok += 1
+
+        msg = (
+            "✅ <b>Lote aplicado!</b>\n\n"
+            f"📌 Atualizados: <b>{ok}</b>\n"
+        )
+        if errs:
+            msg += "\n⚠️ Linhas ignoradas:\n" + "\n".join(f"• {e}" for e in errs[:15])
+
+        await update.message.reply_html(msg)
+        return
+
+    # ajuda
+    await update.message.reply_html(
+        "🛠️ <b>Admin — setar foto global</b>\n\n"
+        "1) Um personagem:\n"
+        "<code>/setfoto ID LINK</code>\n"
+        "Ex:\n"
+        "<code>/setfoto 12345 https://site.com/imagem.jpg</code>\n\n"
+        "2) Vários de uma vez:\n"
+        "Responda (reply) uma mensagem com várias linhas:\n"
+        "<code>123 - https://site.com/a.jpg</code>\n"
+        "<code>456 - https://site.com/b.png</code>\n"
+        "e envie apenas:\n"
+        "<code>/setfoto</code>"
+    )
+
+
+# ==================================================
+# ADMIN: /delfoto ID  (remove foto global)
+# ==================================================
+async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_html(
+            "🗑️ <b>Remover foto global</b>\n\n"
+            "Use:\n"
+            "<code>/delfoto ID</code>\n\n"
+            "Ex:\n"
+            "<code>/delfoto 12345</code>"
+        )
         return
 
     char_id = int(context.args[0])
-    url = context.args[1].strip()
+    from database import delete_global_character_image
+    delete_global_character_image(char_id)
 
-    if not _is_direct_image_url(url):
+    await update.message.reply_html(
+        "✅ <b>Foto global removida!</b>\n\n"
+        f"🧧 Personagem: <code>{char_id}</code>\n"
+        "🎴 O <code>/card</code> volta a usar a foto do AniList."
+    )
+
+
+# ==================================================
+# ADMIN: /banchar ID [motivo]  (remove de cards/card/etc)
+#       /unbanchar ID
+# ==================================================
+async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    if len(context.args) < 1 or not context.args[0].isdigit():
         await update.message.reply_html(
-            "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+            "🚫 <b>Banir personagem</b>\n\n"
+            "Use:\n"
+            "<code>/banchar ID motivo(opcional)</code>\n\n"
+            "Ex:\n"
+            "<code>/banchar 12345 foto errada</code>"
         )
         return
 
-    from database import set_global_character_image
-    set_global_character_image(char_id, url, updated_by=update.effective_user.id)
+    char_id = int(context.args[0])
+    motivo = " ".join(context.args[1:]).strip() or None
+
+    from database import ban_character
+    ban_character(char_id, reason=motivo, created_by=update.effective_user.id)
 
     await update.message.reply_html(
-        "✅ <b>Foto global aplicada!</b>\n\n"
-        f"🧧 Personagem: <code>{char_id}</code>\n"
-        "🎴 Agora o comando <code>/card</code> vai usar essa foto pra todo mundo."
+        "✅ <b>Personagem removido do bot!</b>\n\n"
+        f"🧧 ID: <code>{char_id}</code>\n"
+        "📌 Ele não vai mais aparecer em <code>/cards</code>, <code>/card</code> e comandos relacionados."
+    )
+
+
+async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_html(
+            "✅ <b>Desbanir personagem</b>\n\n"
+            "Use:\n"
+            "<code>/unbanchar ID</code>"
+        )
+        return
+
+    char_id = int(context.args[0])
+    from database import unban_character
+    unban_character(char_id)
+
+    await update.message.reply_html(
+        "✅ <b>Personagem voltou!</b>\n\n"
+        f"🧧 ID: <code>{char_id}</code>"
     )
 
 
@@ -2448,6 +2625,10 @@ def main():
 
     # admin global
     app.add_handler(CommandHandler("setfoto", setfoto))
+    app.add_handler(CommandHandler("delfoto", delfoto))
+    app.add_handler(CommandHandler("banchar", banchar))
+    app.add_handler(CommandHandler("unbanchar", unbanchar))
+    
 
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
@@ -2460,3 +2641,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
