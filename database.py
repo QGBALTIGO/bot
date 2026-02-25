@@ -88,6 +88,15 @@ def init_db():
 
     db.commit()
 
+# LOGIN 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS anilist_tokens (
+    user_id BIGINT PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+);
+""")
+
 # ---------------- USERS ----------------
 def ensure_user_row(user_id: int, default_name: str):
     cursor.execute("SELECT 1 FROM users WHERE user_id=%s", (user_id,))
@@ -168,18 +177,7 @@ def add_character_to_collection(user_id: int, char_id: int, name: str, image: st
     db.commit()
 
      # ---------------- LOGIN ----------------
-   def init_db():
-    with get_cursor(commit=True) as cur:
-        # ... suas tabelas existentes ...
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS anilist_tokens (
-            user_id BIGINT PRIMARY KEY,
-            access_token TEXT NOT NULL,
-            created_at BIGINT NOT NULL
-        );
-        """)
-def save_anilist_token(user_id: int, token: str, created_at: int):
+  def save_anilist_token(user_id: int, token: str, created_at: int):
     with get_cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO anilist_tokens (user_id, access_token, created_at)
@@ -189,7 +187,7 @@ def save_anilist_token(user_id: int, token: str, created_at: int):
                 created_at = EXCLUDED.created_at
         """, (user_id, token, created_at))
 
-def get_anilist_token(user_id: int) -> str | None:
+def get_anilist_token(user_id: int):
     with get_cursor() as cur:
         cur.execute("SELECT access_token FROM anilist_tokens WHERE user_id=%s", (user_id,))
         row = cur.fetchone()
@@ -197,7 +195,7 @@ def get_anilist_token(user_id: int) -> str | None:
 
 def delete_anilist_token(user_id: int):
     with get_cursor(commit=True) as cur:
-        cur.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,))
+        cur.execute("DELETE FROM anilist_tokens WHERE user_id=%s", (user_id,)))
         
 # ---------------- TROCAS ----------------
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int):
