@@ -2792,7 +2792,7 @@ def _colecao_keyboard(page: int, total_pages: int, owner_id: int):
 
 def _format_colecao_text(nome_colecao: str, total: int, page: int, total_paginas: int, itens: list[tuple[int, str]]) -> str:
     texto = (
-        f"📚 <b>{nome_colecao}</b>\n"
+        f"📚 <b>{nome_colecao}</b>\n\n"
         f"📦 <i>Total:</i> <b>{total}</b>\n"
         f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n\n"
     )
@@ -3089,6 +3089,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
