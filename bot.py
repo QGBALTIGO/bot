@@ -267,8 +267,14 @@ def make_state(user_id: int) -> str:
         f"&state={state}"
     )
 
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Conectar com AniList", url=url)]])
-    await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔐 Conectar com AniList", url=url)]
+    ])
+
+    await update.message.reply_text(
+        "🔑 Clique para conectar sua conta AniList:",
+        reply_markup=keyboard
+    )
     
 # ==================================================
 # 10) /adminfoto
@@ -2180,5 +2186,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
