@@ -482,7 +482,56 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from database import get_admin_photo_db
     foto = get_admin_photo_db(user_id) or fav_image
 
-    # 3) perfil privado ON = SEMPRE privado (até pra você)
+   # ==================================================
+# PERFIL
+# ==================================================
+async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    viewer_id = update.effective_user.id
+    ensure_user_row(viewer_id, update.effective_user.first_name)
+
+    # 1) decidir qual perfil mostrar
+    if context.args:
+        alvo_nick = context.args[0].strip()
+        alvo_row = get_user_by_nick(alvo_nick)
+
+        if not alvo_row:
+            await update.message.reply_html(
+                "❌ <b>Usuário não encontrado</b>\n\n"
+                "Verifique se o nick está correto.\n"
+                "📌 Exemplo: <code>/perfil bredesozail</code>"
+            )
+            return
+    else:
+        alvo_row = get_user_row(viewer_id)
+
+    if not alvo_row:
+        await update.message.reply_text("❌ Não consegui carregar o perfil agora.")
+        return
+
+    # 2) dados do alvo
+    user_id = int(alvo_row["user_id"])
+    nick = alvo_row.get("nick") or "User"
+
+    fav_name = alvo_row.get("fav_name")
+    fav_image = alvo_row.get("fav_image")
+    private_on = bool(alvo_row.get("private_profile"))
+
+    # título (admin/user)
+    titulo = "👤 | <i>Admin</i>" if is_admin(user_id) else "👤 | <i>User</i>"
+
+    # FOTO SEMPRE DEFINIDA ANTES (isso evita “parou de funcionar”)
+    # prioridade: admin_photo (persistente) > fav_image
+    foto = None
+    try:
+        foto = get_admin_photo(user_id) or fav_image
+    except Exception:
+        foto = fav_image
+
+    # 3) perfil privado
     if private_on:
         texto = (
             "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
@@ -502,7 +551,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_html(texto)
         return
 
-    # 4) perfil público (private OFF)
+    # 4) perfil público
     total_colecao = count_collection(user_id)
     coins = int(alvo_row.get("coins") or 0)
     level = int(alvo_row.get("level") or 1)
@@ -527,6 +576,9 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(texto)
 
 
+# ==================================================
+# /privado
+# ==================================================
 async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
@@ -545,7 +597,7 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    opt = context.args[0].lower()
+    opt = context.args[0].lower().strip()
     if opt not in ("on", "off"):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
@@ -2409,6 +2461,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
