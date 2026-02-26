@@ -803,3 +803,102 @@ def get_top_by_collection(limit: int = 10):
         LIMIT %s
     """, (int(limit),))
     return cursor.fetchall() or []
+
+# ================================
+# STATS / CONQUISTAS (SQL rápido)
+# ================================
+
+def get_collection_unique_count(user_id: int) -> int:
+    cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
+    row = cursor.fetchone()
+    return int(row["c"] if row else 0)
+
+
+def get_collection_total_quantity(user_id: int) -> int:
+    cursor.execute("SELECT COALESCE(SUM(quantity),0) AS s FROM user_collection WHERE user_id=%s", (int(user_id),))
+    row = cursor.fetchone()
+    return int(row["s"] if row else 0)
+
+
+def get_dice_roll_counts(user_id: int) -> dict:
+    cursor.execute("""
+        SELECT
+          COUNT(*)::int AS total,
+          SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END)::int AS resolved,
+          SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END)::int AS expired,
+          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END)::int AS pending
+        FROM dice_rolls
+        WHERE user_id=%s
+    """, (int(user_id),))
+    r = cursor.fetchone() or {}
+    return {
+        "total": int(r.get("total") or 0),
+        "resolved": int(r.get("resolved") or 0),
+        "expired": int(r.get("expired") or 0),
+        "pending": int(r.get("pending") or 0),
+    }
+
+
+def get_trade_counts(user_id: int) -> dict:
+    """
+    Trocas onde o user participou (como from_user ou to_user).
+    """
+    cursor.execute("""
+        SELECT
+          COUNT(*)::int AS total,
+          SUM(CASE WHEN status='pendente' THEN 1 ELSE 0 END)::int AS pendente,
+          SUM(CASE WHEN status='aceita' THEN 1 ELSE 0 END)::int AS aceita,
+          SUM(CASE WHEN status='recusada' THEN 1 ELSE 0 END)::int AS recusada,
+          SUM(CASE WHEN status='falhou' THEN 1 ELSE 0 END)::int AS falhou
+        FROM trades
+        WHERE from_user=%s OR to_user=%s
+    """, (int(user_id), int(user_id)))
+    r = cursor.fetchone() or {}
+    return {
+        "total": int(r.get("total") or 0),
+        "pendente": int(r.get("pendente") or 0),
+        "aceita": int(r.get("aceita") or 0),
+        "recusada": int(r.get("recusada") or 0),
+        "falhou": int(r.get("falhou") or 0),
+    }
+
+
+def get_user_stats(user_id: int) -> dict:
+    """
+    Snapshot de stats do usuário com queries leves.
+    """
+    cursor.execute("""
+        SELECT
+          user_id,
+          COALESCE(nick,'User') AS nick,
+          COALESCE(coins,0) AS coins,
+          COALESCE(level,1) AS level,
+          COALESCE(commands,0) AS commands,
+          COALESCE(extra_dado,0) AS extra_dado,
+          COALESCE(dado_balance,0) AS dado_balance,
+          COALESCE(dado_slot,-1) AS dado_slot
+        FROM users
+        WHERE user_id=%s
+        LIMIT 1
+    """, (int(user_id),))
+    u = cursor.fetchone() or {}
+
+    unique_count = get_collection_unique_count(user_id)
+    total_qty = get_collection_total_quantity(user_id)
+    dice = get_dice_roll_counts(user_id)
+    trades = get_trade_counts(user_id)
+
+    return {
+        "user_id": int(u.get("user_id") or user_id),
+        "nick": u.get("nick") or "User",
+        "coins": int(u.get("coins") or 0),
+        "level": int(u.get("level") or 1),
+        "commands": int(u.get("commands") or 0),
+        "extra_dado": int(u.get("extra_dado") or 0),
+        "dado_balance": int(u.get("dado_balance") or 0),
+        "dado_slot": int(u.get("dado_slot") or -1),
+        "collection_unique": int(unique_count),
+        "collection_total_qty": int(total_qty),
+        "dice": dice,
+        "trades": trades,
+    }
