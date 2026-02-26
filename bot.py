@@ -4268,7 +4268,7 @@ def _render_ranking(metric: str) -> str:
             nick = _safe_nick(r)
             level = int(r.get("level") or 1)
             cmds = int(r.get("commands") or 0)
-            text += f"<b>{i}.</b> {nick} — ⭐\n"
+            text += f"<b>{i}.</b> {nick} — ⭐<b>{level}</b>\n"
         return text
 
     if metric == "coins":
@@ -4302,7 +4302,7 @@ async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     owner_id = update.effective_user.id
     caption = (
-        "🏆 <b>RANKING</b>\n"
+        "🏆 <b>RANKING</b>\n\n"
         "Selecione qual ranking você quer ver 👇"
     )
 
@@ -4507,6 +4507,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
