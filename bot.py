@@ -214,117 +214,6 @@ async def log_event(context: ContextTypes.DEFAULT_TYPE, text_html: str):
     except Exception:
         pass
 
-
-# ============================================================
-# Comando utilitário: /chatid (PV only)
-# - Use no PV do bot e também no CANAL (se você mandar como admin no canal)
-# - Ele mostra o chat_id pra você colocar no Railway
-# ============================================================
-async def chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_chat or not update.message:
-        return
-
-    chat = update.effective_chat
-
-    # Se quiser permitir em grupo/canal pra pegar o id, deixe assim (sem bloquear).
-    # Se preferir PV only, descomente:
-    # if chat.type != "private":
-    #     await update.message.reply_text("Use /chatid no privado do bot.")
-    #     return
-
-    await update.message.reply_html(
-        "🆔 <b>Chat ID</b>\n"
-        f"• type: <code>{_escape_html(chat.type)}</code>\n"
-        f"• id: <code>{chat.id}</code>\n\n"
-        "➡️ Coloque esse valor na variável <b>LOG_CHANNEL_ID</b> no Railway."
-    )
-
-
-# ============================================================
-# WRAPPERS (chame esses em pontos importantes do seu bot)
-# ============================================================
-
-async def log_trade_created(context: ContextTypes.DEFAULT_TYPE, trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
-    await log_event(
-        context,
-        "🔁 <b>Nova troca</b>\n"
-        f"• trade_id: <code>{int(trade_id)}</code>\n"
-        f"• de: <code>{int(from_user)}</code>\n"
-        f"• para: <code>{int(to_user)}</code>\n"
-        f"• from_char: <code>{int(from_char)}</code>\n"
-        f"• to_char: <code>{int(to_char)}</code>"
-    )
-
-
-async def log_trade_status(context: ContextTypes.DEFAULT_TYPE, trade_id: int, status: str, actor_user: int):
-    status = (status or "").strip().lower()
-    icon = "✅" if status == "aceita" else ("❌" if status == "recusada" else ("⚠️" if status == "falhou" else "🔁"))
-    await log_event(
-        context,
-        f"{icon} <b>Troca { _escape_html(status) }</b>\n"
-        f"• trade_id: <code>{int(trade_id)}</code>\n"
-        f"• por: <code>{int(actor_user)}</code>"
-    )
-
-
-async def log_ban(context: ContextTypes.DEFAULT_TYPE, char_id: int, admin_id: int, reason: str = ""):
-    await log_event(
-        context,
-        "⛔ <b>Personagem banido</b>\n"
-        f"• char_id: <code>{int(char_id)}</code>\n"
-        f"• por: <code>{int(admin_id)}</code>\n"
-        f"• motivo: <i>{_escape_html(reason) or '—'}</i>"
-    )
-
-
-async def log_unban(context: ContextTypes.DEFAULT_TYPE, char_id: int, admin_id: int):
-    await log_event(
-        context,
-        "✅ <b>Personagem desbanido</b>\n"
-        f"• char_id: <code>{int(char_id)}</code>\n"
-        f"• por: <code>{int(admin_id)}</code>"
-    )
-
-
-async def log_setfoto(context: ContextTypes.DEFAULT_TYPE, char_id: int, admin_id: int, url: str):
-    await log_event(
-        context,
-        "🖼️ <b>Foto global definida</b>\n"
-        f"• char_id: <code>{int(char_id)}</code>\n"
-        f"• por: <code>{int(admin_id)}</code>\n"
-        f"• url: {_escape_html(url)}"
-    )
-
-
-async def log_delfoto(context: ContextTypes.DEFAULT_TYPE, char_id: int, admin_id: int):
-    await log_event(
-        context,
-        "🗑️ <b>Foto global removida</b>\n"
-        f"• char_id: <code>{int(char_id)}</code>\n"
-        f"• por: <code>{int(admin_id)}</code>"
-    )
-
-
-async def log_nick_change(context: ContextTypes.DEFAULT_TYPE, user_id: int, new_nick: str):
-    await log_event(
-        context,
-        "👤 <b>Nick alterado</b>\n"
-        f"• user: <code>{int(user_id)}</code>\n"
-        f"• novo: <code>{_escape_html(new_nick)}</code>"
-    )
-
-
-async def log_error(context: ContextTypes.DEFAULT_TYPE, where: str, user_id: int | None, err: Exception):
-    await log_event(
-        context,
-        "⚠️ <b>Erro</b>\n"
-        f"• em: <code>{_escape_html(where)[:80]}</code>\n"
-        f"• user: <code>{int(user_id) if user_id is not None else 0}</code>\n"
-        f"• detalhe: <code>{_escape_html(str(err))[:900]}</code>"
-    )
-
-# LOGS AUTOMÁTICOS (CANAL DE REGISTRO)
-
 # ==================================================
 # 4) ANTI-SPAM (MELHORADO PARA CONCORRÊNCIA)
 # ==================================================
@@ -3373,8 +3262,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_html(
                 "🎲 <b>DADO</b>\n\n"
                 "Você está sem dados/giros agora.\n\n"
-                "🕒 <b>Dados</b>: 00h, 04h, 08h, 12h, 16h, 20h\n"
-                "🎡 <b>Giros</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n\n"
+                "🎡 <b>Dados</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n\n"
                 f"⏱ Agora: <b>{_format_time_sp()}</b>"
             )
             return
@@ -5445,8 +5333,7 @@ def main():
     app.add_handler(CommandHandler("tutorial", tutorial))
     app.add_handler(CommandHandler("comandos", comandos))
     app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
-    app.add_handler(CommandHandler("chatid", chatid))
-
+    
     print("✅ Bot rodando...")
     app.run_polling(
         drop_pending_updates=True,
@@ -5456,6 +5343,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
