@@ -89,6 +89,8 @@ from database import (
     get_top_by_coins,
     get_top_by_collection,
     get_user_stats,
+    list_user_achievement_keys,
+    grant_achievements_and_reward,
 )
 
 from zoneinfo import ZoneInfo
@@ -4438,117 +4440,88 @@ async def conquistas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Não consegui carregar suas conquistas agora.")
         return
 
-    # Regras (todas derivadas do seu sistema atual)
+    # ===== Define conquistas (chaves fixas) =====
+    # IMPORTANTE: não mude as chaves depois, senão vira “nova conquista” e dá recompensa de novo.
+    defs: list[tuple[str, bool, str]] = []
+
+    lvl = int(s["level"])
+    defs.append(("lvl_5",   lvl >= 5,  "Nível 5"))
+    defs.append(("lvl_10",  lvl >= 10, "Nível 10"))
+    defs.append(("lvl_25",  lvl >= 25, "Nível 25"))
+
+    cu = int(s["collection_unique"])
+    defs.append(("col_10",  cu >= 10,  "10 personagens"))
+    defs.append(("col_50",  cu >= 50,  "50 personagens"))
+    defs.append(("col_100", cu >= 100, "100 personagens"))
+
+    coins = int(s["coins"])
+    defs.append(("coin_10",  coins >= 10,  "10 coins"))
+    defs.append(("coin_100", coins >= 100, "100 coins"))
+    defs.append(("coin_500", coins >= 500, "500 coins"))
+
+    dice_total = int(s["dice"]["total"])
+    dice_res   = int(s["dice"]["resolved"])
+    defs.append(("dice_1",   dice_total >= 1, "Primeiro dado"))
+    defs.append(("dice_10",  dice_res >= 10,  "10 ganhos no dado"))
+    defs.append(("dice_50",  dice_res >= 50,  "50 ganhos no dado"))
+
+    tr_ok = int(s["trades"]["aceita"])
+    defs.append(("trade_1",  tr_ok >= 1,  "Primeira troca aceita"))
+    defs.append(("trade_5",  tr_ok >= 5,  "5 trocas aceitas"))
+    defs.append(("trade_20", tr_ok >= 20, "20 trocas aceitas"))
+
+    # ===== Descobrir quais são novas + recompensar =====
+    try:
+        owned = list_user_achievement_keys(user_id)
+    except Exception:
+        owned = set()
+
+    newly_unlocked_keys = [k for (k, ok, _) in defs if ok and k not in owned]
+
+    gained = 0
+    if newly_unlocked_keys:
+        try:
+            gained = grant_achievements_and_reward(user_id, newly_unlocked_keys, reward_extra_dado_per=1)
+        except Exception:
+            gained = 0
+
+    # Atualiza owned pra render correto (mesmo se o insert falhar)
+    if gained > 0:
+        owned.update(newly_unlocked_keys)
+
+    # ===== Render =====
     unlocked = []
     locked = []
 
-    def chk(ok: bool, label: str):
-        (unlocked if ok else locked).append(("✅" if ok else "🔒", label))
-
-    # nível
-    lvl = int(s["level"])
-    chk(lvl >= 5, "Nível 5")
-    chk(lvl >= 10, "Nível 10")
-    chk(lvl >= 25, "Nível 25")
-
-    # coleção (únicos)
-    cu = int(s["collection_unique"])
-    chk(cu >= 10, "10 personagens")
-    chk(cu >= 50, "50 personagens")
-    chk(cu >= 100, "100 personagens")
-
-    # coins
-    coins = int(s["coins"])
-    chk(coins >= 10, "10 coins")
-    chk(coins >= 100, "100 coins")
-    chk(coins >= 500, "500 coins")
-
-    # dado
-    dice_total = int(s["dice"]["total"])
-    dice_res = int(s["dice"]["resolved"])
-    chk(dice_total >= 1, "Primeiro dado")
-    chk(dice_res >= 10, "10 ganhos no dado")
-    chk(dice_res >= 50, "50 ganhos no dado")
-
-    # trocas aceitas
-    tr_ok = int(s["trades"]["aceita"])
-    chk(tr_ok >= 1, "Primeira troca aceita")
-    chk(tr_ok >= 5, "5 trocas aceitas")
-    chk(tr_ok >= 20, "20 trocas aceitas")
+    for key, ok, label in defs:
+        is_unlocked = ok and (key in owned)
+        if is_unlocked:
+            unlocked.append(label)
+        else:
+            locked.append(label)
 
     texto = "🏅 <b>CONQUISTAS</b>\n\n"
 
+    # aviso de recompensa (sem mudar “essência” das suas mensagens — é só feedback do sistema)
+    if gained > 0:
+        texto += f"🎁 <b>{gained} conquista(s) nova(s)!</b>\n"
+        texto += f"🎡 Você ganhou <b>+{gained}</b> dado(s) extra.\n\n"
+
     if unlocked:
         texto += "✨ <b>Desbloqueadas</b>\n"
-        for em, label in unlocked:
-            texto += f"{em} {label}\n"
+        for label in unlocked:
+            texto += f"✅ {label}\n"
         texto += "\n"
 
     texto += "🧩 <b>Em progresso</b>\n"
     if locked:
-        for em, label in locked:
-            texto += f"{em} {label}\n"
+        for label in locked:
+            texto += f"🔒 {label}\n"
     else:
         texto += "✅ Você já desbloqueou todas.\n"
 
     await update.message.reply_html(texto)
-
-# ================================
-# CONQUISTAS (persistente + recompensa segura)
-# ================================
-
-def list_user_achievement_keys(user_id: int) -> set[str]:
-    cursor.execute("""
-        SELECT achievement_key
-        FROM user_achievements
-        WHERE user_id=%s
-    """, (int(user_id),))
-    rows = cursor.fetchall() or []
-    return {str(r["achievement_key"]) for r in rows if r.get("achievement_key")}
-
-
-def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extra_dado_per: int = 1) -> int:
-    """
-    Insere conquistas novas e recompensa +extra_dado por conquista nova.
-    Retorna quantas conquistas foram realmente novas (e recompensadas).
-    - Seguro contra duplo clique / spam: PK (user_id, achievement_key) + ON CONFLICT DO NOTHING
-    - Transação: ou insere+recompensa, ou nada
-    """
-    if not new_keys:
-        return 0
-
-    now = int(time.time())
-    new_keys = [str(k) for k in new_keys if k]
-
-    try:
-        cursor.execute("BEGIN")
-
-        inserted = 0
-        for k in new_keys:
-            cursor.execute("""
-                INSERT INTO user_achievements (user_id, achievement_key, unlocked_at)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (user_id, achievement_key) DO NOTHING
-            """, (int(user_id), k, now))
-            # rowcount = 1 se inseriu, 0 se já existia
-            inserted += int(cursor.rowcount or 0)
-
-        if inserted > 0 and reward_extra_dado_per > 0:
-            cursor.execute("""
-                UPDATE users
-                SET extra_dado = COALESCE(extra_dado,0) + %s
-                WHERE user_id=%s
-            """, (int(inserted * reward_extra_dado_per), int(user_id)))
-
-        cursor.execute("COMMIT")
-        return inserted
-
-    except Exception:
-        try:
-            cursor.execute("ROLLBACK")
-        except Exception:
-            pass
-        raise
+    
         
 # ==================================================
 # 25) MAIN (handlers)
@@ -4697,6 +4670,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
