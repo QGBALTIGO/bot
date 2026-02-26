@@ -740,3 +740,66 @@ def list_pending_trades_for_user(to_user: int, limit: int = 5):
         LIMIT %s
     """, (int(to_user), int(limit)))
     return cursor.fetchall() or []
+
+# ================================
+# RANKINGS (Top 10)
+# ================================
+
+def get_top_by_level(limit: int = 10):
+    """
+    Top por nível (desc), depois commands (desc), depois coins (desc).
+    """
+    cursor.execute("""
+        SELECT user_id,
+               COALESCE(nick, 'User') AS nick,
+               COALESCE(level, 1) AS level,
+               COALESCE(commands, 0) AS commands,
+               COALESCE(coins, 0) AS coins
+        FROM users
+        ORDER BY COALESCE(level,1) DESC,
+                 COALESCE(commands,0) DESC,
+                 COALESCE(coins,0) DESC,
+                 user_id ASC
+        LIMIT %s
+    """, (int(limit),))
+    return cursor.fetchall() or []
+
+
+def get_top_by_coins(limit: int = 10):
+    """
+    Top por coins (desc), depois level (desc).
+    """
+    cursor.execute("""
+        SELECT user_id,
+               COALESCE(nick, 'User') AS nick,
+               COALESCE(coins, 0) AS coins,
+               COALESCE(level, 1) AS level
+        FROM users
+        ORDER BY COALESCE(coins,0) DESC,
+                 COALESCE(level,1) DESC,
+                 user_id ASC
+        LIMIT %s
+    """, (int(limit),))
+    return cursor.fetchall() or []
+
+
+def get_top_by_collection(limit: int = 10):
+    """
+    Top por quantidade de itens únicos na coleção (COUNT rows em user_collection).
+    """
+    cursor.execute("""
+        WITH c AS (
+            SELECT user_id, COUNT(*)::int AS total
+            FROM user_collection
+            GROUP BY user_id
+        )
+        SELECT u.user_id,
+               COALESCE(u.nick, 'User') AS nick,
+               COALESCE(c.total, 0) AS total
+        FROM users u
+        LEFT JOIN c ON c.user_id = u.user_id
+        ORDER BY COALESCE(c.total,0) DESC,
+                 u.user_id ASC
+        LIMIT %s
+    """, (int(limit),))
+    return cursor.fetchall() or []
