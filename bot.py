@@ -4221,7 +4221,7 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /ranking (TOP 10) — Níveis / Coins / Coleção (com botões)
 # ==================================================
 
-RANKING_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
+RANKING_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqlp8GmfqqNQyQV05efRn6slkZYc66uOAALOC2sbS__4RP55dhAgyc7mAQADAgADeQADOgQ/photo.jpg"
 _RANK_BTN_LAST: dict[int, float] = {}
 
 def _rank_btn_ok(user_id: int, seconds: float = 1.2) -> bool:
@@ -4268,7 +4268,7 @@ def _render_ranking(metric: str) -> str:
             nick = _safe_nick(r)
             level = int(r.get("level") or 1)
             cmds = int(r.get("commands") or 0)
-            text += f"<b>{i}.</b> {nick} — ⭐ <b>{level}</b> <i>({cmds} cmds)</i>\n"
+            text += f"<b>{i}.</b> {nick} — ⭐\n"
         return text
 
     if metric == "coins":
@@ -4280,7 +4280,7 @@ def _render_ranking(metric: str) -> str:
             nick = _safe_nick(r)
             coins = int(r.get("coins") or 0)
             lvl = int(r.get("level") or 1)
-            text += f"<b>{i}.</b> {nick} — 🪙 <b>{coins}</b> <i>(lvl {lvl})</i>\n"
+            text += f"<b>{i}.</b> {nick} — 🪙 <b>{coins}</b>\n"
         return text
 
     # colecao
@@ -4507,6 +4507,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
