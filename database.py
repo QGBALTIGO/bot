@@ -837,3 +837,71 @@ def shop_list_user_chars(user_id: int, page: int, per_page: int):
     rows = cursor.fetchall() or []
     chars = [(int(r["character_id"]), r["character_name"]) for r in rows]
     return chars, total, total_pages
+
+def claim_daily_reward(user_id: int, day_start_ts: int, coins_min: int = 1, coins_max: int = 3, giro_chance: float = 0.20):
+    """
+    Resgata daily 1x por dia (atômico).
+    - day_start_ts: timestamp do começo do dia no fuso que você escolher (SP_TZ no bot).
+    Retorna:
+      None se já resgatou hoje
+      dict se resgatou: {"type": "coins"|"giro", "amount": int}
+    """
+    import random
+
+    try:
+        cursor.execute("BEGIN")
+
+        # trava e garante 1x por dia (atômico)
+        cursor.execute("""
+            UPDATE users
+            SET last_daily=%s
+            WHERE user_id=%s AND COALESCE(last_daily,0) < %s
+            RETURNING user_id
+        """, (int(day_start_ts), int(user_id), int(day_start_ts)))
+
+        ok = cursor.fetchone() is not None
+        if not ok:
+            cursor.execute("ROLLBACK")
+            return None
+
+        # decide recompensa
+        if random.random() < float(giro_chance):
+            # giro = +1 extra_dado
+            cursor.execute("""
+                UPDATE users
+                SET extra_dado = COALESCE(extra_dado,0) + 1
+                WHERE user_id=%s
+            """, (int(user_id),))
+            cursor.execute("COMMIT")
+            return {"type": "giro", "amount": 1}
+
+        amount = random.randint(int(coins_min), int(coins_max))
+        cursor.execute("""
+            UPDATE users
+            SET coins = COALESCE(coins,0) + %s
+            WHERE user_id=%s
+        """, (int(amount), int(user_id)))
+
+        cursor.execute("COMMIT")
+        return {"type": "coins", "amount": int(amount)}
+
+    except Exception:
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            db.rollback()
+        raise
+
+
+def list_pending_trades_for_user(to_user: int, limit: int = 5):
+    """
+    Retorna últimas trocas pendentes pro usuário.
+    """
+    cursor.execute("""
+        SELECT trade_id, from_user, to_user, from_character_id, to_character_id, status
+        FROM trades
+        WHERE to_user=%s AND status='pendente'
+        ORDER BY trade_id DESC
+        LIMIT %s
+    """, (int(to_user), int(limit)))
+    return cursor.fetchall() or []
