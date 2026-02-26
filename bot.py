@@ -993,7 +993,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await checar_canal(update, context):
         return
-    if not anti_spam(user_id):
+    if not await anti_spam(user_id):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -1041,7 +1041,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await checar_canal(update, context):
         return
-    if not anti_spam(user_id):
+    if not await anti_spam(user_id):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -1102,7 +1102,7 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    if not anti_spam(user_id):
+    if not await anti_spam(user_id):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -5128,6 +5128,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
