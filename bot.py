@@ -172,48 +172,6 @@ async def buscar_post(canal: str, termo: str) -> Optional[int]:
             _channel_search_cache[key] = (time.time(), None)
             return None
 
-# imports normais...
-import os
-import asyncio
-
-LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "0"))
-LOG_THREAD_ID = int(os.getenv("LOG_THREAD_ID", "0"))
-
-SP_TZ = ZoneInfo("America/Sao_Paulo")
-
-
-def _escape_html(s: str) -> str:
-    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-async def log_event(context: ContextTypes.DEFAULT_TYPE, text_html: str):
-    """
-    Envia logs pro canal de registro.
-    - Nunca derruba o bot se falhar.
-    - text_html deve vir pronto em HTML (escapa o que precisar).
-    """
-    if not LOG_CHANNEL_ID:
-        return
-
-    try:
-        stamp = datetime.now(tz=SP_TZ).strftime("%d/%m %H:%M")
-        msg = f"🧾 <b>LOG</b> <code>{stamp}</code>\n{text_html}"
-
-        kwargs = {
-            "chat_id": LOG_CHANNEL_ID,
-            "text": msg,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
-
-        # Se você usar grupo "forum" com tópico, dá pra logar no tópico certo:
-        if LOG_THREAD_ID:
-            kwargs["message_thread_id"] = LOG_THREAD_ID
-
-        await context.bot.send_message(**kwargs)
-    except Exception:
-        pass
-
 # ==================================================
 # 4) ANTI-SPAM (MELHORADO PARA CONCORRÊNCIA)
 # ==================================================
@@ -2635,7 +2593,7 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Trava global curta (evita dois admins alterarem ao mesmo tempo em lote)
             async with _admin_ops_lock:
                 try:
-                   set_global_character_image(...)
+                    set_global_character_image(char_id, url, updated_by=user_id)
                 except Exception:
                     # não muda textos; só evita crash
                     return
@@ -2763,7 +2721,6 @@ async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ADMIN: /banchar ID [motivo]  (remove de cards/card/etc)
 #       /unbanchar ID
 # ==================================================
-
 async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
@@ -3260,7 +3217,8 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_html(
                 "🎲 <b>DADO</b>\n\n"
                 "Você está sem dados/giros agora.\n\n"
-                "🎡 <b>Dados</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n\n"
+                "🕒 <b>Dados</b>: 00h, 04h, 08h, 12h, 16h, 20h\n"
+                "🎡 <b>Giros</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n\n"
                 f"⏱ Agora: <b>{_format_time_sp()}</b>"
             )
             return
@@ -5331,7 +5289,7 @@ def main():
     app.add_handler(CommandHandler("tutorial", tutorial))
     app.add_handler(CommandHandler("comandos", comandos))
     app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
-    
+
     print("✅ Bot rodando...")
     app.run_polling(
         drop_pending_updates=True,
@@ -5341,12 +5299,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
 
 
 
