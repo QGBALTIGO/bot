@@ -80,10 +80,15 @@ from database import (
     ban_character,
     unban_character,
     is_banned_character,
+    get_user_coins,
+    claim_daily_reward,
+    list_pending_trades_for_user,
+    try_spend_coins,
+    add_extra_dado,
 )
 
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==================================================
 # 1) CONFIG (TUDO VIA VARIÁVEIS DO RAILWAY)
@@ -4013,12 +4018,12 @@ async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
 # ==================================================
-# /saldo + /daily + /trocas
+# /saldo + /daily + /trocas (PV only trocas)
 # ==================================================
 
 DAILY_COINS_MIN = 1
 DAILY_COINS_MAX = 3
-DAILY_GIRO_CHANCE = 0.20  # 20% chance de 1 giro
+DAILY_GIRO_CHANCE = 0.20  # 20%
 
 _SALDO_FLOOD: dict[int, float] = {}
 _DAILY_FLOOD: dict[int, float] = {}
@@ -4035,27 +4040,29 @@ def _cmd_flood_ok(mem: dict[int, float], user_id: int, seconds: float) -> bool:
 
 def _next_slot_dt_sp() -> datetime:
     """
-    Próximo horário de recarga do DADO:
+    Próximo horário de recarga do dado:
     00/04/08/12/16/20 (SP_TZ)
     """
     now = datetime.now(tz=SP_TZ)
     hour = now.hour
     slots = [0, 4, 8, 12, 16, 20]
+
     nxt = None
     for s in slots:
         if hour < s:
             nxt = s
             break
+
     if nxt is None:
-        # próximo dia 00
-        nxt_dt = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
-        return nxt_dt
+        # próximo dia 00:00
+        return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
     return now.replace(hour=nxt, minute=0, second=0, microsecond=0)
 
 
 def _daily_day_start_ts_sp() -> int:
     """
-    Timestamp do começo do dia no fuso de SP (SP_TZ)
+    Timestamp do começo do dia no fuso SP_TZ.
     """
     now = datetime.now(tz=SP_TZ)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -4068,12 +4075,14 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await registrar_comando(update)
 
     user_id = update.effective_user.id
+
     if not _cmd_flood_ok(_SALDO_FLOOD, user_id, 2.0):
+        await update.message.reply_html("Calma 🙂")
         return
 
     ensure_user_row(user_id, update.effective_user.first_name)
 
-    # atualiza slots do dado (pra saldo estar certo)
+    # atualiza saldo por slots (pra mostrar certo)
     try:
         balance = _refresh_user_dado_balance(user_id)
     except Exception:
@@ -4102,7 +4111,9 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await registrar_comando(update)
 
     user_id = update.effective_user.id
+
     if not _cmd_flood_ok(_DAILY_FLOOD, user_id, 2.0):
+        await update.message.reply_html("Calma 🙂")
         return
 
     ensure_user_row(user_id, update.effective_user.first_name)
@@ -4117,7 +4128,8 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
             coins_max=DAILY_COINS_MAX,
             giro_chance=DAILY_GIRO_CHANCE,
         )
-    except Exception:
+    except Exception as e:
+        print("DAILY ERROR:", e)
         await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
         return
 
@@ -4129,7 +4141,6 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # mostra resultado
     if reward["type"] == "giro":
         await update.message.reply_html(
             "📦 <b>DAILY</b>\n\n"
@@ -4142,7 +4153,7 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-def _trade_kb_for_list(trade_id: int) -> InlineKeyboardMarkup:
+def _trade_kb(trade_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Aceitar", callback_data=f"trade_accept:{trade_id}"),
         InlineKeyboardButton("❌ Recusar", callback_data=f"trade_reject:{trade_id}"),
@@ -4154,8 +4165,19 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await registrar_comando(update)
 
+    chat = update.effective_chat
+    if chat.type != "private":
+        await update.message.reply_html(
+            "🔁 <b>TROCAS</b>\n\n"
+            "Esse comando funciona <b>somente no privado</b> do bot.\n"
+            "👉 Abra o bot no PV e use <code>/trocas</code> por lá."
+        )
+        return
+
     user_id = update.effective_user.id
+
     if not _cmd_flood_ok(_TROCAS_FLOOD, user_id, 2.0):
+        await update.message.reply_html("Calma 🙂")
         return
 
     ensure_user_row(user_id, update.effective_user.first_name)
@@ -4168,7 +4190,6 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # manda uma mensagem por troca (mais estável que 1 msg com 10 botões)
     await update.message.reply_html(
         "🔁 <b>TROCAS</b>\n\n"
         "Aqui estão suas trocas pendentes:"
@@ -4180,7 +4201,7 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from_char = int(t["from_character_id"])
         to_char = int(t["to_character_id"])
 
-        # labels bonitos (reaproveita seu helper)
+        # usa seu helper existente (já no seu bot)
         a_name = await _get_char_label(from_user, from_char)
         b_name = await _get_char_label(user_id, to_char)
 
@@ -4190,7 +4211,7 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"➡️ O outro usuário oferece: {a_name}\n"
             f"⬅️ Você oferece: {b_name}\n\n"
             "⚠️ Apenas você pode aceitar/recusar.",
-            reply_markup=_trade_kb_for_list(tid)
+            reply_markup=_trade_kb(tid)
         )
             
 # ==================================================
@@ -4336,6 +4357,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
