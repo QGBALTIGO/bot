@@ -91,6 +91,24 @@ def _dedupe_default_nicks_before_unique_index():
             new_nick = f"{base}_{uid}"
             cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (new_nick, uid))
 
+# conquistas (evita duplicar recompensa)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_achievements (
+        user_id BIGINT NOT NULL,
+        achievement_key TEXT NOT NULL,
+        unlocked_at BIGINT NOT NULL,
+        PRIMARY KEY (user_id, achievement_key)
+    );
+    """)
+    _commit()
+
+    # índice útil pra listar rápido (opcional)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS user_achievements_user_idx
+    ON user_achievements (user_id);
+    """)
+    _commit()
+
 
 def _try_create_indexes():
     """
@@ -902,3 +920,60 @@ def get_user_stats(user_id: int) -> dict:
         "dice": dice,
         "trades": trades,
     }
+
+# ================================
+# CONQUISTAS (persistente + recompensa segura)
+# ================================
+
+def list_user_achievement_keys(user_id: int) -> set[str]:
+    cursor.execute("""
+        SELECT achievement_key
+        FROM user_achievements
+        WHERE user_id=%s
+    """, (int(user_id),))
+    rows = cursor.fetchall() or []
+    return {str(r["achievement_key"]) for r in rows if r.get("achievement_key")}
+
+
+def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extra_dado_per: int = 1) -> int:
+    """
+    Insere conquistas novas e recompensa +extra_dado por conquista nova.
+    Retorna quantas conquistas foram realmente novas (e recompensadas).
+    - Seguro contra duplo clique / spam: PK (user_id, achievement_key) + ON CONFLICT DO NOTHING
+    - Transação: ou insere+recompensa, ou nada
+    """
+    if not new_keys:
+        return 0
+
+    now = int(time.time())
+    new_keys = [str(k) for k in new_keys if k]
+
+    try:
+        cursor.execute("BEGIN")
+
+        inserted = 0
+        for k in new_keys:
+            cursor.execute("""
+                INSERT INTO user_achievements (user_id, achievement_key, unlocked_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, achievement_key) DO NOTHING
+            """, (int(user_id), k, now))
+            # rowcount = 1 se inseriu, 0 se já existia
+            inserted += int(cursor.rowcount or 0)
+
+        if inserted > 0 and reward_extra_dado_per > 0:
+            cursor.execute("""
+                UPDATE users
+                SET extra_dado = COALESCE(extra_dado,0) + %s
+                WHERE user_id=%s
+            """, (int(inserted * reward_extra_dado_per), int(user_id)))
+
+        cursor.execute("COMMIT")
+        return inserted
+
+    except Exception:
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
