@@ -64,7 +64,7 @@ def _ensure_columns_users():
 
     # DADO NOVO
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_balance INT DEFAULT 0;""")
-    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT DEFAULT -1;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_slot BIGINT DEFAULT -1;""")
 
     # extra dado (giros)
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;""")
@@ -599,10 +599,20 @@ def add_extra_dado(user_id: int, amount: int):
     _commit()
 
 
-def get_extra_dado(user_id: int) -> int:
-    cursor.execute("SELECT COALESCE(extra_dado,0)::int AS x FROM users WHERE user_id=%s", (int(user_id),))
-    row = cursor.fetchone()
-    return int(row["x"] if row else 0)
+def get_extra_state(user_id: int) -> dict:
+    """
+    Estado dos giros (extra_dado) + slot de recarga.
+    """
+    cursor.execute("SELECT COALESCE(extra_dado,0) AS x, COALESCE(extra_slot,-1) AS s FROM users WHERE user_id=%s", (int(user_id),))
+    row = cursor.fetchone() or {}
+    return {"x": int(row.get("x") or 0), "s": int(row.get("s") or -1)}
+
+def set_extra_state(user_id: int, extra: int, slot: int):
+    cursor.execute(
+        "UPDATE users SET extra_dado=%s, extra_slot=%s WHERE user_id=%s",
+        (int(extra), int(slot), int(user_id))
+    )
+    _commit()
 
 
 def consume_extra_dado(user_id: int) -> bool:
