@@ -4366,14 +4366,31 @@ async def callback_ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("Não consegui atualizar agora.", show_alert=True)
 
 # ==================================================
-# /stats e /conquistas
+# /stats e /conquistas (BONITO + IMAGEM + TITULOS + REWARD)
 # ==================================================
 
-def _bar(progress: float, width: int = 10) -> str:
+CONQUISTAS_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
+
+def _bar(progress: float, width: int = 12) -> str:
     progress = max(0.0, min(1.0, float(progress)))
     filled = int(round(progress * width))
     return "█" * filled + "░" * (width - filled)
 
+def _ach_title(unlocked_count: int) -> str:
+    # títulos por quantidade de conquistas
+    if unlocked_count >= 12:
+        return "👑 <b>LENDA SUPREMA</b>"
+    if unlocked_count >= 9:
+        return "🏆 <b>CAMPEÃO DA BALTIGO</b>"
+    if unlocked_count >= 6:
+        return "⚔️ <b>VETERANO</b>"
+    if unlocked_count >= 3:
+        return "🔥 <b>GUERREIRO</b>"
+    return "🌱 <b>INICIANTE</b>"
+
+def _fmt_num(n: int) -> str:
+    # só pra padronizar visual
+    return f"<b>{int(n)}</b>"
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
@@ -4389,7 +4406,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Não consegui carregar suas stats agora.")
         return
 
-    # Progresso do nível (aprox) baseado no COMANDOS_POR_NIVEL
     comandos = int(s["commands"])
     nivel_atual = int(s["level"])
     base = (nivel_atual - 1) * COMANDOS_POR_NIVEL
@@ -4399,28 +4415,37 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     denom = max(prox - base, 1)
     pct = cur_in_level / denom
 
+    # dados do dado e trocas (garantindo int)
+    dice = s.get("dice") or {}
+    trades = s.get("trades") or {}
+
     texto = (
         "📊 <b>STATS</b>\n\n"
         f"👤 <b>{s['nick']}</b>\n\n"
-        f"⭐ <i>Nível</i>: <b>{nivel_atual}</b>\n"
-        f"⌨️ <i>Comandos usados</i>: <b>{comandos}</b>\n"
-        f"📈 <i>Progresso</i>: <code>{_bar(pct, 10)}</code> <b>{int(pct*100)}%</b>\n"
-        f"⏳ <i>Faltam</i>: <b>{need}</b> comandos\n\n"
-        f"🪙 <i>Coins</i>: <b>{int(s['coins'])}</b>\n"
-        f"🎟️ <i>Dados</i>: <b>{int(s['dado_balance'])}</b>\n"
-        f"🎡 <i>Giros</i>: <b>{int(s['extra_dado'])}</b>\n\n"
-        f"📚 <i>Coleção (únicos)</i>: <b>{int(s['collection_unique'])}</b>\n"
-        f"📦 <i>Coleção (total)</i>: <b>{int(s['collection_total_qty'])}</b>\n\n"
+        "━━━━━━━━━━━━━━\n"
+        f"⭐ <i>Nível</i>: {_fmt_num(nivel_atual)}\n"
+        f"⌨️ <i>Comandos usados</i>: {_fmt_num(comandos)}\n"
+        f"📈 <i>Progresso</i>: <code>{_bar(pct, 12)}</code> {_fmt_num(int(pct*100))}%\n"
+        f"⏳ <i>Faltam</i>: {_fmt_num(need)} comandos\n"
+        "━━━━━━━━━━━━━━\n"
+        f"🪙 <i>Coins</i>: {_fmt_num(int(s['coins']))}\n"
+        f"🎟️ <i>Dados</i>: {_fmt_num(int(s['dado_balance']))}\n"
+        f"🎡 <i>Giros</i>: {_fmt_num(int(s['extra_dado']))}\n"
+        "━━━━━━━━━━━━━━\n"
+        f"📚 <i>Coleção (únicos)</i>: {_fmt_num(int(s['collection_unique']))}\n"
+        f"📦 <i>Coleção (total)</i>: {_fmt_num(int(s['collection_total_qty']))}\n"
+        "━━━━━━━━━━━━━━\n"
         "🎲 <b>Dado</b>\n"
-        f"• Total: <b>{int(s['dice']['total'])}</b>\n"
-        f"• Resolved: <b>{int(s['dice']['resolved'])}</b>\n"
-        f"• Expired: <b>{int(s['dice']['expired'])}</b>\n\n"
+        f"• Total: {_fmt_num(int(dice.get('total') or 0))}\n"
+        f"• Resgates: {_fmt_num(int(dice.get('resolved') or 0))}\n"
+        f"• Expirados: {_fmt_num(int(dice.get('expired') or 0))}\n"
+        "━━━━━━━━━━━━━━\n"
         "🔁 <b>Trocas</b>\n"
-        f"• Total: <b>{int(s['trades']['total'])}</b>\n"
-        f"• Aceitas: <b>{int(s['trades']['aceita'])}</b>\n"
-        f"• Pendentes: <b>{int(s['trades']['pendente'])}</b>\n"
-        f"• Recusadas: <b>{int(s['trades']['recusada'])}</b>\n"
-        f"• Falhou: <b>{int(s['trades']['falhou'])}</b>\n"
+        f"• Total: {_fmt_num(int(trades.get('total') or 0))}\n"
+        f"• Aceitas: {_fmt_num(int(trades.get('aceita') or 0))}\n"
+        f"• Pendentes: {_fmt_num(int(trades.get('pendente') or 0))}\n"
+        f"• Recusadas: {_fmt_num(int(trades.get('recusada') or 0))}\n"
+        f"• Falhou: {_fmt_num(int(trades.get('falhou') or 0))}\n"
     )
 
     await update.message.reply_html(texto)
@@ -4440,37 +4465,46 @@ async def conquistas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Não consegui carregar suas conquistas agora.")
         return
 
-    # ===== Define conquistas (chaves fixas) =====
-    # IMPORTANTE: não mude as chaves depois, senão vira “nova conquista” e dá recompensa de novo.
+    # ===== Defs fixas (NÃO MUDE as keys depois) =====
     defs: list[tuple[str, bool, str]] = []
 
     lvl = int(s["level"])
-    defs.append(("lvl_5",   lvl >= 5,  "Nível 5"))
-    defs.append(("lvl_10",  lvl >= 10, "Nível 10"))
-    defs.append(("lvl_25",  lvl >= 25, "Nível 25"))
+    defs += [
+        ("lvl_5",   lvl >= 5,  "Nível 5"),
+        ("lvl_10",  lvl >= 10, "Nível 10"),
+        ("lvl_25",  lvl >= 25, "Nível 25"),
+    ]
 
     cu = int(s["collection_unique"])
-    defs.append(("col_10",  cu >= 10,  "10 personagens"))
-    defs.append(("col_50",  cu >= 50,  "50 personagens"))
-    defs.append(("col_100", cu >= 100, "100 personagens"))
+    defs += [
+        ("col_10",  cu >= 10,  "10 personagens"),
+        ("col_50",  cu >= 50,  "50 personagens"),
+        ("col_100", cu >= 100, "100 personagens"),
+    ]
 
     coins = int(s["coins"])
-    defs.append(("coin_10",  coins >= 10,  "10 coins"))
-    defs.append(("coin_100", coins >= 100, "100 coins"))
-    defs.append(("coin_500", coins >= 500, "500 coins"))
+    defs += [
+        ("coin_10",  coins >= 10,  "10 coins"),
+        ("coin_100", coins >= 100, "100 coins"),
+        ("coin_500", coins >= 500, "500 coins"),
+    ]
 
-    dice_total = int(s["dice"]["total"])
-    dice_res   = int(s["dice"]["resolved"])
-    defs.append(("dice_1",   dice_total >= 1, "Primeiro dado"))
-    defs.append(("dice_10",  dice_res >= 10,  "10 ganhos no dado"))
-    defs.append(("dice_50",  dice_res >= 50,  "50 ganhos no dado"))
+    dice_total = int((s.get("dice") or {}).get("total") or 0)
+    dice_res   = int((s.get("dice") or {}).get("resolved") or 0)
+    defs += [
+        ("dice_1",   dice_total >= 1, "Primeiro dado"),
+        ("dice_10",  dice_res >= 10,  "10 ganhos no dado"),
+        ("dice_50",  dice_res >= 50,  "50 ganhos no dado"),
+    ]
 
-    tr_ok = int(s["trades"]["aceita"])
-    defs.append(("trade_1",  tr_ok >= 1,  "Primeira troca aceita"))
-    defs.append(("trade_5",  tr_ok >= 5,  "5 trocas aceitas"))
-    defs.append(("trade_20", tr_ok >= 20, "20 trocas aceitas"))
+    tr_ok = int((s.get("trades") or {}).get("aceita") or 0)
+    defs += [
+        ("trade_1",  tr_ok >= 1,  "Primeira troca aceita"),
+        ("trade_5",  tr_ok >= 5,  "5 trocas aceitas"),
+        ("trade_20", tr_ok >= 20, "20 trocas aceitas"),
+    ]
 
-    # ===== Descobrir quais são novas + recompensar =====
+    # ===== owned + recompensa =====
     try:
         owned = list_user_achievement_keys(user_id)
     except Exception:
@@ -4485,42 +4519,56 @@ async def conquistas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             gained = 0
 
-    # Atualiza owned pra render correto (mesmo se o insert falhar)
     if gained > 0:
         owned.update(newly_unlocked_keys)
 
-    # ===== Render =====
-    unlocked = []
-    locked = []
+    # ===== contagem / título =====
+    try:
+        unlocked_count = count_user_achievements(user_id)
+    except Exception:
+        unlocked_count = sum(1 for (k, ok, _) in defs if ok and k in owned)
 
+    total = len(defs)
+    progress = unlocked_count / max(total, 1)
+
+    title = _ach_title(unlocked_count)
+
+    unlocked_lines = []
+    locked_lines = []
     for key, ok, label in defs:
         is_unlocked = ok and (key in owned)
         if is_unlocked:
-            unlocked.append(label)
+            unlocked_lines.append(f"✅ {label}")
         else:
-            locked.append(label)
+            locked_lines.append(f"🔒 {label}")
 
-    texto = "🏅 <b>CONQUISTAS</b>\n\n"
+    texto = (
+        "🏅 <b>CONQUISTAS</b>\n"
+        f"{title}\n\n"
+        f"📌 Progresso: <code>{_bar(progress, 12)}</code> <b>{unlocked_count}/{total}</b>\n"
+    )
 
-    # aviso de recompensa (sem mudar “essência” das suas mensagens — é só feedback do sistema)
     if gained > 0:
-        texto += f"🎁 <b>{gained} conquista(s) nova(s)!</b>\n"
-        texto += f"🎡 Você ganhou <b>+{gained}</b> dado(s) extra.\n\n"
+        texto += (
+            "\n🎁 <b>CONQUISTAS NOVAS!</b>\n"
+            f"🎡 Você ganhou <b>+{gained}</b> dado(s) extra.\n"
+        )
 
-    if unlocked:
-        texto += "✨ <b>Desbloqueadas</b>\n"
-        for label in unlocked:
-            texto += f"✅ {label}\n"
-        texto += "\n"
+    if unlocked_lines:
+        texto += "\n✨ <b>Desbloqueadas</b>\n" + "\n".join(unlocked_lines) + "\n"
 
-    texto += "🧩 <b>Em progresso</b>\n"
-    if locked:
-        for label in locked:
-            texto += f"🔒 {label}\n"
-    else:
-        texto += "✅ Você já desbloqueou todas.\n"
+    texto += "\n🧩 <b>Em progresso</b>\n"
+    texto += "\n".join(locked_lines) if locked_lines else "✅ Você já desbloqueou todas."
 
-    await update.message.reply_html(texto)
+    # manda com imagem
+    try:
+        await update.message.reply_photo(
+            photo=CONQUISTAS_IMAGE,
+            caption=texto,
+            parse_mode="HTML",
+        )
+    except Exception:
+        await update.message.reply_html(texto)
     
         
 # ==================================================
@@ -4670,6 +4718,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
