@@ -2811,22 +2811,20 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # from datetime import datetime
 # from zoneinfo import ZoneInfo
 # import aiohttp
-# from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-# from telegram.ext import ContextTypes
+# from telegram imp
+
+# ==================================================
+# /dado + callbacks — SOMENTE DADO (01/04/07/10/13/16/19/22) cap 24
+# ==================================================
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
-# =========================
-# CONFIG
-# =========================
-# DADOS (saldo normal do /dado) — recarga 00/04/08/12/16/20
-DADO_MAX_BALANCE = 18
+# 8 recargas/dia, acumulativo até 24 (3 dias)
+DADO_MAX_BALANCE = 24
 DADO_NEW_USER_START = 4
 DADO_EXPIRE_SECONDS = 5 * 60
 
-# GIROS (extra_dado) — recarga 01/04/07/10/13/16/19/22 (8 slots/dia) cap 24 (3 dias)
-GIRO_MAX_BALANCE = 24
-GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]
+DADO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # horários SP
 
 CMD_ANTIFLOOD_SECONDS = 3
 BTN_ANTIFLOOD_SECONDS = 2
@@ -2836,7 +2834,6 @@ DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7A
 
 _REFRESH_LOCK = asyncio.Lock()
 
-# Locks (processo)
 _dado_roll_locks: dict[int, asyncio.Lock] = {}
 _user_dado_locks: dict[int, asyncio.Lock] = {}
 
@@ -2854,28 +2851,13 @@ def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
         _user_dado_locks[user_id] = lock
     return lock
 
-
-# =========================
-# TIME / SLOTS
-# =========================
 def _format_time_sp() -> str:
     return datetime.now(tz=SP_TZ).strftime("%H:%M")
 
-def _now_slot_sp_4h(ts: float | None = None) -> int:
+def _now_dado_slot_sp(ts: float | None = None) -> int:
     """
-    Slot 4h (SP): 00/04/08/12/16/20
-    Retorna um inteiro crescente.
-    """
-    if ts is None:
-        ts = time.time()
-    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
-    offset = int(now_sp.utcoffset().total_seconds())
-    return int((int(ts) + offset) // (4 * 3600))
-
-def _now_giro_slot_sp(ts: float | None = None) -> int:
-    """
-    Slot GIRO (SP): 01/04/07/10/13/16/19/22 (8 slots/dia)
-    Retorna dia*8 + idx, crescente.
+    Slot do DADO baseado em SP: 01/04/07/10/13/16/19/22 (8 slots/dia)
+    Retorna (dia*8 + idx), crescente.
     """
     if ts is None:
         ts = time.time()
@@ -2886,7 +2868,7 @@ def _now_giro_slot_sp(ts: float | None = None) -> int:
     m = now_sp.minute
 
     idx = -1
-    for i, hh in enumerate(GIRO_HOURS):
+    for i, hh in enumerate(DADO_HOURS):
         if (h > hh) or (h == hh and m >= 0):
             idx = i
 
@@ -2896,21 +2878,19 @@ def _now_giro_slot_sp(ts: float | None = None) -> int:
 
     return day_id * 8 + idx
 
-
-# =========================
-# REFRESH BALANCES
-# =========================
 def _refresh_user_dado_balance(user_id: int) -> int:
     """
-    Atualiza saldo normal por slots 4h, cap 18.
+    Atualiza saldo do usuário baseado nos slots 01/04/07/10/13/16/19/22, cap 24.
     """
-    st = get_dado_state(user_id)  # database.py
+    st = get_dado_state(user_id)
     if not st:
         return 0
+
     balance = int(st["b"])
     last_slot = int(st["s"])
 
-    cur_slot = _now_slot_sp_4h()
+    cur_slot = _now_dado_slot_sp()
+
     if last_slot < 0:
         set_dado_state(user_id, balance, cur_slot)
         return balance
@@ -2923,75 +2903,25 @@ def _refresh_user_dado_balance(user_id: int) -> int:
     set_dado_state(user_id, new_balance, cur_slot)
     return new_balance
 
-def _refresh_user_giros(user_id: int) -> int:
-    """
-    Atualiza GIROS (extra_dado) pelos slots GIRO, cap 24.
-    Requer no database.py:
-      - get_extra_state(user_id)-> {"x":extra_dado,"s":extra_slot}
-      - set_extra_state(user_id, extra, slot)
-    """
-    from database import get_extra_state, set_extra_state
-
-    st = get_extra_state(user_id)
-    extra = int(st["x"])
-    last_slot = int(st["s"])
-
-    cur_slot = _now_giro_slot_sp()
-    if last_slot < 0:
-        set_extra_state(user_id, extra, cur_slot)
-        return extra
-
-    diff = cur_slot - last_slot
-    if diff <= 0:
-        return extra
-
-    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
-    set_extra_state(user_id, new_extra, cur_slot)
-    return new_extra
-
-
-# =========================
-# CONSUME / REFUND
-# =========================
-def _consume_one_attempt(user_id: int) -> str | None:
-    """
-    Consome 1 tentativa.
-    Prioriza DADO normal; se não tiver, usa GIRO.
-    Retorna "dado" | "giro" | None
-    """
+def _consume_one_die(user_id: int) -> bool:
     st = get_dado_state(user_id)
-    b = int(st["b"] if st else 0)
-    s = int(st["s"] if st else -1)
+    if not st:
+        return False
+    b = int(st["b"])
+    s = int(st["s"])
+    if b <= 0:
+        return False
+    set_dado_state(user_id, b - 1, s)
+    return True
 
-    if b > 0:
-        set_dado_state(user_id, b - 1, s)
-        return "dado"
-
-    from database import consume_extra_dado
-    if consume_extra_dado(user_id):
-        return "giro"
-
-    return None
-
-def _refund_attempt(user_id: int, kind: str | None):
-    """
-    Devolve a tentativa no MESMO tipo (quando possível).
-    """
-    kind = kind or "dado"
-    if kind == "giro":
-        from database import get_extra_state, set_extra_state
-        st = get_extra_state(user_id)
-        x = int(st["x"])
-        s = int(st["s"])
-        set_extra_state(user_id, min(GIRO_MAX_BALANCE, x + 1), s)
+def _refund_one_die(user_id: int):
+    st = get_dado_state(user_id)
+    if not st:
         return
+    b = int(st["b"])
+    s = int(st["s"])
+    set_dado_state(user_id, min(DADO_MAX_BALANCE, b + 1), s)
 
-    inc_dado_balance(user_id, 1, max_balance=DADO_MAX_BALANCE)
-
-
-# =========================
-# UI TEXTS
-# =========================
 def _nice_group_block_text() -> str:
     return (
         "🎲 <b>DADO</b>\n\n"
@@ -3000,12 +2930,12 @@ def _nice_group_block_text() -> str:
         "✨ No PV você escolhe o anime e ganha um personagem!"
     )
 
-def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
+def _nice_pick_text(dice_value: int, balance: int) -> str:
     return (
         "🎲 <b>DADO DA SORTE</b>\n\n"
         f"🔢 Resultado: <b>{dice_value}</b>\n"
         "🎴 Agora escolha um <b>anime</b> para sortear um personagem!\n\n"
-        f"🎟️ Dados: <b>{balance}</b> | 🎡 Giros: <b>{extra}</b>\n"
+        f"🎟️ Dados disponíveis: <b>{balance}</b>\n"
         "⏳ Você tem <b>5 minutos</b> para escolher."
     )
 
@@ -3017,10 +2947,7 @@ def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboard
         rows.append([InlineKeyboardButton(title, callback_data=f"dado_pick:{roll_id}:{aid}")])
     return InlineKeyboardMarkup(rows)
 
-
-# =========================
-# TOP CACHE (seu cache já existe no database.py)
-# =========================
+# ===== TOP CACHE (mantém seu cache do database.py) =====
 async def _fetch_top500_anime_from_anilist() -> list[dict]:
     query = """
     query ($page: Int) {
@@ -3039,7 +2966,6 @@ async def _fetch_top500_anime_from_anilist() -> list[dict]:
         for page in range(1, 11):
             async with session.post(ANILIST_API, json={"query": query, "variables": {"page": page}}) as resp:
                 data = await resp.json()
-
             media = data.get("data", {}).get("Page", {}).get("media", []) or []
             for m in media:
                 anime_id = m.get("id")
@@ -3068,11 +2994,7 @@ def _pick_random_animes(n: int) -> list[dict]:
     chosen = random.sample(all_items, n)
     return [{"id": int(x["anime_id"]), "title": x["title"]} for x in chosen]
 
-
-# =========================
-# CHARACTER CACHE (reduz falhas + menos chamadas)
-# - Se personagem não tiver foto, usa coverImage do anime (melhor do que "devolver")
-# =========================
+# ===== Character cache + fallback (para parar de “devolver dado” toda hora) =====
 _CHAR_POOL_CACHE: dict[int, dict] = {}  # anime_id -> {"exp":ts, "title":str, "cover":str|None, "chars":[...]}
 
 def _cache_get_pool(anime_id: int) -> dict | None:
@@ -3157,9 +3079,9 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> dict 
 
 async def _get_random_character_from_anime(anime_id: int) -> dict | None:
     """
-    Sempre tenta entregar algo:
-    - Primeiro tenta personagem com foto
-    - Se não achar, usa cover do anime como imagem (não devolve tentativa)
+    Quase sempre retorna algo:
+    - tenta personagem com foto
+    - se não achar, usa capa do anime como imagem (não precisa devolver dado)
     """
     anime_id = int(anime_id)
 
@@ -3176,13 +3098,11 @@ async def _get_random_character_from_anime(anime_id: int) -> dict | None:
 
     random.shuffle(chars)
 
-    # 1) tenta achar com foto
     for c in chars[:120]:
         img = c.get("image")
         if isinstance(img, str) and img.startswith("http"):
             return {"id": int(c["id"]), "name": c["name"], "image": img, "anime_title": pool.get("title") or "Obra"}
 
-    # 2) fallback: usa cover do anime (melhor que “devolver”)
     cover = pool.get("cover") or DADO_FALLBACK_IMAGE
     c0 = chars[0]
     return {"id": int(c0["id"]), "name": c0["name"], "image": cover, "anime_title": pool.get("title") or "Obra"}
@@ -3211,14 +3131,14 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_lock = _get_user_dado_lock(user_id)
     async with user_lock:
         balance = _refresh_user_dado_balance(user_id)
-        extra = _refresh_user_giros(user_id)
 
-        if balance <= 0 and extra <= 0:
+        if balance <= 0:
             await update.message.reply_html(
                 "🎲 <b>DADO</b>\n\n"
-                "Você está sem dados/giros agora.\n\n"
-                "🕒 <b>Dados</b>: 00h, 04h, 08h, 12h, 16h, 20h\n"
-                "🎡 <b>Giros</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n\n"
+                "Você está sem dados agora.\n\n"
+                "🕒 Os dados chegam nos horários:\n"
+                "<b>01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h</b> (SP)\n"
+                "📦 Acumula até <b>24</b>.\n\n"
                 f"⏱ Agora: <b>{_format_time_sp()}</b>"
             )
             return
@@ -3228,9 +3148,8 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-        used = _consume_one_attempt(user_id)
-        if used is None:
-            await update.message.reply_html("⚠️ Não consegui consumir seu dado/giro agora. Tente novamente.")
+        if not _consume_one_die(user_id):
+            await update.message.reply_html("⚠️ Não consegui consumir seu dado agora. Tente novamente.")
             return
 
     dice_msg = await context.bot.send_dice(chat_id=chat.id, emoji="🎲")
@@ -3239,20 +3158,17 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     options = _pick_random_animes(dice_value)
     if not options:
-        _refund_attempt(user_id, used)
+        _refund_one_die(user_id)
         await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
         return
 
-    # salva também qual tipo foi consumido (pra devolver corretamente se expirar/der ruim)
-    payload = {"options": options, "used": used}
-    roll_id = create_dice_roll(user_id, dice_value, json.dumps(payload, ensure_ascii=False))
+    roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
 
     balance2 = _refresh_user_dado_balance(user_id)
-    extra2 = _refresh_user_giros(user_id)
 
     await update.message.reply_photo(
         photo=DADO_PICK_IMAGE,
-        caption=_nice_pick_text(dice_value, balance2, extra2),
+        caption=_nice_pick_text(dice_value, balance2),
         parse_mode="HTML",
         reply_markup=_anime_buttons_for_roll(roll_id, options),
     )
@@ -3260,7 +3176,6 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================================================
 # Callback: escolher anime do dado
-# callback_data = dado_pick:ROLL_ID:ANIME_ID
 # ==================================================
 async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -3289,7 +3204,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await q.answer()
         return
 
-    # pega roll e trava
     roll_lock = _get_roll_lock(roll_id)
     async with roll_lock:
         roll = get_dice_roll(roll_id)
@@ -3308,35 +3222,19 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await q.answer("Esse dado já foi usado.", show_alert=True)
             return
 
-        # expiração
         if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
             set_dice_roll_status(roll_id, "expired")
-
-            # devolve no tipo correto (vindo do options_json)
-            used_kind = "dado"
-            try:
-                payload = json.loads(roll.get("options_json") or "{}")
-                used_kind = payload.get("used") or "dado"
-            except Exception:
-                pass
-
-            _refund_attempt(user_id, used_kind)
-
+            _refund_one_die(user_id)
             try:
                 await q.message.edit_reply_markup(reply_markup=None)
             except Exception:
                 pass
-
-            await q.answer("Expirou! Devolvi sua tentativa ✅", show_alert=True)
+            await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
             return
 
-        # carrega payload
-        used_kind = "dado"
-        options: list[dict] = []
+        # valida opção
         try:
-            payload = json.loads(roll.get("options_json") or "{}")
-            used_kind = payload.get("used") or "dado"
-            options = payload.get("options") or []
+            options = json.loads(roll.get("options_json") or "[]")
         except Exception:
             options = []
 
@@ -3345,7 +3243,7 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await q.answer("Opção inválida.", show_alert=True)
             return
 
-        # “processing” pra não perder o roll se a API falhar
+        # marca processing (pra não “perder” se API falhar)
         ok_db = try_set_dice_roll_status(roll_id, expected="pending", new_status="processing")
         if not ok_db:
             await q.answer("Esse dado já foi usado.", show_alert=True)
@@ -3356,10 +3254,7 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception:
             pass
 
-    # =========================
-    # fora do lock: pega personagem (com fallback automático)
-    # tenta o anime escolhido + até mais 5 das opções (sem gastar outra tentativa)
-    # =========================
+    # tenta anime escolhido + até mais 5 opções (sem gastar outro dado)
     chosen_ids = [anime_id]
     for o in options:
         try:
@@ -3380,21 +3275,18 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
             break
 
     if not info:
-        # falhou geral -> devolve e volta status pra pending (não frustra)
+        # falhou geral -> devolve o dado e volta pending
         try:
             set_dice_roll_status(roll_id, "pending")
         except Exception:
             pass
-
-        _refund_attempt(user_id, used_kind)
-
+        _refund_one_die(user_id)
         await q.message.reply_html(
             "⚠️ <b>Hoje o AniList não retornou personagens válidos nas opções sorteadas.</b>\n"
-            "✅ Devolvi sua tentativa. Tenta novamente 🙂"
+            "✅ Devolvi seu dado. Tenta novamente 🙂"
         )
         return
 
-    # sucesso -> resolved
     set_dice_roll_status(roll_id, "resolved")
 
     char_id = int(info["id"])
@@ -5299,6 +5191,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
