@@ -2635,7 +2635,7 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Trava global curta (evita dois admins alterarem ao mesmo tempo em lote)
             async with _admin_ops_lock:
                 try:
-                    await log_setfoto(context, char_id, admin_id, url)
+                   set_global_character_image(...)
                 except Exception:
                     # não muda textos; só evita crash
                     return
@@ -5341,6 +5341,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
