@@ -88,6 +88,7 @@ from database import (
     get_top_by_level,
     get_top_by_coins,
     get_top_by_collection,
+    get_user_stats,
 )
 
 from zoneinfo import ZoneInfo
@@ -4361,6 +4362,193 @@ async def callback_ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception:
         await q.answer("Não consegui atualizar agora.", show_alert=True)
+
+# ==================================================
+# /stats e /conquistas
+# ==================================================
+
+def _bar(progress: float, width: int = 10) -> str:
+    progress = max(0.0, min(1.0, float(progress)))
+    filled = int(round(progress * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    try:
+        s = get_user_stats(user_id)
+    except Exception:
+        await update.message.reply_html("❌ Não consegui carregar suas stats agora.")
+        return
+
+    # Progresso do nível (aprox) baseado no COMANDOS_POR_NIVEL
+    comandos = int(s["commands"])
+    nivel_atual = int(s["level"])
+    base = (nivel_atual - 1) * COMANDOS_POR_NIVEL
+    prox = nivel_atual * COMANDOS_POR_NIVEL
+    cur_in_level = max(comandos - base, 0)
+    need = max(prox - comandos, 0)
+    denom = max(prox - base, 1)
+    pct = cur_in_level / denom
+
+    texto = (
+        "📊 <b>STATS</b>\n\n"
+        f"👤 <b>{s['nick']}</b>\n\n"
+        f"⭐ <i>Nível</i>: <b>{nivel_atual}</b>\n"
+        f"⌨️ <i>Comandos usados</i>: <b>{comandos}</b>\n"
+        f"📈 <i>Progresso</i>: <code>{_bar(pct, 10)}</code> <b>{int(pct*100)}%</b>\n"
+        f"⏳ <i>Faltam</i>: <b>{need}</b> comandos\n\n"
+        f"🪙 <i>Coins</i>: <b>{int(s['coins'])}</b>\n"
+        f"🎟️ <i>Dados</i>: <b>{int(s['dado_balance'])}</b>\n"
+        f"🎡 <i>Giros</i>: <b>{int(s['extra_dado'])}</b>\n\n"
+        f"📚 <i>Coleção (únicos)</i>: <b>{int(s['collection_unique'])}</b>\n"
+        f"📦 <i>Coleção (total)</i>: <b>{int(s['collection_total_qty'])}</b>\n\n"
+        "🎲 <b>Dado</b>\n"
+        f"• Total: <b>{int(s['dice']['total'])}</b>\n"
+        f"• Resolved: <b>{int(s['dice']['resolved'])}</b>\n"
+        f"• Expired: <b>{int(s['dice']['expired'])}</b>\n\n"
+        "🔁 <b>Trocas</b>\n"
+        f"• Total: <b>{int(s['trades']['total'])}</b>\n"
+        f"• Aceitas: <b>{int(s['trades']['aceita'])}</b>\n"
+        f"• Pendentes: <b>{int(s['trades']['pendente'])}</b>\n"
+        f"• Recusadas: <b>{int(s['trades']['recusada'])}</b>\n"
+        f"• Falhou: <b>{int(s['trades']['falhou'])}</b>\n"
+    )
+
+    await update.message.reply_html(texto)
+
+
+async def conquistas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    try:
+        s = get_user_stats(user_id)
+    except Exception:
+        await update.message.reply_html("❌ Não consegui carregar suas conquistas agora.")
+        return
+
+    # Regras (todas derivadas do seu sistema atual)
+    unlocked = []
+    locked = []
+
+    def chk(ok: bool, label: str):
+        (unlocked if ok else locked).append(("✅" if ok else "🔒", label))
+
+    # nível
+    lvl = int(s["level"])
+    chk(lvl >= 5, "Nível 5")
+    chk(lvl >= 10, "Nível 10")
+    chk(lvl >= 25, "Nível 25")
+
+    # coleção (únicos)
+    cu = int(s["collection_unique"])
+    chk(cu >= 10, "10 personagens")
+    chk(cu >= 50, "50 personagens")
+    chk(cu >= 100, "100 personagens")
+
+    # coins
+    coins = int(s["coins"])
+    chk(coins >= 10, "10 coins")
+    chk(coins >= 100, "100 coins")
+    chk(coins >= 500, "500 coins")
+
+    # dado
+    dice_total = int(s["dice"]["total"])
+    dice_res = int(s["dice"]["resolved"])
+    chk(dice_total >= 1, "Primeiro dado")
+    chk(dice_res >= 10, "10 ganhos no dado")
+    chk(dice_res >= 50, "50 ganhos no dado")
+
+    # trocas aceitas
+    tr_ok = int(s["trades"]["aceita"])
+    chk(tr_ok >= 1, "Primeira troca aceita")
+    chk(tr_ok >= 5, "5 trocas aceitas")
+    chk(tr_ok >= 20, "20 trocas aceitas")
+
+    texto = "🏅 <b>CONQUISTAS</b>\n\n"
+
+    if unlocked:
+        texto += "✨ <b>Desbloqueadas</b>\n"
+        for em, label in unlocked:
+            texto += f"{em} {label}\n"
+        texto += "\n"
+
+    texto += "🧩 <b>Em progresso</b>\n"
+    if locked:
+        for em, label in locked:
+            texto += f"{em} {label}\n"
+    else:
+        texto += "✅ Você já desbloqueou todas.\n"
+
+    await update.message.reply_html(texto)
+
+# ================================
+# CONQUISTAS (persistente + recompensa segura)
+# ================================
+
+def list_user_achievement_keys(user_id: int) -> set[str]:
+    cursor.execute("""
+        SELECT achievement_key
+        FROM user_achievements
+        WHERE user_id=%s
+    """, (int(user_id),))
+    rows = cursor.fetchall() or []
+    return {str(r["achievement_key"]) for r in rows if r.get("achievement_key")}
+
+
+def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extra_dado_per: int = 1) -> int:
+    """
+    Insere conquistas novas e recompensa +extra_dado por conquista nova.
+    Retorna quantas conquistas foram realmente novas (e recompensadas).
+    - Seguro contra duplo clique / spam: PK (user_id, achievement_key) + ON CONFLICT DO NOTHING
+    - Transação: ou insere+recompensa, ou nada
+    """
+    if not new_keys:
+        return 0
+
+    now = int(time.time())
+    new_keys = [str(k) for k in new_keys if k]
+
+    try:
+        cursor.execute("BEGIN")
+
+        inserted = 0
+        for k in new_keys:
+            cursor.execute("""
+                INSERT INTO user_achievements (user_id, achievement_key, unlocked_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, achievement_key) DO NOTHING
+            """, (int(user_id), k, now))
+            # rowcount = 1 se inseriu, 0 se já existia
+            inserted += int(cursor.rowcount or 0)
+
+        if inserted > 0 and reward_extra_dado_per > 0:
+            cursor.execute("""
+                UPDATE users
+                SET extra_dado = COALESCE(extra_dado,0) + %s
+                WHERE user_id=%s
+            """, (int(inserted * reward_extra_dado_per), int(user_id)))
+
+        cursor.execute("COMMIT")
+        return inserted
+
+    except Exception:
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
         
 # ==================================================
 # 25) MAIN (handlers)
@@ -4497,6 +4685,8 @@ def main():
     app.add_handler(CommandHandler("trocas", trocas))
     app.add_handler(CommandHandler("ranking", ranking))
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:(level|coins|colecao):"))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("conquistas", conquistas))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -4507,6 +4697,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
