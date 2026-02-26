@@ -11,7 +11,7 @@ import time
 import json
 import random
 import asyncio
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Set
 
 import aiohttp
 from telethon import TelegramClient
@@ -114,34 +114,114 @@ if not CANAL_OBRIGATORIO:
 # ==================================================
 # 3) TELETHON CLIENT (busca em canais)
 # ==================================================
+# CRÍTICO: Telethon precisa ser iniciado (connect) antes de usar iter_messages.
+# Vamos iniciar no startup do PTB mais abaixo (quando você mandar a parte do main/app).
 client = TelegramClient("sessao_busca", API_ID, API_HASH)
+
+# Locks por canal para evitar 100 buscas simultâneas no mesmo canal (protege rate limit e CPU)
+_channel_search_locks: Dict[str, asyncio.Lock] = {}
+_channel_search_cache: Dict[Tuple[str, str], Tuple[float, Optional[int]]] = {}
+CHANNEL_SEARCH_TTL = 20  # segundos (cache curto anti-spam)
+
+def _get_lock_for_channel(canal: str) -> asyncio.Lock:
+    lock = _channel_search_locks.get(canal)
+    if lock is None:
+        lock = asyncio.Lock()
+        _channel_search_locks[canal] = lock
+    return lock
 
 async def buscar_post(canal: str, termo: str) -> Optional[int]:
     """Retorna o message_id do primeiro post que bater no search."""
-    async for msg in client.iter_messages(canal, search=termo):
-        return msg.id
-    return None
+    # Cache curto: se 100 pessoas buscarem a mesma coisa, 99 não batem no Telegram de novo
+    key = (canal, termo.lower().strip())
+    now = time.time()
+    cached = _channel_search_cache.get(key)
+    if cached and (now - cached[0] <= CHANNEL_SEARCH_TTL):
+        return cached[1]
+
+    lock = _get_lock_for_channel(canal)
+    async with lock:
+        # Recheca cache após pegar lock (evita thundering herd)
+        cached = _channel_search_cache.get(key)
+        if cached and (time.time() - cached[0] <= CHANNEL_SEARCH_TTL):
+            return cached[1]
+
+        try:
+            async for msg in client.iter_messages(canal, search=termo):
+                _channel_search_cache[key] = (time.time(), msg.id)
+                return msg.id
+        except Exception:
+            _channel_search_cache[key] = (time.time(), None)
+            return None
 
 # ==================================================
-# 4) ANTI-SPAM
+# 4) ANTI-SPAM (MELHORADO PARA CONCORRÊNCIA)
 # ==================================================
-ANTI_SPAM_TIME = 5  # segundos
-last_command_time: Dict[int, float] = {}
+# O seu anti_spam original era global e simples — funciona, mas falha em:
+# - comandos diferentes (um bloqueia o outro)
+# - callbacks spammados
+# - concorrência (2 tasks podem passar “ao mesmo tempo” em casos extremos)
+#
+# Aqui vira rate limit por "chave" (ex.: comando/callback) e com lock por usuário.
 
-def anti_spam(user_id: int) -> bool:
-    agora = time.time()
-    if user_id in last_command_time and (agora - last_command_time[user_id] < ANTI_SPAM_TIME):
+ANTI_SPAM_TIME = 5  # segundos (mantive o mesmo valor)
+_rate_state: Dict[Tuple[int, str], float] = {}
+_user_rate_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_user_lock(user_id: int) -> asyncio.Lock:
+    lock = _user_rate_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_rate_locks[user_id] = lock
+    return lock
+
+async def anti_spam(user_id: int, key: str = "global", window: int = ANTI_SPAM_TIME) -> bool:
+    """
+    Rate limit por usuário + chave.
+    Ex:
+      await anti_spam(user_id, "cmd:/dado", 3)
+      await anti_spam(user_id, "cb:dado_pick", 2)
+    """
+    now = time.time()
+    lock = _get_user_lock(user_id)
+    async with lock:
+        k = (user_id, key)
+        last = _rate_state.get(k, 0.0)
+        if now - last < window:
+            return False
+        _rate_state[k] = now
+        return True
+
+# Anti “double click” / callback duplicado (mesmo callback_query.id)
+_seen_callback_ids: Dict[int, float] = {}
+CALLBACK_DEDUPE_TTL = 30  # segundos
+
+def callback_dedupe(callback_query_id: int) -> bool:
+    """
+    Retorna True se ainda NÃO vimos esse callback_query.id (ou seja, pode processar).
+    Retorna False se for repetido (duplo clique / retry do Telegram).
+    """
+    now = time.time()
+    # limpeza barata
+    if len(_seen_callback_ids) > 5000:
+        cutoff = now - CALLBACK_DEDUPE_TTL
+        for k, ts in list(_seen_callback_ids.items()):
+            if ts < cutoff:
+                _seen_callback_ids.pop(k, None)
+
+    ts = _seen_callback_ids.get(callback_query_id)
+    if ts and (now - ts <= CALLBACK_DEDUPE_TTL):
         return False
-    last_command_time[user_id] = agora
+    _seen_callback_ids[callback_query_id] = now
     return True
 
 # ==================================================
- # 5) ADMINS
+# 5) ADMINS
 # ==================================================
-def parse_admins(raw: str) -> set:
+def parse_admins(raw: str) -> Set[int]:
     if not raw:
         return set()
-    ids = set()
+    ids: Set[int] = set()
     for part in raw.split(","):
         part = part.strip()
         if part.isdigit():
@@ -161,13 +241,26 @@ def get_admin_photo(user_id: int) -> Optional[str]:
 # ==================================================
 # 6) CANAL OBRIGATÓRIO (TRAVA)
 # ==================================================
+# Cache de membership para não chamar get_chat_member toda hora (caro e rate-limited)
+_member_cache: Dict[int, Tuple[float, bool]] = {}
+MEMBER_CACHE_TTL = 120  # segundos
+
 async def usuario_no_canal(bot, user_id: int) -> bool:
     if not CANAL_OBRIGATORIO:
         return True  # se não configurou, não bloqueia
+
+    now = time.time()
+    cached = _member_cache.get(user_id)
+    if cached and (now - cached[0] <= MEMBER_CACHE_TTL):
+        return cached[1]
+
     try:
         membro = await bot.get_chat_member(CANAL_OBRIGATORIO, user_id)
-        return membro.status in ["member", "administrator", "creator"]
-    except:
+        ok = membro.status in ["member", "administrator", "creator"]
+        _member_cache[user_id] = (time.time(), ok)
+        return ok
+    except Exception:
+        _member_cache[user_id] = (time.time(), False)
         return False
 
 async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -190,44 +283,110 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     return True
 
 # ==================================================
- # 7) SISTEMA DE NÍVEL (SALVO NO POSTGRES)
+# 7) SISTEMA DE NÍVEL (SALVO NO POSTGRES)
 # ==================================================
 COMANDOS_POR_NIVEL = 100
 
+# Lock por usuário: impede corrida (2 updates simultâneos do mesmo user duplicarem nível/mensagens)
+_level_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_level_lock(user_id: int) -> asyncio.Lock:
+    lock = _level_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _level_locks[user_id] = lock
+    return lock
+
 async def registrar_comando(update: Update):
-    user_id = update.effective_user.id
-    ensure_user_row(user_id, update.effective_user.first_name)
-
-    row = get_user_row(user_id)
-    commands = int(row["commands"] or 0) + 1
-    level = int(row["level"] or 1)
-
-    novo_nivel = (commands // COMANDOS_POR_NIVEL) + 1
-    if novo_nivel > level:
-        # atualiza
-        cursor.execute(
-            "UPDATE users SET commands=%s, level=%s WHERE user_id=%s",
-            (commands, novo_nivel, user_id)
-        )
-        db.commit()
-
-        mensagem = (
-            "🎉 <b>LEVEL UP!</b>\n\n"
-            f"✨ Parabéns <b>{row['nick']}</b>!\n"
-            f"⬆️ Você alcançou o <b>Nível {novo_nivel}</b>!\n\n"
-            "🚀 Continue usando o bot!"
-        )
-        if update.message:
-            await update.message.reply_html(mensagem)
+    """
+    Incrementa contador de comandos e sobe o nível quando necessário.
+    - Atômico por usuário (lock)
+    - Evita cursor global (crítico em concorrência)
+    """
+    user = update.effective_user
+    if not user:
         return
 
-    cursor.execute("UPDATE users SET commands=%s WHERE user_id=%s", (commands, user_id))
-    db.commit()
+    user_id = user.id
+    ensure_user_row(user_id, user.first_name)
+
+    # Segurança: se update vier sem message, não tentamos responder
+    lock = _get_level_lock(user_id)
+    async with lock:
+        cur = db.cursor()
+        try:
+            # 1) trava a linha do usuário (FOR UPDATE) e calcula tudo de forma consistente
+            cur.execute(
+                """
+                WITH old AS (
+                    SELECT
+                        COALESCE(commands, 0) AS old_commands,
+                        COALESCE(level, 1)    AS old_level,
+                        COALESCE(nick, %s)    AS nick_safe
+                    FROM users
+                    WHERE user_id = %s
+                    FOR UPDATE
+                ),
+                upd AS (
+                    UPDATE users
+                    SET
+                        commands = (SELECT old_commands FROM old) + 1,
+                        level = GREATEST(
+                            (SELECT old_level FROM old),
+                            (((SELECT old_commands FROM old) + 1) / %s) + 1
+                        )
+                    WHERE user_id = %s
+                    RETURNING commands, level
+                )
+                SELECT
+                    (SELECT old_level FROM old)    AS old_level,
+                    (SELECT nick_safe FROM old)    AS nick_safe,
+                    (SELECT commands FROM upd)     AS commands,
+                    (SELECT level FROM upd)        AS level
+                ;
+                """,
+                (user.first_name, user_id, COMANDOS_POR_NIVEL, user_id),
+            )
+            data = cur.fetchone()
+            db.commit()
+
+            if not data:
+                return
+
+            old_level = int(data["old_level"])
+            new_level = int(data["level"])
+            nick_safe = data.get("nick_safe") or user.first_name
+
+            if new_level > old_level:
+                mensagem = (
+                    "🎉 <b>LEVEL UP!</b>\n\n"
+                    f"✨ Parabéns <b>{nick_safe}</b>!\n"
+                    f"⬆️ Você alcançou o <b>Nível {new_level}</b>!\n\n"
+                    "🚀 Continue usando o bot!"
+                )
+                if update.message:
+                    await update.message.reply_html(mensagem)
+
+        except Exception:
+            db.rollback()
+            # Não explode o bot por falha de DB (em escala, isso mata a estabilidade)
+            return
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
 
 # ==================================================
- # 8) /start
+# 8) /start
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Rate limit leve no /start (não muda texto, só protege spam)
+    if update.effective_user:
+        ok = await anti_spam(update.effective_user.id, key="cmd:/start", window=3)
+        if not ok:
+            return
+
     texto = (
         "🏴‍☠️ <b>Source Baltigo</b>\n"
         "Seu hub de <b>animes, mangás e personagens</b>.\n\n"
@@ -247,12 +406,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⚔️ QG Baltigo", url="t.me/QG_BALTIGO")]
     ])
 
-    await update.message.reply_photo(
-        photo="https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg",
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=teclado
-    )
+    if update.message:
+        await update.message.reply_photo(
+            photo="https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg",
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=teclado
+        )
 
 # ==================================================
 # 9) /login (AniList OAuth)
@@ -264,15 +424,30 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
 OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
 
 def make_state(user_id: int) -> str:
-    # state = user_id.timestamp.signature  (simples e suficiente)
+    # state = user_id.timestamp.signature
+    # Segurança: se o secret estiver vazio, state vira previsível e abre brecha
     ts = str(int(time.time()))
     payload = f"{user_id}.{ts}".encode()
-    sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload, hashlib.sha256).digest()
+
+    # Se SECRET não existir, ainda gera algo, mas /login vai bloquear com aviso (sem quebrar bot)
+    secret = (OAUTH_STATE_SECRET or "MISSING_SECRET").encode()
+
+    sig = hmac.new(secret, payload, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(payload + b"." + sig).decode().rstrip("=")
 
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
+    if update.effective_user:
+        ok = await anti_spam(update.effective_user.id, key="cmd:/login", window=5)
+        if not ok:
+            return
 
+    # Validações de config (sem remover funcionalidade; só impede rodar inseguro/quebrado)
+    if not ANILIST_CLIENT_ID or not PUBLIC_BASE_URL or not OAUTH_STATE_SECRET:
+        if update.message:
+            await update.message.reply_text("🔑 Clique para conectar sua conta AniList:")
+        return
+
+    telegram_id = update.effective_user.id
     state = make_state(telegram_id)
     redirect_uri = f"{PUBLIC_BASE_URL}/callback"
 
@@ -285,13 +460,32 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Conectar com AniList", url=url)]])
-    await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
+    if update.message:
+        await update.message.reply_text("🔑 Clique para conectar sua conta AniList:", reply_markup=keyboard)
 
 # ==================================================
 # 10) /adminfoto (PERSISTENTE + TESTE)
 # ==================================================
+_adminfoto_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_adminfoto_lock(user_id: int) -> asyncio.Lock:
+    lock = _adminfoto_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _adminfoto_locks[user_id] = lock
+    return lock
+
 async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user = update.effective_user
+    if not user or not update.message:
+        return
+
+    user_id = user.id
+
+    # Anti-spam específico
+    ok = await anti_spam(user_id, key="cmd:/adminfoto", window=5)
+    if not ok:
+        return
 
     if not is_admin(user_id):
         await update.message.reply_html(
@@ -311,54 +505,91 @@ async def adminfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = context.args[0].strip()
 
+    if len(url) > 500:
+        await update.message.reply_html("❌ Envie um link válido começando com http:// ou https://")
+        return
 
     if not (url.startswith("http://") or url.startswith("https://")):
         await update.message.reply_html("❌ Envie um link válido começando com http:// ou https://")
         return
 
-    ensure_user_row(user_id, update.effective_user.first_name)
+    ensure_user_row(user_id, user.first_name)
 
-    # salva no banco
-    from database import set_admin_photo
-    set_admin_photo(user_id, url)
+    # Serializa por usuário pra evitar gravações concorrentes e leitura inconsistente
+    lock = _get_adminfoto_lock(user_id)
+    async with lock:
+        from database import set_admin_photo, get_admin_photo_db
 
-    # confirma que salvou (lê de volta)
-    from database import get_admin_photo_db
-    saved = get_admin_photo_db(user_id)
+        # salva no banco
+        try:
+            set_admin_photo(user_id, url)
+        except Exception:
+            # não altera textos; apenas falha silenciosa/segura
+            await update.message.reply_html("❌ Não consegui salvar sua foto agora.")
+            return
 
-    if not saved:
-        await update.message.reply_html("❌ Não consegui salvar sua foto agora.")
-        return
+        # confirma que salvou (lê de volta)
+        try:
+            saved = get_admin_photo_db(user_id)
+        except Exception:
+            saved = None
 
-    # tenta enviar a foto — se o link não for direto, o Telegram vai falhar aqui
-    try:
-        await update.message.reply_photo(
-            photo=saved,
-            caption=(
-                "👑 <b>Foto de admin definida!</b>\n\n"
-                "✨ Agora seu perfil usará essa imagem.\n"
-                "👀 Veja com <code>/perfil</code>"
-            ),
-            parse_mode="HTML"
-        )
-    except Exception:
-        # Se não conseguir mandar como foto, manda como texto (mas a foto ficou salva)
-        await update.message.reply_html(
-            "⚠️ Salvei sua foto, mas o Telegram não conseguiu enviar a prévia.\n\n"
-            "Isso acontece quando o link não é uma imagem direta.\n"
-            "Tente um link que termine com <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>.\n\n"
-            f"✅ Link salvo:\n<code>{saved}</code>"
-        )
+        if not saved:
+            await update.message.reply_html("❌ Não consegui salvar sua foto agora.")
+            return
+
+        # tenta enviar a foto — se o link não for direto, o Telegram vai falhar aqui
+        try:
+            await update.message.reply_photo(
+                photo=saved,
+                caption=(
+                    "👑 <b>Foto de admin definida!</b>\n\n"
+                    "✨ Agora seu perfil usará essa imagem.\n"
+                    "👀 Veja com <code>/perfil</code>"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception:
+            # Se não conseguir mandar como foto, manda como texto (mas a foto ficou salva)
+            await update.message.reply_html(
+                "⚠️ Salvei sua foto, mas o Telegram não conseguiu enviar a prévia.\n\n"
+                "Isso acontece quando o link não é uma imagem direta.\n"
+                "Tente um link que termine com <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>.\n\n"
+                f"✅ Link salvo:\n<code>{saved}</code>"
+            )
 
 # ==================================================
 # 11) PERFIL / NICK / NIVEL / FAVORITO (POSTGRES)
 # ==================================================
+
+# Locks por usuário para ações que escrevem em perfil (anti-race / anti-duplicação)
+_profile_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_profile_lock(user_id: int) -> asyncio.Lock:
+    lock = _profile_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _profile_locks[user_id] = lock
+    return lock
+
+
+# ------------------------------
+# /nick
+# ------------------------------
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    # rate limit específico
+    ok = await anti_spam(update.effective_user.id, key="cmd:/nick", window=4)
+    if not ok:
+        return
 
     await registrar_comando(update)
-    ensure_user_row(update.effective_user.id, update.effective_user.first_name)
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
 
     # se mandar só /nick
     if not context.args:
@@ -385,11 +616,9 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     raw = context.args[0].strip()
-
-    # normaliza para comparar (e salvar) em minúsculo
     nick_novo = raw.lower()
 
-    # regras: 3 a 16 chars (ajuste se quiser)
+    # regras: 3 a 16 chars
     if not (3 <= len(nick_novo) <= 16):
         await update.message.reply_html(
             "❌ <b>Tamanho inválido</b>\n\n"
@@ -410,30 +639,47 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    user_id = update.effective_user.id
-
-    # tenta salvar — se já existir, o Postgres vai bloquear por causa do índice UNIQUE
-    try:
-        cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
-        db.commit()
-
-    except Exception:
-        db.rollback()
-        await update.message.reply_html(
-            "🚫 <b>Nick indisponível</b>\n\n"
-            f"O nick <code>{nick_novo}</code> já está em uso.\n"
-            "Tente outro 🙂"
-        )
-        return
+    lock = _get_profile_lock(user_id)
+    async with lock:
+        cur = db.cursor()
+        try:
+            # Atualiza nick de forma segura (cursor por operação).
+            # Conflito de UNIQUE deve cair no except e manter texto original.
+            cur.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
+            db.commit()
+        except Exception:
+            db.rollback()
+            await update.message.reply_html(
+                "🚫 <b>Nick indisponível</b>\n\n"
+                f"O nick <code>{nick_novo}</code> já está em uso.\n"
+                "Tente outro 🙂"
+            )
+            return
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
 
     await update.message.reply_html(
         "✅ <b>Nick definido!</b>\n\n"
         f"Agora seu nick é: <code>{nick_novo}</code>"
     )
 
+
+# ------------------------------
+# /nivel
+# ------------------------------
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/nivel", window=3)
+    if not ok:
+        return
+
     await registrar_comando(update)
 
     user_id = update.effective_user.id
@@ -454,58 +700,21 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ <i>Faltam</i>: <b>{faltam}</b> comandos"
     )
 
+
+# ------------------------------
+# /perfil
+# CRÍTICO: havia 2 defs. Agora só existe UMA.
+# ------------------------------
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
-    await registrar_comando(update)
-
-    viewer_id = update.effective_user.id
-    ensure_user_row(viewer_id, update.effective_user.first_name)
-
-    # 1) decidir qual perfil mostrar:
-    # - /perfil nick -> outro
-    # - /perfil -> você
-    if context.args:
-        alvo_nick = context.args[0].strip()
-        alvo_row = get_user_by_nick(alvo_nick)
-
-        if not alvo_row:
-            await update.message.reply_html(
-                "❌ <b>Usuário não encontrado</b>\n\n"
-                "Verifique se o nick está correto.\n"
-                "📌 Exemplo: <code>/perfil bredesozail</code>"
-            )
-            return
-    else:
-        alvo_row = get_user_row(viewer_id)
-
-    # fallback
-    if not alvo_row:
-        await update.message.reply_text("❌ Não consegui carregar o perfil agora.")
+    if not update.effective_user or not update.message:
         return
 
-    # 2) dados comuns do alvo
-    user_id = int(alvo_row["user_id"])
-    nick = alvo_row.get("nick") or "User"
-
-    fav_name = alvo_row.get("fav_name")
-    fav_image = alvo_row.get("fav_image")
-
-    private_on = bool(alvo_row.get("private_profile"))
-
-    # título (admin/user) do dono do perfil
-    titulo = "👤 | <i>Admin</i>" if is_admin(user_id) else "👤 | <i>User</i>"
-
-    # foto: admin_photo (do banco) tem prioridade, depois fav_image
-    from database import get_admin_photo_db
-    foto = get_admin_photo_db(user_id) or fav_image
-
-   # ==================================================
-# PERFIL
-# ==================================================
-async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
+    ok = await anti_spam(update.effective_user.id, key="cmd:/perfil", window=3)
+    if not ok:
         return
+
     await registrar_comando(update)
 
     viewer_id = update.effective_user.id
@@ -514,7 +723,10 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1) decidir qual perfil mostrar
     if context.args:
         alvo_nick = context.args[0].strip()
-        alvo_row = get_user_by_nick(alvo_nick)
+        try:
+            alvo_row = get_user_by_nick(alvo_nick)
+        except Exception:
+            alvo_row = None
 
         if not alvo_row:
             await update.message.reply_html(
@@ -541,11 +753,11 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # título (admin/user)
     titulo = "👤 | <i>Admin</i>" if is_admin(user_id) else "👤 | <i>User</i>"
 
-    # FOTO SEMPRE DEFINIDA ANTES (isso evita “parou de funcionar”)
-    # prioridade: admin_photo (persistente) > fav_image
+    # prioridade de foto: admin_photo persistente > fav_image
     foto = None
     try:
-        foto = get_admin_photo(user_id) or fav_image
+        from database import get_admin_photo_db
+        foto = get_admin_photo_db(user_id) or fav_image
     except Exception:
         foto = fav_image
 
@@ -594,12 +806,19 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(texto)
 
 
-# ==================================================
+# ------------------------------
 # /privado
-# ==================================================
+# ------------------------------
 async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/privado", window=4)
+    if not ok:
+        return
+
     await registrar_comando(update)
 
     user_id = update.effective_user.id
@@ -620,16 +839,33 @@ async def privado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Use <code>/privado on</code> ou <code>/privado off</code>.")
         return
 
-    set_private_profile(user_id, opt == "on")
+    lock = _get_profile_lock(user_id)
+    async with lock:
+        try:
+            set_private_profile(user_id, opt == "on")
+        except Exception:
+            # sem mudar texto, apenas não explode
+            return
 
     if opt == "on":
         await update.message.reply_html("🔐 <b>Perfil privado ativado!</b>")
     else:
         await update.message.reply_html("🔓 <b>Perfil privado desativado!</b>")
 
+
+# ------------------------------
+# /favoritar
+# ------------------------------
 async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/favoritar", window=4)
+    if not ok:
+        return
+
     await registrar_comando(update)
 
     if not context.args:
@@ -663,15 +899,29 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from database import get_collection_character, set_favorite_from_collection
 
-    item = get_collection_character(user_id, char_id)
-    if not item:
-        await update.message.reply_html(
-            "❌ <b>Você não tem esse personagem na sua coleção.</b>\n\n"
-            "Só dá pra favoritar personagens que você já possui."
-        )
-        return
+    lock = _get_profile_lock(user_id)
+    async with lock:
+        # re-checa dentro do lock para evitar corrida (2 /favoritar simultâneos)
+        row = get_user_row(user_id)
+        if row["fav_name"]:
+            await update.message.reply_html(
+                "⚠️ Você já tem um personagem favorito.\n"
+                "Use <code>/desfavoritar</code> para trocar."
+            )
+            return
 
-    set_favorite_from_collection(user_id, item["character_name"], item["image"])
+        item = get_collection_character(user_id, char_id)
+        if not item:
+            await update.message.reply_html(
+                "❌ <b>Você não tem esse personagem na sua coleção.</b>\n\n"
+                "Só dá pra favoritar personagens que você já possui."
+            )
+            return
+
+        try:
+            set_favorite_from_collection(user_id, item["character_name"], item["image"])
+        except Exception:
+            return
 
     await update.message.reply_photo(
         photo=item["image"],
@@ -684,9 +934,19 @@ async def favoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ------------------------------
+# /desfavoritar
+# ------------------------------
 async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/desfavoritar", window=4)
+    if not ok:
+        return
+
     await registrar_comando(update)
 
     user_id = update.effective_user.id
@@ -698,10 +958,15 @@ async def desfavoritar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     from database import clear_favorite
-    clear_favorite(user_id)
+
+    lock = _get_profile_lock(user_id)
+    async with lock:
+        try:
+            clear_favorite(user_id)
+        except Exception:
+            return
 
     await update.message.reply_html("💔 Personagem removido.")
-
 # ==================================================
  # 12) /anime e /manga (busca no canal)
 # ==================================================
@@ -1507,21 +1772,67 @@ def _is_direct_image_url(url: str) -> bool:
 #      /cards s 15125
 # ==================================================
 
-import time
-import re
 import secrets
 from typing import Optional, List, Dict, Tuple
 
-import aiohttp
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 
-from database import cursor  # usa seu cursor (RealDictCursor)
-# usa seu ANILIST_API e checar_canal (já existem no seu código)
-
+# usa seu ANILIST_API, checar_canal, registrar_comando, anti_spam, callback_dedupe, db
+# e o seu ensure_user_row já existente no arquivo.
 
 # ================================
-# DB helper: qty_map em batch
+# Infra: sessão HTTP reutilizável + cache + locks
+# ================================
+_ANILIST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+# cache curto para evitar bater no AniList em spam/concorrência
+_anilist_cache: Dict[Tuple[str, str, int], Tuple[float, Optional[dict]]] = {}
+ANILIST_CACHE_TTL = 20  # segundos
+
+_anilist_locks: Dict[Tuple[str, str], asyncio.Lock] = {}
+def _get_anilist_lock(kind: str, key: str) -> asyncio.Lock:
+    k = (kind, key)
+    lock = _anilist_locks.get(k)
+    if lock is None:
+        lock = asyncio.Lock()
+        _anilist_locks[k] = lock
+    return lock
+
+# trava por token do /cards: impede 100 cliques simultâneos virar 100 refetch
+_cards_token_locks: Dict[str, asyncio.Lock] = {}
+def _get_cards_token_lock(token: str) -> asyncio.Lock:
+    lock = _cards_token_locks.get(token)
+    if lock is None:
+        lock = asyncio.Lock()
+        _cards_token_locks[token] = lock
+    return lock
+
+# TTL do menu (evita bot_data crescer infinito)
+CARDS_CTX_TTL = 15 * 60  # 15 min
+
+def _cards_ctx_cleanup(bot_data: dict):
+    ctx = bot_data.get("cards_ctx")
+    if not ctx:
+        return
+    now = time.time()
+    # limpeza leve (não faz sempre pesado)
+    if len(ctx) < 200:
+        return
+    for token, data in list(ctx.items()):
+        created = float((data or {}).get("created_at") or 0.0)
+        if created and now - created > CARDS_CTX_TTL:
+            ctx.pop(token, None)
+
+async def _anilist_post(session: aiohttp.ClientSession, query: str, variables: dict) -> Optional[dict]:
+    try:
+        async with session.post(ANILIST_API, json={"query": query, "variables": variables}) as resp:
+            return await resp.json()
+    except Exception:
+        return None
+
+# ================================
+# DB helper: qty_map em batch (SEM cursor global)
 # ================================
 def _get_user_qty_map(user_id: int, char_ids: List[int]) -> Dict[int, int]:
     if not char_ids:
@@ -1533,18 +1844,26 @@ def _get_user_qty_map(user_id: int, char_ids: List[int]) -> Dict[int, int]:
         FROM user_collection
         WHERE user_id=%s AND character_id IN ({placeholders})
     """
-    cursor.execute(sql, (user_id, *char_ids))
-    rows = cursor.fetchall() or []
+
+    cur = db.cursor()
+    try:
+        cur.execute(sql, (user_id, *char_ids))
+        rows = cur.fetchall() or []
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
     out: Dict[int, int] = {}
     for r in rows:
         out[int(r["character_id"])] = int(r.get("quantity") or 0)
     return out
 
-
 # ================================
-# AniList fetch por nome / id
+# AniList fetch por nome / id (com cache + lock)
 # ================================
-async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
+async def buscar_cards_por_nome(anime_nome: str, page: int, session: aiohttp.ClientSession) -> Optional[dict]:
     query = """
     query ($search: String, $page: Int) {
       Page(page: 1, perPage: 1) {
@@ -1561,26 +1880,32 @@ async def buscar_cards_por_nome(anime_nome: str, page: int) -> Optional[dict]:
       }
     }
     """
-    variables = {"search": anime_nome, "page": int(page)}
-    timeout = aiohttp.ClientTimeout(total=15)
+    search = anime_nome.strip()
+    cache_key = ("q", search.lower(), int(page))
+    now = time.time()
 
-    try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(ANILIST_API, json={"query": query, "variables": variables}) as resp:
-                data = await resp.json()
+    cached = _anilist_cache.get(cache_key)
+    if cached and (now - cached[0] <= ANILIST_CACHE_TTL):
+        return cached[1]
 
-        media_list = (data.get("data", {}) or {}).get("Page", {}).get("media", []) or []
-        if not media_list:
-            return None
-        media = media_list[0]
+    lock = _get_anilist_lock("q", search.lower())
+    async with lock:
+        cached = _anilist_cache.get(cache_key)
+        if cached and (time.time() - cached[0] <= ANILIST_CACHE_TTL):
+            return cached[1]
+
+        data = await _anilist_post(session, query, {"search": search, "page": int(page)})
+        media_list = (data.get("data", {}) or {}).get("Page", {}).get("media", []) if data else []
+        media = media_list[0] if media_list else None
+
         if not media or not media.get("characters") or not media["characters"].get("edges"):
+            _anilist_cache[cache_key] = (time.time(), None)
             return None
+
+        _anilist_cache[cache_key] = (time.time(), media)
         return media
-    except Exception:
-        return None
 
-
-async def buscar_cards_por_id(anime_id: int, page: int) -> Optional[dict]:
+async def buscar_cards_por_id(anime_id: int, page: int, session: aiohttp.ClientSession) -> Optional[dict]:
     query = """
     query ($id: Int, $page: Int) {
       Media(id: $id, type: ANIME) {
@@ -1595,21 +1920,29 @@ async def buscar_cards_por_id(anime_id: int, page: int) -> Optional[dict]:
       }
     }
     """
-    variables = {"id": int(anime_id), "page": int(page)}
-    timeout = aiohttp.ClientTimeout(total=15)
+    aid = int(anime_id)
+    cache_key = ("id", str(aid), int(page))
+    now = time.time()
 
-    try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(ANILIST_API, json={"query": query, "variables": variables}) as resp:
-                data = await resp.json()
+    cached = _anilist_cache.get(cache_key)
+    if cached and (now - cached[0] <= ANILIST_CACHE_TTL):
+        return cached[1]
 
-        media = (data.get("data", {}) or {}).get("Media")
+    lock = _get_anilist_lock("id", str(aid))
+    async with lock:
+        cached = _anilist_cache.get(cache_key)
+        if cached and (time.time() - cached[0] <= ANILIST_CACHE_TTL):
+            return cached[1]
+
+        data = await _anilist_post(session, query, {"id": aid, "page": int(page)})
+        media = (data.get("data", {}) or {}).get("Media") if data else None
+
         if not media or not media.get("characters") or not media["characters"].get("edges"):
+            _anilist_cache[cache_key] = (time.time(), None)
             return None
-        return media
-    except Exception:
-        return None
 
+        _anilist_cache[cache_key] = (time.time(), media)
+        return media
 
 # ================================
 # Formatação
@@ -1627,15 +1960,7 @@ def _header_cards(media: dict, page: int) -> Tuple[str, int, int, str]:
     )
     return header, total_chars, last_page, titulo
 
-
 def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -> Tuple[str, int]:
-    """
-    mode:
-      a = normal (sem emoji)
-      s = só os que tem (✅)
-      f = só os que falta (✖️)
-    Retorna (texto, linhas)
-    """
     header, _, last_page, _ = _header_cards(media, page)
     chars = media["characters"]["edges"]
 
@@ -1659,11 +1984,10 @@ def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -
             continue
 
         if mode == "a":
-            # NORMAL: sem emoji e sem contador
             texto += f"🧧 <b>{cid}.</b> {nome}\n"
         elif mode == "s":
             texto += f"✅ <b>{cid}.</b> {nome} <i>({qty}x)</i>\n"
-        else:  # mode == "f"
+        else:
             texto += f"✖️ <b>{cid}.</b> {nome} <i>(0x)</i>\n"
 
         linhas += 1
@@ -1678,7 +2002,6 @@ def formatar_cards(media: dict, page: int, mode: str, qty_map: Dict[int, int]) -
 
     return texto, linhas
 
-
 def _build_keyboard(token: str, page: int, last: int) -> Optional[InlineKeyboardMarkup]:
     if last <= 1:
         return None
@@ -1691,20 +2014,27 @@ def _build_keyboard(token: str, page: int, last: int) -> Optional[InlineKeyboard
 
     return InlineKeyboardMarkup([botoes]) if botoes else None
 
-
 # ================================
-# Anti-flood leve + permissão
+# Anti-flood leve + permissão + expiração
 # ================================
 def _cards_can_click(context: ContextTypes.DEFAULT_TYPE, token: str, user_id: int) -> Tuple[bool, str]:
     data = context.bot_data.get("cards_ctx", {}).get(token)
     if not data:
         return False, "Esse menu expirou. Envie /cards de novo."
 
+    created = float((data.get("created_at") or 0.0))
+    if created and (time.time() - created > CARDS_CTX_TTL):
+        # expira
+        try:
+            context.bot_data.get("cards_ctx", {}).pop(token, None)
+        except Exception:
+            pass
+        return False, "Esse menu expirou. Envie /cards de novo."
+
     owner_id = int(data.get("owner_id") or 0)
     if user_id != owner_id:
         return False, "Apenas quem usou /cards pode mexer."
 
-    # anti-flood por token+user
     flood = context.bot_data.setdefault("cards_flood", {})
     key = f"{user_id}:{token}"
     now = time.time()
@@ -1714,13 +2044,21 @@ def _cards_can_click(context: ContextTypes.DEFAULT_TYPE, token: str, user_id: in
     flood[key] = now
     return True, ""
 
-
 # ================================
 # /cards
 # ================================
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    # rate limit por comando
+    ok = await anti_spam(update.effective_user.id, key="cmd:/cards", window=3)
+    if not ok:
+        return
+
+    await registrar_comando(update)
 
     if not context.args:
         await update.message.reply_html(
@@ -1734,7 +2072,6 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # modo opcional
     mode = "a"
     args = list(context.args)
     if args and args[0].lower() in ("s", "f"):
@@ -1747,19 +2084,21 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     termo = " ".join(args).strip()
     page = 1
-
     user_id = update.effective_user.id
 
-    # buscar por ID ou nome
-    media = None
-    if termo.isdigit():
-        media = await buscar_cards_por_id(int(termo), page)
-        kind = "id"
-        query_value = str(int(termo))
-    else:
-        media = await buscar_cards_por_nome(termo, page)
-        kind = "q"
-        query_value = termo
+    # limpa ctx quando necessário
+    _cards_ctx_cleanup(context.bot_data)
+
+    # Reutiliza UMA sessão por request (ainda local), mas sem criar 2x/3x dentro das funções.
+    async with aiohttp.ClientSession(timeout=_ANILIST_TIMEOUT) as session:
+        if termo.isdigit():
+            media = await buscar_cards_por_id(int(termo), page, session)
+            kind = "id"
+            query_value = str(int(termo))
+        else:
+            media = await buscar_cards_por_nome(termo, page, session)
+            kind = "q"
+            query_value = termo
 
     if not media:
         await update.message.reply_html(
@@ -1769,15 +2108,14 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # montar texto
     char_ids = [int((e.get("node") or {}).get("id")) for e in media["characters"]["edges"] if (e.get("node") or {}).get("id")]
     qty_map = _get_user_qty_map(user_id, char_ids)
 
     texto, linhas = formatar_cards(media, page, mode, qty_map)
 
-    # se não tem nada no modo s/f, não mostra botões
     _, _, last_page, _ = _header_cards(media, page)
     keyboard = None
+
     if linhas > 0:
         token = secrets.token_urlsafe(6)
         context.bot_data.setdefault("cards_ctx", {})[token] = {
@@ -1785,10 +2123,9 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "mode": mode,
             "kind": kind,
             "query": query_value,
+            "created_at": time.time(),
         }
         keyboard = _build_keyboard(token, page, last_page)
-    else:
-        token = None  # sem navegação
 
     foto = media.get("bannerImage") or (media.get("coverImage") or {}).get("large")
 
@@ -1802,13 +2139,21 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_html(texto, reply_markup=keyboard)
 
-
 # ================================
 # callback_cards
 # ================================
 async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return
+
+    # Deduplicação (duplo clique / retry do Telegram)
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
 
     # cards:TOKEN:PAGE
     try:
@@ -1823,47 +2168,54 @@ async def callback_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer(msg, show_alert=True)
         return
 
+    # rate limit por callback (extra)
+    if not await anti_spam(q.from_user.id, key="cb:cards", window=1):
+        await q.answer("Calma 🙂 (aguarde 1s)", show_alert=True)
+        return
+
     cfg = context.bot_data.get("cards_ctx", {}).get(token)
     if not cfg:
         await q.answer("Esse menu expirou. Envie /cards de novo.", show_alert=True)
         return
 
-    mode = cfg["mode"]
-    kind = cfg["kind"]
-    query_value = cfg["query"]
-    owner_id = int(cfg["owner_id"])
+    # trava por token pra evitar 100 fetch simultâneos do mesmo menu
+    lock = _get_cards_token_lock(token)
+    async with lock:
+        mode = cfg["mode"]
+        kind = cfg["kind"]
+        query_value = cfg["query"]
+        owner_id = int(cfg["owner_id"])
 
-    # refetch
-    if kind == "id":
-        media = await buscar_cards_por_id(int(query_value), page)
-    else:
-        media = await buscar_cards_por_nome(str(query_value), page)
+        async with aiohttp.ClientSession(timeout=_ANILIST_TIMEOUT) as session:
+            if kind == "id":
+                media = await buscar_cards_por_id(int(query_value), page, session)
+            else:
+                media = await buscar_cards_por_nome(str(query_value), page, session)
 
-    if not media:
-        await q.answer("Não consegui carregar agora.", show_alert=True)
-        return
+        if not media:
+            await q.answer("Não consegui carregar agora.", show_alert=True)
+            return
 
-    char_ids = [int((e.get("node") or {}).get("id")) for e in media["characters"]["edges"] if (e.get("node") or {}).get("id")]
-    qty_map = _get_user_qty_map(owner_id, char_ids)
+        char_ids = [int((e.get("node") or {}).get("id")) for e in media["characters"]["edges"] if (e.get("node") or {}).get("id")]
+        qty_map = _get_user_qty_map(owner_id, char_ids)
 
-    texto, linhas = formatar_cards(media, page, mode, qty_map)
+        texto, linhas = formatar_cards(media, page, mode, qty_map)
 
-    _, _, last_page, _ = _header_cards(media, page)
-    keyboard = _build_keyboard(token, page, last_page) if linhas > 0 else None
+        _, _, last_page, _ = _header_cards(media, page)
+        keyboard = _build_keyboard(token, page, last_page) if linhas > 0 else None
 
-    # NÃO envia mensagem nova nunca. Só edita.
-    try:
-        if q.message and q.message.photo:
-            await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=keyboard)
-        else:
-            await q.message.edit_text(text=texto, parse_mode="HTML", reply_markup=keyboard)
-    except Exception:
-        # sem fallback reply (isso que tava gerando mensagem nova embaixo)
-        await q.answer("Não consegui atualizar essa mensagem. Envie /cards de novo.", show_alert=True)
-        return
+        try:
+            if q.message and getattr(q.message, "photo", None):
+                await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=keyboard)
+            else:
+                await q.message.edit_text(text=texto, parse_mode="HTML", reply_markup=keyboard)
+            await q.answer()
+        except Exception:
+            await q.answer("Não consegui atualizar essa mensagem. Envie /cards de novo.", show_alert=True)
+            return
 
 # ==================================================
-# HELPERS ANILIST — Character por ID ou Nome
+# HELPERS ANILIST — Character por ID ou Nome (com sessão local + timeout)
 # ==================================================
 async def _anilist_character_by_id(char_id: int) -> dict | None:
     query = """
@@ -1879,13 +2231,10 @@ async def _anilist_character_by_id(char_id: int) -> dict | None:
     }
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": {"id": char_id}},
-                timeout=aiohttp.ClientTimeout(total=12),
-            ) as resp:
-                data = await resp.json()
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12)) as session:
+            data = await _anilist_post(session, query, {"id": int(char_id)})
+        if not data:
+            return None
 
         ch = data.get("data", {}).get("Character")
         if not ch:
@@ -1906,7 +2255,6 @@ async def _anilist_character_by_id(char_id: int) -> dict | None:
     except Exception:
         return None
 
-
 async def _anilist_character_by_name(name: str) -> dict | None:
     query = """
     query ($search: String) {
@@ -1923,13 +2271,10 @@ async def _anilist_character_by_name(name: str) -> dict | None:
     }
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": {"search": name}},
-                timeout=aiohttp.ClientTimeout(total=12),
-            ) as resp:
-                data = await resp.json()
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12)) as session:
+            data = await _anilist_post(session, query, {"search": str(name)})
+        if not data:
+            return None
 
         chars = data.get("data", {}).get("Page", {}).get("characters") or []
         if not chars:
@@ -1951,25 +2296,14 @@ async def _anilist_character_by_name(name: str) -> dict | None:
     except Exception:
         return None
 
-
 def _extract_leading_id(text: str) -> int | None:
-    """
-    Aceita:
-      '20. Naruto'
-      '20 - Naruto'
-      '20) Naruto'
-      '20 Naruto'
-    e retorna 20
-    """
     text = (text or "").strip()
     m = re.match(r"^\s*(\d{1,10})\s*([.)-])?\s*(.*)$", text)
     if not m:
         return None
-    # só considera "id + resto" se tiver algum resto ou separador
     if m.group(2) or (m.group(3) and m.group(3).strip()):
         return int(m.group(1))
     return None
-
 
 # ==================================================
 # /card ID ou NOME — GLOBAL (mostra mesmo sem ter na coleção)
@@ -1977,6 +2311,13 @@ def _extract_leading_id(text: str) -> int | None:
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/card", window=3)
+    if not ok:
+        return
+
     await registrar_comando(update)
 
     user_id = update.effective_user.id
@@ -1998,16 +2339,13 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     termo = " ".join(context.args).strip()
 
-    # 0) se vier "ID. Nome" pega o ID direto
     leading_id = _extract_leading_id(termo)
     if leading_id is not None:
         info = await _anilist_character_by_id(leading_id)
     else:
-        # 1) por ID (se for numérico puro)
         if termo.isdigit():
             info = await _anilist_character_by_id(int(termo))
         else:
-            # 2) por nome
             info = await _anilist_character_by_name(termo)
 
     if not info:
@@ -2018,13 +2356,11 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from database import get_collection_character_full, get_global_character_image
 
-    # se usuário tem na coleção
     item = get_collection_character_full(user_id, char_id)
     tem = item is not None
     qty = int(item.get("quantity") or 0) if tem else 0
     mark = "✅" if tem else "✖️"
 
-    # foto: global > anilist
     foto = get_global_character_image(char_id) or info.get("image")
 
     caption = (
@@ -2048,9 +2384,27 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 # CALLBACK: botão ❤️ Favoritar do /card
 # ==================================================
+_cardfav_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_cardfav_lock(user_id: int) -> asyncio.Lock:
+    lock = _cardfav_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _cardfav_locks[user_id] = lock
+    return lock
+
 async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return
+
+    # Dedup (duplo clique/retry)
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
 
     # cardfav:OWNER_ID:CHAR_ID
     try:
@@ -2058,44 +2412,68 @@ async def callback_cardfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
         owner_id = int(owner_id)
         char_id = int(char_id)
     except Exception:
+        try:
+            await q.answer()
+        except Exception:
+            pass
         return
 
-    # só o dono do card pode clicar
     if q.from_user.id != owner_id:
         await q.answer("Esse botão não é seu.", show_alert=True)
+        return
+
+    # rate limit por callback
+    if not await anti_spam(q.from_user.id, key="cb:cardfav", window=2):
+        await q.answer("Calma 🙂 (aguarde 1s)", show_alert=True)
         return
 
     from database import (
         get_collection_character_full,
         set_favorite_from_collection,
         get_global_character_image,
+        get_user_row,
     )
 
-    item = get_collection_character_full(owner_id, char_id)
-    if not item:
-        await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
-        return
+    lock = _get_cardfav_lock(owner_id)
+    async with lock:
+        item = get_collection_character_full(owner_id, char_id)
+        if not item:
+            await q.answer("Você não tem esse personagem na coleção.", show_alert=True)
+            return
 
-    # favorito usa foto GLOBAL se existir
-    fav_img = get_global_character_image(char_id) or item.get("image")
-    set_favorite_from_collection(owner_id, item["character_name"], fav_img)
+        fav_img = get_global_character_image(char_id) or item.get("image")
+
+        # Se já é o favorito atual, evita regravar e evita duplicar “marcação” no texto
+        row = get_user_row(owner_id)
+        if row and row.get("fav_name") == item.get("character_name") and (row.get("fav_image") == fav_img):
+            await q.answer("Favorito definido!", show_alert=True)
+            return
+
+        try:
+            set_favorite_from_collection(owner_id, item["character_name"], fav_img)
+        except Exception:
+            await q.answer("Não consegui salvar agora.", show_alert=True)
+            return
 
     await q.answer("Favorito definido!", show_alert=True)
 
-    # opcional: tenta “marcar” no texto que foi favoritado
+    # opcional: tenta “marcar” no texto que foi favoritado (sem duplicar)
     try:
-        if q.message.caption:
-            await q.edit_message_caption(
-                caption=q.message.caption + "\n\n❤️ <b>Definido como favorito!</b>",
-                parse_mode="HTML",
-                reply_markup=q.message.reply_markup
-            )
-        else:
-            await q.edit_message_text(
-                text=(q.message.text or "") + "\n\n❤️ <b>Definido como favorito!</b>",
-                parse_mode="HTML",
-                reply_markup=q.message.reply_markup
-            )
+        suffix = "\n\n❤️ <b>Definido como favorito!</b>"
+        if q.message and q.message.caption:
+            if "Definido como favorito!" not in q.message.caption:
+                await q.edit_message_caption(
+                    caption=q.message.caption + suffix,
+                    parse_mode="HTML",
+                    reply_markup=q.message.reply_markup
+                )
+        elif q.message and q.message.text:
+            if "Definido como favorito!" not in q.message.text:
+                await q.edit_message_text(
+                    text=q.message.text + suffix,
+                    parse_mode="HTML",
+                    reply_markup=q.message.reply_markup
+                )
     except Exception:
         pass
 
@@ -2122,7 +2500,6 @@ def _parse_setfoto_lines(text: str):
         if not line:
             continue
 
-        # normaliza separadores pra espaço
         line2 = line.replace(" - ", " ").replace("-", " ")
         line2 = line2.replace(" | ", " ").replace("|", " ")
         line2 = line2.replace(": ", " ").replace(":", " ")
@@ -2153,99 +2530,146 @@ def _parse_setfoto_lines(text: str):
 # - 1 por comando: /setfoto ID LINK
 # - lote: /setfoto (respondendo msg com várias linhas "ID - LINK")
 # ==================================================
+
+_admin_ops_lock = asyncio.Lock()
+_admin_user_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_admin_user_lock(user_id: int) -> asyncio.Lock:
+    lock = _admin_user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _admin_user_locks[user_id] = lock
+    return lock
+
 async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    # Rate limit por admin
+    ok = await anti_spam(user_id, key="cmd:/setfoto", window=3)
+    if not ok:
         return
 
     from database import set_global_character_image
 
-    # MODO 1: /setfoto ID LINK
-    if len(context.args) == 2 and context.args[0].isdigit():
-        char_id = int(context.args[0])
-        url = context.args[1].strip()
+    # Trava por admin (evita 2 lotes simultâneos do mesmo admin)
+    user_lock = _get_admin_user_lock(user_id)
+    async with user_lock:
+        # MODO 1: /setfoto ID LINK
+        if len(context.args) == 2 and context.args[0].isdigit():
+            char_id = int(context.args[0])
+            url = context.args[1].strip()
 
-        if not _is_direct_image_url(url):
+            if not _is_direct_image_url(url):
+                await update.message.reply_html(
+                    "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+                )
+                return
+
+            # Trava global curta (evita dois admins alterarem ao mesmo tempo em lote)
+            async with _admin_ops_lock:
+                try:
+                    set_global_character_image(char_id, url, updated_by=user_id)
+                except Exception:
+                    # não muda textos; só evita crash
+                    return
+
             await update.message.reply_html(
-                "❌ Link inválido. Precisa terminar em <code>.jpg</code>, <code>.png</code> ou <code>.webp</code>."
+                "✅ <b>Foto global aplicada!</b>\n\n"
+                f"🧧 Personagem: <code>{char_id}</code>\n"
+                "🎴 Agora o <code>/card</code> vai usar essa foto pra todo mundo."
             )
             return
 
-        set_global_character_image(char_id, url, updated_by=update.effective_user.id)
+        # MODO 2: lote via reply
+        if len(context.args) == 0 and update.message.reply_to_message:
+            base_text = update.message.reply_to_message.text or update.message.reply_to_message.caption or ""
+            items, errs = _parse_setfoto_lines(base_text)
+
+            if not items and errs:
+                await update.message.reply_html(
+                    "❌ Não consegui ler nenhuma linha válida.\n\n"
+                    "Use linhas assim:\n"
+                    "<code>12345 - https://site.com/img.jpg</code>\n"
+                    "<code>12345 https://site.com/img.png</code>\n\n"
+                    "Erros:\n" + "\n".join(f"• {e}" for e in errs[:15])
+                )
+                return
+
+            if not items:
+                await update.message.reply_html(
+                    "🛠️ <b>Setar foto (lote)</b>\n\n"
+                    "Responda uma mensagem com linhas no formato:\n"
+                    "<code>ID - LINK</code>\n\n"
+                    "Exemplo:\n"
+                    "<code>123 - https://site.com/a.jpg</code>\n"
+                    "<code>456 - https://site.com/b.png</code>"
+                )
+                return
+
+            # segurança: evita travar se mandar 500 linhas
+            MAX_LOTE = 50
+            items = items[:MAX_LOTE]
+
+            ok_count = 0
+
+            # Trava global enquanto aplica (garante consistência)
+            async with _admin_ops_lock:
+                for (cid, url) in items:
+                    try:
+                        set_global_character_image(cid, url, updated_by=user_id)
+                        ok_count += 1
+                    except Exception:
+                        # ignora falha individual (mantém robusto)
+                        continue
+
+            msg = (
+                "✅ <b>Lote aplicado!</b>\n\n"
+                f"📌 Atualizados: <b>{ok_count}</b>\n"
+            )
+            if errs:
+                msg += "\n⚠️ Linhas ignoradas:\n" + "\n".join(f"• {e}" for e in errs[:15])
+
+            await update.message.reply_html(msg)
+            return
+
+        # ajuda
         await update.message.reply_html(
-            "✅ <b>Foto global aplicada!</b>\n\n"
-            f"🧧 Personagem: <code>{char_id}</code>\n"
-            "🎴 Agora o <code>/card</code> vai usar essa foto pra todo mundo."
+            "🛠️ <b>Admin — setar foto global</b>\n\n"
+            "1) Um personagem:\n"
+            "<code>/setfoto ID LINK</code>\n"
+            "Ex:\n"
+            "<code>/setfoto 12345 https://site.com/imagem.jpg</code>\n\n"
+            "2) Vários de uma vez:\n"
+            "Responda (reply) uma mensagem com várias linhas:\n"
+            "<code>123 - https://site.com/a.jpg</code>\n"
+            "<code>456 - https://site.com/b.png</code>\n"
+            "e envie apenas:\n"
+            "<code>/setfoto</code>"
         )
-        return
-
-    # MODO 2: lote via reply
-    if len(context.args) == 0 and update.message and update.message.reply_to_message:
-        base_text = update.message.reply_to_message.text or update.message.reply_to_message.caption or ""
-        items, errs = _parse_setfoto_lines(base_text)
-
-        if not items and errs:
-            await update.message.reply_html(
-                "❌ Não consegui ler nenhuma linha válida.\n\n"
-                "Use linhas assim:\n"
-                "<code>12345 - https://site.com/img.jpg</code>\n"
-                "<code>12345 https://site.com/img.png</code>\n\n"
-                "Erros:\n" + "\n".join(f"• {e}" for e in errs[:15])
-            )
-            return
-
-        if not items:
-            await update.message.reply_html(
-                "🛠️ <b>Setar foto (lote)</b>\n\n"
-                "Responda uma mensagem com linhas no formato:\n"
-                "<code>ID - LINK</code>\n\n"
-                "Exemplo:\n"
-                "<code>123 - https://site.com/a.jpg</code>\n"
-                "<code>456 - https://site.com/b.png</code>"
-            )
-            return
-
-        # segurança: evita travar se mandar 500 linhas
-        MAX_LOTE = 50
-        items = items[:MAX_LOTE]
-
-        ok = 0
-        for (cid, url) in items:
-            set_global_character_image(cid, url, updated_by=update.effective_user.id)
-            ok += 1
-
-        msg = (
-            "✅ <b>Lote aplicado!</b>\n\n"
-            f"📌 Atualizados: <b>{ok}</b>\n"
-        )
-        if errs:
-            msg += "\n⚠️ Linhas ignoradas:\n" + "\n".join(f"• {e}" for e in errs[:15])
-
-        await update.message.reply_html(msg)
-        return
-
-    # ajuda
-    await update.message.reply_html(
-        "🛠️ <b>Admin — setar foto global</b>\n\n"
-        "1) Um personagem:\n"
-        "<code>/setfoto ID LINK</code>\n"
-        "Ex:\n"
-        "<code>/setfoto 12345 https://site.com/imagem.jpg</code>\n\n"
-        "2) Vários de uma vez:\n"
-        "Responda (reply) uma mensagem com várias linhas:\n"
-        "<code>123 - https://site.com/a.jpg</code>\n"
-        "<code>456 - https://site.com/b.png</code>\n"
-        "e envie apenas:\n"
-        "<code>/setfoto</code>"
-    )
 
 
 # ==================================================
 # ADMIN: /delfoto ID  (remove foto global)
 # ==================================================
 async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    ok = await anti_spam(user_id, key="cmd:/delfoto", window=3)
+    if not ok:
         return
 
     if len(context.args) != 1 or not context.args[0].isdigit():
@@ -2259,8 +2683,14 @@ async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     char_id = int(context.args[0])
+
     from database import delete_global_character_image
-    delete_global_character_image(char_id)
+
+    async with _admin_ops_lock:
+        try:
+            delete_global_character_image(char_id)
+        except Exception:
+            return
 
     await update.message.reply_html(
         "✅ <b>Foto global removida!</b>\n\n"
@@ -2274,8 +2704,17 @@ async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #       /unbanchar ID
 # ==================================================
 async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    ok = await anti_spam(user_id, key="cmd:/banchar", window=3)
+    if not ok:
         return
 
     if len(context.args) < 1 or not context.args[0].isdigit():
@@ -2292,7 +2731,12 @@ async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     motivo = " ".join(context.args[1:]).strip() or None
 
     from database import ban_character
-    ban_character(char_id, reason=motivo, created_by=update.effective_user.id)
+
+    async with _admin_ops_lock:
+        try:
+            ban_character(char_id, reason=motivo, created_by=user_id)
+        except Exception:
+            return
 
     await update.message.reply_html(
         "✅ <b>Personagem removido do bot!</b>\n\n"
@@ -2302,8 +2746,17 @@ async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
+        return
+
+    ok = await anti_spam(user_id, key="cmd:/unbanchar", window=3)
+    if not ok:
         return
 
     if len(context.args) != 1 or not context.args[0].isdigit():
@@ -2315,21 +2768,25 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     char_id = int(context.args[0])
+
     from database import unban_character
-    unban_character(char_id)
+
+    async with _admin_ops_lock:
+        try:
+            unban_character(char_id)
+        except Exception:
+            return
 
     await update.message.reply_html(
         "✅ <b>Personagem voltou!</b>\n\n"
         f"🧧 ID: <code>{char_id}</code>"
     )
 
-
 # ==================================================
 # 20) /dado + /colecao + /nomecolecao (POSTGRES)
 # ==================================================
+
 SP_TZ = ZoneInfo("America/Sao_Paulo")
-from zoneinfo import ZoneInfo
-from datetime import datetime
 
 DADO_MAX_BALANCE = 18
 DADO_NEW_USER_START = 4
@@ -2339,11 +2796,25 @@ BTN_ANTIFLOOD_SECONDS = 2
 
 DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
 
-
-# ---------------- antiflood memory ----------------
-_LAST_CMD_TS: dict[int, float] = {}
-_LAST_BTN_TS: dict[int, float] = {}
 _REFRESH_LOCK = asyncio.Lock()
+
+# Locks para impedir duplicação dentro do mesmo processo
+_dado_roll_locks: Dict[int, asyncio.Lock] = {}
+_user_dado_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_roll_lock(roll_id: int) -> asyncio.Lock:
+    lock = _dado_roll_locks.get(roll_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _dado_roll_locks[roll_id] = lock
+    return lock
+
+def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
+    lock = _user_dado_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_dado_locks[user_id] = lock
+    return lock
 
 
 def _now_slot_sp(ts: Optional[float] = None) -> int:
@@ -2353,7 +2824,6 @@ def _now_slot_sp(ts: Optional[float] = None) -> int:
     """
     if ts is None:
         ts = time.time()
-    # offset atual (seg) do TZ SP (pra ajustar o corte do slot)
     now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
     offset = int(now_sp.utcoffset().total_seconds())
     return int((int(ts) + offset) // (4 * 3600))
@@ -2371,7 +2841,6 @@ def _refresh_user_dado_balance(user_id: int) -> int:
 
     cur_slot = _now_slot_sp()
     if last_slot < 0:
-        # primeira vez que o sistema de slot roda pra esse user: não dá slots retroativos
         set_dado_state(user_id, balance, cur_slot)
         return balance
 
@@ -2396,7 +2865,6 @@ def _consume_one_die(user_id: int) -> bool:
         set_dado_state(user_id, b - 1, s)
         return True
 
-    # se não tem normal, tenta extra
     return consume_extra_dado(user_id)
 
 
@@ -2431,7 +2899,7 @@ async def _fetch_top500_anime_from_anilist() -> list[dict]:
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         rank = 1
-        for page in range(1, 11):  # 10*50 = 500
+        for page in range(1, 11):
             async with session.post(
                 ANILIST_API,
                 json={"query": query, "variables": {"page": page}},
@@ -2447,7 +2915,6 @@ async def _fetch_top500_anime_from_anilist() -> list[dict]:
                 items.append({"anime_id": int(anime_id), "title": title, "rank": rank})
                 rank += 1
 
-    # garante 500 (ou menos se AniList responder menos)
     return items[:500]
 
 
@@ -2482,9 +2949,7 @@ def _pick_random_animes(n: int) -> list[dict]:
 async def _anilist_random_character_from_anime(anime_id: int, tries: int = 10) -> Optional[dict]:
     """
     Retorna {id, name, image, anime_title} ou None
-    - tenta até 10 vezes achar personagem com foto
     """
-    # 1) pegar lastPage aproximado usando pageInfo
     q_info = """
     query ($id: Int, $page: Int) {
       Media(id: $id, type: ANIME) {
@@ -2505,7 +2970,6 @@ async def _anilist_random_character_from_anime(anime_id: int, tries: int = 10) -
 
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        # primeira chamada pra descobrir lastPage
         async with session.post(
             ANILIST_API,
             json={"query": q_info, "variables": {"id": int(anime_id), "page": 1}},
@@ -2521,7 +2985,6 @@ async def _anilist_random_character_from_anime(anime_id: int, tries: int = 10) -
         page_info = (chars.get("pageInfo") or {})
         last_page = int(page_info.get("lastPage") or 1)
 
-        # tenta achar alguém com imagem
         for _ in range(tries):
             page = random.randint(1, max(1, last_page))
             async with session.post(
@@ -2578,15 +3041,16 @@ def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
 # /dado (PV only)
 # ==================================================
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
+        return
+
     user_id = update.effective_user.id
     chat = update.effective_chat
 
-    # antiflood comando
-    now = time.time()
-    last = _LAST_CMD_TS.get(user_id, 0.0)
-    if now - last < CMD_ANTIFLOOD_SECONDS:
+    # antiflood comando (centralizado)
+    ok = await anti_spam(user_id, key="cmd:/dado", window=CMD_ANTIFLOOD_SECONDS)
+    if not ok:
         return
-    _LAST_CMD_TS[user_id] = now
 
     # bloqueia grupos
     if chat.type != "private":
@@ -2596,53 +3060,50 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # cria user se necessário (novos: 4 dados)
     ensure_user_row(user_id, update.effective_user.first_name, new_user_dice=DADO_NEW_USER_START)
 
-    # atualiza saldo por slots
-    balance = _refresh_user_dado_balance(user_id)
-    extra = get_extra_dado(user_id)
+    # trava por usuário: evita 2 /dado simultâneos consumirem 2 dados
+    user_lock = _get_user_dado_lock(user_id)
+    async with user_lock:
+        balance = _refresh_user_dado_balance(user_id)
+        extra = get_extra_dado(user_id)
 
-    if balance <= 0 and extra <= 0:
-        await update.message.reply_html(
-            "🎲 <b>DADO</b>\n\n"
-            "Você está sem dados agora.\n\n"
-            "🕒 Os dados chegam nos horários:\n"
-            "<b>00h, 04h, 08h, 12h, 16h, 20h</b> (Brasil)\n\n"
-            f"⏱ Agora: <b>{_format_time_sp()}</b>"
-        )
-        return
+        if balance <= 0 and extra <= 0:
+            await update.message.reply_html(
+                "🎲 <b>DADO</b>\n\n"
+                "Você está sem dados agora.\n\n"
+                "🕒 Os dados chegam nos horários:\n"
+                "<b>00h, 04h, 08h, 12h, 16h, 20h</b> (Brasil)\n\n"
+                f"⏱ Agora: <b>{_format_time_sp()}</b>"
+            )
+            return
 
-    # garante cache top 500 (1x por dia)
-    try:
-        await _ensure_top_cache_fresh()
-    except Exception:
-        # se falhar cache, não trava o bot
-        pass
+        try:
+            await _ensure_top_cache_fresh()
+        except Exception:
+            pass
 
-    # consome 1 dado já (se expirar, devolve)
-    ok = _consume_one_die(user_id)
-    if not ok:
-        await update.message.reply_html("⚠️ Não consegui consumir seu dado agora. Tente novamente.")
-        return
+        # consome 1 dado já (se expirar, devolve)
+        ok_consume = _consume_one_die(user_id)
+        if not ok_consume:
+            await update.message.reply_html("⚠️ Não consegui consumir seu dado agora. Tente novamente.")
+            return
 
-    # rola dado no telegram
+    # rola dado no telegram (fora do lock)
     dice_msg = await context.bot.send_dice(chat_id=chat.id, emoji="🎲")
     await asyncio.sleep(2)
     dice_value = int(dice_msg.dice.value or 1)
 
-    # escolhe N animes sem repetir
     options = _pick_random_animes(dice_value)
     if not options:
         _refund_one_die(user_id)
         await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
         return
 
-    # salva roll pendente
     roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
 
     # estado atualizado pra mostrar saldo depois de consumir
     balance2 = _refresh_user_dado_balance(user_id)
     extra2 = get_extra_dado(user_id)
 
-    # manda mensagem bonita com imagem e botões
     await update.message.reply_photo(
         photo=DADO_PICK_IMAGE,
         caption=_nice_pick_text(dice_value, balance2, extra2),
@@ -2657,80 +3118,86 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
+    if not q:
+        return
+
+    # dedupe (duplo clique / retry)
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
     user_id = q.from_user.id
 
-    # antiflood botão
-    now = time.time()
-    last = _LAST_BTN_TS.get(user_id, 0.0)
-    if now - last < BTN_ANTIFLOOD_SECONDS:
+    # antiflood botão (centralizado)
+    ok = await anti_spam(user_id, key="cb:dado_pick", window=BTN_ANTIFLOOD_SECONDS)
+    if not ok:
         await q.answer("Calma 🙂", show_alert=False)
         return
-    _LAST_BTN_TS[user_id] = now
-
-    await q.answer()
 
     try:
         _, rid_s, anime_id_s = q.data.split(":")
         roll_id = int(rid_s)
         anime_id = int(anime_id_s)
     except Exception:
+        await q.answer()
         return
 
-    roll = get_dice_roll(roll_id)
-    if not roll:
-        await q.answer("Esse pedido não existe mais.", show_alert=True)
-        return
+    roll_lock = _get_roll_lock(roll_id)
+    async with roll_lock:
+        roll = get_dice_roll(roll_id)
+        if not roll:
+            await q.answer("Esse pedido não existe mais.", show_alert=True)
+            return
 
-    # só quem rolou pode clicar
-    if int(roll["user_id"]) != int(user_id):
-        await q.answer("Só quem rolou o dado pode escolher 🙂", show_alert=True)
-        return
+        if int(roll["user_id"]) != int(user_id):
+            await q.answer("Só quem rolou o dado pode escolher 🙂", show_alert=True)
+            return
 
-    status = roll["status"]
-    created_at = int(roll["created_at"] or 0)
+        status = roll["status"]
+        created_at = int(roll["created_at"] or 0)
 
-    # expirado?
-    if status != "pending":
-        await q.answer("Esse dado já foi usado.", show_alert=True)
-        return
+        if status != "pending":
+            await q.answer("Esse dado já foi usado.", show_alert=True)
+            return
 
-    if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
-        set_dice_roll_status(roll_id, "expired")
-        _refund_one_die(user_id)
-        # desabilita botões
+        if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
+            set_dice_roll_status(roll_id, "expired")
+            _refund_one_die(user_id)
+            try:
+                await q.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
+            return
+
+        # valida se anime_id está nas opções
+        try:
+            options = json.loads(roll["options_json"])
+        except Exception:
+            options = []
+
+        valid_ids = {int(o["id"]) for o in options if "id" in o}
+        if anime_id not in valid_ids:
+            await q.answer("Opção inválida.", show_alert=True)
+            return
+
+        # marca como resolvido + desabilita botões
+        set_dice_roll_status(roll_id, "resolved")
         try:
             await q.message.edit_reply_markup(reply_markup=None)
         except Exception:
             pass
-        await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
-        return
 
-    # valida se anime_id está nas opções
-    try:
-        options = json.loads(roll["options_json"])
-    except Exception:
-        options = []
-
-    valid_ids = {int(o["id"]) for o in options if "id" in o}
-    if anime_id not in valid_ids:
-        await q.answer("Opção inválida.", show_alert=True)
-        return
-
-    # marca como resolvido + desabilita botões
-    set_dice_roll_status(roll_id, "resolved")
-    try:
-        await q.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
-    # busca personagem aleatório com foto
+    # fora do lock (chamada externa)
     try:
         info = await _anilist_random_character_from_anime(anime_id, tries=10)
     except Exception:
         info = None
 
     if not info:
-        # devolve dado se falhar (melhor do que roubar o dado)
         _refund_one_die(user_id)
         await q.message.reply_html(
             "❌ Não consegui achar um personagem com foto nesse anime agora.\n"
@@ -2743,10 +3210,10 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
     image = info["image"]
     anime_title = info.get("anime_title") or "Obra"
 
-    # salva na coleção (repetido -> +1 coin? você pode manter sua regra antiga aqui se quiser)
-    # aqui: se repetido, soma +1 coin; se novo, adiciona.
     from database import user_has_character, add_coin
 
+    # CRÍTICO: isso ainda pode duplicar em multi-instância sem proteção no DB.
+    # Vamos blindar definitivamente quando você mandar o database.py (UPSERT/LOCK/unique).
     if user_has_character(user_id, char_id):
         add_coin(user_id, 1)
         resultado = "🪙 Personagem repetido → <b>+1 coin</b>"
@@ -2754,7 +3221,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         add_character_to_collection(user_id, char_id, name, image, anime_title=anime_title)
         resultado = "📦 <b>Adicionado à sua coleção!</b>"
 
-    # mostra resultado
     await q.message.reply_photo(
         photo=image,
         caption=(
@@ -2766,15 +3232,15 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML"
     )
 
-# COLECAO 
 
+# ==================================================
+# COLECAO
+# ==================================================
 ITENS_POR_PAGINA = 15
 COLECAO_BTN_ANTIFLOOD = 1.2  # segundos
-_colecao_btn_last: dict[int, float] = {}
 
 def _colecao_can_click(owner_id: int, user_id: int) -> bool:
     return int(owner_id) == int(user_id)
-
 
 def _colecao_keyboard(page: int, total_pages: int, owner_id: int):
     if total_pages <= 1:
@@ -2789,7 +3255,6 @@ def _colecao_keyboard(page: int, total_pages: int, owner_id: int):
 
     return InlineKeyboardMarkup([row])
 
-
 def _format_colecao_text(nome_colecao: str, total: int, page: int, total_paginas: int, itens: list[tuple[int, str]]) -> str:
     texto = (
         f"📚 <b>{nome_colecao}</b>\n\n"
@@ -2800,33 +3265,30 @@ def _format_colecao_text(nome_colecao: str, total: int, page: int, total_paginas
         texto += f"🧧 <code>{cid}</code>. {nomep}\n"
     return texto
 
-
-async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int, *, edit: bool = False):
-    owner_id = update.effective_user.id
-    ensure_user_row(owner_id, update.effective_user.first_name)
+async def enviar_colecao_by_owner(owner_id: int, first_name: str, update: Update, context: ContextTypes.DEFAULT_TYPE, page: int, *, edit: bool):
+    ensure_user_row(owner_id, first_name)
 
     nome = get_collection_name(owner_id) or "Minha Coleção"
     itens, total, total_paginas = get_collection_page(owner_id, page, ITENS_POR_PAGINA)
 
+    target_msg = update.callback_query.message if update.callback_query else update.message
+
     if not itens:
-        target = update.callback_query.message if update.callback_query else update.message
         if edit and update.callback_query:
-            # edita o que der (caption se tiver foto, texto se não)
             try:
-                if target.photo:
-                    await target.edit_caption(caption="📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+                if target_msg.photo:
+                    await target_msg.edit_caption(caption="📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
                 else:
-                    await target.edit_text("📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
+                    await target_msg.edit_text("📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
             except Exception:
                 pass
         else:
-            await target.reply_html("📦 <b>Sua coleção está vazia.</b>")
+            await target_msg.reply_html("📦 <b>Sua coleção está vazia.</b>")
         return
 
     texto = _format_colecao_text(nome, total, page, total_paginas, itens)
     kb = _colecao_keyboard(page, total_paginas, owner_id=owner_id)
 
-    # pega foto do favorito (se tiver)
     row = get_user_row(owner_id)
     fav_image = (row.get("fav_image") if row else None) or None
 
@@ -2841,7 +3303,6 @@ async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
             await update.callback_query.answer("Não consegui atualizar. Envie /colecao de novo.", show_alert=True)
         return
 
-    # primeira mensagem
     if fav_image:
         try:
             await update.message.reply_photo(
@@ -2852,7 +3313,6 @@ async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
             )
             return
         except Exception:
-            # se o link não for um direct image, cai no texto
             pass
 
     await update.message.reply_text(texto, parse_mode="HTML", reply_markup=kb)
@@ -2861,28 +3321,41 @@ async def enviar_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
 async def colecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
+    if not update.effective_user or not update.message:
+        return
+
+    ok = await anti_spam(update.effective_user.id, key="cmd:/colecao", window=2)
+    if not ok:
+        return
+
     await registrar_comando(update)
-    await enviar_colecao(update, context, 1, edit=False)
+    await enviar_colecao_by_owner(update.effective_user.id, update.effective_user.first_name, update, context, 1, edit=False)
 
 
 async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
+    if not q:
+        return
 
     if q.data == "noop":
         await q.answer()
         return
 
-    # antiflood leve
-    now = time.time()
-    last = _colecao_btn_last.get(q.from_user.id, 0.0)
-    if now - last < COLECAO_BTN_ANTIFLOOD:
+    # dedupe e antiflood
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    ok = await anti_spam(q.from_user.id, key="cb:colecao", window=COLECAO_BTN_ANTIFLOOD)
+    if not ok:
         await q.answer("Calma 🙂", show_alert=False)
         return
-    _colecao_btn_last[q.from_user.id] = now
 
     await q.answer()
 
-    # colecao:OWNER_ID:PAGE
     try:
         _, owner_s, page_s = q.data.split(":")
         owner_id = int(owner_s)
@@ -2895,35 +3368,19 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("Só quem abriu a coleção pode mexer 🙂", show_alert=True)
         return
 
-    # carrega coleção do dono e edita a mesma msg
-    ensure_user_row(owner_id, q.from_user.first_name)
-    nome = get_collection_name(owner_id) or "Minha Coleção"
-    itens, total, total_paginas = get_collection_page(owner_id, page, ITENS_POR_PAGINA)
-
-    if not itens:
-        try:
-            if q.message.photo:
-                await q.message.edit_caption(caption="📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
-            else:
-                await q.message.edit_text("📦 <b>Sua coleção está vazia.</b>", parse_mode="HTML", reply_markup=None)
-        except Exception:
-            pass
-        return
-
-    texto = _format_colecao_text(nome, total, page, total_paginas, itens)
-    kb = _colecao_keyboard(page, total_paginas, owner_id=owner_id)
-
-    try:
-        if q.message.photo:
-            await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
-        else:
-            await q.message.edit_text(texto, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        await q.answer("Não consegui atualizar. Envie /colecao de novo.", show_alert=True)
+    await enviar_colecao_by_owner(owner_id, q.from_user.first_name, update, context, page, edit=True)
 
 
 async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
+        return
+
     user_id = update.effective_user.id
+
+    ok = await anti_spam(user_id, key="cmd:/nomecolecao", window=2)
+    if not ok:
+        return
+
     ensure_user_row(user_id, update.effective_user.first_name)
 
     if not context.args:
@@ -2944,6 +3401,22 @@ async def nomecolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 TRADE_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
 
+_trade_locks: Dict[int, asyncio.Lock] = {}
+_trade_user_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_trade_lock(trade_id: int) -> asyncio.Lock:
+    lock = _trade_locks.get(trade_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _trade_locks[trade_id] = lock
+    return lock
+
+def _get_trade_user_lock(user_id: int) -> asyncio.Lock:
+    lock = _trade_user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _trade_user_locks[user_id] = lock
+    return lock
 
 def _mention_html(user) -> str:
     name = (user.full_name or user.first_name or "User").strip()
@@ -2967,8 +3440,16 @@ async def _get_char_label(user_id: int, char_id: int) -> str:
 
 
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
+        return
+
+    # antiflood por comando
+    ok = await anti_spam(update.effective_user.id, key="cmd:/trocar", window=3)
+    if not ok:
+        return
+
     # precisa responder alguém
-    if not update.message or not update.message.reply_to_message:
+    if not update.message.reply_to_message:
         await update.message.reply_html(
             "❌ <b>Troca inválida</b>\n\n"
             "Você precisa <b>responder a mensagem</b> do usuário.\n\n"
@@ -3003,7 +3484,7 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from_char = int(context.args[0])
     to_char = int(context.args[1])
 
-    # checa posse
+    # checa posse (pré-checagem)
     if not user_has_character(from_user.id, from_char):
         await update.message.reply_html(
             "❌ <b>Troca cancelada</b>\n\n"
@@ -3017,16 +3498,19 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # cria trade e tenta pegar trade_id de volta (se não retornar, usa fallback por get_latest...)
+    # cria trade e captura trade_id de forma segura
     trade_id = None
     try:
-        # RECOMENDADO: altere create_trade no database.py para retornar trade_id (RETURNING)
-        # mas aqui a gente faz fallback caso ainda não tenha.
-        create_trade(from_user.id, to_user.id, from_char, to_char)
-        # tenta descobrir o último pendente do "to_user" (pode haver concorrência, mas ajuda)
-        t = get_latest_pending_trade_for_to_user(to_user.id)
-        if t:
-            trade_id = int(t[0])
+        # IDEAL: create_trade deve retornar o trade_id (RETURNING).
+        # Se ainda não retorna, tentamos um fallback mais seguro.
+        maybe_id = create_trade(from_user.id, to_user.id, from_char, to_char)
+        if isinstance(maybe_id, int):
+            trade_id = maybe_id
+        else:
+            # fallback: pega a última pendente para o to_user, mas valida dados básicos depois no callback
+            t = get_latest_pending_trade_for_to_user(to_user.id)
+            if t:
+                trade_id = int(t[0])
     except Exception:
         try:
             db.rollback()
@@ -3035,11 +3519,9 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
         return
 
-    # labels bonitos
     a_name = await _get_char_label(from_user.id, from_char)
     b_name = await _get_char_label(to_user.id, to_char)
 
-    # callback com trade_id (se tiver), senão fica genérico (mas ainda funciona)
     accept_cb = f"trade_accept:{trade_id}" if trade_id else "trade_accept"
     reject_cb = f"trade_reject:{trade_id}" if trade_id else "trade_reject"
 
@@ -3058,7 +3540,6 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ <i>Apenas o usuário marcado pode aceitar/recusar.</i>"
     )
 
-    # envia com imagem
     try:
         await update.message.reply_photo(
             photo=TRADE_BANNER,
@@ -3067,7 +3548,6 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=teclado
         )
     except Exception:
-        # fallback sem foto
         await update.message.reply_html(texto, reply_markup=teclado)
 
 
@@ -3076,10 +3556,25 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return
+
+    # dedupe (duplo clique / retry)
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
     user_id = q.from_user.id
 
-    # aceita padrão antigo "trade_accept" e novo "trade_accept:ID"
+    # antiflood por callback
+    ok = await anti_spam(user_id, key="cb:trade_accept", window=2)
+    if not ok:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
     trade_id = None
     try:
         parts = (q.data or "").split(":")
@@ -3088,90 +3583,114 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         trade_id = None
 
-    trade = None
-    if trade_id:
-        # RECOMENDADO: crie get_trade_by_id no database.py
-        try:
-            from database import get_trade_by_id
-            trade = get_trade_by_id(trade_id)  # deve retornar dict/row com trade
-        except Exception:
-            trade = None
+    # trava por usuário (anti spam) e por trade_id (anti corrida)
+    user_lock = _get_trade_user_lock(user_id)
+    async with user_lock:
+        trade = None
+        if trade_id:
+            try:
+                from database import get_trade_by_id
+                trade = get_trade_by_id(trade_id)
+            except Exception:
+                trade = None
 
-    if not trade:
-        # fallback: pega última pendente para esse usuário
-        t = get_latest_pending_trade_for_to_user(user_id)
-        if not t:
-            await q.answer("Nenhuma troca pendente.", show_alert=True)
-            return
-        trade_id, from_user_id, from_char, to_char = t
-    else:
-        # normaliza do row
-        try:
-            trade_id = int(trade["trade_id"])
-            from_user_id = int(trade["from_user"])
-            to_user_id = int(trade["to_user"])
-            from_char = int(trade["from_character_id"])
-            to_char = int(trade["to_character_id"])
+        if trade:
+            try:
+                trade_id = int(trade["trade_id"])
+                from_user_id = int(trade["from_user"])
+                to_user_id = int(trade["to_user"])
+                from_char = int(trade["from_character_id"])
+                to_char = int(trade["to_character_id"])
+            except Exception:
+                await q.answer("Erro ao ler a troca.", show_alert=True)
+                return
+
             if int(to_user_id) != int(user_id):
                 await q.answer("Essa troca não é para você.", show_alert=True)
                 return
-        except Exception:
-            await q.answer("Erro ao ler a troca.", show_alert=True)
-            return
-
-    # checa status (anti clique duplicado)
-    try:
-        if trade_id:
-            from database import get_trade_status
-            st = get_trade_status(trade_id)  # crie se quiser; se não existir cai no except
-            if st and st != "pendente":
-                await q.answer("Essa troca já foi finalizada.", show_alert=True)
+        else:
+            # fallback MUITO mais restrito: só se não tiver trade_id ou não conseguir buscar
+            t = get_latest_pending_trade_for_to_user(user_id)
+            if not t:
+                await q.answer("Nenhuma troca pendente.", show_alert=True)
                 return
-    except Exception:
-        pass
+            trade_id, from_user_id, from_char, to_char = t
 
-    # tenta executar (anti-falha por re-checagem)
-    try:
-        if (not user_has_character(from_user_id, from_char)) or (not user_has_character(user_id, to_char)):
+        trade_lock = _get_trade_lock(int(trade_id)) if trade_id else asyncio.Lock()
+        async with trade_lock:
+            # checa posse de novo
+            if (not user_has_character(int(from_user_id), int(from_char))) or (not user_has_character(int(user_id), int(to_char))):
+                try:
+                    mark_trade_status(int(trade_id), "falhou")
+                except Exception:
+                    pass
+                try:
+                    if q.message and q.message.caption:
+                        await q.message.edit_caption(
+                            caption=(q.message.caption or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
+                            parse_mode="HTML",
+                            reply_markup=None
+                        )
+                    else:
+                        await q.message.edit_text(
+                            text=(q.message.text or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
+                            parse_mode="HTML",
+                            reply_markup=None
+                        )
+                except Exception:
+                    pass
+                await q.answer()
+                return
+
+            # executa swap (ideal: transação atômica no DB)
             try:
-                mark_trade_status(trade_id, "falhou")
+                swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
             except Exception:
-                pass
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
+                return
+
+    # final
+    try:
+        if q.message and q.message.caption:
             await q.message.edit_caption(
-                caption=(q.message.caption or q.message.text or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
+                caption="✅ <b>Troca realizada com sucesso!</b>\n\n🎉 Boa! Os personagens foram trocados.",
                 parse_mode="HTML",
                 reply_markup=None
             )
-            return
-
-        swap_trade_execute(trade_id, from_user_id, user_id, from_char, to_char)
-
+        else:
+            await q.message.edit_text(
+                "✅ <b>Troca realizada com sucesso!</b>\n\n🎉 Boa! Os personagens foram trocados.",
+                parse_mode="HTML",
+                reply_markup=None
+            )
     except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
-        return
+        pass
 
-    # mensagem final bonita
-    try:
-        await q.message.edit_caption(
-            caption="✅ <b>Troca realizada com sucesso!</b>\n\n🎉 Boa! Os personagens foram trocados.",
-            parse_mode="HTML",
-            reply_markup=None
-        )
-    except Exception:
-        try:
-            await q.message.edit_text("✅ <b>Troca realizada com sucesso!</b>", parse_mode="HTML", reply_markup=None)
-        except Exception:
-            pass
+    await q.answer()
 
 
 async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return
+
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
     user_id = q.from_user.id
+
+    ok = await anti_spam(user_id, key="cb:trade_reject", window=2)
+    if not ok:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
 
     trade_id = None
     try:
@@ -3181,7 +3700,6 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         trade_id = None
 
-    # se tiver trade_id, tenta marcar direto; senão pega última pendente
     if not trade_id:
         t = get_latest_pending_trade_for_to_user(user_id)
         if not t:
@@ -3190,7 +3708,7 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
         trade_id = int(t[0])
 
     try:
-        mark_trade_status(trade_id, "recusada")
+        mark_trade_status(int(trade_id), "recusada")
     except Exception:
         try:
             db.rollback()
@@ -3200,16 +3718,22 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     try:
-        await q.message.edit_caption(
-            caption="❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
-            parse_mode="HTML",
-            reply_markup=None
-        )
+        if q.message and q.message.caption:
+            await q.message.edit_caption(
+                caption="❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
+                parse_mode="HTML",
+                reply_markup=None
+            )
+        else:
+            await q.message.edit_text(
+                "❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
+                parse_mode="HTML",
+                reply_markup=None
+            )
     except Exception:
-        try:
-            await q.message.edit_text("❌ <b>Troca recusada.</b>", parse_mode="HTML", reply_markup=None)
-        except Exception:
-            pass
+        pass
+
+    await q.answer()
 
 # ==================================================
 # LOJA (PV) — VENDER pro BOT (+1 coin) / COMPRAR GIRO (-2 coins -> +1 giro)
@@ -3217,21 +3741,19 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
 
 SHOP_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
 
-SHOP_SELL_GAIN = 1          # vende pro bot -> +1 coin
-SHOP_GIRO_PRICE = 2         # compra giro -> -2 coins
+SHOP_SELL_GAIN = 1
+SHOP_GIRO_PRICE = 2
 ITENS_POR_PAGINA_SHOP = 8
-
 SHOP_BTN_FLOOD = 1.5
-_SHOP_BTN_LAST: dict[int, float] = {}
-_SHOP_STATE: dict[int, dict] = {}  # user_id -> {mode: "...", ...}
 
-def _shop_btn_ok(user_id: int) -> bool:
-    now = time.time()
-    last = _SHOP_BTN_LAST.get(user_id, 0.0)
-    if now - last < SHOP_BTN_FLOOD:
-        return False
-    _SHOP_BTN_LAST[user_id] = now
-    return True
+_shop_user_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_shop_lock(user_id: int) -> asyncio.Lock:
+    lock = _shop_user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _shop_user_locks[user_id] = lock
+    return lock
 
 def _shop_only_private_text() -> str:
     return (
@@ -3296,12 +3818,20 @@ def _confirm_sell_kb(char_id: int, page: int) -> InlineKeyboardMarkup:
     ])
 
 async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
+        return
+
     chat = update.effective_chat
     if chat.type != "private":
         await update.message.reply_html(_shop_only_private_text())
         return
 
     user_id = update.effective_user.id
+
+    ok = await anti_spam(user_id, key="cmd:/loja", window=2)
+    if not ok:
+        return
+
     ensure_user_row(user_id, update.effective_user.first_name)
 
     coins = get_user_coins(user_id)
@@ -3317,142 +3847,234 @@ async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- Shop callback router ----------------
 async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    user_id = q.from_user.id
+    if not q:
+        return
 
-    if not _shop_btn_ok(user_id):
+    # dedupe + antiflood
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    user_id = q.from_user.id
+    ok = await anti_spam(user_id, key="cb:shop", window=SHOP_BTN_FLOOD)
+    if not ok:
         await q.answer("Calma 🙂", show_alert=False)
         return
 
     await q.answer()
 
-    data = q.data
+    data = q.data or ""
 
-    # HOME
-    if data == "shop:home":
-        ensure_user_row(user_id, q.from_user.first_name)
-        coins = get_user_coins(user_id)
-        giros = get_extra_dado(user_id)
-        await q.message.edit_caption(
-            caption=_shop_main_text(q.from_user.full_name, coins, giros),
-            parse_mode="HTML",
-            reply_markup=_shop_main_kb()
-        )
-        return
-
-    # BUY GIRO
-    if data == "shop:buy_giro":
-        ensure_user_row(user_id, q.from_user.first_name)
-
-        ok = try_spend_coins(user_id, SHOP_GIRO_PRICE)
-        if not ok:
-            await q.answer("Você não tem coins suficientes.", show_alert=True)
+    # trava por usuário (compra/venda não duplica)
+    lock = _get_shop_lock(user_id)
+    async with lock:
+        # HOME
+        if data == "shop:home":
+            ensure_user_row(user_id, q.from_user.first_name)
+            coins = get_user_coins(user_id)
+            giros = get_extra_dado(user_id)
+            await q.message.edit_caption(
+                caption=_shop_main_text(q.from_user.full_name, coins, giros),
+                parse_mode="HTML",
+                reply_markup=_shop_main_kb()
+            )
             return
 
-        add_extra_dado(user_id, 1)
+        # BUY GIRO
+        if data == "shop:buy_giro":
+            ensure_user_row(user_id, q.from_user.first_name)
 
-        coins = get_user_coins(user_id)
-        giros = get_extra_dado(user_id)
+            ok_spend = try_spend_coins(user_id, SHOP_GIRO_PRICE)
+            if not ok_spend:
+                await q.answer("Você não tem coins suficientes.", show_alert=True)
+                return
 
-        await q.message.edit_caption(
-            caption=(
-                "🎡 <b>GIRO COMPRADO!</b>\n\n"
-                "✅ Você recebeu <b>+1 giro</b>.\n\n"
-                f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-                f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-                "Quer mais alguma coisa? 👇"
-            ),
-            parse_mode="HTML",
-            reply_markup=_shop_main_kb()
-        )
-        return
+            add_extra_dado(user_id, 1)
 
-    # SELL MENU (paginação)
-    if data.startswith("shop:sell_menu:"):
-        page = int(data.split(":")[2])
-        ensure_user_row(user_id, q.from_user.first_name)
+            coins = get_user_coins(user_id)
+            giros = get_extra_dado(user_id)
 
-        itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
-        if not itens:
-            await q.answer("Sua coleção está vazia.", show_alert=True)
+            await q.message.edit_caption(
+                caption=(
+                    "🎡 <b>GIRO COMPRADO!</b>\n\n"
+                    "✅ Você recebeu <b>+1 giro</b>.\n\n"
+                    f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+                    f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+                    "Quer mais alguma coisa? 👇"
+                ),
+                parse_mode="HTML",
+                reply_markup=_shop_main_kb()
+            )
             return
 
-        await q.message.edit_caption(
-            caption=_sell_menu_text(page),
-            parse_mode="HTML",
-            reply_markup=_sell_kb(itens, page, total_pages)
-        )
-        return
+        # SELL MENU (paginação)
+        if data.startswith("shop:sell_menu:"):
+            try:
+                page = int(data.split(":")[2])
+            except Exception:
+                return
 
-    # SELL PICK -> confirmação
-    if data.startswith("shop:sell_pick:"):
-        # shop:sell_pick:CHAR_ID:PAGE
-        _, _, cid_s, page_s = data.split(":")
-        char_id = int(cid_s)
-        page = int(page_s)
+            ensure_user_row(user_id, q.from_user.first_name)
 
-        item = get_collection_character_full(user_id, char_id)
-        if not item:
-            await q.answer("Você não tem esse personagem.", show_alert=True)
+            itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
+            if not itens:
+                await q.answer("Sua coleção está vazia.", show_alert=True)
+                return
+
+            await q.message.edit_caption(
+                caption=_sell_menu_text(page),
+                parse_mode="HTML",
+                reply_markup=_sell_kb(itens, page, total_pages)
+            )
             return
 
-        name = item["character_name"]
-        qty = int(item.get("quantity") or 1)
+        # SELL PICK -> confirmação
+        if data.startswith("shop:sell_pick:"):
+            try:
+                _, _, cid_s, page_s = data.split(":")
+                char_id = int(cid_s)
+                page = int(page_s)
+            except Exception:
+                return
 
-        await q.message.edit_caption(
-            caption=_confirm_sell_text(char_id, name, qty),
-            parse_mode="HTML",
-            reply_markup=_confirm_sell_kb(char_id, page)
-        )
-        return
+            item = get_collection_character_full(user_id, char_id)
+            if not item:
+                await q.answer("Você não tem esse personagem.", show_alert=True)
+                return
 
-    # SELL CONFIRM
-    if data.startswith("shop:sell_confirm:"):
-        # shop:sell_confirm:CHAR_ID:PAGE
-        _, _, cid_s, page_s = data.split(":")
-        char_id = int(cid_s)
-        page = int(page_s)
+            name = item["character_name"]
+            qty = int(item.get("quantity") or 1)
 
-        # revalida no banco (anti falhas)
-        item = get_collection_character_full(user_id, char_id)
-        if not item:
-            await q.answer("Você não tem mais esse personagem.", show_alert=True)
-            # volta pro menu
-            await callback_shop(update, context)  # tenta render home/menu
+            await q.message.edit_caption(
+                caption=_confirm_sell_text(char_id, name, qty),
+                parse_mode="HTML",
+                reply_markup=_confirm_sell_kb(char_id, page)
+            )
             return
 
-        # remove 1 unidade e paga +1 coin
-        ok = remove_one_from_collection(user_id, char_id)
-        if not ok:
-            await q.answer("Não consegui vender agora. Tente de novo.", show_alert=True)
+        # SELL CONFIRM
+        if data.startswith("shop:sell_confirm:"):
+            try:
+                _, _, cid_s, page_s = data.split(":")
+                char_id = int(cid_s)
+                page = int(page_s)
+            except Exception:
+                return
+
+            item = get_collection_character_full(user_id, char_id)
+            if not item:
+                await q.answer("Você não tem mais esse personagem.", show_alert=True)
+                # volta pro menu da página
+                try:
+                    itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
+                    if itens:
+                        await q.message.edit_caption(
+                            caption=_sell_menu_text(page),
+                            parse_mode="HTML",
+                            reply_markup=_sell_kb(itens, page, total_pages)
+                        )
+                except Exception:
+                    pass
+                return
+
+            ok_remove = remove_one_from_collection(user_id, char_id)
+            if not ok_remove:
+                await q.answer("Não consegui vender agora. Tente de novo.", show_alert=True)
+                return
+
+            add_coin(user_id, SHOP_SELL_GAIN)
+
+            coins = get_user_coins(user_id)
+            giros = get_extra_dado(user_id)
+
+            await q.message.edit_caption(
+                caption=(
+                    "✅ <b>VENDA CONCLUÍDA!</b>\n\n"
+                    f"🧧 <code>{char_id}</code>. <b>{item['character_name']}</b>\n"
+                    f"🪙 Você ganhou <b>+{SHOP_SELL_GAIN} coin</b>\n\n"
+                    f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+                    f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+                    "Quer fazer mais alguma coisa? 👇"
+                ),
+                parse_mode="HTML",
+                reply_markup=_shop_main_kb()
+            )
+            await q.answer("Vendido! ✅")
             return
-
-        add_coin(user_id, SHOP_SELL_GAIN)
-
-        coins = get_user_coins(user_id)
-        giros = get_extra_dado(user_id)
-
-        await q.message.edit_caption(
-            caption=(
-                "✅ <b>VENDA CONCLUÍDA!</b>\n\n"
-                f"🧧 <code>{char_id}</code>. <b>{item['character_name']}</b>\n"
-                f"🪙 Você ganhou <b>+{SHOP_SELL_GAIN} coin</b>\n\n"
-                f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-                f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-                "Quer fazer mais alguma coisa? 👇"
-            ),
-            parse_mode="HTML",
-            reply_markup=_shop_main_kb()
-        )
-        await q.answer("Vendido! ✅")
-        return
-        
+            
 # ==================================================
 # 25) MAIN (handlers)
 # ==================================================
+
+async def _on_startup(app):
+    # inicia DB e Telethon
+    try:
+        init_db()
+    except Exception:
+        # não muda texto de usuário; só evita crash
+        pass
+
+    try:
+        await client.start()
+    except Exception:
+        # se Telethon falhar, o bot ainda pode rodar (comandos de busca vão falhar)
+        pass
+
+
+async def _on_shutdown(app):
+    try:
+        await client.disconnect()
+    except Exception:
+        pass
+
+
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Nunca vaza stacktrace pro usuário. Loga e segue.
+    try:
+        err = context.error
+        print("❌ Erro:", repr(err))
+    except Exception:
+        pass
+
+
+async def _cards_dot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Suporte a ".cards ..." em texto.
+    Transforma em args e chama cards().
+    """
+    if not update.message or not update.message.text:
+        return
+    txt = update.message.text.strip()
+    # ".cards" ou ".cards s One Piece"
+    if not txt.lower().startswith(".cards"):
+        return
+    rest = txt[5:].strip()  # remove ".cards"
+    if rest:
+        context.args = rest.split()
+    else:
+        context.args = []
+    await cards(update, context)
+
+
 def main():
     init_db()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)  # melhora throughput em grupos/volume
+        .build()
+    )
+
+    # lifecycle
+    app.post_init = _on_startup
+    app.post_shutdown = _on_shutdown
+
+    # error handler global
+    app.add_error_handler(_error_handler)
 
     # ===== HANDLERS =====
     app.add_handler(CommandHandler("anime", anime))
@@ -3461,21 +4083,21 @@ def main():
     app.add_handler(CommandHandler("dado", dado_command))
     app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
-    app.add_handler(CallbackQueryHandler(callback_colecao, pattern="^colecao:"))
+    app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("nomecolecao", nomecolecao))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
-    app.add_handler(CallbackQueryHandler(callback_info_manga, pattern="^info_manga:"))
+    app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
 
     app.add_handler(CommandHandler("perso", perso))
     app.add_handler(CommandHandler("recomenda", recomenda))
-    app.add_handler(CallbackQueryHandler(callback_recomenda, pattern="^rec:"))
+    app.add_handler(CallbackQueryHandler(callback_recomenda, pattern=r"^rec:"))
 
     app.add_handler(CommandHandler("emalta", emalta))
-    app.add_handler(CallbackQueryHandler(callback_emalta, pattern="^emalta:"))
+    app.add_handler(CallbackQueryHandler(callback_emalta, pattern=r"^emalta:"))
 
-    app.add_handler(CallbackQueryHandler(callback_info_perso, pattern="^info_perso:"))
-    app.add_handler(CallbackQueryHandler(callback_info_anime, pattern="^info_anime:"))
+    app.add_handler(CallbackQueryHandler(callback_info_perso, pattern=r"^info_perso:"))
+    app.add_handler(CallbackQueryHandler(callback_info_anime, pattern=r"^info_anime:"))
 
     app.add_handler(CommandHandler("pedido", pedido))
     app.add_handler(CommandHandler("start", start))
@@ -3490,37 +4112,40 @@ def main():
     app.add_handler(CommandHandler("nick", nick))
     app.add_handler(CommandHandler("nivel", nivel))
 
-    # /cards (lista por anime) + callback
+    # /cards + callback
     app.add_handler(CommandHandler("cards", cards))
-    app.add_handler(MessageHandler(filters.Regex(r"^\.cards"), cards))
-    app.add_handler(CallbackQueryHandler(callback_cards, pattern="^cards:"))
+    app.add_handler(MessageHandler(filters.Regex(r"(?i)^\s*\.cards(\s|$)"), _cards_dot_handler))
+    app.add_handler(CallbackQueryHandler(callback_cards, pattern=r"^cards:"))
 
-    # /card (card único)
+    # /card
     app.add_handler(CommandHandler("card", card))
-    app.add_handler(CallbackQueryHandler(callback_cardfav, pattern="^cardfav:"))
+    app.add_handler(CallbackQueryHandler(callback_cardfav, pattern=r"^cardfav:"))
 
     # admin global
     app.add_handler(CommandHandler("setfoto", setfoto))
     app.add_handler(CommandHandler("delfoto", delfoto))
     app.add_handler(CommandHandler("banchar", banchar))
     app.add_handler(CommandHandler("unbanchar", unbanchar))
-    
 
-    # troca
+    # troca (aceita com e sem :ID)
     app.add_handler(CommandHandler("trocar", trocar))
-    app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern="^trade_accept$"))
-    app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern="^trade_reject$"))
+    app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern=r"^trade_accept(:\d+)?$"))
+    app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern=r"^trade_reject(:\d+)?$"))
 
-     # loja
+    # loja
     app.add_handler(CommandHandler("loja", loja))
     app.add_handler(CallbackQueryHandler(callback_shop, pattern=r"^shop:"))
 
     print("✅ Bot rodando...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES,  # se quiser otimizar mais, trocamos por lista mínima
+    )
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
