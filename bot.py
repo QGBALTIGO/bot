@@ -3133,7 +3133,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎲 <b>DADO</b>\n\n"
                 "Você está sem dados agora.\n\n"
                 "🕒 Os dados chegam nos horários:\n"
-                "<b>01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h</b> (SP)\n"
+                "<b>01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h</b> (BR)\n"
                 "📦 Acumula até <b>24</b>.\n\n"
                 f"⏱ Agora: <b>{_format_time_sp()}</b>"
             )
@@ -5187,6 +5187,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
