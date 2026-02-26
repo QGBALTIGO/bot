@@ -112,7 +112,10 @@ def _ensure_achievements_table():
     """)
     _commit()
 
-
+def get_user_row_safe(user_id: int) -> dict:
+    row = get_user_row(user_id)
+    return row or {"user_id": user_id, "nick": "User", "coins": 0, "level": 1, "commands": 0, "extra_dado": 0, "dado_balance": 0}
+    
 def _try_create_indexes():
     """
     Cria índices e NÃO deixa uma transação abortada travar o resto.
