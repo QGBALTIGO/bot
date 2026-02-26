@@ -75,6 +75,9 @@ def _ensure_columns_users():
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_dado BIGINT DEFAULT 0;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_pedido BIGINT DEFAULT 0;""")
 
+
+
+
     # DAILY
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily BIGINT DEFAULT 0;""")
 
@@ -85,6 +88,12 @@ def _ensure_columns_users():
     # GIROS (extra_dado) + slot (01/04/07/10/13/16/19/22)
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_slot BIGINT DEFAULT -1;""")
+
+
+
+
+
+
 
 
 def _dedupe_nicks_before_unique_index():
@@ -117,6 +126,7 @@ def _dedupe_nicks_before_unique_index():
         # mantém o primeiro, muda os demais
         for uid in ids[1:]:
             cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (f"{base}_{uid}", uid))
+
 
 
 # ================================
@@ -328,6 +338,8 @@ def ensure_user_row(user_id: int, default_name: str, new_user_dice: int = 0):
         return
 
     base = _sanitize_nick(default_name)
+
+
     candidates = [base, f"{base}_{user_id}", f"user_{user_id}"]
 
     for nick in candidates:
@@ -401,6 +413,9 @@ def get_user_by_nick(nick: str):
 
 def set_user_nick(user_id: int, nick: str):
     cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (_sanitize_nick(nick), int(user_id)))
+
+
+
     _commit()
 
 
@@ -611,6 +626,11 @@ def clear_favorite(user_id: int):
 # ================================
 # GIROS (extra_dado) + SLOT
 # ================================
+
+
+
+
+
 def get_extra_state(user_id: int) -> dict:
     cursor.execute(
         "SELECT COALESCE(extra_dado,0)::int AS x, COALESCE(extra_slot,-1)::bigint AS s FROM users WHERE user_id=%s",
@@ -643,6 +663,7 @@ def consume_extra_dado(user_id: int) -> bool:
 def add_extra_dado(user_id: int, amount: int):
     cursor.execute("UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s", (int(amount), int(user_id)))
     _commit()
+
 
 
 # ================================
@@ -1094,17 +1115,3 @@ def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extr
         except Exception:
             pass
         raise
-
-# ================================
-# GIROS (extra_dado) + SLOT
-# ================================
-# ----------------------------
-# COMPATIBILIDADE COM BOT ANTIGO
-# ----------------------------
-def get_extra_dado(user_id: int) -> int:
-    """
-    Compatibilidade com versões antigas do bot.
-    Retorna apenas a quantidade de giros.
-    """
-    st = get_extra_state(user_id)
-    return int(st["x"] if st else 0)
