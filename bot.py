@@ -591,9 +591,6 @@ def _get_profile_lock(user_id: int) -> asyncio.Lock:
     return lock
 
 
-# ------------------------------
-# /nick
-# ------------------------------
 async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await checar_canal(update, context):
         return
@@ -606,6 +603,7 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await registrar_comando(update)
+
     user_id = update.effective_user.id
     ensure_user_row(user_id, update.effective_user.first_name)
 
@@ -657,27 +655,35 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # trava por usuário (evita 2 /nick ao mesmo tempo)
     lock = _get_profile_lock(user_id)
     async with lock:
-        cur = db.cursor()
         try:
-            # Atualiza nick de forma segura (cursor por operação).
-            # Conflito de UNIQUE deve cair no except e manter texto original.
-            cur.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
-            db.commit()
-        except Exception:
-            db.rollback()
-            await update.message.reply_html(
-                "🚫 <b>Nick indisponível</b>\n\n"
-                f"O nick <code>{nick_novo}</code> já está em uso.\n"
-                "Tente outro 🙂"
-            )
-            return
-        finally:
+            # usa a função do database.py (já faz rollback sem travar o resto)
+            from database import set_user_nick
+            set_user_nick(user_id, nick_novo)
+
+        except Exception as e:
+            # UniqueViolation do Postgres: nick já existe
             try:
-                cur.close()
+                import psycopg2
+                from psycopg2 import errors
+                if isinstance(e, errors.UniqueViolation):
+                    await update.message.reply_html(
+                        "🚫 <b>Nick indisponível</b>\n\n"
+                        f"O nick <code>{nick_novo}</code> já está em uso.\n"
+                        "Tente outro 🙂"
+                    )
+                    return
             except Exception:
                 pass
+
+            # qualquer outro erro
+            await update.message.reply_html(
+                "❌ <b>Erro ao definir nick</b>\n\n"
+                "Tente novamente em alguns segundos."
+            )
+            return
 
     await update.message.reply_html(
         "✅ <b>Nick definido!</b>\n\n"
@@ -5187,6 +5193,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
