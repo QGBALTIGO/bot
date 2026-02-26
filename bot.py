@@ -72,7 +72,10 @@ from database import (
     set_dado_state,
     inc_dado_balance,
     get_extra_dado,
-    consume_extra_dado,
+    consume_extra_dado
+    get_user_coins,
+    claim_daily_reward,
+    list_pending_trades_for_user,
 )
 
 from zoneinfo import ZoneInfo
@@ -4004,6 +4007,187 @@ async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await q.answer("Vendido! ✅")
             return
+
+# ==================================================
+# /saldo + /daily + /trocas
+# ==================================================
+
+DAILY_COINS_MIN = 1
+DAILY_COINS_MAX = 3
+DAILY_GIRO_CHANCE = 0.20  # 20% chance de 1 giro
+
+_SALDO_FLOOD: dict[int, float] = {}
+_DAILY_FLOOD: dict[int, float] = {}
+_TROCAS_FLOOD: dict[int, float] = {}
+
+def _cmd_flood_ok(mem: dict[int, float], user_id: int, seconds: float) -> bool:
+    now = time.time()
+    last = mem.get(user_id, 0.0)
+    if now - last < seconds:
+        return False
+    mem[user_id] = now
+    return True
+
+
+def _next_slot_dt_sp() -> datetime:
+    """
+    Próximo horário de recarga do DADO:
+    00/04/08/12/16/20 (SP_TZ)
+    """
+    now = datetime.now(tz=SP_TZ)
+    hour = now.hour
+    slots = [0, 4, 8, 12, 16, 20]
+    nxt = None
+    for s in slots:
+        if hour < s:
+            nxt = s
+            break
+    if nxt is None:
+        # próximo dia 00
+        nxt_dt = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
+        return nxt_dt
+    return now.replace(hour=nxt, minute=0, second=0, microsecond=0)
+
+
+def _daily_day_start_ts_sp() -> int:
+    """
+    Timestamp do começo do dia no fuso de SP (SP_TZ)
+    """
+    now = datetime.now(tz=SP_TZ)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
+
+
+async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    if not _cmd_flood_ok(_SALDO_FLOOD, user_id, 2.0):
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    # atualiza slots do dado (pra saldo estar certo)
+    try:
+        balance = _refresh_user_dado_balance(user_id)
+    except Exception:
+        st = get_dado_state(user_id)
+        balance = int(st["b"]) if st else 0
+
+    coins = get_user_coins(user_id)
+    giros = get_extra_dado(user_id)
+
+    nxt = _next_slot_dt_sp()
+    nxt_txt = nxt.strftime("%H:%M")
+
+    await update.message.reply_html(
+        "💳 <b>SALDO</b>\n\n"
+        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+        f"🎟️ <b>Dados:</b> <code>{balance}</code>\n"
+        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+        "🕒 Próxima recarga do dado:\n"
+        f"<b>{nxt_txt}</b> (Brasil)"
+    )
+
+
+async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    if not _cmd_flood_ok(_DAILY_FLOOD, user_id, 2.0):
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    day_start_ts = _daily_day_start_ts_sp()
+
+    try:
+        reward = claim_daily_reward(
+            user_id,
+            day_start_ts,
+            coins_min=DAILY_COINS_MIN,
+            coins_max=DAILY_COINS_MAX,
+            giro_chance=DAILY_GIRO_CHANCE,
+        )
+    except Exception:
+        await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
+        return
+
+    if not reward:
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            "Você já resgatou hoje.\n"
+            "Volte amanhã 🙂"
+        )
+        return
+
+    # mostra resultado
+    if reward["type"] == "giro":
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            "✅ Você recebeu: <b>+1 giro</b> 🎡"
+        )
+    else:
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            f"✅ Você recebeu: <b>+{int(reward['amount'])} coins</b> 🪙"
+        )
+
+
+def _trade_kb_for_list(trade_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Aceitar", callback_data=f"trade_accept:{trade_id}"),
+        InlineKeyboardButton("❌ Recusar", callback_data=f"trade_reject:{trade_id}"),
+    ]])
+
+
+async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    if not _cmd_flood_ok(_TROCAS_FLOOD, user_id, 2.0):
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    trades = list_pending_trades_for_user(user_id, limit=5)
+    if not trades:
+        await update.message.reply_html(
+            "🔁 <b>TROCAS</b>\n\n"
+            "Você não tem trocas pendentes."
+        )
+        return
+
+    # manda uma mensagem por troca (mais estável que 1 msg com 10 botões)
+    await update.message.reply_html(
+        "🔁 <b>TROCAS</b>\n\n"
+        "Aqui estão suas trocas pendentes:"
+    )
+
+    for t in trades:
+        tid = int(t["trade_id"])
+        from_user = int(t["from_user"])
+        from_char = int(t["from_character_id"])
+        to_char = int(t["to_character_id"])
+
+        # labels bonitos (reaproveita seu helper)
+        a_name = await _get_char_label(from_user, from_char)
+        b_name = await _get_char_label(user_id, to_char)
+
+        await update.message.reply_html(
+            "🔁 <b>TROCA PENDENTE</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{tid}</code>\n\n"
+            f"➡️ O outro usuário oferece: {a_name}\n"
+            f"⬅️ Você oferece: {b_name}\n\n"
+            "⚠️ Apenas você pode aceitar/recusar.",
+            reply_markup=_trade_kb_for_list(tid)
+        )
             
 # ==================================================
 # 25) MAIN (handlers)
@@ -4129,12 +4313,15 @@ def main():
 
     # troca (aceita com e sem :ID)
     app.add_handler(CommandHandler("trocar", trocar))
-    app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern=r"^trade_accept(:\d+)?$"))
-    app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern=r"^trade_reject(:\d+)?$"))
+    app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern=r"^trade_accept(?::\d+)?$"))
+    app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern=r"^trade_reject(?::\d+)?$"))
 
     # loja
     app.add_handler(CommandHandler("loja", loja))
     app.add_handler(CallbackQueryHandler(callback_shop, pattern=r"^shop:"))
+    app.add_handler(CommandHandler("saldo", saldo))
+    app.add_handler(CommandHandler("daily", daily))
+    app.add_handler(CommandHandler("trocas", trocas))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -4145,6 +4332,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
