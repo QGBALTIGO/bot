@@ -172,26 +172,12 @@ async def buscar_post(canal: str, termo: str) -> Optional[int]:
             _channel_search_cache[key] = (time.time(), None)
             return None
 
-# ============================================================
-# LOGS AUTOMÁTICOS (CANAL DE REGISTRO) — COPIA E COLA
-# - Envia eventos sozinho para um canal (LOG_CHANNEL_ID no Railway)
-# - Opcional: LOG_THREAD_ID (tópico em grupo/forum)
-# - Inclui /chatid (PV only) pra você pegar IDs fácil
-# - Inclui wrappers prontos: log_trade / log_ban / log_setfoto / log_nick / log_error
-# ============================================================
-
+# imports normais...
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from telegram import Update
-from telegram.ext import ContextTypes
+import asyncio
 
-# =========================
-# Railway Variables:
-#   LOG_CHANNEL_ID = -1001234567890
-#   LOG_THREAD_ID  = 0   (opcional)
-# =========================
 LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "0"))
+LOG_THREAD_ID = int(os.getenv("LOG_THREAD_ID", "0"))
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -337,33 +323,7 @@ async def log_error(context: ContextTypes.DEFAULT_TYPE, where: str, user_id: int
         f"• detalhe: <code>{_escape_html(str(err))[:900]}</code>"
     )
 
-# ============================================================
-# COMO USAR (exemplos rápidos):
-#
-# 1) add_handler do /chatid:
-#    app.add_handler(CommandHandler("chatid", chatid))
-#
-# 2) Quando criar troca:
-#    await log_trade_created(context, trade_id, from_user, to_user, from_char, to_char)
-#
-# 3) Quando aceitar/recusar/falhar:
-#    await log_trade_status(context, trade_id, "aceita", user_id)
-#
-# 4) Ban / unban:
-#    await log_ban(context, char_id, admin_id, reason)
-#    await log_unban(context, char_id, admin_id)
-#
-# 5) setfoto / delfoto:
-#    await log_setfoto(context, char_id, admin_id, url)
-#    await log_delfoto(context, char_id, admin_id)
-#
-# 6) nick:
-#    await log_nick_change(context, user_id, new_nick)
-#
-# 7) erros:
-#    except Exception as e:
-#        await log_error(context, "/dado", user_id, e)
-# ============================================================
+# LOGS AUTOMÁTICOS (CANAL DE REGISTRO)
 
 # ==================================================
 # 4) ANTI-SPAM (MELHORADO PARA CONCORRÊNCIA)
@@ -2786,7 +2746,7 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Trava global curta (evita dois admins alterarem ao mesmo tempo em lote)
             async with _admin_ops_lock:
                 try:
-                    set_global_character_image(char_id, url, updated_by=user_id)
+                    await log_setfoto(context, char_id, admin_id, url)
                 except Exception:
                     # não muda textos; só evita crash
                     return
@@ -2914,6 +2874,9 @@ async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ADMIN: /banchar ID [motivo]  (remove de cards/card/etc)
 #       /unbanchar ID
 # ==================================================
+
+   await log_ban(context, char_id, admin_id, reason)
+
 async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
@@ -5482,6 +5445,7 @@ def main():
     app.add_handler(CommandHandler("tutorial", tutorial))
     app.add_handler(CommandHandler("comandos", comandos))
     app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
+    app.add_handler(CommandHandler("chatid", chatid))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -5492,6 +5456,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
