@@ -1094,3 +1094,17 @@ def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extr
         except Exception:
             pass
         raise
+
+# ================================
+# GIROS (extra_dado) + SLOT
+# ================================
+# ----------------------------
+# COMPATIBILIDADE COM BOT ANTIGO
+# ----------------------------
+def get_extra_dado(user_id: int) -> int:
+    """
+    Compatibilidade com versões antigas do bot.
+    Retorna apenas a quantidade de giros.
+    """
+    st = get_extra_state(user_id)
+    return int(st["x"] if st else 0)
