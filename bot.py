@@ -2764,8 +2764,6 @@ async def delfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #       /unbanchar ID
 # ==================================================
 
-   await log_ban(context, char_id, admin_id, reason)
-
 async def banchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
@@ -5343,6 +5341,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
