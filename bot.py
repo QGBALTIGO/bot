@@ -85,6 +85,9 @@ from database import (
     list_pending_trades_for_user,
     try_spend_coins,
     add_extra_dado,
+    get_top_by_level,
+    get_top_by_coins,
+    get_top_by_collection,
 )
 
 from zoneinfo import ZoneInfo
@@ -4213,7 +4216,152 @@ async def trocas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ Apenas você pode aceitar/recusar.",
             reply_markup=_trade_kb(tid)
         )
-            
+
+# ==================================================
+# /ranking (TOP 10) — Níveis / Coins / Coleção (com botões)
+# ==================================================
+
+RANKING_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
+_RANK_BTN_LAST: dict[int, float] = {}
+
+def _rank_btn_ok(user_id: int, seconds: float = 1.2) -> bool:
+    now = time.time()
+    last = _RANK_BTN_LAST.get(user_id, 0.0)
+    if now - last < seconds:
+        return False
+    _RANK_BTN_LAST[user_id] = now
+    return True
+
+
+def _ranking_kb(owner_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🪙 Moedas", callback_data=f"rank:coins:{owner_id}"),
+            InlineKeyboardButton("⭐ Níveis", callback_data=f"rank:level:{owner_id}"),
+        ],
+        [
+            InlineKeyboardButton("📚 Coleção", callback_data=f"rank:colecao:{owner_id}"),
+        ],
+    ])
+
+
+def _format_rank_header(metric: str) -> str:
+    if metric == "level":
+        return "🏆 <b>RANKING — NÍVEIS (TOP 10)</b>\n\n"
+    if metric == "coins":
+        return "🏆 <b>RANKING — MOEDAS (TOP 10)</b>\n\n"
+    return "🏆 <b>RANKING — COLEÇÃO (TOP 10)</b>\n\n"
+
+
+def _safe_nick(row: dict) -> str:
+    nick = (row.get("nick") or "User").strip()
+    return nick if nick else "User"
+
+
+def _render_ranking(metric: str) -> str:
+    if metric == "level":
+        rows = get_top_by_level(10)
+        text = _format_rank_header(metric)
+        if not rows:
+            return text + "⚠️ Sem dados no momento."
+        for i, r in enumerate(rows, start=1):
+            nick = _safe_nick(r)
+            level = int(r.get("level") or 1)
+            cmds = int(r.get("commands") or 0)
+            text += f"<b>{i}.</b> {nick} — ⭐ <b>{level}</b> <i>({cmds} cmds)</i>\n"
+        return text
+
+    if metric == "coins":
+        rows = get_top_by_coins(10)
+        text = _format_rank_header(metric)
+        if not rows:
+            return text + "⚠️ Sem dados no momento."
+        for i, r in enumerate(rows, start=1):
+            nick = _safe_nick(r)
+            coins = int(r.get("coins") or 0)
+            lvl = int(r.get("level") or 1)
+            text += f"<b>{i}.</b> {nick} — 🪙 <b>{coins}</b> <i>(lvl {lvl})</i>\n"
+        return text
+
+    # colecao
+    rows = get_top_by_collection(10)
+    text = _format_rank_header("colecao")
+    if not rows:
+        return text + "⚠️ Sem dados no momento."
+    for i, r in enumerate(rows, start=1):
+        nick = _safe_nick(r)
+        total = int(r.get("total") or 0)
+        text += f"<b>{i}.</b> {nick} — 📚 <b>{total}</b>\n"
+    return text
+
+
+async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    owner_id = update.effective_user.id
+    caption = (
+        "🏆 <b>RANKING</b>\n"
+        "Selecione qual ranking você quer ver 👇"
+    )
+
+    try:
+        await update.message.reply_photo(
+            photo=RANKING_IMAGE,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=_ranking_kb(owner_id),
+        )
+    except Exception:
+        await update.message.reply_html(caption, reply_markup=_ranking_kb(owner_id))
+
+
+async def callback_ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    user_id = q.from_user.id
+    if not _rank_btn_ok(user_id, 1.2):
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    # rank:metric:owner
+    try:
+        _, metric, owner_s = (q.data or "").split(":")
+        owner_id = int(owner_s)
+    except Exception:
+        await q.answer("Erro no ranking.", show_alert=True)
+        return
+
+    # só quem abriu o ranking pode mexer (evita spam em grupo)
+    if user_id != owner_id:
+        await q.answer("Apenas quem abriu o ranking pode mexer.", show_alert=True)
+        return
+
+    if metric not in ("level", "coins", "colecao"):
+        await q.answer("Ranking inválido.", show_alert=True)
+        return
+
+    texto = _render_ranking(metric)
+
+    # edita caption se tiver foto; senão edita texto
+    try:
+        if q.message and q.message.photo:
+            await q.message.edit_caption(
+                caption=texto,
+                parse_mode="HTML",
+                reply_markup=_ranking_kb(owner_id),
+            )
+        else:
+            await q.message.edit_text(
+                text=texto,
+                parse_mode="HTML",
+                reply_markup=_ranking_kb(owner_id),
+            )
+    except Exception:
+        await q.answer("Não consegui atualizar agora.", show_alert=True)
+        
 # ==================================================
 # 25) MAIN (handlers)
 # ==================================================
@@ -4347,6 +4495,8 @@ def main():
     app.add_handler(CommandHandler("saldo", saldo))
     app.add_handler(CommandHandler("daily", daily))
     app.add_handler(CommandHandler("trocas", trocas))
+    app.add_handler(CommandHandler("ranking", ranking))
+    app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:(level|coins|colecao):"))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -4357,6 +4507,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
