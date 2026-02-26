@@ -4569,7 +4569,411 @@ async def conquistas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception:
         await update.message.reply_html(texto)
-    
+
+# ==================================================
+# GUIA INTERATIVO (PV): /ajuda /tutorial /comandos + suporte/adm
+# ==================================================
+
+import time
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram.ext import ContextTypes
+
+AJUDA_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqoU22mftY3fEpQzEXtLk7F2OeeWhbDfAALUC2sbS__4RPCOq-7wqnDbAQADAgADeQADOgQ/photo.jpg"
+
+# 👉 Configure aqui:
+SUPORTE_USER = "@QGSuporteBot"     # ex: "@BaltigoSuporte"  (pode deixar vazio "")
+SUPORTE_CHAT_ID = None            # ex: -1001234567890 (canal/grupo de suporte) ou None
+SUPORTE_TEXTO_EXTRA = ""          # texto opcional extra (pode deixar "")
+
+AJUDA_BTN_FLOOD = 1.2
+_AJUDA_BTN_LAST: dict[int, float] = {}
+
+def _ajuda_btn_ok(user_id: int) -> bool:
+    now = time.time()
+    last = _AJUDA_BTN_LAST.get(user_id, 0.0)
+    if now - last < AJUDA_BTN_FLOOD:
+        return False
+    _AJUDA_BTN_LAST[user_id] = now
+    return True
+
+def _pv_only_text() -> str:
+    return (
+        "📖 <b>GUIA / AJUDA</b>\n\n"
+        "Esse menu funciona <b>somente no privado</b> do bot.\n"
+        "👉 Abra o bot no PV e use <code>/ajuda</code>."
+    )
+
+def _ajuda_ctx_set(context: ContextTypes.DEFAULT_TYPE, msg_id: int, owner_id: int):
+    context.bot_data.setdefault("ajuda_ctx", {})[str(msg_id)] = int(owner_id)
+
+def _ajuda_ctx_owner(context: ContextTypes.DEFAULT_TYPE, msg_id: int) -> int:
+    return int((context.bot_data.get("ajuda_ctx", {}) or {}).get(str(msg_id)) or 0)
+
+def _ajuda_title() -> str:
+    return (
+        "📖 <b>GUIA INTERATIVO — BALTIGO</b>\n"
+        "Aqui você aprende tudo rapidinho.\n\n"
+        "🧭 Escolha uma categoria 👇"
+    )
+
+def _ajuda_menu_kb(is_admin_user: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton("🚀 Começar (Tutorial)", callback_data="ajuda:tutorial")],
+        [InlineKeyboardButton("🎌 Animes (anime/infoanime/emalta/recomenda)", callback_data="ajuda:animes")],
+        [InlineKeyboardButton("📚 Mangá (manga/infomanga)", callback_data="ajuda:manga")],
+        [InlineKeyboardButton("🧧 Personagens (perso/cards/card)", callback_data="ajuda:personagens")],
+        [InlineKeyboardButton("📦 Coleção (colecao/nomecolecao)", callback_data="ajuda:colecao")],
+        [InlineKeyboardButton("👤 Perfil (perfil/nick/nivel/privado/favorito)", callback_data="ajuda:perfil")],
+        [InlineKeyboardButton("🔁 Trocas (trocar/trocas)", callback_data="ajuda:trocas")],
+        [InlineKeyboardButton("🛒 Loja & Economia (loja/saldo/daily/dado)", callback_data="ajuda:loja")],
+        [InlineKeyboardButton("🏆 Rankings (ranking)", callback_data="ajuda:ranking")],
+        [InlineKeyboardButton("📊 Stats & Conquistas (stats/conquistas)", callback_data="ajuda:stats")],
+        [InlineKeyboardButton("📌 Lista completa", callback_data="ajuda:comandos")],
+        [InlineKeyboardButton("📩 Falar com suporte/adm", callback_data="ajuda:suporte")],
+    ]
+    if is_admin_user:
+        rows.append([InlineKeyboardButton("🛠️ Admin (setfoto/delfoto/banchar/unbanchar)", callback_data="ajuda:admin")])
+    return InlineKeyboardMarkup(rows)
+
+def _ajuda_back_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Voltar ao menu", callback_data="ajuda:menu")]])
+
+def _ajuda_page_text(page: str) -> str:
+    # Texto “bem bonito”, com exemplos, e cobrindo todos os comandos do seu main()
+    if page == "tutorial":
+        return (
+            "🚀 <b>TUTORIAL — COMO USAR O BOT</b>\n\n"
+            "✅ <b>Passo 1 — Comece pelo perfil</b>\n"
+            "• <code>/nick seu_nick</code> (1 palavra, sem espaço)\n"
+            "• <code>/perfil</code> (ver sua capa e infos)\n\n"
+            "🎲 <b>Passo 2 — Ganhar personagens</b>\n"
+            "• <code>/dado</code> (PV do bot) → você escolhe um anime e ganha 1 personagem\n\n"
+            "📦 <b>Passo 3 — Ver sua coleção</b>\n"
+            "• <code>/colecao</code>\n"
+            "• <code>/nomecolecao Nome</code>\n\n"
+            "❤️ <b>Passo 4 — Defina seu favorito (capa do perfil)</b>\n"
+            "• <code>/favoritar ID</code>\n"
+            "• <code>/desfavoritar</code>\n\n"
+            "🛒 <b>Passo 5 — Economia</b>\n"
+            "• <code>/saldo</code> (coins + dados + giros)\n"
+            "• <code>/daily</code> (recompensa 1x por dia)\n"
+            "• <code>/loja</code> (PV) vender repetidos e comprar giros\n\n"
+            "🔁 <b>Passo 6 — Trocas</b>\n"
+            "• Responda o usuário e use: <code>/trocar SEU_ID ID_DELE</code>\n"
+            "• <code>/trocas</code> (PV) ver pendências\n\n"
+            "🏆 <b>Passo 7 — Competição</b>\n"
+            "• <code>/ranking</code>\n"
+            "• <code>/stats</code> e <code>/conquistas</code>\n\n"
+            "💡 Dica: pra ver qualquer personagem do mundo: <code>/card Nome</code> ou <code>/card ID</code>"
+        )
+
+    if page == "animes":
+        return (
+            "🎌 <b>ANIMES — COMANDOS</b>\n\n"
+            "• <code>/anime Nome</code>\n"
+            "  → busca e mostra resultado com botões.\n\n"
+            "• <code>/infoanime Nome</code>\n"
+            "  → informações detalhadas.\n\n"
+            "• <code>/emalta</code>\n"
+            "  → lista do que está em alta.\n\n"
+            "• <code>/recomenda</code>\n"
+            "  → recomendações (você escolhe por botões).\n\n"
+            "📌 Dica: quando aparecer botão de “info”, é só clicar."
+        )
+
+    if page == "manga":
+        return (
+            "📚 <b>MANGÁ — COMANDOS</b>\n\n"
+            "• <code>/manga Nome</code>\n"
+            "  → busca mangá.\n\n"
+            "• <code>/infomanga Nome</code>\n"
+            "  → mostra detalhes e botões.\n\n"
+            "📌 Dica: se não achar, tente um nome mais curto."
+        )
+
+    if page == "personagens":
+        return (
+            "🧧 <b>PERSONAGENS — /perso, /cards, /card</b>\n\n"
+            "• <code>/perso Nome</code>\n"
+            "  → busca personagem e mostra info.\n\n"
+            "• <code>/cards Nome do Anime</code>\n"
+            "  → lista personagens da obra (paginado).\n\n"
+            "Filtros do /cards:\n"
+            "• <code>/cards s Nome</code> → só os que você TEM ✅\n"
+            "• <code>/cards f Nome</code> → só os que FALTAM ✖️\n"
+            "Também aceita ID:\n"
+            "• <code>/cards 15125</code>\n\n"
+            "• <code>/card ID</code> ou <code>/card Nome</code>\n"
+            "  → mostra card único (✅ se você tem / ✖️ se não tem)\n\n"
+            "Atalho:\n"
+            "• <code>.cards Nome</code> (igual /cards)"
+        )
+
+    if page == "colecao":
+        return (
+            "📦 <b>COLEÇÃO — COMANDOS</b>\n\n"
+            "• <code>/colecao</code>\n"
+            "  → sua coleção com botões de página.\n\n"
+            "• <code>/nomecolecao Nome da Coleção</code>\n"
+            "  → renomeia o título da sua coleção.\n\n"
+            "📌 Dica: seu favorito vira a “capa” quando abrir a coleção."
+        )
+
+    if page == "perfil":
+        return (
+            "👤 <b>PERFIL / NÍVEL / PRIVACIDADE / FAVORITO</b>\n\n"
+            "• <code>/perfil</code>\n"
+            "  → mostra seu perfil.\n\n"
+            "• <code>/perfil nick</code>\n"
+            "  → ver perfil de outra pessoa.\n\n"
+            "• <code>/nick seu_nick</code>\n"
+            "  → define seu nick (único).\n\n"
+            "• <code>/nivel</code>\n"
+            "  → mostra seu progresso por comandos.\n\n"
+            "• <code>/privado on</code> / <code>/privado off</code>\n"
+            "  → esconde/mostra infos do perfil.\n\n"
+            "❤️ Favorito:\n"
+            "• <code>/favoritar ID</code>\n"
+            "• <code>/desfavoritar</code>"
+        )
+
+    if page == "trocas":
+        return (
+            "🔁 <b>TROCAS — COMO FUNCIONA</b>\n\n"
+            "✅ <b>1) Propor troca</b>\n"
+            "Responda a mensagem do usuário e use:\n"
+            "<code>/trocar SEU_ID ID_DELE</code>\n\n"
+            "✅ <b>2) Aceitar/Recusar</b>\n"
+            "O outro usuário recebe botões ✅/❌.\n\n"
+            "✅ <b>3) Trocas pendentes (PV)</b>\n"
+            "• <code>/trocas</code> → mostra suas pendências.\n\n"
+            "📌 Segurança:\n"
+            "• Se alguém não tiver mais o personagem na hora, a troca falha."
+        )
+
+    if page == "loja":
+        return (
+            "🛒 <b>LOJA & ECONOMIA</b>\n\n"
+            "🎲 Dado (ganhar personagem)\n"
+            "• <code>/dado</code> → <b>somente no PV</b>\n\n"
+            "💰 Saldo\n"
+            "• <code>/saldo</code> → coins + dados + giros + recarga\n\n"
+            "🎁 Daily\n"
+            "• <code>/daily</code> → resgate 1x por dia\n\n"
+            "🛒 Loja (PV)\n"
+            "• <code>/loja</code> → vender repetidos e comprar giros\n\n"
+            "📌 Dica: “giro” = dado extra."
+        )
+
+    if page == "ranking":
+        return (
+            "🏆 <b>RANKING (TOP 10)</b>\n\n"
+            "• <code>/ranking</code>\n"
+            "  → abre um menu com botões:\n"
+            "  ⭐ Top Nível\n"
+            "  🪙 Top Coins\n"
+            "  📚 Top Coleção\n\n"
+            "📌 Dica: ranking deixa o bot competitivo e prende a galera 😈"
+        )
+
+    if page == "stats":
+        return (
+            "📊 <b>STATS / CONQUISTAS</b>\n\n"
+            "• <code>/stats</code>\n"
+            "  → mostra tudo: nível, comandos, coins, dados, giros, coleção, trocas.\n\n"
+            "• <code>/conquistas</code>\n"
+            "  → metas por nível/coleção/coins/dado/trocas.\n\n"
+            "🎁 Recompensa:\n"
+            "• A cada conquista nova: <b>+1 dado extra</b> ✅"
+        )
+
+    if page == "comandos":
+        return (
+            "📌 <b>LISTA COMPLETA DE COMANDOS</b>\n\n"
+            "🎌 Animes:\n"
+            "• <code>/anime</code> • <code>/infoanime</code> • <code>/emalta</code> • <code>/recomenda</code>\n\n"
+            "📚 Mangá:\n"
+            "• <code>/manga</code> • <code>/infomanga</code>\n\n"
+            "🧧 Personagens:\n"
+            "• <code>/perso</code> • <code>/cards</code> • <code>.cards</code> • <code>/card</code>\n\n"
+            "📦 Coleção:\n"
+            "• <code>/colecao</code> • <code>/nomecolecao</code>\n\n"
+            "👤 Perfil:\n"
+            "• <code>/perfil</code> • <code>/nick</code> • <code>/nivel</code> • <code>/privado</code>\n"
+            "• <code>/favoritar</code> • <code>/desfavoritar</code>\n\n"
+            "🔁 Trocas:\n"
+            "• <code>/trocar</code> • <code>/trocas</code>\n\n"
+            "🛒 Economia:\n"
+            "• <code>/dado</code> • <code>/loja</code> • <code>/saldo</code> • <code>/daily</code>\n\n"
+            "🏆 Competição:\n"
+            "• <code>/ranking</code>\n\n"
+            "📊 Progresso:\n"
+            "• <code>/stats</code> • <code>/conquistas</code>\n\n"
+            "🔑 Sistema:\n"
+            "• <code>/start</code> • <code>/login</code> • <code>/pedido</code>"
+        )
+
+    if page == "suporte":
+        txt = (
+            "📩 <b>SUPORTE / ADM</b>\n\n"
+            "✅ Formas de pedir ajuda:\n"
+            "• Use <code>/pedido</code> e descreva seu problema.\n"
+        )
+        if SUPORTE_USER:
+            txt += f"• Fale com: <b>{SUPORTE_USER}</b>\n"
+        if SUPORTE_CHAT_ID:
+            txt += "• Ou clique no botão abaixo para abrir o suporte.\n"
+        if SUPORTE_TEXTO_EXTRA:
+            txt += "\n" + SUPORTE_TEXTO_EXTRA.strip() + "\n"
+        txt += "\n📌 Dica: mande print + explique o que você tentou."
+        return txt
+
+    if page == "admin":
+        return (
+            "🛠️ <b>COMANDOS ADMIN</b>\n\n"
+            "📸 Foto global (pra todo mundo no /card):\n"
+            "• <code>/setfoto ID LINK</code>\n"
+            "• <code>/setfoto</code> (respondendo msg com várias linhas)\n"
+            "• <code>/delfoto ID</code>\n\n"
+            "🚫 Banir personagem (some do bot):\n"
+            "• <code>/banchar ID motivo(opcional)</code>\n"
+            "• <code>/unbanchar ID</code>"
+        )
+
+    return _ajuda_title()
+
+def _suporte_kb() -> InlineKeyboardMarkup:
+    # Se tiver um chat/canal, você pode colocar link t.me (manual) se quiser.
+    # Aqui deixei só o “voltar” + (opcional) botão de user.
+    rows = []
+    if SUPORTE_USER:
+        # Botão com URL para abrir chat do user (remove @)
+        u = SUPORTE_USER.strip()
+        if u.startswith("@"):
+            u = u[1:]
+        rows.append([InlineKeyboardButton("📩 Abrir suporte", url=f"https://t.me/{u}")])
+    rows.append([InlineKeyboardButton("⬅️ Voltar ao menu", callback_data="ajuda:menu")])
+    return InlineKeyboardMarkup(rows)
+
+async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # PV only
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_html(_pv_only_text())
+        return
+
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    is_admin_user = False
+    try:
+        is_admin_user = bool(is_admin(user_id))
+    except Exception:
+        is_admin_user = False
+
+    msg = await update.message.reply_photo(
+        photo=AJUDA_IMAGE,
+        caption=_ajuda_title(),
+        parse_mode="HTML",
+        reply_markup=_ajuda_menu_kb(is_admin_user=is_admin_user)
+    )
+    _ajuda_ctx_set(context, msg.message_id, user_id)
+
+async def callback_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    user_id = q.from_user.id
+
+    if not _ajuda_btn_ok(user_id):
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    await q.answer()
+
+    if not q.message:
+        return
+
+    owner = _ajuda_ctx_owner(context, q.message.message_id)
+    if owner and int(owner) != int(user_id):
+        await q.answer("Esse menu não é seu 🙂", show_alert=True)
+        return
+
+    try:
+        _, page = (q.data or "").split(":", 1)
+    except Exception:
+        return
+
+    # recalcula menu com admin
+    is_admin_user = False
+    try:
+        is_admin_user = bool(is_admin(user_id))
+    except Exception:
+        is_admin_user = False
+
+    if page == "menu":
+        try:
+            if q.message.photo:
+                await q.message.edit_caption(
+                    caption=_ajuda_title(),
+                    parse_mode="HTML",
+                    reply_markup=_ajuda_menu_kb(is_admin_user=is_admin_user)
+                )
+            else:
+                await q.message.edit_text(
+                    text=_ajuda_title(),
+                    parse_mode="HTML",
+                    reply_markup=_ajuda_menu_kb(is_admin_user=is_admin_user)
+                )
+        except Exception:
+            await q.answer("Não consegui atualizar. Envie /ajuda de novo.", show_alert=True)
+        return
+
+    texto = _ajuda_page_text(page)
+
+    # suporte tem teclado próprio (com URL)
+    if page == "suporte":
+        kb = _suporte_kb()
+    else:
+        kb = _ajuda_back_kb()
+
+    try:
+        if q.message.photo:
+            await q.message.edit_caption(caption=texto, parse_mode="HTML", reply_markup=kb)
+        else:
+            await q.message.edit_text(text=texto, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await q.answer("Não consegui atualizar. Envie /ajuda de novo.", show_alert=True)
+
+# Atalhos (PV only)
+async def tutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_html(_pv_only_text())
+        return
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+    await update.message.reply_photo(
+        photo=AJUDA_IMAGE,
+        caption=_ajuda_page_text("tutorial"),
+        parse_mode="HTML",
+        reply_markup=_ajuda_back_kb()
+    )
+
+async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_html(_pv_only_text())
+        return
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+    await update.message.reply_photo(
+        photo=AJUDA_IMAGE,
+        caption=_ajuda_page_text("comandos"),
+        parse_mode="HTML",
+        reply_markup=_ajuda_back_kb()
+    )
         
 # ==================================================
 # 25) MAIN (handlers)
@@ -4709,6 +5113,12 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("conquistas", conquistas))
 
+    # guia interativo
+    app.add_handler(CommandHandler("ajuda", ajuda))
+    app.add_handler(CommandHandler("tutorial", tutorial))
+    app.add_handler(CommandHandler("comandos", comandos))
+    app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
+
     print("✅ Bot rodando...")
     app.run_polling(
         drop_pending_updates=True,
@@ -4718,6 +5128,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
