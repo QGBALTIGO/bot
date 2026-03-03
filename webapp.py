@@ -1,23 +1,26 @@
 # webapp.py — Mini App Coleção (REAL) + validação initData (Telegram WebApp)
-# Seguro contra:
-# - faltar função no database.py
-# - faltar coins/giros
-# - erro de initData
-# - erro de string (HTML em r"""...""" fechado)
+# + modo "coleção do dono" via URL (?u=...&ts=...&sig=...)
+# + favorito com coração
+# + agrupado por anime e ordenação alfabética
+# + foto do setfoto (custom_image) tem prioridade
 
 import os
 import json
+import time
 import hmac
 import hashlib
 from urllib.parse import parse_qsl
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
+
+# Segredo para assinar links de coleção compartilhada (tem que ser IGUAL no bot e no webapp)
+MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 
 def verify_telegram_init_data(init_data: str) -> dict:
@@ -56,6 +59,28 @@ def _safe_int(x, default: int = 0) -> int:
         return default
 
 
+def _sign_owner_link(user_id: int, ts: int) -> str:
+    """
+    Assina o link para impedir troca do u=.
+    Se MINIAPP_SIGNING_SECRET não estiver configurada, retorna "".
+    """
+    if not MINIAPP_SIGNING_SECRET:
+        return ""
+    msg = f"{int(user_id)}:{int(ts)}".encode()
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def _verify_owner_sig(user_id: int, ts: int, sig: str) -> bool:
+    """
+    Verifica assinatura do link.
+    Se MINIAPP_SIGNING_SECRET não estiver configurada, NÃO bloqueia (menos seguro).
+    """
+    if not MINIAPP_SIGNING_SECRET:
+        return True
+    expected = _sign_owner_link(user_id, ts)
+    return hmac.compare_digest(expected, sig or "")
+
+
 def _get_collection_name_safe(db, user_id: int) -> str:
     try:
         fn = getattr(db, "get_collection_name", None)
@@ -74,6 +99,7 @@ def _list_collection_cards_safe(db, user_id: int, limit: int = 500) -> list[dict
         if callable(fn):
             cards = fn(user_id, limit=limit)
             if isinstance(cards, list):
+                # garante dict e mantém chaves originais (incluindo custom_image)
                 return [c for c in cards if isinstance(c, dict)]
     except Exception:
         pass
@@ -107,6 +133,26 @@ def _get_coins_and_giros_safe(db, user_id: int) -> tuple[int, int]:
     return coins, giros
 
 
+def _get_owner_display_name_safe(db, owner_id: int) -> str:
+    """
+    Nome para mostrar no topo: tenta nick -> first_name -> fallback.
+    """
+    try:
+        fn = getattr(db, "get_user_row", None)
+        if callable(fn):
+            row = fn(owner_id)
+            if isinstance(row, dict):
+                nick = (row.get("nick") or "").strip() if isinstance(row.get("nick"), str) else ""
+                if nick:
+                    return nick
+                fnm = (row.get("first_name") or "").strip() if isinstance(row.get("first_name"), str) else ""
+                if fnm:
+                    return fnm
+    except Exception:
+        pass
+    return "Usuário"
+
+
 app = FastAPI()
 
 
@@ -115,6 +161,9 @@ def root():
     return HTMLResponse(content="✅ Web rodando! Abra /app para ver a miniapp.")
 
 
+# =========================
+# API: MINHA coleção (quem clicou)
+# =========================
 @app.get("/api/me/collection")
 def api_me_collection(x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
@@ -139,7 +188,9 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     return JSONResponse(
         {
             "ok": True,
-            "user_id": user_id,
+            "mode": "me",
+            "owner_id": user_id,
+            "owner_name": first_name,
             "collection_name": collection_name,
             "coins": coins,
             "giros": giros,
@@ -148,6 +199,54 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     )
 
 
+# =========================
+# API: COLEÇÃO do DONO (link compartilhado no grupo)
+# =========================
+@app.get("/api/collection")
+def api_owner_collection(
+    x_telegram_init_data: str = Header(default=""),
+    u: int = Query(...),
+    ts: int = Query(...),
+    sig: str = Query(default=""),
+):
+    # 1) garante que foi aberto dentro do Telegram (initData válido)
+    verify_telegram_init_data(x_telegram_init_data)
+
+    owner_id = int(u)
+    ts_i = int(ts)
+
+    # 2) expira link em 24h (anti link eterno)
+    if abs(int(time.time()) - ts_i) > 24 * 3600:
+        raise HTTPException(status_code=403, detail="link expirou")
+
+    # 3) valida assinatura (anti trocar u=)
+    if not _verify_owner_sig(owner_id, ts_i, sig):
+        raise HTTPException(status_code=403, detail="assinatura inválida")
+
+    import database as db
+
+    coins, giros = _get_coins_and_giros_safe(db, owner_id)
+    collection_name = _get_collection_name_safe(db, owner_id)
+    cards = _list_collection_cards_safe(db, owner_id, limit=500)
+    owner_name = _get_owner_display_name_safe(db, owner_id)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "mode": "owner",
+            "owner_id": owner_id,
+            "owner_name": owner_name,
+            "collection_name": collection_name,
+            "coins": coins,
+            "giros": giros,
+            "cards": cards,
+        }
+    )
+
+
+# =========================
+# APP UI
+# =========================
 @app.get("/app", response_class=HTMLResponse)
 def miniapp():
     html = r"""<!doctype html>
@@ -180,8 +279,8 @@ def miniapp():
       display:flex; align-items:center; justify-content:space-between; gap:10px;
       margin-top:4px;
     }
-    .title{display:flex; flex-direction:column; gap:2px;}
-    .title h1{margin:0; font-size:18px; font-weight:900;}
+    .title{display:flex; flex-direction:column; gap:2px; min-width: 0;}
+    .title h1{margin:0; font-size:18px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
     .title .sub{font-size:12px; color:var(--muted2);}
 
     .stats{
@@ -191,6 +290,7 @@ def miniapp():
       background:rgba(255,255,255,.04);
       border-radius:999px;
       white-space:nowrap;
+      flex-shrink: 0;
     }
     .stat{display:flex; align-items:center; gap:6px; font-weight:900; font-size:13px;}
     .dot{width:1px; height:16px; background:var(--stroke);}
@@ -378,10 +478,9 @@ def miniapp():
       el.textContent = text;
     }
 
-    // ==========================================================
-    // NORMALIZAÇÃO: pega nome/anime/id/qty/favorito mesmo se os
-    // campos do banco tiverem nomes diferentes.
-    // ==========================================================
+    // ==========================
+    // Utils (normalização)
+    // ==========================
     function pickFirstString(obj, keys){
       for (const k of keys){
         const v = obj?.[k];
@@ -412,6 +511,7 @@ def miniapp():
     }
 
     function getImageUrl(c){
+      // ✅ PRIORIDADE: custom_image (setfoto) -> image (anilist)
       return pickFirstString(c, [
         "custom_image","image","img","photo","picture","url"
       ]) || "";
@@ -434,16 +534,10 @@ def miniapp():
       return v === true || v === 1 || v === "1" || v === "true";
     }
 
-    // ==========================================================
-    // Ordenação A->Z (case-insensitive)
-    // ==========================================================
     function cmpAZ(a, b){
       return String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
     }
 
-    // ==========================================================
-    // Agrupar por anime + ordenar alfabeticamente
-    // ==========================================================
     function buildGroups(list){
       const groups = new Map(); // anime -> cards[]
       for (const c of list){
@@ -452,10 +546,8 @@ def miniapp():
         groups.get(anime).push(c);
       }
 
-      // ordena títulos de anime
       const animeTitles = Array.from(groups.keys()).sort(cmpAZ);
 
-      // ordena personagens dentro de cada anime
       const out = [];
       for (const title of animeTitles){
         const cards = groups.get(title) || [];
@@ -468,10 +560,8 @@ def miniapp():
     function render(){
       const q = (document.getElementById("q").value || "").trim().toLowerCase();
 
-      // filtro base
       const filtered = allCards.filter(c => {
         if (showFav && !isFavorite(c)) return false;
-
         if (!q) return true;
 
         const name = getCharacterName(c).toLowerCase();
@@ -537,20 +627,44 @@ def miniapp():
     async function load(){
       try{
         setStatus("Carregando sua coleção...", "");
+
         const initData = tg?.initData || "";
-        const res = await fetch("/api/me/collection", {
+
+        // ✅ se tiver u/ts na URL, carrega coleção do DONO (compartilhada no grupo)
+        const params = new URLSearchParams(window.location.search);
+        const u = params.get("u");
+        const ts = params.get("ts");
+        const sig = params.get("sig") || "";
+
+        let apiUrl = "/api/me/collection";
+        let viewingOwner = false;
+
+        if (u && ts) {
+          apiUrl = `/api/collection?u=${encodeURIComponent(u)}&ts=${encodeURIComponent(ts)}&sig=${encodeURIComponent(sig)}`;
+          viewingOwner = true;
+        }
+
+        const res = await fetch(apiUrl, {
           headers: { "X-Telegram-Init-Data": initData }
         });
 
         if (!res.ok){
           const txt = await res.text().catch(()=> "");
-          setStatus("❌ Falha ao carregar.\\n\\nMotivo: " + res.status + "\\n" + txt, "err");
+          setStatus("❌ Falha ao carregar.\n\nMotivo: " + res.status + "\n" + txt, "err");
           document.getElementById("sub").textContent = "Erro: " + res.status;
           return;
         }
 
         const data = await res.json();
-        document.getElementById("h1").textContent = data.collection_name || "Minha coleção";
+
+        // topo: "Coleção de X" quando for compartilhada
+        const ownerName = data.owner_name || "";
+        if (viewingOwner && ownerName) {
+          document.getElementById("h1").textContent = "Coleção de " + ownerName;
+        } else {
+          document.getElementById("h1").textContent = data.collection_name || "Minha coleção";
+        }
+
         document.getElementById("sub").textContent = "Cards: " + (data.cards?.length || 0);
         document.getElementById("coins").textContent = String(data.coins ?? "-");
         document.getElementById("giros").textContent = String(data.giros ?? "-");
@@ -569,6 +683,7 @@ def miniapp():
       document.getElementById("tab_fav").classList.remove("active");
       render();
     };
+
     document.getElementById("tab_fav").onclick = () => {
       showFav = true;
       document.getElementById("tab_fav").classList.add("active");
