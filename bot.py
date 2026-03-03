@@ -259,6 +259,16 @@ def callback_dedupe(callback_query_id: int) -> bool:
 
 
 # ==================================================
+# ==================================================
+# Helper: deletar mensagem sem quebrar
+# ==================================================
+async def safe_delete(msg):
+    try:
+        if msg:
+            await msg.delete()
+    except Exception:
+        pass
+
 # TITAN GUARD (ANTI-EXPLOIT + RATE LIMIT DB + BLOQUEIO)
 # - roda ANTES de TODOS os comandos/callbacks
 # - não remove nada; só bloqueia abuso
@@ -286,34 +296,29 @@ async def titan_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = int(user.id)
     ensure_user_row(uid, user.first_name)
 
-  # 1) bloqueio (anti-exploit)
-try:
-    from database import is_user_blocked
-    blocked, until_ts, reason = is_user_blocked(uid)
-
-    if blocked:
-        _mutate_block_update(update)
-
-        if update.message:
-            await update.message.reply_html(
-                f"""🚫 <b>Acesso temporariamente bloqueado</b>
+    # 1) bloqueio (anti-exploit)
+    try:
+        from database import is_user_blocked
+        blocked, until_ts, reason = is_user_blocked(uid)
+        if blocked:
+            _mutate_block_update(update)
+            if update.message:
+                await update.message.reply_html(
+                    f"""🚫 <b>Acesso temporariamente bloqueado</b>
 
 ⏳ Até: <code>{until_ts}</code>
 🛡 Motivo: <i>{reason or 'segurança'}</i>
 """
-            )
+                )
+            elif update.callback_query:
+                try:
+                    await update.callback_query.answer("Acesso bloqueado.", show_alert=True)
+                except Exception:
+                    pass
+            return
+    except Exception:
+        pass
 
-        elif update.callback_query:
-            try:
-                await update.callback_query.answer("Acesso bloqueado.", show_alert=True)
-            except Exception:
-                pass
-
-        return
-
-except Exception:
-    pass
-    
     # 2) rate limit persistente por tipo (DB)
     try:
         from database import allow_rate_limit, add_strike, inc_metric
@@ -336,8 +341,7 @@ except Exception:
             inc_metric("security.rate_block", 1)
             _mutate_block_update(update)
             if update.message:
-                await update.message.reply_text("⏳ Sem flood 😅
-Tente novamente em alguns segundos.")
+                await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
             elif update.callback_query:
                 try:
                     await update.callback_query.answer("Sem flood 😅", show_alert=False)
@@ -5722,4 +5726,3 @@ def _titan_metric(key: str, amount: int = 1):
         metrics_inc(key, amount)
     except Exception:
         pass
-
