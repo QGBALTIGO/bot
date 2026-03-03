@@ -5045,7 +5045,7 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================================================
 # INLINE MODE — @SeuBot colecao
-# Abre MiniApp com coleção do autor (link assinado)
+# (robusto: nunca fica "carregando")
 # ==================================================
 
 import os
@@ -5074,56 +5074,84 @@ COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTF
 def _sign_owner(user_id: int, ts: int) -> str:
     if not MINIAPP_SIGNING_SECRET:
         return ""
-    msg = f"{user_id}:{ts}".encode()
-    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+    msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
 
 def _build_owner_url(user_id: int) -> str:
     ts = int(time.time())
     sig = _sign_owner(user_id, ts)
-
     params = {"u": str(user_id), "ts": str(ts)}
     if sig:
         params["sig"] = sig
 
-    sep = "&" if "?" in MINIAPP_URL else "?"
-    return MINIAPP_URL + sep + urlencode(params)
+    base = MINIAPP_URL
+    sep = "&" if "?" in base else "?"
+    return base + sep + urlencode(params)
 
 
 async def inline_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query
-    if not query:
+    q = update.inline_query
+    if not q:
         return
 
-    user = query.from_user
-    user_id = user.id
-    user_name = user.first_name or "Usuário"
+    # ✅ GARANTIA: se der qualquer erro, a gente responde vazio pra parar o loading
+    try:
+        text = (q.query or "").strip().lower()
 
-    owner_url = _build_owner_url(user_id)
+        # só responde quando a pessoa digitar "colecao" (ou "coleção")
+        if text not in ("colecao", "coleção"):
+            await q.answer([], cache_time=1)
+            return
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            f"📦 Abrir coleção de {user_name}",
-            web_app=WebAppInfo(url=owner_url)
-        )]
-    ])
+        user = q.from_user
+        user_id = user.id
+        user_name = user.first_name or "Usuário"
 
-    results = [
-        InlineQueryResultArticle(
-            id=str(uuid.uuid4()),
-            title=f"📦 Coleção de {user_name}",
-            description="Clique para enviar ao grupo",
-            thumbnail_url=COLECAO_PREVIEW_IMAGE,
-            input_message_content=InputTextMessageContent(
-                f"📦 <b>Coleção de {user_name}</b>\n\nClique no botão abaixo para abrir.",
-                parse_mode="HTML"
-            ),
-            reply_markup=keyboard,
-        )
-    ]
+        if not MINIAPP_URL:
+            # responde com um item de erro (pra você ver que o inline tá vivo)
+            results = [
+                InlineQueryResultArticle(
+                    id=str(uuid.uuid4()),
+                    title="⚠️ MINIAPP_URL não configurada",
+                    description="Configure a variável MINIAPP_URL no Railway",
+                    input_message_content=InputTextMessageContent(
+                        "⚠️ MINIAPP_URL não configurada no servidor do bot.",
+                        parse_mode="HTML",
+                    ),
+                )
+            ]
+            await q.answer(results, cache_time=0)
+            return
 
-    await query.answer(results, cache_time=0)
+        owner_url = _build_owner_url(user_id)
 
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"📦 Abrir coleção de {user_name}", web_app=WebAppInfo(url=owner_url))],
+            [InlineKeyboardButton("👤 Ver minha coleção", web_app=WebAppInfo(url=MINIAPP_URL))],
+        ])
+
+        results = [
+            InlineQueryResultArticle(
+                id=str(uuid.uuid4()),
+                title=f"📦 Coleção de {user_name}",
+                description="Enviar no grupo com botão da miniapp",
+                thumbnail_url=COLECAO_PREVIEW_IMAGE,
+                input_message_content=InputTextMessageContent(
+                    f"📦 <b>Coleção de {user_name}</b>\n\nClique no botão abaixo para abrir.",
+                    parse_mode="HTML",
+                ),
+                reply_markup=kb,
+            )
+        ]
+
+        await q.answer(results, cache_time=0)
+
+    except Exception:
+        try:
+            await q.answer([], cache_time=1)
+        except Exception:
+            pass
     
 # ==================================================
     
@@ -5327,6 +5355,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
