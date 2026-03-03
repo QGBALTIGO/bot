@@ -3443,11 +3443,7 @@ def _format_colecao_text(
     fav_name: Optional[str],
 ) -> str:
     """
-    Texto no estilo do seu print: total/página + listão.
-    Marca:
-      ❤️ = favorito (compara pelo nome salvo em users.fav_name)
-      📸 = tem setfoto (custom_image)
-    """
+  def _format_colecao_text(nome_colecao: str, total: int, page: int, total_paginas: int, itens: list[dict], fav_name: str | None) -> str:
     texto = (
         f"📚 <b>{nome_colecao}</b>\n\n"
         f"📦 <i>Total:</i> <b>{total}</b>\n"
@@ -3457,17 +3453,25 @@ def _format_colecao_text(
     fav_name_norm = (fav_name or "").strip().casefold()
 
     for it in itens:
-        cid = int(f"🧧 it["id"])
+        cid = int(it["id"])
         nomep = it["name"]
         anime = it["anime"]
         qty = int(it["qty"])
         is_custom = bool(it["custom"])
+
         # favorito por nome (porque seu banco guarda fav_name)
-        is_fav = fav_name_norm and (nomep.strip().casefold() == fav_name_norm)
+        is_fav = bool(fav_name_norm) and (nomep.strip().casefold() == fav_name_norm)
 
         heart = "❤️ " if is_fav else ""
         cam = "📸 " if is_custom else ""
         mult = f"x{qty} " if qty > 1 else ""
+
+        if anime:
+            texto += f"{heart}{cam}🧧 <code>{cid}</code>. {mult}<b>{nomep}</b> — <i>{anime}</i>\n"
+        else:
+            texto += f"{heart}{cam}🧧 <code>{cid}</code>. {mult}<b>{nomep}</b>\n"
+
+    return texto
 
         # estilo parecido com o print
         # (não muda mensagens do bot todo, só o /colecao)
@@ -5727,6 +5731,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
