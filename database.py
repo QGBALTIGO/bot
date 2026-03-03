@@ -21,7 +21,7 @@ if not DATABASE_URL:
         "DATABASE_URL não encontrado. No Railway, crie a variável DATABASE_URL com valor ${{Postgres.DATABASE_URL}}"
     )
 
-db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+db = psycopg.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 db.autocommit = False  # a gente controla commit/rollback
 
 
