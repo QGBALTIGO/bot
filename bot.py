@@ -3715,6 +3715,7 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
                 await q.answer(
                     "⚠️ Não consegui concluir agora. Tente novamente.",
                     show_alert=True
+                    )
                 return
 
     # final
@@ -5253,6 +5254,7 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
 
