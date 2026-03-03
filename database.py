@@ -9,20 +9,14 @@ import time
 import psycopg
 from psycopg.rows import dict_row
 from psycopg import errors as pg_errors
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any
 
-
-# ================================
-# CONEXÃO
-# ================================
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL não encontrado. No Railway, crie a variável DATABASE_URL com valor ${{Postgres.DATABASE_URL}}"
-    )
+    raise RuntimeError("DATABASE_URL não encontrado.")
 
-db = psycopg.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-db.autocommit = False  # a gente controla commit/rollback
+db = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+db.autocommit = False
 
 
 # ================================
