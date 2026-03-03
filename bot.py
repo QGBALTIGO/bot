@@ -5047,58 +5047,24 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /colecaoteste — TESTE miniapp com coleção do autor (link assinado) + imagem prévia
 # ==================================================
 
-import os
-import time
-import hmac
-import hashlib
-from urllib.parse import urlencode
-
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from telegram.ext import ContextTypes
-
-MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
-MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
-
-COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
-
-
-def _sign_miniapp_owner_test(user_id: int, ts: int) -> str:
-    if not MINIAPP_SIGNING_SECRET:
-        return ""
-    msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
-    return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
-
-
-def _build_owner_url_test(owner_id: int) -> str:
-    ts = int(time.time())
-    sig = _sign_miniapp_owner_test(owner_id, ts)
-
-    params = {"u": str(owner_id), "ts": str(ts)}
-    if sig:
-        params["sig"] = sig
-
-    base = MINIAPP_URL.rstrip()
-    if not base:
-        return ""
-
-    sep = "&" if "?" in base else "?"
-    return base + sep + urlencode(params)
-
-
 async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
+    msg = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat or not msg:
         return
 
     if not MINIAPP_URL:
-        await update.message.reply_html("⚠️ MINIAPP_URL não configurada.")
+        await msg.reply_html("⚠️ MINIAPP_URL não configurada.")
         return
 
-    owner_id = update.effective_user.id
-    owner_name = (update.effective_user.first_name or "Usuário").strip()
+    owner_id = user.id
+    owner_name = (user.first_name or "Usuário").strip()
 
     owner_url = _build_owner_url_test(owner_id)
     if not owner_url:
-        await update.message.reply_html("⚠️ Não consegui montar o link da miniapp.")
+        await msg.reply_html("⚠️ Não consegui montar o link da miniapp.")
         return
 
     kb = InlineKeyboardMarkup([
@@ -5106,7 +5072,7 @@ async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("👤 Abrir minha coleção (normal)", web_app=WebAppInfo(url=MINIAPP_URL))],
     ])
 
-    await update.message.reply_photo(
+    await msg.reply_photo(
         photo=COLECAO_PREVIEW_IMAGE,
         caption="🧪 <b>COLEÇÃO TESTE</b>\n\nClique no botão abaixo para abrir:",
         parse_mode="HTML",
@@ -5239,6 +5205,7 @@ def main():
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
+    app.add_handler(CommandHandler(["colecaoteste", "colecaoteste@" + (context.bot.username or "")], colecaoteste_command))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5315,6 +5282,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
