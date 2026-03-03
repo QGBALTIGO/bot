@@ -3690,11 +3690,6 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with lock:
         await enviar_colecao_by_owner(owner_id, q.from_user.first_name, update, context, page, edit=True)
 
-
-# HANDLERS (não esquece de manter só 1 vez no seu arquivo)
-app.add_handler(CommandHandler("colecao", colecao_command))
-app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^(colecao:\d+:\d+|colecao_fotos:\d+:\d+|noop)$"))
-
 # ==================================================
 # TROCA (MELHORADO) — bonito + anti-falhas + nomes + ofertas + imagem
 # ==================================================
@@ -5741,6 +5736,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
