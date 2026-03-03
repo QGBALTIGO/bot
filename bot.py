@@ -124,6 +124,7 @@ from datetime import datetime, timedelta
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "").strip()
+BOT_BUILD = "2026-03-03-1"
 
 CANAL_ANIME = os.getenv("CANAL_ANIME", "").strip().lstrip("@")
 CANAL_MANGA = os.getenv("CANAL_MANGA", "").strip().lstrip("@")
@@ -5048,6 +5049,8 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
 
+await update.message.reply_text(BOT_BUILD)
+
 async def colecaoapp(update, context):
     user_id = update.effective_user.id
     if not MINIAPP_URL:
@@ -5265,4 +5268,5 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
