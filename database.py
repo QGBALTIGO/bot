@@ -1,10 +1,10 @@
-
 # ================================
 # database.py — Postgres (Railway)
-# (ORGANIZADO + MIGRAÇÃO + DADO NOVO + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
+# (ORGANIZADO + MIGRAÇÃO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
 # ================================
 
 import os
+import re
 import time
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -16,7 +16,9 @@ if not DATABASE_URL:
         "DATABASE_URL não encontrado. No Railway, crie a variável DATABASE_URL com valor ${{Postgres.DATABASE_URL}}"
     )
 
+# conexão
 db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+db.autocommit = False
 cursor = db.cursor()
 
 
@@ -27,46 +29,71 @@ def _commit():
     try:
         db.commit()
     except Exception:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
 
 
+def _rollback_silent():
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
+def _sanitize_nick(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", "", s)
+    s = re.sub(r"[^a-z0-9_\.]", "", s)
+    return s or "user"
+
+
+# ================================
+# MIGRAÇÃO USERS
+# ================================
 def _ensure_columns_users():
     """
     Migra tabela users antiga sem quebrar.
     """
+    # identidade / perfil
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS collection_name TEXT;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_image TEXT;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_photo TEXT;""")
+
+    # economia / progressão
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins INT DEFAULT 0;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS commands INT DEFAULT 0;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS level INT DEFAULT 1;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INT DEFAULT 0;""")
+
+    # cooldowns antigos
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_dado BIGINT DEFAULT 0;""")
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_pedido BIGINT DEFAULT 0;""")
-
-    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;""")
-    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_photo TEXT;""")
 
     # DAILY
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily BIGINT DEFAULT 0;""")
 
-    # DADO NOVO
+    # DADO (saldo normal + slot 4h)
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_balance INT DEFAULT 0;""")
-    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT DEFAULT -1;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT DEFAULT -1;""")  # <-- FALTAVA
 
-    # extra dado (giros)
+    # GIROS (extra_dado) + slot (01/04/07/10/13/16/19/22)
     cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;""")
+    cursor.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_slot BIGINT DEFAULT -1;""")
 
 
-def _dedupe_default_nicks_before_unique_index():
+def _dedupe_nicks_before_unique_index():
     """
-    Evita falha ao criar índice UNIQUE por causa de muitos users com nick duplicado (ex: "user").
-    Renomeia duplicados automaticamente para base_userid.
+    Evita falha ao criar índice UNIQUE por causa de nick duplicado.
+    Renomeia duplicados automaticamente para nick_userid.
     """
     cursor.execute("""
-        SELECT LOWER(nick) AS n, COUNT(*) AS c
+        SELECT LOWER(nick) AS n, COUNT(*)::int AS c
         FROM users
         WHERE nick IS NOT NULL
         GROUP BY LOWER(nick)
@@ -75,7 +102,7 @@ def _dedupe_default_nicks_before_unique_index():
     dups = cursor.fetchall() or []
 
     for r in dups:
-        base = (r.get("n") or "user").strip() or "user"
+        base = _sanitize_nick(r.get("n") or "user")
 
         cursor.execute("""
             SELECT user_id
@@ -89,14 +116,13 @@ def _dedupe_default_nicks_before_unique_index():
 
         # mantém o primeiro, muda os demais
         for uid in ids[1:]:
-            new_nick = f"{base}_{uid}"
-            cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (new_nick, uid))
+            cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (f"{base}_{uid}", uid))
 
 
+# ================================
+# CONQUISTAS: TABELA
+# ================================
 def _ensure_achievements_table():
-    """
-    Tabela de conquistas (para não duplicar recompensa).
-    """
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_achievements (
             user_id BIGINT NOT NULL,
@@ -114,16 +140,19 @@ def _ensure_achievements_table():
     _commit()
 
 
+# ================================
+# INDEXES (anti quebra)
+# ================================
 def _try_create_indexes():
     """
     Cria índices e NÃO deixa uma transação abortada travar o resto.
     """
-    # 1) dedupe + unique nick (cada passo isolado)
+    # dedupe + unique nick (isolado)
     try:
-        _dedupe_default_nicks_before_unique_index()
+        _dedupe_nicks_before_unique_index()
         _commit()
     except Exception as e:
-        db.rollback()
+        _rollback_silent()
         print("⚠️ Não consegui deduplicar nicks (ok continuar). Erro:", e)
 
     try:
@@ -134,10 +163,10 @@ def _try_create_indexes():
         """)
         _commit()
     except Exception as e:
-        db.rollback()
+        _rollback_silent()
         print("⚠️ Não consegui criar índice users_nick_unique (ok continuar). Erro:", e)
 
-    # 2) restantes: 1 por 1 (pra nunca abortar tudo)
+    # demais índices: 1 por 1 (NUNCA trava o resto)
     indexes = [
         ("user_collection_user_idx", "CREATE INDEX IF NOT EXISTS user_collection_user_idx ON user_collection (user_id);"),
         ("trades_to_user_idx", "CREATE INDEX IF NOT EXISTS trades_to_user_idx ON trades (to_user);"),
@@ -145,6 +174,8 @@ def _try_create_indexes():
         ("top_anime_cache_rank_idx", "CREATE INDEX IF NOT EXISTS top_anime_cache_rank_idx ON top_anime_cache (rank);"),
         ("dice_rolls_user_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);"),
         ("users_last_daily_idx", "CREATE INDEX IF NOT EXISTS users_last_daily_idx ON users (last_daily);"),
+        ("users_dado_slot_idx", "CREATE INDEX IF NOT EXISTS users_dado_slot_idx ON users (dado_slot);"),
+        ("users_extra_slot_idx", "CREATE INDEX IF NOT EXISTS users_extra_slot_idx ON users (extra_slot);"),
     ]
 
     for name, sql in indexes:
@@ -152,7 +183,7 @@ def _try_create_indexes():
             cursor.execute(sql)
             _commit()
         except Exception as e:
-            db.rollback()
+            _rollback_silent()
             print(f"⚠️ Não consegui criar índice {name} (ok continuar). Erro:", e)
 
 
@@ -160,7 +191,7 @@ def _try_create_indexes():
 # INIT DB (com migração)
 # ================================
 def init_db():
-    # USERS (mínimo)
+    # USERS base
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY
@@ -168,7 +199,7 @@ def init_db():
     """)
     _commit()
 
-    # MIGRA users antiga
+    # migração users
     _ensure_columns_users()
     _commit()
 
@@ -286,21 +317,59 @@ def init_db():
 # USERS
 # ================================
 def ensure_user_row(user_id: int, default_name: str, new_user_dice: int = 0):
-    cursor.execute("SELECT 1 FROM users WHERE user_id=%s", (int(user_id),))
+    """
+    Cria usuário se não existir.
+    Nick é UNIQUE (lower). Se der conflito, cria fallback com _userid.
+    """
+    user_id = int(user_id)
+
+    cursor.execute("SELECT 1 FROM users WHERE user_id=%s", (user_id,))
     if cursor.fetchone():
         return
 
-    nick = (default_name or "user").strip() or "user"
+    base = _sanitize_nick(default_name)
+    candidates = [base, f"{base}_{user_id}", f"user_{user_id}"]
 
+    for nick in candidates:
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    user_id, nick, collection_name,
+                    dado_balance, dado_slot,
+                    extra_dado, extra_slot,
+                    last_daily
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                user_id,
+                nick,
+                "Minha Coleção",
+                int(new_user_dice or 0),
+                -1,
+                0,
+                -1,
+                0
+            ))
+            _commit()
+            return
+        except psycopg2.errors.UniqueViolation:
+            _rollback_silent()
+            continue
+        except Exception:
+            _rollback_silent()
+            raise
+
+    # fallback final
+    nick = f"user_{user_id}"
     cursor.execute("""
         INSERT INTO users (
             user_id, nick, collection_name,
             dado_balance, dado_slot,
+            extra_dado, extra_slot,
             last_daily
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (int(user_id), nick.lower(), "Minha Coleção", int(new_user_dice or 0), -1, 0))
-
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (user_id, nick, "Minha Coleção", int(new_user_dice or 0), -1, 0, -1, 0))
     _commit()
 
 
@@ -309,13 +378,29 @@ def get_user_row(user_id: int):
     return cursor.fetchone()
 
 
+def get_user_row_safe(user_id: int) -> dict:
+    row = get_user_row(user_id)
+    return row or {
+        "user_id": int(user_id),
+        "nick": "User",
+        "coins": 0,
+        "level": 1,
+        "commands": 0,
+        "extra_dado": 0,
+        "extra_slot": -1,
+        "dado_balance": 0,
+        "dado_slot": -1,
+        "last_daily": 0,
+    }
+
+
 def get_user_by_nick(nick: str):
-    cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (nick,))
+    cursor.execute("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (str(nick),))
     return cursor.fetchone()
 
 
 def set_user_nick(user_id: int, nick: str):
-    cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (str(nick), int(user_id)))
+    cursor.execute("UPDATE users SET nick=%s WHERE user_id=%s", (_sanitize_nick(nick), int(user_id)))
     _commit()
 
 
@@ -325,7 +410,7 @@ def add_coin(user_id: int, amount: int):
 
 
 def get_user_coins(user_id: int) -> int:
-    cursor.execute("SELECT COALESCE(coins,0) AS c FROM users WHERE user_id=%s", (int(user_id),))
+    cursor.execute("SELECT COALESCE(coins,0)::int AS c FROM users WHERE user_id=%s", (int(user_id),))
     row = cursor.fetchone()
     return int(row["c"] if row else 0)
 
@@ -424,14 +509,14 @@ def is_banned_character(character_id: int) -> bool:
 # COLEÇÃO
 # ================================
 def count_collection(user_id: int) -> int:
-    cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
+    cursor.execute("SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
     return int(cursor.fetchone()["c"])
 
 
 def get_collection_page(user_id: int, page: int, per_page: int):
     offset = (page - 1) * per_page
 
-    cursor.execute("SELECT COUNT(*) AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
+    cursor.execute("SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
     total = int(cursor.fetchone()["c"])
     total_pages = (total - 1) // per_page + 1 if total else 1
 
@@ -524,32 +609,44 @@ def clear_favorite(user_id: int):
 
 
 # ================================
-# LOJA: extra_dado
+# GIROS (extra_dado) + SLOT
 # ================================
+def get_extra_state(user_id: int) -> dict:
+    cursor.execute(
+        "SELECT COALESCE(extra_dado,0)::int AS x, COALESCE(extra_slot,-1)::bigint AS s FROM users WHERE user_id=%s",
+        (int(user_id),)
+    )
+    row = cursor.fetchone() or {}
+    return {"x": int(row.get("x") or 0), "s": int(row.get("s") or -1)}
+
+
+def set_extra_state(user_id: int, extra: int, slot: int):
+    cursor.execute(
+        "UPDATE users SET extra_dado=%s, extra_slot=%s WHERE user_id=%s",
+        (int(extra), int(slot), int(user_id))
+    )
+    _commit()
+
+
+def consume_extra_dado(user_id: int) -> bool:
+    cursor.execute("""
+        UPDATE users
+        SET extra_dado = COALESCE(extra_dado,0) - 1
+        WHERE user_id=%s AND COALESCE(extra_dado,0) > 0
+        RETURNING extra_dado
+    """, (int(user_id),))
+    ok = cursor.fetchone() is not None
+    _commit()
+    return ok
+
+
 def add_extra_dado(user_id: int, amount: int):
     cursor.execute("UPDATE users SET extra_dado = COALESCE(extra_dado,0) + %s WHERE user_id=%s", (int(amount), int(user_id)))
     _commit()
 
 
-def get_extra_dado(user_id: int) -> int:
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (int(user_id),))
-    row = cursor.fetchone()
-    return int(row["x"] if row else 0)
-
-
-def consume_extra_dado(user_id: int) -> bool:
-    cursor.execute("SELECT COALESCE(extra_dado,0) AS x FROM users WHERE user_id=%s", (int(user_id),))
-    row = cursor.fetchone()
-    x = int(row["x"] if row else 0)
-    if x <= 0:
-        return False
-    cursor.execute("UPDATE users SET extra_dado = extra_dado - 1 WHERE user_id=%s", (int(user_id),))
-    _commit()
-    return True
-
-
 # ================================
-# DADO NOVO: estado saldo/slot
+# DADO: estado saldo/slot
 # ================================
 def get_dado_state(user_id: int) -> Optional[Dict[str, int]]:
     cursor.execute("SELECT dado_balance, dado_slot FROM users WHERE user_id=%s", (int(user_id),))
@@ -560,13 +657,15 @@ def get_dado_state(user_id: int) -> Optional[Dict[str, int]]:
 
 
 def set_dado_state(user_id: int, balance: int, slot: int):
-    cursor.execute("UPDATE users SET dado_balance=%s, dado_slot=%s WHERE user_id=%s",
-                   (int(balance), int(slot), int(user_id)))
+    cursor.execute(
+        "UPDATE users SET dado_balance=%s, dado_slot=%s WHERE user_id=%s",
+        (int(balance), int(slot), int(user_id))
+    )
     _commit()
 
 
 def inc_dado_balance(user_id: int, amount: int, max_balance: int = 18):
-    cursor.execute("SELECT COALESCE(dado_balance,0) AS b FROM users WHERE user_id=%s", (int(user_id),))
+    cursor.execute("SELECT COALESCE(dado_balance,0)::int AS b FROM users WHERE user_id=%s", (int(user_id),))
     row = cursor.fetchone()
     b = int(row["b"] if row else 0)
     b2 = min(int(max_balance), b + int(amount))
@@ -575,10 +674,10 @@ def inc_dado_balance(user_id: int, amount: int, max_balance: int = 18):
 
 
 # ================================
-# TOP CACHE (1x/dia)
+# TOP CACHE
 # ================================
 def top_cache_last_updated() -> int:
-    cursor.execute("SELECT COALESCE(MAX(updated_at),0) AS t FROM top_anime_cache")
+    cursor.execute("SELECT COALESCE(MAX(updated_at),0)::bigint AS t FROM top_anime_cache")
     row = cursor.fetchone()
     return int(row["t"] if row else 0)
 
@@ -612,7 +711,7 @@ def create_dice_roll(user_id: int, dice_value: int, options_json: str) -> int:
         INSERT INTO dice_rolls (user_id, dice_value, options_json, status, created_at)
         VALUES (%s, %s, %s, 'pending', %s)
         RETURNING roll_id
-    """, (int(user_id), int(dice_value), options_json, int(time.time())))
+    """, (int(user_id), int(dice_value), str(options_json), int(time.time())))
     rid = int(cursor.fetchone()["roll_id"])
     _commit()
     return rid
@@ -641,7 +740,7 @@ def try_set_dice_roll_status(roll_id: int, expected: str, new_status: str) -> bo
 
 
 # ================================
-# TROCAS (RETURNING + LOCK)
+# TROCAS
 # ================================
 def create_trade(from_user: int, to_user: int, from_char: int, to_char: int) -> int:
     cursor.execute("""
@@ -679,52 +778,63 @@ def mark_trade_status(trade_id: int, status: str):
 
 
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int):
-    cursor.execute("BEGIN")
+    """
+    Troca segura com lock. Retorna True/False.
+    """
+    try:
+        cursor.execute("BEGIN")
 
-    cursor.execute("SELECT status FROM trades WHERE trade_id=%s FOR UPDATE", (int(trade_id),))
-    tr = cursor.fetchone()
-    if not tr or tr.get("status") != "pendente":
-        cursor.execute("ROLLBACK")
-        return False
+        cursor.execute("SELECT status FROM trades WHERE trade_id=%s FOR UPDATE", (int(trade_id),))
+        tr = cursor.fetchone()
+        if not tr or tr.get("status") != "pendente":
+            cursor.execute("ROLLBACK")
+            return False
 
-    cursor.execute("""
-        SELECT 1 FROM user_collection
-        WHERE user_id=%s AND character_id=%s
-        FOR UPDATE
-    """, (int(from_user), int(from_char)))
-    a_ok = cursor.fetchone() is not None
+        cursor.execute("""
+            SELECT 1 FROM user_collection
+            WHERE user_id=%s AND character_id=%s
+            FOR UPDATE
+        """, (int(from_user), int(from_char)))
+        a_ok = cursor.fetchone() is not None
 
-    cursor.execute("""
-        SELECT 1 FROM user_collection
-        WHERE user_id=%s AND character_id=%s
-        FOR UPDATE
-    """, (int(to_user), int(to_char)))
-    b_ok = cursor.fetchone() is not None
+        cursor.execute("""
+            SELECT 1 FROM user_collection
+            WHERE user_id=%s AND character_id=%s
+            FOR UPDATE
+        """, (int(to_user), int(to_char)))
+        b_ok = cursor.fetchone() is not None
 
-    if not a_ok or not b_ok:
-        cursor.execute("UPDATE trades SET status='falhou' WHERE trade_id=%s", (int(trade_id),))
+        if not a_ok or not b_ok:
+            cursor.execute("UPDATE trades SET status='falhou' WHERE trade_id=%s", (int(trade_id),))
+            cursor.execute("COMMIT")
+            return False
+
+        cursor.execute("""
+            UPDATE user_collection
+            SET user_id=%s
+            WHERE user_id=%s AND character_id=%s
+        """, (int(to_user), int(from_user), int(from_char)))
+
+        cursor.execute("""
+            UPDATE user_collection
+            SET user_id=%s
+            WHERE user_id=%s AND character_id=%s
+        """, (int(from_user), int(to_user), int(to_char)))
+
+        cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (int(trade_id),))
         cursor.execute("COMMIT")
-        return False
+        return True
 
-    cursor.execute("""
-        UPDATE user_collection
-        SET user_id=%s
-        WHERE user_id=%s AND character_id=%s
-    """, (int(to_user), int(from_user), int(from_char)))
-
-    cursor.execute("""
-        UPDATE user_collection
-        SET user_id=%s
-        WHERE user_id=%s AND character_id=%s
-    """, (int(from_user), int(to_user), int(to_char)))
-
-    cursor.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (int(trade_id),))
-    cursor.execute("COMMIT")
-    return True
+    except Exception:
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
 
 
 # ================================
-# DAILY + LISTAR TROCAS
+# DAILY
 # ================================
 def claim_daily_reward(
     user_id: int,
@@ -735,7 +845,6 @@ def claim_daily_reward(
 ):
     import random
     try:
-        # 1) trava o daily do dia (só 1 vez)
         cursor.execute("""
             UPDATE users
             SET last_daily=%s
@@ -748,7 +857,6 @@ def claim_daily_reward(
             _commit()
             return None
 
-        # 2) sorteia giro ou coins
         if random.random() < float(giro_chance):
             cursor.execute("""
                 UPDATE users
@@ -768,7 +876,7 @@ def claim_daily_reward(
         return {"type": "coins", "amount": int(amount)}
 
     except Exception:
-        db.rollback()
+        _rollback_silent()
         raise
 
 
@@ -784,7 +892,7 @@ def list_pending_trades_for_user(to_user: int, limit: int = 5):
 
 
 # ================================
-# RANKINGS (Top 10)
+# RANKINGS
 # ================================
 def get_top_by_level(limit: int = 10):
     cursor.execute("""
@@ -838,7 +946,7 @@ def get_top_by_collection(limit: int = 10):
 
 
 # ================================
-# STATS / CONQUISTAS (SQL rápido)
+# STATS / CONQUISTAS
 # ================================
 def get_collection_unique_count(user_id: int) -> int:
     cursor.execute("SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s", (int(user_id),))
@@ -901,6 +1009,7 @@ def get_user_stats(user_id: int) -> dict:
           COALESCE(level,1) AS level,
           COALESCE(commands,0) AS commands,
           COALESCE(extra_dado,0) AS extra_dado,
+          COALESCE(extra_slot,-1) AS extra_slot,
           COALESCE(dado_balance,0) AS dado_balance,
           COALESCE(dado_slot,-1) AS dado_slot
         FROM users
@@ -921,6 +1030,7 @@ def get_user_stats(user_id: int) -> dict:
         "level": int(u.get("level") or 1),
         "commands": int(u.get("commands") or 0),
         "extra_dado": int(u.get("extra_dado") or 0),
+        "extra_slot": int(u.get("extra_slot") or -1),
         "dado_balance": int(u.get("dado_balance") or 0),
         "dado_slot": int(u.get("dado_slot") or -1),
         "collection_unique": int(unique_count),
@@ -931,7 +1041,7 @@ def get_user_stats(user_id: int) -> dict:
 
 
 # ================================
-# CONQUISTAS (persistente + recompensa segura)
+# CONQUISTAS
 # ================================
 def list_user_achievement_keys(user_id: int) -> set[str]:
     cursor.execute("""
@@ -984,3 +1094,17 @@ def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extr
         except Exception:
             pass
         raise
+
+# ================================
+# GIROS (extra_dado) + SLOT
+# ================================
+# ----------------------------
+# COMPATIBILIDADE COM BOT ANTIGO
+# ----------------------------
+def get_extra_dado(user_id: int) -> int:
+    """
+    Compatibilidade com versões antigas do bot.
+    Retorna apenas a quantidade de giros.
+    """
+    st = get_extra_state(user_id)
+    return int(st["x"] if st else 0)
