@@ -5044,114 +5044,73 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
-# INLINE MODE — @SeuBot colecao
-# (robusto: nunca fica "carregando")
+# /colecaoteste — TESTE miniapp com coleção do autor (link assinado) + imagem prévia
 # ==================================================
 
 import os
 import time
 import hmac
 import hashlib
-import uuid
 from urllib.parse import urlencode
 
-from telegram import (
-    InlineQueryResultArticle,
-    InputTextMessageContent,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    WebAppInfo,
-    Update,
-)
-from telegram.ext import ContextTypes, InlineQueryHandler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes
 
-MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
+MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
-def _sign_owner(user_id: int, ts: int) -> str:
+def _sign_miniapp_owner_test(user_id: int, ts: int) -> str:
     if not MINIAPP_SIGNING_SECRET:
         return ""
     msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
     return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
 
-def _build_owner_url(user_id: int) -> str:
+def _build_owner_url_test(owner_id: int) -> str:
     ts = int(time.time())
-    sig = _sign_owner(user_id, ts)
-    params = {"u": str(user_id), "ts": str(ts)}
+    sig = _sign_miniapp_owner_test(owner_id, ts)
+
+    params = {"u": str(owner_id), "ts": str(ts)}
     if sig:
         params["sig"] = sig
 
-    base = MINIAPP_URL
+    base = MINIAPP_URL.rstrip()
+    if not base:
+        return ""
+
     sep = "&" if "?" in base else "?"
     return base + sep + urlencode(params)
 
 
-async def inline_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.inline_query
-    if not q:
+async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
         return
 
-    # ✅ GARANTIA: se der qualquer erro, a gente responde vazio pra parar o loading
-    try:
-        text = (q.query or "").strip().lower()
+    if not MINIAPP_URL:
+        await update.message.reply_html("⚠️ MINIAPP_URL não configurada.")
+        return
 
-        # só responde quando a pessoa digitar "colecao" (ou "coleção")
-        if text not in ("colecao", "coleção"):
-            await q.answer([], cache_time=1)
-            return
+    owner_id = update.effective_user.id
+    owner_name = (update.effective_user.first_name or "Usuário").strip()
 
-        user = q.from_user
-        user_id = user.id
-        user_name = user.first_name or "Usuário"
+    owner_url = _build_owner_url_test(owner_id)
+    if not owner_url:
+        await update.message.reply_html("⚠️ Não consegui montar o link da miniapp.")
+        return
 
-        if not MINIAPP_URL:
-            # responde com um item de erro (pra você ver que o inline tá vivo)
-            results = [
-                InlineQueryResultArticle(
-                    id=str(uuid.uuid4()),
-                    title="⚠️ MINIAPP_URL não configurada",
-                    description="Configure a variável MINIAPP_URL no Railway",
-                    input_message_content=InputTextMessageContent(
-                        "⚠️ MINIAPP_URL não configurada no servidor do bot.",
-                        parse_mode="HTML",
-                    ),
-                )
-            ]
-            await q.answer(results, cache_time=0)
-            return
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🧪 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=owner_url))],
+    ])
 
-        owner_url = _build_owner_url(user_id)
-
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"📦 Abrir coleção de {user_name}", web_app=WebAppInfo(url=owner_url))],
-            [InlineKeyboardButton("👤 Ver minha coleção", web_app=WebAppInfo(url=MINIAPP_URL))],
-        ])
-
-        results = [
-            InlineQueryResultArticle(
-                id=str(uuid.uuid4()),
-                title=f"📦 Coleção de {user_name}",
-                description="Enviar no grupo com botão da miniapp",
-                thumbnail_url=COLECAO_PREVIEW_IMAGE,
-                input_message_content=InputTextMessageContent(
-                    f"📦 <b>Coleção de {user_name}</b>\n\nClique no botão abaixo para abrir.",
-                    parse_mode="HTML",
-                ),
-                reply_markup=kb,
-            )
-        ]
-
-        await q.answer(results, cache_time=0)
-
-    except Exception:
-        try:
-            await q.answer([], cache_time=1)
-        except Exception:
-            pass
+    await update.message.reply_photo(
+        photo=COLECAO_PREVIEW_IMAGE,
+        caption="📦 <b>COLEÇÃO</b>\n\nClique no botão abaixo para abrir:",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
     
 # ==================================================
     
@@ -5278,7 +5237,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
-    app.add_handler(InlineQueryHandler(inline_colecao))
+    app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5355,13 +5314,6 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
 
 
 
