@@ -3332,23 +3332,18 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # ==================================================
-# /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
+# /colecao (ESTÉTICO) — capa + paginação (DB LIMIT/OFFSET)
 # - 🧧 emoji antes do ID
 # - ❤️ favorito (users.fav_name)
 # - 📸 quando teve setfoto (custom_image)
-# - botão "📸 Fotos da página" (álbum com custom_image)
+# - paginação no banco: get_collection_page(...)
+# - botões extra pular ±3 páginas quando tiver
 # ==================================================
 
-import math
 import asyncio
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
-from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InputMediaPhoto,
-)
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
 ITENS_POR_PAGINA = 10
@@ -3409,25 +3404,16 @@ def _pick_qty(row: dict) -> int:
     for k in ("quantity", "qty", "qtd", "count", "amount"):
         v = row.get(k)
         if v is not None:
-            n = _safe_int(v, 1)
-            return max(1, n)
+            return max(1, _safe_int(v, 1))
     return 1
 
 
-def _pick_image(row: dict) -> Tuple[str, bool]:
-    """
-    Retorna (url, is_custom).
-    Se tiver custom_image (setfoto), prioriza ela.
-    """
-    custom = _safe_str(row.get("custom_image"))
-    if custom:
-        return custom, True
-    img = _safe_str(row.get("image"))
-    return img, False
+def _has_custom_image(row: dict) -> bool:
+    return bool(_safe_str(row.get("custom_image")))
 
 
 def _colecao_keyboard(page: int, total_pages: int, owner_id: int) -> InlineKeyboardMarkup:
-    # linha de paginação
+    # linha principal: paginação normal
     row = []
     if page > 1:
         row.append(InlineKeyboardButton("⬅️", callback_data=f"colecao:{owner_id}:{page-1}"))
@@ -3435,36 +3421,52 @@ def _colecao_keyboard(page: int, total_pages: int, owner_id: int) -> InlineKeybo
     if page < total_pages:
         row.append(InlineKeyboardButton("➡️", callback_data=f"colecao:{owner_id}:{page+1}"))
 
+    rows = [row]
+
+    # linha extra: pular ±3 páginas quando fizer sentido
+    if total_pages >= 6:
+        p_prev3 = max(1, page - 3)
+        p_next3 = min(total_pages, page + 3)
+        row2 = []
+
+        if page > 3:
+            row2.append(InlineKeyboardButton("« -3", callback_data=f"colecao:{owner_id}:{p_prev3}"))
+        else:
+            row2.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+        if page + 3 <= total_pages:
+            row2.append(InlineKeyboardButton("+3 »", callback_data=f"colecao:{owner_id}:{p_next3}"))
+        else:
+            row2.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+        rows.append(row2)
+
+    return InlineKeyboardMarkup(rows)
+
 
 def _format_colecao_text(
     nome_colecao: str,
     total: int,
     page: int,
     total_paginas: int,
-    itens: List[dict],
+    itens_raw: List[dict],
     fav_name: Optional[str],
 ) -> str:
-    """
-    Estilo do print: header + total/página + listão.
-    Marca:
-      ❤️ = favorito (compara com users.fav_name)
-      📸 = tem setfoto (custom_image)
-    """
     texto = (
         f"📚 <b>{nome_colecao}</b>\n\n"
         f"📦 <i>Total:</i> <b>{total}</b>\n"
-        f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n"
+        f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n\n"
     )
 
     fav_name_norm = (fav_name or "").strip().casefold()
 
-    for it in itens:
-        cid = int(it["id"])
-        nomep = it["name"]
-        anime = it["anime"]
-        qty = int(it["qty"])
-        is_custom = bool(it["custom"])
+    for r in itens_raw:
+        cid = _pick_char_id(r)
+        nomep = _pick_name(r)
+        anime = _pick_anime(r)
+        qty = _pick_qty(r)
 
+        is_custom = _has_custom_image(r)
         is_fav = bool(fav_name_norm) and (nomep.strip().casefold() == fav_name_norm)
 
         heart = "❤️ " if is_fav else ""
@@ -3479,38 +3481,6 @@ def _format_colecao_text(
     return texto
 
 
-def _paginate_cards(all_cards: List[dict], page: int) -> Tuple[List[dict], int, int]:
-    total = len(all_cards)
-    total_pages = max(1, math.ceil(total / ITENS_POR_PAGINA)) if total > 0 else 1
-    page = max(1, min(page, total_pages))
-
-    start = (page - 1) * ITENS_POR_PAGINA
-    end = min(total, start + ITENS_POR_PAGINA)
-    return all_cards[start:end], total, total_pages
-
-
-def _build_pretty_list(cards: List[dict]) -> List[dict]:
-    """
-    Normaliza + ordena:
-      anime A-Z -> nome A-Z -> id ASC
-    """
-    out = []
-    for r in cards:
-        if not isinstance(r, dict):
-            continue
-        cid = _pick_char_id(r)
-        name = _pick_name(r)
-        anime = _pick_anime(r)
-        qty = _pick_qty(r)
-        img, is_custom = _pick_image(r)
-        out.append(
-            {"id": cid, "name": name, "anime": anime, "qty": qty, "img": img, "custom": is_custom}
-        )
-
-    out.sort(key=lambda x: ((x["anime"] or "").casefold(), (x["name"] or "").casefold(), int(x["id"])))
-    return out
-
-
 async def enviar_colecao_by_owner(
     owner_id: int,
     first_name: str,
@@ -3522,21 +3492,18 @@ async def enviar_colecao_by_owner(
 ):
     import database as db
 
-    # suas funções do projeto
     ensure_user_row(owner_id, first_name)
 
     nome = (db.get_collection_name(owner_id) or "Minha Coleção").strip()
 
-    raw_cards = db.list_collection_cards(owner_id, limit=500) or []
-    all_cards = _build_pretty_list(raw_cards)
-
-    itens_page, total, total_paginas = _paginate_cards(all_cards, page)
+    # ✅ paginação no banco (LIMIT/OFFSET)
+    itens, total, total_paginas = db.get_collection_page(owner_id, page, ITENS_POR_PAGINA)
 
     target_msg = update.callback_query.message if update.callback_query else update.message
     if not target_msg:
         return
 
-    if total == 0:
+    if not itens:
         if edit and update.callback_query:
             try:
                 if target_msg.photo:
@@ -3561,12 +3528,11 @@ async def enviar_colecao_by_owner(
     fav_image = _safe_str(row.get("fav_image")) or ""
     fav_name = _safe_str(row.get("fav_name")) or ""
 
-    texto = _format_colecao_text(nome, total, page, total_paginas, itens_page, fav_name=fav_name)
+    texto = _format_colecao_text(nome, total, page, total_paginas, itens, fav_name=fav_name)
     kb = _colecao_keyboard(page, total_paginas, owner_id=owner_id)
 
     capa = fav_image or COLECAO_PREVIEW_IMAGE
 
-    # editar a mensagem existente (caption se tiver foto, text se não tiver)
     if edit and update.callback_query:
         msg = update.callback_query.message
         try:
@@ -3578,7 +3544,6 @@ async def enviar_colecao_by_owner(
             await update.callback_query.answer("Não consegui atualizar. Envie /colecao de novo.", show_alert=True)
         return
 
-    # enviar nova
     try:
         await update.message.reply_photo(
             photo=capa,
@@ -3629,55 +3594,15 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("Calma 🙂", show_alert=False)
         return
 
+    await q.answer()
+
     try:
-        # -------- fotos da página (somente custom_image) --------
-        if q.data.startswith("colecao_fotos:"):
-            _, owner_s, page_s = q.data.split(":")
-            owner_id = int(owner_s)
-            page = int(page_s)
-
-            import database as db
-
-            raw_cards = db.list_collection_cards(owner_id, limit=500) or []
-            all_cards = _build_pretty_list(raw_cards)
-            itens_page, total, total_paginas = _paginate_cards(all_cards, page)
-
-            custom_items = [it for it in itens_page if it.get("custom") and _safe_str(it.get("img"))]
-            if not custom_items:
-                await q.answer("Nenhuma foto atualizada nessa página.", show_alert=True)
-                return
-
-            # álbum máx 10
-            custom_items = custom_items[:10]
-
-            media = []
-            for it in custom_items:
-                cid = int(it["id"])
-                name = it["name"]
-                anime = it["anime"]
-                img = it["img"]
-
-                cap = (
-                    f"📸 <b>{name}</b>\n🧧 <code>{cid}</code>\n<i>{anime}</i>"
-                    if anime
-                    else f"📸 <b>{name}</b>\n🧧 <code>{cid}</code>"
-                )
-                media.append(InputMediaPhoto(media=img, caption=cap, parse_mode="HTML"))
-
-            await q.answer()
-            await q.message.reply_media_group(media=media)
-            return
-
-        # -------- paginação normal --------
         _, owner_s, page_s = q.data.split(":")
         owner_id = int(owner_s)
         page = int(page_s)
-
     except Exception:
         await q.answer("Erro na coleção.", show_alert=True)
         return
-
-    await q.answer()
 
     lock = _get_colecao_lock(owner_id)
     async with lock:
@@ -5730,6 +5655,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
