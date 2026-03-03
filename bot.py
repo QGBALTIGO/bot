@@ -373,33 +373,40 @@ async def registrar_comando(update: Update):
                 await update.message.reply_html(mensagem)
 
 # ==================================================
-# 8) /start
+# /start (ESTÉTICO)
 # ==================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Rate limit leve no /start (não muda texto, só protege spam)
+
     if update.effective_user:
         ok = await anti_spam(update.effective_user.id, key="cmd:/start", window=3)
         if not ok:
             return
 
+    nome = update.effective_user.first_name if update.effective_user else ""
+
     texto = (
-        "🏴‍☠️ <b>Source Baltigo</b>\n"
-        "Seu hub de <b>animes, mangás e personagens</b>.\n\n"
-        "✨ <b>Comandos rápidos</b>\n"
-        "• <code>/anime</code> — buscar anime no canal\n"
-        "• <code>/manga</code> — buscar mangá no canal\n"
-        "• <code>/infoanime</code> — info completa do anime\n"
-        "• <code>/infomanga</code> — info completa do mangá\n"
-        "• <code>/perso</code> — info do personagem\n"
-        "• <code>/recomenda</code> — recomendações\n"
-        "• <code>/emalta</code> — ranking do momento\n\n"
-        "📢 Me adicione em um grupo pra aproveitar melhor."
+        f"🏴‍☠️ <b>Bem-vindo, {nome}!</b>\n\n"
+
+        "<b>Source Baltigo</b>\n"
+        "<i>O seu portal para o mundo dos animes.</i>\n\n"
+
+        "Aqui você pode descobrir personagens, explorar histórias "
+        "e encontrar novos animes para assistir.\n\n"
+
+        "Entre para a tripulação e comece sua jornada. ⚔️✨"
     )
 
     teclado = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Adicionar em um grupo", url="https://t.me/SourceBaltigo_bot?startgroup=start")],
-        [InlineKeyboardButton("⚔️ QG Baltigo", url="t.me/QG_BALTIGO")]
+        [
+            InlineKeyboardButton(
+                "➕ Adicionar ao grupo",
+                url="https://t.me/SourceBaltigo_bot?startgroup=true"
+            )
+        ],
+        [
+            InlineKeyboardButton("🏴‍☠️ QG Baltigo", url="https://t.me/QG_BALTIGO")
+        ]
     ])
 
     if update.message:
@@ -5736,6 +5743,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
