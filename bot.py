@@ -5264,8 +5264,7 @@ def _start_webapp():
     ...
 
 if __name__ == "__main__":
-    threading.Thread(target=_start_webapp, daemon=True).start()
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+
 
 
 
@@ -5296,6 +5295,7 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
 
