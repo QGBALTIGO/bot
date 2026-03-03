@@ -286,30 +286,34 @@ async def titan_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = int(user.id)
     ensure_user_row(uid, user.first_name)
 
-    # 1) bloqueio (anti-exploit)
-    try:
-        from database import is_user_blocked
-        blocked, until_ts, reason = is_user_blocked(uid)
-        if blocked:
-            _mutate_block_update(update)
-            if update.message:
-                await update.message.reply_html(
-                    "🚫 <b>Acesso temporariamente bloqueado</b>
+  # 1) bloqueio (anti-exploit)
+try:
+    from database import is_user_blocked
+    blocked, until_ts, reason = is_user_blocked(uid)
 
-"
-                    f"⏳ Até: <code>{until_ts}</code>
-"
-                    f"🛡 Motivo: <i>{reason or 'segurança'}</i>"
-                )
-            elif update.callback_query:
-                try:
-                    await update.callback_query.answer("Acesso bloqueado.", show_alert=True)
-                except Exception:
-                    pass
-            return
-    except Exception:
-        pass
+    if blocked:
+        _mutate_block_update(update)
 
+        if update.message:
+            await update.message.reply_html(
+                f"""🚫 <b>Acesso temporariamente bloqueado</b>
+
+⏳ Até: <code>{until_ts}</code>
+🛡 Motivo: <i>{reason or 'segurança'}</i>
+"""
+            )
+
+        elif update.callback_query:
+            try:
+                await update.callback_query.answer("Acesso bloqueado.", show_alert=True)
+            except Exception:
+                pass
+
+        return
+
+except Exception:
+    pass
+    
     # 2) rate limit persistente por tipo (DB)
     try:
         from database import allow_rate_limit, add_strike, inc_metric
@@ -5718,3 +5722,4 @@ def _titan_metric(key: str, amount: int = 1):
         metrics_inc(key, amount)
     except Exception:
         pass
+
