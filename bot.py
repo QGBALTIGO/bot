@@ -25,6 +25,7 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 from telegram.ext import (
+    TypeHandler,
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
@@ -255,6 +256,92 @@ def callback_dedupe(callback_query_id: int) -> bool:
         return False
     _seen_callback_ids[callback_query_id] = now
     return True
+
+
+# ==================================================
+# TITAN GUARD (ANTI-EXPLOIT + RATE LIMIT DB + BLOQUEIO)
+# - roda ANTES de TODOS os comandos/callbacks
+# - não remove nada; só bloqueia abuso
+# ==================================================
+def _mutate_block_update(update: Update):
+    """Tenta neutralizar o update para evitar que CommandHandler/CallbackQueryHandler batam."""
+    try:
+        if getattr(update, "message", None) and getattr(update.message, "text", None):
+            # neutraliza comandos
+            if str(update.message.text).startswith("/"):
+                update.message.text = " "  # impede CommandHandler
+    except Exception:
+        pass
+    try:
+        if getattr(update, "callback_query", None) and getattr(update.callback_query, "data", None):
+            update.callback_query.data = "blocked"  # não bate em patterns
+    except Exception:
+        pass
+
+async def titan_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user:
+        return
+
+    uid = int(user.id)
+    ensure_user_row(uid, user.first_name)
+
+    # 1) bloqueio (anti-exploit)
+    try:
+        from database import is_user_blocked
+        blocked, until_ts, reason = is_user_blocked(uid)
+        if blocked:
+            _mutate_block_update(update)
+            if update.message:
+                await update.message.reply_html(
+                    "🚫 <b>Acesso temporariamente bloqueado</b>
+
+"
+                    f"⏳ Até: <code>{until_ts}</code>
+"
+                    f"🛡 Motivo: <i>{reason or 'segurança'}</i>"
+                )
+            elif update.callback_query:
+                try:
+                    await update.callback_query.answer("Acesso bloqueado.", show_alert=True)
+                except Exception:
+                    pass
+            return
+    except Exception:
+        pass
+
+    # 2) rate limit persistente por tipo (DB)
+    try:
+        from database import allow_rate_limit, add_strike, inc_metric
+
+        # classifica
+        if update.callback_query:
+            key = "cb"
+            limit, window = 25, 30
+        elif update.message and update.message.text and update.message.text.startswith("/"):
+            key = "cmd"
+            limit, window = 18, 30
+        else:
+            key = "msg"
+            limit, window = 80, 60
+
+        ok = allow_rate_limit(uid, key, limit=limit, window_sec=window)
+        if not ok:
+            # strike e bloqueio leve (cresce com abuso)
+            add_strike(uid, reason=f"rate:{key}", block_seconds=60)
+            inc_metric("security.rate_block", 1)
+            _mutate_block_update(update)
+            if update.message:
+                await update.message.reply_text("⏳ Sem flood 😅
+Tente novamente em alguns segundos.")
+            elif update.callback_query:
+                try:
+                    await update.callback_query.answer("Sem flood 😅", show_alert=False)
+                except Exception:
+                    pass
+            return
+    except Exception:
+        pass
 
 # ==================================================
 # 5) ADMINS
@@ -5437,78 +5524,78 @@ def main():
     app.add_error_handler(_error_handler)
 
     # ===== HANDLERS =====
-    app.add_handler(CommandHandler("anime", anime))
-    app.add_handler(CommandHandler("infoanime", infoanime))
+    addh(CommandHandler("anime", anime))
+    addh(CommandHandler("infoanime", infoanime))
 
-    app.add_handler(CommandHandler("dado", dado_command))
-    app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
-    app.add_handler(CommandHandler("colecao", colecao_command))
-    app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
-    app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
-    app.add_handler(CommandHandler("vercolecao", vercolecao_command))
-    app.add_handler(CallbackQueryHandler(callback_colecao_nav, pattern=r"^colecao:\d+:\d+:[01]$"))
+    addh(CommandHandler("dado", dado_command))
+    addh(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
+    addh(CommandHandler("colecao", colecao_command))
+    addh(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
+    addh(CommandHandler("colecaoteste", colecaoteste_command))
+    addh(CommandHandler("vercolecao", vercolecao_command))
+    addh(CallbackQueryHandler(callback_colecao_nav, pattern=r"^colecao:\d+:\d+:[01]$"))
 
-    app.add_handler(CommandHandler("infomanga", infomanga))
-    app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
+    addh(CommandHandler("infomanga", infomanga))
+    addh(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
 
-    app.add_handler(CommandHandler("perso", perso))
-    app.add_handler(CommandHandler("recomenda", recomenda))
-    app.add_handler(CallbackQueryHandler(callback_recomenda, pattern=r"^rec:"))
+    addh(CommandHandler("perso", perso))
+    addh(CommandHandler("recomenda", recomenda))
+    addh(CallbackQueryHandler(callback_recomenda, pattern=r"^rec:"))
 
-    app.add_handler(CommandHandler("emalta", emalta))
-    app.add_handler(CallbackQueryHandler(callback_emalta, pattern=r"^emalta:"))
+    addh(CommandHandler("emalta", emalta))
+    addh(CallbackQueryHandler(callback_emalta, pattern=r"^emalta:"))
 
-    app.add_handler(CallbackQueryHandler(callback_info_perso, pattern=r"^info_perso:"))
-    app.add_handler(CallbackQueryHandler(callback_info_anime, pattern=r"^info_anime:"))
+    addh(CallbackQueryHandler(callback_info_perso, pattern=r"^info_perso:"))
+    addh(CallbackQueryHandler(callback_info_anime, pattern=r"^info_anime:"))
 
-    app.add_handler(CommandHandler("pedido", pedido))
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("login", login))
-    app.add_handler(CommandHandler("manga", manga))
+    addh(CommandHandler("pedido", pedido))
+    addh(CommandHandler("start", start))
+    addh(CommandHandler("login", login))
+    addh(CommandHandler("manga", manga))
 
-    app.add_handler(CommandHandler("perfil", perfil))
-    app.add_handler(CommandHandler("privado", privado))
-    app.add_handler(CommandHandler("adminfoto", adminfoto))
-    app.add_handler(CommandHandler("favoritar", favoritar))
-    app.add_handler(CommandHandler("desfavoritar", desfavoritar))
-    app.add_handler(CommandHandler("nick", nick))
-    app.add_handler(CommandHandler("nivel", nivel))
+    addh(CommandHandler("perfil", perfil))
+    addh(CommandHandler("privado", privado))
+    addh(CommandHandler("adminfoto", adminfoto))
+    addh(CommandHandler("favoritar", favoritar))
+    addh(CommandHandler("desfavoritar", desfavoritar))
+    addh(CommandHandler("nick", nick))
+    addh(CommandHandler("nivel", nivel))
 
     # /cards + callback
-    app.add_handler(CommandHandler("cards", cards))
-    app.add_handler(MessageHandler(filters.Regex(r"(?i)^\s*\.cards(\s|$)"), _cards_dot_handler))
-    app.add_handler(CallbackQueryHandler(callback_cards, pattern=r"^cards:"))
+    addh(CommandHandler("cards", cards))
+    addh(MessageHandler(filters.Regex(r"(?i)^\s*\.cards(\s|$)"), _cards_dot_handler))
+    addh(CallbackQueryHandler(callback_cards, pattern=r"^cards:"))
 
     # /card
-    app.add_handler(CommandHandler("card", card))
-    app.add_handler(CallbackQueryHandler(callback_cardfav, pattern=r"^cardfav:"))
+    addh(CommandHandler("card", card))
+    addh(CallbackQueryHandler(callback_cardfav, pattern=r"^cardfav:"))
 
     # admin global
-    app.add_handler(CommandHandler("setfoto", setfoto))
-    app.add_handler(CommandHandler("delfoto", delfoto))
-    app.add_handler(CommandHandler("banchar", banchar))
-    app.add_handler(CommandHandler("unbanchar", unbanchar))
+    addh(CommandHandler("setfoto", setfoto))
+    addh(CommandHandler("delfoto", delfoto))
+    addh(CommandHandler("banchar", banchar))
+    addh(CommandHandler("unbanchar", unbanchar))
 
     # troca (aceita com e sem :ID)
-    app.add_handler(CommandHandler("trocar", trocar))
-    app.add_handler(CallbackQueryHandler(callback_trade_accept, pattern=r"^trade_accept(?::\d+)?$"))
-    app.add_handler(CallbackQueryHandler(callback_trade_reject, pattern=r"^trade_reject(?::\d+)?$"))
+    addh(CommandHandler("trocar", trocar))
+    addh(CallbackQueryHandler(callback_trade_accept, pattern=r"^trade_accept(?::\d+)?$"))
+    addh(CallbackQueryHandler(callback_trade_reject, pattern=r"^trade_reject(?::\d+)?$"))
 
     # loja
-    app.add_handler(CommandHandler("loja", loja))
-    app.add_handler(CommandHandler("saldo", saldo))
-    app.add_handler(CommandHandler("daily", daily))
-    app.add_handler(CommandHandler("trocas", trocas))
-    app.add_handler(CommandHandler("ranking", ranking))
-    app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:(level|coins|colecao):"))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("conquistas", conquistas))
+    addh(CommandHandler("loja", loja))
+    addh(CommandHandler("saldo", saldo))
+    addh(CommandHandler("daily", daily))
+    addh(CommandHandler("trocas", trocas))
+    addh(CommandHandler("ranking", ranking))
+    addh(CallbackQueryHandler(callback_ranking, pattern=r"^rank:(level|coins|colecao):"))
+    addh(CommandHandler("stats", stats))
+    addh(CommandHandler("conquistas", conquistas))
 
     # guia interativo
-    app.add_handler(CommandHandler("ajuda", ajuda))
-    app.add_handler(CommandHandler("tutorial", tutorial))
-    app.add_handler(CommandHandler("comandos", comandos))
-    app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
+    addh(CommandHandler("ajuda", ajuda))
+    addh(CommandHandler("tutorial", tutorial))
+    addh(CommandHandler("comandos", comandos))
+    addh(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -5523,3 +5610,111 @@ def _start_webapp():
 if __name__ == "__main__":
     main()
 
+    # =========================
+    # TITAN: registro de handlers em grupo 1 (guard em grupo 0)
+    # =========================
+    def addh(h):
+        app.add_handler(h, group=1)
+
+    # Guard global (anti-exploit / rate limit)
+    app.add_handler(TypeHandler(Update, titan_guard), group=0)
+
+
+# ================================
+# TITAN — Admin commands + Observability
+# ================================
+from database import audit_list, set_block, clear_block, get_user_flags, metrics_get, metrics_inc
+
+def _is_admin(user_id: int) -> bool:
+    try:
+        return int(user_id) in set(ADMINS)
+    except Exception:
+        return False
+
+async def adminlogs_command(update, context):
+    uid = update.effective_user.id
+    if not _is_admin(uid):
+        return
+    # /adminlogs [limit] [action] [user_id]
+    limit = 20
+    action = None
+    target_uid = None
+    try:
+        if context.args:
+            if len(context.args) >= 1 and context.args[0].isdigit():
+                limit = min(100, max(1, int(context.args[0])))
+            if len(context.args) >= 2:
+                action = context.args[1]
+            if len(context.args) >= 3 and context.args[2].isdigit():
+                target_uid = int(context.args[2])
+    except Exception:
+        pass
+
+    rows = audit_list(action=action, user_id=target_uid, limit=limit)
+    if not rows:
+        await update.message.reply_text("Sem logs.")
+        return
+
+    lines = []
+    for r in rows[:limit]:
+        ts = str(r.get("created_at",""))[:19].replace("T"," ")
+        lines.append(f"{r.get('id')} | {ts} | {r.get('user_id')} | {r.get('action')}")
+    msg = "🧾 ADMIN LOGS\n\n" + "\n".join(lines)
+    await update.message.reply_text(msg[:3900])
+
+async def ban_command(update, context):
+    uid = update.effective_user.id
+    if not _is_admin(uid):
+        return
+    # /ban <user_id> [seconds] [reason...]
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Uso: /ban <user_id> [segundos] [motivo]")
+        return
+    target = int(context.args[0])
+    seconds = 3600
+    reason = "manual"
+    if len(context.args) >= 2 and context.args[1].isdigit():
+        seconds = int(context.args[1])
+        reason = " ".join(context.args[2:]).strip() or "manual"
+    else:
+        reason = " ".join(context.args[1:]).strip() or "manual"
+    set_block(target, reason=reason, seconds=seconds)
+    await update.message.reply_text(f"✅ Ban aplicado em {target} por {seconds}s.")
+
+async def unban_command(update, context):
+    uid = update.effective_user.id
+    if not _is_admin(uid):
+        return
+    # /unban <user_id>
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Uso: /unban <user_id>")
+        return
+    target = int(context.args[0])
+    clear_block(target)
+    await update.message.reply_text(f"✅ Unban aplicado em {target}.")
+
+async def metrics_command(update, context):
+    uid = update.effective_user.id
+    if not _is_admin(uid):
+        return
+    # /metrics <key> [minutes]
+    if not context.args:
+        await update.message.reply_text("Uso: /metrics <key> [minutos]")
+        return
+    key = context.args[0]
+    minutes = 60
+    if len(context.args) >= 2 and context.args[1].isdigit():
+        minutes = min(1440, max(1, int(context.args[1])))
+
+    rows = metrics_get(key, minutes=minutes)
+    total = sum(int(r["value"]) for r in rows) if rows else 0
+    msg = f"📊 METRICS\n\nkey: {key}\njanela: {minutes}m\ntotal: {total}\n"
+    await update.message.reply_text(msg)
+
+
+# Observability: increment generic counters safely
+def _titan_metric(key: str, amount: int = 1):
+    try:
+        metrics_inc(key, amount)
+    except Exception:
+        pass
