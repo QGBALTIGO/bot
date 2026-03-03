@@ -3578,10 +3578,23 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not q:
         return
 
-    if q.data == "noop":
+    data = (q.data or "").strip()
+
+    # noop / placeholders
+    if data == "noop":
         await q.answer()
         return
 
+    # só aceita o padrão certo
+    if not data.startswith("colecao:"):
+        # evita quebrar se outro botão cair aqui
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    # dedupe
     if not callback_dedupe(q.id):
         try:
             await q.answer()
@@ -3596,18 +3609,19 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.answer()
 
-    try:
-        _, owner_s, page_s = q.data.split(":")
-        owner_id = int(owner_s)
-        page = int(page_s)
-    except Exception:
+    # parse seguro
+    parts = data.split(":")
+    if len(parts) != 3:
         await q.answer("Erro na coleção.", show_alert=True)
         return
+
+    _, owner_s, page_s = parts
+    owner_id = int(owner_s)
+    page = int(page_s)
 
     lock = _get_colecao_lock(owner_id)
     async with lock:
         await enviar_colecao_by_owner(owner_id, q.from_user.first_name, update, context, page, edit=True)
-
 
 # ==================================================
 # TROCA (MELHORADO) — bonito + anti-falhas + nomes + ofertas + imagem
@@ -5655,6 +5669,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
