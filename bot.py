@@ -5088,7 +5088,28 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=_ajuda_back_kb()
     )
-        
+
+# ==================================================
+
+import os
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
+
+async def colecaoapp(update, context):
+    user_id = update.effective_user.id
+    if not MINIAPP_URL:
+        await update.message.reply_text("❌ MINIAPP_URL não configurada no Railway.")
+        return
+
+    # passa user_id na URL
+    url = f"{MINIAPP_URL}?user_id={user_id}"
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Abrir coleção", web_app=WebAppInfo(url=url))]
+    ])
+    await update.message.reply_text("Sua coleção em miniapp:", reply_markup=kb)
+    
 # ==================================================
 # 25) MAIN (handlers)
 # ==================================================
@@ -5169,6 +5190,7 @@ def main():
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("nomecolecao", nomecolecao))
+    app.add_handler(CommandHandler("colecaoapp", colecaoapp))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5242,6 +5264,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
