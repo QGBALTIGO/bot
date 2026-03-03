@@ -2811,13 +2811,11 @@ def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
     h = now_sp.hour
     m = now_sp.minute
 
-    # acha o último horário de GIRO que já "começou"
     idx = -1
     for i, hh in enumerate(GIRO_HOURS):
         if (h > hh) or (h == hh and m >= 0):
             idx = i
     if idx < 0:
-        # antes de 01:00 -> ainda conta como "slot do dia anterior (idx=7)"
         return (day_id - 1) * 8 + 7
 
     return day_id * 8 + idx
@@ -2883,7 +2881,6 @@ def _consume_one_die(user_id: int) -> bool:
         set_dado_state(user_id, b - 1, s)
         return True
 
-    # GIRO
     return consume_extra_dado(user_id)
 
 
@@ -2894,7 +2891,6 @@ def _refund_one_die(user_id: int, prefer_extra: bool = False):
     - senão: devolve 1 no saldo normal (até cap 18)
     """
     if prefer_extra:
-        # devolve em GIRO (extra_dado)
         from database import get_extra_state, set_extra_state
         st = get_extra_state(user_id)
         x = int(st["x"])
@@ -2967,7 +2963,8 @@ async def _ensure_top_cache_fresh():
 
         items = await _fetch_top500_anime_from_anilist()
         if items:
-            replace_top_anime_cache(items)
+            # ✅ FIX: replace_top_anime_cache precisa de updated_at
+            replace_top_anime_cache(items, updated_at=now)
 
 
 def _pick_random_animes(n: int) -> list[dict]:
@@ -3012,7 +3009,6 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
     cover = None
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        # pega 1ª página pra saber lastPage + cover
         async with session.post(ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": 1}}) as resp:
             data = await resp.json()
 
@@ -3024,7 +3020,6 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
         cover = (media.get("coverImage") or {}).get("large") or None
         last_page = int(((media.get("characters") or {}).get("pageInfo") or {}).get("lastPage") or 1)
 
-        # seleciona páginas: 1 + algumas aleatórias
         pages = {1}
         for _ in range(max_pages - 1):
             pages.add(random.randint(1, max(1, last_page)))
@@ -3042,10 +3037,8 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
                 name = ((node.get("name") or {}).get("full")) or None
                 img = ((node.get("image") or {}).get("large")) or None
                 if cid and name:
-                    # img pode ser None -> a gente usa cover depois
                     chars.append({"id": int(cid), "name": name, "image": img})
 
-    # remove duplicados por id
     seen = set()
     uniq = []
     for c in chars:
@@ -3069,7 +3062,7 @@ async def _anilist_random_character_from_anime(anime_id: int, tries: int = 12) -
         if not built:
             return None
         cached = {
-            "exp": now + 6 * 3600,  # 6h cache
+            "exp": now + 6 * 3600,
             "title": built["title"],
             "cover": built["cover"],
             "chars": built["chars"],
@@ -3084,15 +3077,23 @@ async def _anilist_random_character_from_anime(anime_id: int, tries: int = 12) -
     pick_list = chars[:max(1, min(len(chars), tries))]
 
     for c in pick_list:
-        # se tiver imagem do personagem, usa ela
         img = c.get("image")
         if img:
-            return {"id": int(c["id"]), "name": c["name"], "image": img, "anime_title": cached.get("title") or "Obra"}
+            return {
+                "id": int(c["id"]),
+                "name": c["name"],
+                "image": img,
+                "anime_title": cached.get("title") or "Obra"
+            }
 
-    # nenhum tinha imagem -> usa capa do anime
     cover = cached.get("cover") or DADO_FALLBACK_IMAGE
     c = pick_list[0]
-    return {"id": int(c["id"]), "name": c["name"], "image": cover, "anime_title": cached.get("title") or "Obra"}
+    return {
+        "id": int(c["id"]),
+        "name": c["name"],
+        "image": cover,
+        "anime_title": cached.get("title") or "Obra"
+    }
 
 
 def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboardMarkup:
@@ -3112,12 +3113,10 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat = update.effective_chat
 
-    # antiflood comando (CORRETO: await)
     ok = await anti_spam(user_id, key="cmd:/dado", window=CMD_ANTIFLOOD_SECONDS)
     if not ok:
         return
 
-    # bloqueia grupos
     if chat.type != "private":
         await update.message.reply_html(_nice_group_block_text())
         return
@@ -3127,7 +3126,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_lock = _get_user_dado_lock(user_id)
     async with user_lock:
         balance = _refresh_user_dado_balance(user_id)
-        extra = _refresh_user_giros(user_id)  # <-- GIROS recarregam aqui
+        extra = _refresh_user_giros(user_id)
 
         if balance <= 0 and extra <= 0:
             await update.message.reply_html(
@@ -3155,22 +3154,52 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     options = _pick_random_animes(dice_value)
     if not options:
-        _refund_one_die(user_id)  # devolve em dado normal (simples)
+        _refund_one_die(user_id)
         await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
         return
 
-    roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
+    # ✅ FIX: se DB falhar ao criar o roll, reembolsa e não “some o resto”
+    try:
+        # compatível com create_dice_roll(old) e create_dice_roll(new)
+        roll_id = create_dice_roll(
+            user_id,
+            dice_value,
+            json.dumps(options, ensure_ascii=False),
+            "pending",
+            int(time.time())
+        )
+    except TypeError:
+        # fallback para assinatura antiga (sem status/created_at)
+        try:
+            roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
+        except Exception:
+            _refund_one_die(user_id)
+            await update.message.reply_html("⚠️ Não consegui concluir agora. Tente novamente.")
+            return
+    except Exception:
+        _refund_one_die(user_id)
+        await update.message.reply_html("⚠️ Não consegui concluir agora. Tente novamente.")
+        return
 
-    # estado atualizado
     balance2 = _refresh_user_dado_balance(user_id)
     extra2 = _refresh_user_giros(user_id)
 
-    await update.message.reply_photo(
-        photo=DADO_PICK_IMAGE,
-        caption=_nice_pick_text(dice_value, balance2, extra2),
-        parse_mode="HTML",
-        reply_markup=_anime_buttons_for_roll(roll_id, options)
-    )
+    caption = _nice_pick_text(dice_value, balance2, extra2)
+    kb = _anime_buttons_for_roll(roll_id, options)
+
+    # ✅ FIX: se a imagem falhar, manda texto + botões
+    try:
+        await update.message.reply_photo(
+            photo=DADO_PICK_IMAGE,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except Exception:
+        await update.message.reply_html(
+            caption,
+            reply_markup=kb
+        )
 
 
 # ==================================================
@@ -3232,7 +3261,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
             return
 
-        # valida opção
         try:
             options = json.loads(roll["options_json"])
         except Exception:
@@ -3243,9 +3271,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await q.answer("Opção inválida.", show_alert=True)
             return
 
-        # MUITO IMPORTANTE:
-        # Em vez de marcar "resolved" AGORA, marcamos "processing"
-        # Isso evita que falha de API estrague o roll.
         ok_lock_db = try_set_dice_roll_status(roll_id, expected="pending", new_status="processing")
         if not ok_lock_db:
             await q.answer("Esse dado já foi usado.", show_alert=True)
@@ -3256,14 +3281,12 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception:
             pass
 
-    # fora do lock: busca personagem com retry + fallback (capa do anime)
     try:
         info = await _anilist_random_character_from_anime(anime_id, tries=12)
     except Exception:
         info = None
 
     if not info:
-        # volta status pra pending e devolve a tentativa (pra não frustrar)
         try:
             set_dice_roll_status(roll_id, "pending")
         except Exception:
@@ -3275,7 +3298,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    # sucesso -> resolve definitivamente
     set_dice_roll_status(roll_id, "resolved")
 
     char_id = int(info["id"])
@@ -5254,6 +5276,7 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
 
