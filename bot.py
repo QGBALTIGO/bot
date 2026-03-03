@@ -5274,34 +5274,3 @@ if __name__ == "__main__":
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async def safe_delete(msg):
-    """Deleta mensagem sem derrubar o handler (grupos grandes dão muito erro de delete)."""
-    try:
-        if msg:
-            await safe_delete(msg)
-    except Exception:
-        pass
-
-
-
-
-
-
-
-
-
-
