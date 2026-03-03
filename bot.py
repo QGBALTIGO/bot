@@ -3712,7 +3712,9 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
             except Exception:
-        await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
+                await q.answer(
+                    "⚠️ Não consegui concluir agora. Tente novamente.",
+                    show_alert=True
                 return
 
     # final
@@ -5251,6 +5253,7 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
 
