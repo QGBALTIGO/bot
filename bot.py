@@ -5047,6 +5047,15 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /colecaoteste — TESTE miniapp com coleção do autor (link assinado) + imagem prévia
 # ==================================================
 
+import os
+import time
+import hmac
+import hashlib
+from urllib.parse import urlencode
+
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes
+
 MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
@@ -5107,6 +5116,16 @@ async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYP
 # /linkcolecao — Gera link compartilhável da coleção
 # (usar no PV do bot)
 # ==================================================
+
+
+import os
+import time
+import hmac
+import hashlib
+from urllib.parse import urlencode
+
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes, CommandHandler
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
@@ -5372,6 +5391,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
