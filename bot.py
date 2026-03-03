@@ -4032,269 +4032,49 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
 # LOJA (PV) — VENDER pro BOT (+1 coin) / COMPRAR GIRO (-2 coins -> +1 giro)
 # ==================================================
 
-SHOP_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
-SHOP_SELL_GAIN = 1
-SHOP_GIRO_PRICE = 2
-ITENS_POR_PAGINA_SHOP = 8
-SHOP_BTN_FLOOD = 1.5
-
-_shop_user_locks: Dict[int, asyncio.Lock] = {}
-
-def _get_shop_lock(user_id: int) -> asyncio.Lock:
-    lock = _shop_user_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _shop_user_locks[user_id] = lock
-    return lock
-
-def _shop_only_private_text() -> str:
-    return (
-        "🛒 <b>LOJA</b>\n\n"
-        "Use a loja <b>somente no privado</b> do bot.\n"
-        "👉 Abra o bot no PV e use <code>/loja</code>."
-    )
-
-def _shop_main_text(user_name: str, coins: int, giros: int) -> str:
-    return (
-        "🛒 <b>LOJA BALTIGO</b>\n"
-        f"👤 <b>{user_name}</b>\n\n"
-        "Escolha uma opção 👇\n\n"
-        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-        "📌 <i>Venda personagens repetidos e compre giros!</i>"
-    )
-
-def _shop_main_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Vender personagem (+1 coin)", callback_data="shop:sell_menu:1")],
-        [InlineKeyboardButton("🎡 Comprar GIRO (2 coins)", callback_data="shop:buy_giro")],
-    ])
-
-def _sell_menu_text(page: int) -> str:
-    return (
-        "📦 <b>VENDER PERSONAGEM (pro BOT)</b>\n\n"
-        "Escolha um personagem da sua coleção.\n"
-        f"✅ Ao vender, você recebe <b>+{SHOP_SELL_GAIN} coin</b>.\n"
-        "⚠️ Vende <b>1 unidade</b> (se tiver quantity > 1, só diminui 1).\n\n"
-        f"📄 Página: <b>{page}</b>"
-    )
-
-def _sell_kb(items: list[tuple[int, str]], page: int, total_pages: int) -> InlineKeyboardMarkup:
-    rows = []
-    for cid, name in items:
-        rows.append([InlineKeyboardButton(f"🧧 {cid}. {name}", callback_data=f"shop:sell_pick:{cid}:{page}")])
-
-    nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton("⬅️", callback_data=f"shop:sell_menu:{page-1}"))
-    nav.append(InlineKeyboardButton("🏠 Voltar", callback_data="shop:home"))
-    if page < total_pages:
-        nav.append(InlineKeyboardButton("➡️", callback_data=f"shop:sell_menu:{page+1}"))
-    rows.append(nav)
-
-    return InlineKeyboardMarkup(rows)
-
-def _confirm_sell_text(char_id: int, name: str, qty: int) -> str:
-    return (
-        "✅ <b>CONFIRMAR VENDA</b>\n\n"
-        f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-        f"📦 Você tem: <b>{qty}</b>\n\n"
-        f"Você vai vender <b>1</b> unidade pro bot e ganhar <b>+{SHOP_SELL_GAIN} coin</b>.\n"
-        "Confirmar?"
-    )
-
-def _confirm_sell_kb(char_id: int, page: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Confirmar venda", callback_data=f"shop:sell_confirm:{char_id}:{page}")],
-        [InlineKeyboardButton("❌ Cancelar", callback_data=f"shop:sell_menu:{page}")],
-    ])
+SHOP_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
 
 async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
 
-    chat = update.effective_chat
-    if chat.type != "private":
-        await update.message.reply_html(_shop_only_private_text())
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_html(
+            "🛒 <b>LOJA</b>\n\n"
+            "Use a loja <b>somente no privado</b> do bot.\n"
+            "👉 Abra o bot no PV e use <code>/loja</code>."
+        )
         return
 
     user_id = update.effective_user.id
-
     ok = await anti_spam(user_id, key="cmd:/loja", window=2)
     if not ok:
         return
 
-    ensure_user_row(user_id, update.effective_user.first_name)
+    # URL do seu webapp (serviço WEBAPP no Railway)
+    # Ex.: https://SEU-WEBAPP.up.railway.app/shop
+    WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip()
+    if not WEBAPP_URL:
+        await update.message.reply_html("⚠️ WEBAPP_URL não configurada.")
+        return
 
-    coins = get_user_coins(user_id)
-    giros = get_extra_dado(user_id)
-
-    await update.message.reply_photo(
-        photo=SHOP_IMAGE,
-        caption=_shop_main_text(update.effective_user.full_name, coins, giros),
-        parse_mode="HTML",
-        reply_markup=_shop_main_kb()
+    texto = (
+        "🛒 <b>LOJA BALTIGO</b>\n\n"
+        "Venda personagens e compre giros direto aqui no Telegram. 👇"
     )
 
-# ---------------- Shop callback router ----------------
-async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    if not q:
-        return
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛒 Abrir Loja", web_app=WebAppInfo(url=WEBAPP_URL))],
+    ])
 
-    # dedupe + antiflood
-    if not callback_dedupe(q.id):
-        try:
-            await q.answer()
-        except Exception:
-            pass
-        return
-
-    user_id = q.from_user.id
-    ok = await anti_spam(user_id, key="cb:shop", window=SHOP_BTN_FLOOD)
-    if not ok:
-        await q.answer("Calma 🙂", show_alert=False)
-        return
-
-    await q.answer()
-
-    data = q.data or ""
-
-    # trava por usuário (compra/venda não duplica)
-    lock = _get_shop_lock(user_id)
-    async with lock:
-        # HOME
-        if data == "shop:home":
-            ensure_user_row(user_id, q.from_user.first_name)
-            coins = get_user_coins(user_id)
-            giros = get_extra_dado(user_id)
-            await q.message.edit_caption(
-                caption=_shop_main_text(q.from_user.full_name, coins, giros),
-                parse_mode="HTML",
-                reply_markup=_shop_main_kb()
-            )
-            return
-
-        # BUY GIRO
-        if data == "shop:buy_giro":
-            ensure_user_row(user_id, q.from_user.first_name)
-
-            ok_buy = spend_coins_and_add_giro(user_id, SHOP_GIRO_PRICE, giros=1)
-            if not ok_buy:
-                await q.answer("Você não tem coins suficientes.", show_alert=True)
-                return
-
-            coins = get_user_coins(user_id)
-            giros = get_extra_dado(user_id)
-
-            await q.message.edit_caption(
-                caption=(
-                    "🎡 <b>GIRO COMPRADO!</b>\n\n"
-                    "✅ Você recebeu <b>+1 giro</b>.\n\n"
-                    f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-                    f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-                    "Quer mais alguma coisa? 👇"
-                ),
-                parse_mode="HTML",
-                reply_markup=_shop_main_kb()
-            )
-            return
-
-        # SELL MENU (paginação)
-        if data.startswith("shop:sell_menu:"):
-            try:
-                page = int(data.split(":")[2])
-            except Exception:
-                return
-
-            ensure_user_row(user_id, q.from_user.first_name)
-
-            itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
-            if not itens:
-                await q.answer("Sua coleção está vazia.", show_alert=True)
-                return
-
-            await q.message.edit_caption(
-                caption=_sell_menu_text(page),
-                parse_mode="HTML",
-                reply_markup=_sell_kb(itens, page, total_pages)
-            )
-            return
-
-        # SELL PICK -> confirmação
-        if data.startswith("shop:sell_pick:"):
-            try:
-                _, _, cid_s, page_s = data.split(":")
-                char_id = int(cid_s)
-                page = int(page_s)
-            except Exception:
-                return
-
-            item = get_collection_character_full(user_id, char_id)
-            if not item:
-                await q.answer("Você não tem esse personagem.", show_alert=True)
-                return
-
-            name = item["character_name"]
-            qty = int(item.get("quantity") or 1)
-
-            await q.message.edit_caption(
-                caption=_confirm_sell_text(char_id, name, qty),
-                parse_mode="HTML",
-                reply_markup=_confirm_sell_kb(char_id, page)
-            )
-            return
-
-        # SELL CONFIRM
-        if data.startswith("shop:sell_confirm:"):
-            try:
-                _, _, cid_s, page_s = data.split(":")
-                char_id = int(cid_s)
-                page = int(page_s)
-            except Exception:
-                return
-
-            item = get_collection_character_full(user_id, char_id)
-            if not item:
-                await q.answer("Você não tem mais esse personagem.", show_alert=True)
-                # volta pro menu da página
-                try:
-                    itens, total, total_pages = get_collection_page(user_id, page, ITENS_POR_PAGINA_SHOP)
-                    if itens:
-                        await q.message.edit_caption(
-                            caption=_sell_menu_text(page),
-                            parse_mode="HTML",
-                            reply_markup=_sell_kb(itens, page, total_pages)
-                        )
-                except Exception:
-                    pass
-                return
-
-            ok_remove = remove_one_from_collection(user_id, char_id)
-            if not ok_remove:
-                await q.answer("Não consegui vender agora. Tente de novo.", show_alert=True)
-                return
-
-            add_coin(user_id, SHOP_SELL_GAIN)
-
-            coins = get_user_coins(user_id)
-            giros = get_extra_dado(user_id)
-
-            await q.message.edit_caption(
-                caption=(
-                    "✅ <b>VENDA CONCLUÍDA!</b>\n\n"
-                    f"🧧 <code>{char_id}</code>. <b>{item['character_name']}</b>\n"
-                    f"🪙 Você ganhou <b>+{SHOP_SELL_GAIN} coin</b>\n\n"
-                    f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-                    f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-                    "Quer fazer mais alguma coisa? 👇"
-                ),
-                parse_mode="HTML",
-                reply_markup=_shop_main_kb()
-            )
-            await q.answer("Vendido! ✅")
-            return
+    await update.message.reply_photo(
+        photo=SHOP_PREVIEW_IMAGE,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=kb
+    )
 
 # ==================================================
 # /saldo + /daily + /trocas (PV only trocas)
@@ -5743,6 +5523,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
