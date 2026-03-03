@@ -5113,80 +5113,226 @@ async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 # ==================================================
-# /linkcolecao — Gera link compartilhável da coleção
-# (usar no PV do bot)
+# /vercolecao — coleção dentro do Telegram (grupo/PV)
+# Paginação + favoritos + agrupado por anime (A-Z)
 # ==================================================
 
+import math
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
-import os
-import time
-import hmac
-import hashlib
-from urllib.parse import urlencode
+COLECAO_PAGE_SIZE = 10  # itens por página (ajuste se quiser)
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from telegram.ext import ContextTypes, CommandHandler
+def _cmp_az(a: str, b: str) -> int:
+    a = (a or "").casefold()
+    b = (b or "").casefold()
+    return (a > b) - (a < b)
 
-MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
-MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
+def _safe_str(x) -> str:
+    return x.strip() if isinstance(x, str) else ""
 
-COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
+def _safe_int(x, default=0) -> int:
+    try:
+        return int(x)
+    except Exception:
+        return default
 
+def _is_fav(c: dict) -> bool:
+    v = c.get("is_favorite", c.get("favorite", c.get("fav", False)))
+    return v is True or v == 1 or v == "1" or v == "true"
 
-def _sign_owner(user_id: int, ts: int) -> str:
-    if not MINIAPP_SIGNING_SECRET:
-        return ""
-    msg = f"{int(user_id)}:{int(ts)}".encode()
-    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+def _get_name(c: dict) -> str:
+    for k in ("character_name","name","character","personagem","nome","char_name","card_name"):
+        s = _safe_str(c.get(k))
+        if s:
+            return s
+    return "Personagem"
 
+def _get_anime(c: dict) -> str:
+    for k in ("anime_title","anime","anime_name","obra","title","series","serie"):
+        s = _safe_str(c.get(k))
+        if s:
+            return s
+    return "Sem anime"
 
-def _build_owner_url(user_id: int) -> str:
-    ts = int(time.time())
-    sig = _sign_owner(user_id, ts)
+def _get_id(c: dict) -> int:
+    for k in ("character_id","char_id","id","card_id","personagem_id"):
+        v = c.get(k)
+        if v is not None:
+            n = _safe_int(v, 0)
+            if n:
+                return n
+    return 0
 
-    params = {"u": str(user_id), "ts": str(ts)}
-    if sig:
-        params["sig"] = sig
+def _get_qty(c: dict) -> int:
+    for k in ("quantity","qty","qtd","amount","count"):
+        v = c.get(k)
+        if v is not None:
+            n = _safe_int(v, 1)
+            if n <= 0:
+                n = 1
+            return n
+    return 1
 
-    sep = "&" if "?" in MINIAPP_URL else "?"
-    return MINIAPP_URL + sep + urlencode(params)
+def _group_and_sort(cards: list[dict]) -> list[tuple[str, list[dict]]]:
+    # agrupa por anime
+    groups = {}
+    for c in cards:
+        anime = _get_anime(c)
+        groups.setdefault(anime, []).append(c)
 
+    # ordena animes
+    anime_titles = sorted(groups.keys(), key=lambda x: (x or "").casefold())
 
-async def linkcolecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.effective_message:
-        return
+    out = []
+    for a in anime_titles:
+        lst = groups[a]
+        lst.sort(key=lambda x: (_get_name(x) or "").casefold())
+        out.append((a, lst))
+    return out
 
-    user = update.effective_user
-    msg = update.effective_message
+def _flatten_groups(groups: list[tuple[str, list[dict]]], only_fav: bool) -> list[tuple[str, dict]]:
+    flat = []
+    for anime, lst in groups:
+        for c in lst:
+            if only_fav and not _is_fav(c):
+                continue
+            flat.append((anime, c))
+    return flat
 
-    # Só permitir no PV
-    if update.effective_chat.type != "private":
-        await msg.reply_text("⚠️ Use este comando no privado do bot.")
-        return
+def _render_page(owner_name: str, owner_id: int, flat: list[tuple[str, dict]], page: int, only_fav: bool) -> str:
+    total = len(flat)
+    if total == 0:
+        return f"📦 <b>Coleção de {owner_name}</b>\n\nNenhum card encontrado."
 
-    if not MINIAPP_URL:
-        await msg.reply_text("⚠️ MINIAPP_URL não configurada.")
-        return
+    pages = max(1, math.ceil(total / COLECAO_PAGE_SIZE))
+    page = max(1, min(page, pages))
+    start = (page - 1) * COLECAO_PAGE_SIZE
+    end = min(total, start + COLECAO_PAGE_SIZE)
 
-    owner_url = _build_owner_url(user.id)
+    lines = [f"📦 <b>Coleção de {owner_name}</b>"]
+    if only_fav:
+        lines.append("❤️ <b>Somente favoritos</b>")
+    lines.append(f"\nPágina <b>{page}</b>/<b>{pages}</b> • Itens: <b>{total}</b>\n")
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Abrir minha coleção", web_app=WebAppInfo(url=owner_url))]
+    last_anime = None
+    for anime, c in flat[start:end]:
+        if anime != last_anime:
+            lines.append(f"🎬 <b>{anime}</b>")
+            last_anime = anime
+
+        name = _get_name(c)
+        cid = _get_id(c)
+        qty = _get_qty(c)
+        fav = "❤️ " if _is_fav(c) else ""
+        lines.append(f"{fav}<b>{name}</b> — x{qty} (ID <code>{cid}</code>)")
+
+    return "\n".join(lines)
+
+def _kb(owner_id: int, page: int, pages: int, only_fav: bool) -> InlineKeyboardMarkup:
+    # cb: colecao:OWNER:PAGE:FAV(0/1)
+    fav_bit = 1 if only_fav else 0
+    rows = []
+
+    prev_page = max(1, page - 1)
+    next_page = min(pages, page + 1)
+
+    rows.append([
+        InlineKeyboardButton("⬅️", callback_data=f"colecao:{owner_id}:{prev_page}:{fav_bit}"),
+        InlineKeyboardButton("➡️", callback_data=f"colecao:{owner_id}:{next_page}:{fav_bit}"),
     ])
+    rows.append([
+        InlineKeyboardButton("📦 Tudo", callback_data=f"colecao:{owner_id}:1:0"),
+        InlineKeyboardButton("❤️ Favoritos", callback_data=f"colecao:{owner_id}:1:1"),
+    ])
+    return InlineKeyboardMarkup(rows)
 
-    texto = (
-        f"📦 <b>Coleção de {user.first_name}</b>\n\n"
-        "🔗 Copie e envie este link no grupo:\n\n"
-        f"{owner_url}"
-    )
+async def vercolecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    user = update.effective_user
+    if not msg or not user:
+        return
 
-    await msg.reply_photo(
-        photo=COLECAO_PREVIEW_IMAGE,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
+    # por padrão mostra a coleção de quem executou
+    owner_id = user.id
+    owner_name = user.first_name or "Usuário"
 
+    import database as db
+    fn = getattr(db, "list_collection_cards", None)
+    if not callable(fn):
+        await msg.reply_html("⚠️ Seu database.py não tem <code>list_collection_cards</code>.")
+        return
+
+    cards = fn(owner_id, limit=500) or []
+    if not isinstance(cards, list):
+        cards = []
+
+    groups = _group_and_sort([c for c in cards if isinstance(c, dict)])
+    flat = _flatten_groups(groups, only_fav=False)
+
+    total = len(flat)
+    pages = max(1, math.ceil(max(1, total) / COLECAO_PAGE_SIZE))
+
+    text = _render_page(owner_name, owner_id, flat, page=1, only_fav=False)
+    await msg.reply_html(text, reply_markup=_kb(owner_id, 1, pages, only_fav=False))
+
+async def callback_colecao_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q or not q.data:
+        return
+
+    try:
+        _, owner_s, page_s, fav_s = q.data.split(":")
+        owner_id = int(owner_s)
+        page = int(page_s)
+        only_fav = (fav_s == "1")
+    except Exception:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    import database as db
+    fn = getattr(db, "list_collection_cards", None)
+    if not callable(fn):
+        await q.answer("Sem suporte no banco.", show_alert=True)
+        return
+
+    # nome do dono (se tiver get_user_row)
+    owner_name = "Usuário"
+    try:
+        gr = getattr(db, "get_user_row", None)
+        if callable(gr):
+            row = gr(owner_id)
+            if isinstance(row, dict):
+                owner_name = (row.get("nick") or row.get("first_name") or row.get("name") or owner_name)
+    except Exception:
+        pass
+
+    cards = fn(owner_id, limit=500) or []
+    if not isinstance(cards, list):
+        cards = []
+
+    groups = _group_and_sort([c for c in cards if isinstance(c, dict)])
+    flat = _flatten_groups(groups, only_fav=only_fav)
+
+    total = len(flat)
+    pages = max(1, math.ceil(max(1, total) / COLECAO_PAGE_SIZE))
+    page = max(1, min(page, pages))
+
+    text = _render_page(owner_name, owner_id, flat, page=page, only_fav=only_fav)
+
+    try:
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_kb(owner_id, page, pages, only_fav))
+    except Exception:
+        # fallback se não der pra editar
+        await q.message.reply_html(text, reply_markup=_kb(owner_id, page, pages, only_fav))
+
+    try:
+        await q.answer()
+    except Exception:
+        pass
 
 # ==================================================
     
@@ -5314,7 +5460,8 @@ def main():
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
-    app.add_handler(CommandHandler("linkcolecao", linkcolecao_command))
+    app.add_handler(CommandHandler("vercolecao", vercolecao_command))
+    app.add_handler(CallbackQueryHandler(callback_colecao_nav, pattern=r"^colecao:\d+:\d+:[01]$"))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5391,6 +5538,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
