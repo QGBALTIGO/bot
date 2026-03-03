@@ -1108,3 +1108,24 @@ def get_extra_dado(user_id: int) -> int:
     """
     st = get_extra_state(user_id)
     return int(st["x"] if st else 0)
+
+# ================================
+
+def list_collection_cards(user_id: int, limit: int = 200):
+    cursor.execute("""
+        SELECT character_id, character_name, image, COALESCE(anime_title,'') AS anime_title
+        FROM user_collection
+        WHERE user_id=%s
+        ORDER BY character_id DESC
+        LIMIT %s
+    """, (int(user_id), int(limit)))
+    rows = cursor.fetchall() or []
+    return [
+        {
+            "character_id": int(r["character_id"]),
+            "name": r["character_name"],
+            "image": r.get("image"),
+            "anime_title": r.get("anime_title") or "",
+        }
+        for r in rows
+    ]
