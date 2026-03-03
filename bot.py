@@ -5205,7 +5205,6 @@ def main():
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
-    app.add_handler(CommandHandler(["colecaoteste", "colecaoteste@" + (context.bot.username or "")], colecaoteste_command))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5282,6 +5281,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
