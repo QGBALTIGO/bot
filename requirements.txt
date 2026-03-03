@@ -7,8 +7,6 @@ psycopg-pool==3.2.1
 fastapi
 uvicorn
 
-
-
-
 orjson
 redis
+
