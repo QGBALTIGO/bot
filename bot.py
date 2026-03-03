@@ -5044,6 +5044,10 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
+# ==================================================
+# /colecao (GRUPO/PV) — abre MINIAPP com coleção do autor (link assinado)
+# + envia imagem de prévia
+# ==================================================
 
 import os
 import time
@@ -5051,55 +5055,67 @@ import hmac
 import hashlib
 from urllib.parse import urlencode
 
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
-from telegram import Update
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
-MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()  # crie no Railway
+MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
-def _sign_miniapp_params(user_id: int, ts: int) -> str:
+COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
+
+
+def _sign_miniapp_owner(user_id: int, ts: int) -> str:
     """
-    Assina (user_id, ts) pra ninguém conseguir trocar o u= de outra pessoa.
+    Assina (user_id, ts) para impedir troca do parâmetro u=.
     """
     if not MINIAPP_SIGNING_SECRET:
-        # ainda funciona sem assinatura, mas é menos seguro
         return ""
-    msg = f"{user_id}:{ts}".encode()
-    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+    msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
-async def colecaoapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
 
-    if not MINIAPP_URL:
-        await update.message.reply_text("⚠️ MINIAPP_URL não configurada.")
-        return
-
-    owner_id = update.effective_user.id
-    owner_name = update.effective_user.first_name or "Usuário"
-
+def _build_owner_url(owner_id: int) -> str:
+    """
+    Monta a URL do WebApp para mostrar a coleção do dono (owner_id).
+    """
     ts = int(time.time())
-    sig = _sign_miniapp_params(owner_id, ts)
+    sig = _sign_miniapp_owner(owner_id, ts)
 
     params = {"u": str(owner_id), "ts": str(ts)}
     if sig:
         params["sig"] = sig
 
-    url = MINIAPP_URL
-    # se já tiver ? no MINIAPP_URL, concatena com &
-    sep = "&" if "?" in url else "?"
-    url = url + sep + urlencode(params)
+    sep = "&" if "?" in MINIAPP_URL else "?"
+    return MINIAPP_URL + sep + urlencode(params)
+
+
+async def colecaoapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user:
+        return
+
+    if not MINIAPP_URL:
+        if update.message:
+            await update.message.reply_html("⚠️ MINIAPP_URL não configurada.")
+        return
+
+    owner_id = update.effective_user.id
+    owner_name = (update.effective_user.first_name or "Usuário").strip()
+
+    owner_url = _build_owner_url(owner_id)
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"📦 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=url))],
+        [InlineKeyboardButton(f"📦 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=owner_url))],
         [InlineKeyboardButton("👤 Ver minha coleção", web_app=WebAppInfo(url=MINIAPP_URL))],
     ])
 
-    await update.message.reply_html(
-        "📦 <b>Coleção</b>\n\nClique para abrir:",
-        reply_markup=kb
-    )
+    # ✅ com imagem de prévia
+    if update.message:
+        await update.message.reply_photo(
+            photo=COLECAO_PREVIEW_IMAGE,
+            caption="📦 <b>Coleção</b>\n\nClique no botão abaixo para abrir:",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
     
 # ==================================================
     
@@ -5304,6 +5320,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
