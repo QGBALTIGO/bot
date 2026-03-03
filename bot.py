@@ -3460,7 +3460,7 @@ def _format_colecao_text(
     texto = (
         f"📚 <b>{nome_colecao}</b>\n\n"
         f"📦 <i>Total:</i> <b>{total}</b>\n"
-        f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n"
+        f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n\n"
     )
 
     fav_name_norm = (fav_name or "").strip().casefold()
@@ -5736,6 +5736,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
