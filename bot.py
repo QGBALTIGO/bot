@@ -5047,6 +5047,44 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /colecaoteste — TESTE miniapp com coleção do autor (link assinado) + imagem prévia
 # ==================================================
 
+import os
+import time
+import hmac
+import hashlib
+from urllib.parse import urlencode
+
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes
+
+MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
+MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
+
+COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
+
+
+def _sign_miniapp_owner_test(user_id: int, ts: int) -> str:
+    if not MINIAPP_SIGNING_SECRET:
+        return ""
+    msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def _build_owner_url_test(owner_id: int) -> str:
+    ts = int(time.time())
+    sig = _sign_miniapp_owner_test(owner_id, ts)
+
+    params = {"u": str(owner_id), "ts": str(ts)}
+    if sig:
+        params["sig"] = sig
+
+    base = MINIAPP_URL.rstrip()
+    if not base:
+        return ""
+
+    sep = "&" if "?" in base else "?"
+    return base + sep + urlencode(params)
+
+
 async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     user = update.effective_user
@@ -5281,6 +5319,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
