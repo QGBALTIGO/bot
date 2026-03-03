@@ -5044,9 +5044,7 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
-# ==================================================
-# /colecao (GRUPO/PV) — abre MINIAPP com coleção do autor (link assinado)
-# + envia imagem de prévia
+# /colecaoteste — TESTE miniapp com coleção do autor (link assinado) + imagem prévia
 # ==================================================
 
 import os
@@ -5064,58 +5062,56 @@ MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
-def _sign_miniapp_owner(user_id: int, ts: int) -> str:
-    """
-    Assina (user_id, ts) para impedir troca do parâmetro u=.
-    """
+def _sign_miniapp_owner_test(user_id: int, ts: int) -> str:
     if not MINIAPP_SIGNING_SECRET:
         return ""
     msg = f"{int(user_id)}:{int(ts)}".encode("utf-8")
     return hmac.new(MINIAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
 
-def _build_owner_url(owner_id: int) -> str:
-    """
-    Monta a URL do WebApp para mostrar a coleção do dono (owner_id).
-    """
+def _build_owner_url_test(owner_id: int) -> str:
     ts = int(time.time())
-    sig = _sign_miniapp_owner(owner_id, ts)
+    sig = _sign_miniapp_owner_test(owner_id, ts)
 
     params = {"u": str(owner_id), "ts": str(ts)}
     if sig:
         params["sig"] = sig
 
-    sep = "&" if "?" in MINIAPP_URL else "?"
-    return MINIAPP_URL + sep + urlencode(params)
+    base = MINIAPP_URL.rstrip()
+    if not base:
+        return ""
+
+    sep = "&" if "?" in base else "?"
+    return base + sep + urlencode(params)
 
 
-async def colecaoapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user:
+async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
         return
 
     if not MINIAPP_URL:
-        if update.message:
-            await update.message.reply_html("⚠️ MINIAPP_URL não configurada.")
+        await update.message.reply_html("⚠️ MINIAPP_URL não configurada.")
         return
 
     owner_id = update.effective_user.id
     owner_name = (update.effective_user.first_name or "Usuário").strip()
 
-    owner_url = _build_owner_url(owner_id)
+    owner_url = _build_owner_url_test(owner_id)
+    if not owner_url:
+        await update.message.reply_html("⚠️ Não consegui montar o link da miniapp.")
+        return
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"📦 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=owner_url))],
-        [InlineKeyboardButton("👤 Ver minha coleção", web_app=WebAppInfo(url=MINIAPP_URL))],
+        [InlineKeyboardButton(f"🧪 Abrir coleção TESTE de {owner_name}", web_app=WebAppInfo(url=owner_url))],
+        [InlineKeyboardButton("👤 Abrir minha coleção (normal)", web_app=WebAppInfo(url=MINIAPP_URL))],
     ])
 
-    # ✅ com imagem de prévia
-    if update.message:
-        await update.message.reply_photo(
-            photo=COLECAO_PREVIEW_IMAGE,
-            caption="📦 <b>Coleção</b>\n\nClique no botão abaixo para abrir:",
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+    await update.message.reply_photo(
+        photo=COLECAO_PREVIEW_IMAGE,
+        caption="🧪 <b>COLEÇÃO TESTE</b>\n\nClique no botão abaixo para abrir:",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
     
 # ==================================================
     
@@ -5242,8 +5238,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
-    app.add_handler(CommandHandler("nomecolecao", nomecolecao))
-   app.add_handler(CommandHandler("colecaoapp", colecaoapp_command))
+    app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5320,6 +5315,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
