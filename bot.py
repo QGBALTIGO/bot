@@ -3330,9 +3330,7 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML"
     )
 
-# ==================================================
-# COLECAO
-# ==================================================
+
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
 # ==================================================
@@ -3349,7 +3347,7 @@ from telegram import (
 )
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
-ITENS_POR_PAGINA = 15
+ITENS_POR_PAGINA = 10
 COLECAO_BTN_ANTIFLOOD = 1.2  # segundos
 
 COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
@@ -3433,11 +3431,6 @@ def _colecao_keyboard(page: int, total_pages: int, owner_id: int) -> InlineKeybo
     if page < total_pages:
         row.append(InlineKeyboardButton("➡️", callback_data=f"colecao:{owner_id}:{page+1}"))
 
-    # botão extra: mostra fotos da página (prioriza setfoto/custom_image)
-    row2 = [
-        InlineKeyboardButton("📸 Fotos da página", callback_data=f"colecao_fotos:{owner_id}:{page}"),
-    ]
-
     return InlineKeyboardMarkup([row, row2])
 
 
@@ -3464,7 +3457,7 @@ def _format_colecao_text(
     fav_name_norm = (fav_name or "").strip().casefold()
 
     for it in itens:
-        cid = int(it["id"])
+        cid = int(f"🧧 it["id"])
         nomep = it["name"]
         anime = it["anime"]
         qty = int(it["qty"])
@@ -5734,6 +5727,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
