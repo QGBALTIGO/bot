@@ -1,3 +1,4 @@
+
 # ================================
 # database.py — Postgres (Railway)
 # (POOL + TRANSACOES SEGURAS + MIGRACAO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
@@ -6,6 +7,7 @@
 import os
 import re
 import time
+import json
 from typing import Optional, Dict, List, Any, Tuple
 
 import psycopg
@@ -1225,3 +1227,418 @@ def list_collection_cards(user_id: int, limit: int = 200):
         }
         for r in rows
     ]
+
+# ================================
+# TITAN SYSTEMS: AUDIT + RATE LIMIT + USER FLAGS + METRICS
+# (Mantém compatibilidade: não remove nada, só adiciona)
+# ================================
+
+def _ensure_titan_system_tables():
+    # Rate limit persistente (multi-instância)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS rate_limits (
+            k TEXT PRIMARY KEY,
+            window_start BIGINT NOT NULL,
+            count INT NOT NULL
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS rate_limits_window_idx ON rate_limits (window_start);")
+
+    # Flags / bloqueios
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS user_flags (
+            user_id BIGINT PRIMARY KEY,
+            strikes INT NOT NULL DEFAULT 0,
+            blocked_until BIGINT NOT NULL DEFAULT 0,
+            reason TEXT,
+            updated_at BIGINT NOT NULL DEFAULT 0
+        );
+        """
+    )
+
+    # Audit log (admin, segurança, economia, marketplace etc.)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id BIGSERIAL PRIMARY KEY,
+            ts BIGINT NOT NULL,
+            action TEXT NOT NULL,
+            actor_id BIGINT,
+            target_id BIGINT,
+            meta_json TEXT
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS audit_ts_idx ON audit_log (ts DESC);")
+    _run("CREATE INDEX IF NOT EXISTS audit_actor_idx ON audit_log (actor_id);")
+    _run("CREATE INDEX IF NOT EXISTS audit_action_idx ON audit_log (action);")
+
+    # Métricas por minuto (barato e útil)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS metrics_buckets (
+            bucket BIGINT NOT NULL,
+            metric TEXT NOT NULL,
+            value BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (bucket, metric)
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS metrics_bucket_idx ON metrics_buckets (bucket DESC);")
+
+
+def allow_rate_limit(user_id: int, key: str, limit: int, window_sec: int) -> bool:
+    """
+    Rate-limit persistente (DB) por (user_id + key).
+    - Suporta múltiplas instâncias do bot/webapp.
+    - Janela fixa baseada em "bucket".
+    """
+    user_id = int(user_id)
+    key = (key or "global").strip().lower()
+    limit = max(1, int(limit))
+    window_sec = max(1, int(window_sec))
+
+    now = int(time.time())
+    bucket = (now // window_sec) * window_sec
+    k = f"u:{user_id}:{key}:{window_sec}:{bucket}"
+
+    row = _run(
+        """
+        INSERT INTO rate_limits (k, window_start, count)
+        VALUES (%s, %s, 1)
+        ON CONFLICT (k) DO UPDATE SET count = rate_limits.count + 1
+        RETURNING count
+        """,
+        (k, bucket, ),
+        fetch="one",
+    )
+    c = int((row or {}).get("count") or 0)
+    return c <= limit
+
+
+def audit(action: str, actor_id: Optional[int] = None, target_id: Optional[int] = None, meta: Optional[dict] = None):
+    """
+    Loga uma ação importante (admin, economia, trade, segurança).
+    Não quebra o bot se falhar.
+    """
+    try:
+        _run(
+            "INSERT INTO audit_log (ts, action, actor_id, target_id, meta_json) VALUES (%s,%s,%s,%s,%s)",
+            (
+                int(time.time()),
+                str(action)[:120],
+                int(actor_id) if actor_id is not None else None,
+                int(target_id) if target_id is not None else None,
+                json.dumps(meta or {}, ensure_ascii=False)[:5000],
+            ),
+        )
+    except Exception:
+        pass
+
+
+def get_recent_audit(limit: int = 50, action_prefix: str = "") -> List[dict]:
+    limit = max(1, min(200, int(limit)))
+    action_prefix = (action_prefix or "").strip()
+    if action_prefix:
+        return _run(
+            "SELECT * FROM audit_log WHERE action LIKE %s ORDER BY id DESC LIMIT %s",
+            (action_prefix + "%", limit),
+            fetch="all",
+        ) or []
+    return _run("SELECT * FROM audit_log ORDER BY id DESC LIMIT %s", (limit,), fetch="all") or []
+
+
+def add_strike(user_id: int, reason: str = "", block_seconds: int = 0) -> dict:
+    """
+    Soma strike e opcionalmente bloqueia até um timestamp.
+    """
+    user_id = int(user_id)
+    now = int(time.time())
+    block_until = now + max(0, int(block_seconds))
+
+    row = _run(
+        """
+        INSERT INTO user_flags (user_id, strikes, blocked_until, reason, updated_at)
+        VALUES (%s, 1, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            strikes = user_flags.strikes + 1,
+            blocked_until = GREATEST(user_flags.blocked_until, EXCLUDED.blocked_until),
+            reason = CASE WHEN EXCLUDED.reason <> '' THEN EXCLUDED.reason ELSE user_flags.reason END,
+            updated_at = EXCLUDED.updated_at
+        RETURNING user_id, strikes, blocked_until, reason, updated_at
+        """,
+        (user_id, block_until, str(reason)[:300], now),
+        fetch="one",
+    ) or {}
+    audit("security:strike", actor_id=user_id, target_id=user_id, meta={"reason": reason, "blocked_until": int(row.get("blocked_until") or 0)})
+    return row
+
+
+def is_user_blocked(user_id: int) -> Tuple[bool, int, str]:
+    user_id = int(user_id)
+    row = _run(
+        "SELECT COALESCE(blocked_until,0)::bigint AS bu, COALESCE(reason,'') AS r FROM user_flags WHERE user_id=%s",
+        (user_id,),
+        fetch="one",
+    ) or {}
+    bu = int(row.get("bu") or 0)
+    r = str(row.get("r") or "")
+    now = int(time.time())
+    return (bu > now, bu, r)
+
+
+def inc_metric(metric: str, inc: int = 1):
+    """
+    Métrica simples por minuto: incrementa contador.
+    """
+    metric = (metric or "").strip().lower()[:64]
+    if not metric:
+        return
+    inc = int(inc)
+    if inc == 0:
+        return
+    now = int(time.time())
+    bucket = (now // 60) * 60
+    try:
+        _run(
+            """
+            INSERT INTO metrics_buckets (bucket, metric, value)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (bucket, metric) DO UPDATE SET value = metrics_buckets.value + EXCLUDED.value
+            """,
+            (bucket, metric, inc),
+        )
+    except Exception:
+        pass
+
+
+def get_metrics_last_minutes(metric: str, minutes: int = 60) -> List[dict]:
+    metric = (metric or "").strip().lower()[:64]
+    minutes = max(1, min(24*60, int(minutes)))
+    since = int(time.time()) - minutes * 60
+    return _run(
+        "SELECT bucket, value FROM metrics_buckets WHERE metric=%s AND bucket >= %s ORDER BY bucket ASC",
+        (metric, since),
+        fetch="all",
+    ) or []
+
+
+# ================================
+# TITAN — Admin + Observabilidade
+# ================================
+
+def _ensure_user_flags() -> None:
+    query("""
+    CREATE TABLE IF NOT EXISTS user_flags (
+        user_id BIGINT PRIMARY KEY,
+        is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+        blocked_reason TEXT,
+        blocked_until BIGINT,
+        strikes INTEGER NOT NULL DEFAULT 0,
+        last_event_at BIGINT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+    """)
+    query("CREATE INDEX IF NOT EXISTS idx_user_flags_blocked ON user_flags (is_blocked, blocked_until);")
+
+def get_user_flags(user_id: int):
+    _ensure_user_flags()
+    ensure_user(user_id)
+    rows = query("SELECT * FROM user_flags WHERE user_id=%s", (user_id,), fetch=True) or []
+    if not rows:
+        query("INSERT INTO user_flags (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+        rows = query("SELECT * FROM user_flags WHERE user_id=%s", (user_id,), fetch=True) or []
+    return rows[0] if rows else None
+
+def set_block(user_id: int, reason: str = "manual", seconds: int = 3600):
+    """Bloqueia usuário por X segundos (0 = permanente se quiser)."""
+    import time
+    _ensure_user_flags()
+    ensure_user(user_id)
+    now = int(time.time())
+    until = None if seconds == 0 else (now + int(seconds))
+    query(
+        """
+        INSERT INTO user_flags (user_id, is_blocked, blocked_reason, blocked_until, strikes, last_event_at, updated_at)
+        VALUES (%s, TRUE, %s, %s, 0, %s, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            is_blocked=TRUE,
+            blocked_reason=EXCLUDED.blocked_reason,
+            blocked_until=EXCLUDED.blocked_until,
+            updated_at=NOW()
+        """,
+        (user_id, reason, until, now),
+    )
+    try:
+        query(
+            """
+            INSERT INTO audit_events (user_id, action, payload, created_at)
+            VALUES (%s, 'admin_ban', jsonb_build_object('reason', %s, 'seconds', %s), NOW())
+            """,
+            (user_id, reason, seconds),
+        )
+    except Exception:
+        pass
+
+def clear_block(user_id: int):
+    _ensure_user_flags()
+    ensure_user(user_id)
+    query(
+        """
+        UPDATE user_flags
+        SET is_blocked=FALSE, blocked_reason=NULL, blocked_until=NULL, updated_at=NOW()
+        WHERE user_id=%s
+        """,
+        (user_id,),
+    )
+    try:
+        query(
+            """
+            INSERT INTO audit_events (user_id, action, payload, created_at)
+            VALUES (%s, 'admin_unban', '{}'::jsonb, NOW())
+            """,
+            (user_id,),
+        )
+    except Exception:
+        pass
+
+def is_blocked(user_id: int):
+    import time
+    _ensure_user_flags()
+    ensure_user(user_id)
+    row = get_user_flags(user_id)
+    if not row:
+        return False, None
+    if row.get("is_blocked"):
+        until = row.get("blocked_until")
+        if until and int(time.time()) > int(until):
+            clear_block(user_id)
+            return False, None
+        return True, row.get("blocked_reason") or "blocked"
+    return False, None
+
+def add_strike(user_id: int, reason: str, block_seconds: int = 600):
+    import time
+    _ensure_user_flags()
+    ensure_user(user_id)
+    now = int(time.time())
+    until = now + int(block_seconds)
+    query(
+        """
+        INSERT INTO user_flags (user_id, strikes, is_blocked, blocked_reason, blocked_until, last_event_at, updated_at)
+        VALUES (%s, 1, TRUE, %s, %s, %s, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            strikes = user_flags.strikes + 1,
+            is_blocked = TRUE,
+            blocked_reason = EXCLUDED.blocked_reason,
+            blocked_until = EXCLUDED.blocked_until,
+            last_event_at = EXCLUDED.last_event_at,
+            updated_at = NOW()
+        """,
+        (user_id, reason, until, now),
+    )
+    try:
+        query(
+            """
+            INSERT INTO audit_events (user_id, action, payload, created_at)
+            VALUES (%s, 'anti_exploit_block', jsonb_build_object('reason', %s, 'until', %s), NOW())
+            """,
+            (user_id, reason, until),
+        )
+    except Exception:
+        pass
+
+# ----------------
+# Observabilidade
+# ----------------
+def _ensure_metrics() -> None:
+    query("""
+    CREATE TABLE IF NOT EXISTS metrics_buckets (
+        bucket BIGINT NOT NULL,
+        key TEXT NOT NULL,
+        value BIGINT NOT NULL DEFAULT 0,
+        PRIMARY KEY (bucket, key)
+    );
+    """)
+    query("CREATE INDEX IF NOT EXISTS idx_metrics_key_bucket ON metrics_buckets (key, bucket DESC);")
+
+def metrics_inc(key: str, amount: int = 1):
+    import time
+    _ensure_metrics()
+    b = int(time.time()) // 60
+    query(
+        """
+        INSERT INTO metrics_buckets (bucket, key, value)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (bucket, key) DO UPDATE SET value = metrics_buckets.value + EXCLUDED.value
+        """,
+        (b, key, amount),
+    )
+
+def metrics_get(key: str, minutes: int = 60):
+    import time
+    _ensure_metrics()
+    b = int(time.time()) // 60
+    return query(
+        """
+        SELECT bucket, value
+        FROM metrics_buckets
+        WHERE key=%s AND bucket >= %s
+        ORDER BY bucket ASC
+        """,
+        (key, b - int(minutes)),
+        fetch=True,
+    ) or []
+
+def audit_list(action: str | None = None, user_id: int | None = None, limit: int = 50):
+    # audit_events table is created in run_migrations()
+    if action and user_id:
+        return query(
+            """
+            SELECT id, user_id, action, payload, created_at
+            FROM audit_events
+            WHERE action=%s AND user_id=%s
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (action, user_id, limit),
+            fetch=True,
+        ) or []
+    if action:
+        return query(
+            """
+            SELECT id, user_id, action, payload, created_at
+            FROM audit_events
+            WHERE action=%s
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (action, limit),
+            fetch=True,
+        ) or []
+    if user_id:
+        return query(
+            """
+            SELECT id, user_id, action, payload, created_at
+            FROM audit_events
+            WHERE user_id=%s
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (user_id, limit),
+            fetch=True,
+        ) or []
+    return query(
+        """
+        SELECT id, user_id, action, payload, created_at
+        FROM audit_events
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (limit,),
+        fetch=True,
+    ) or []
