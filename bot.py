@@ -7,7 +7,6 @@
 # ==================================================
 import os
 import re
-import uvicorn
 import time
 import json
 import random
@@ -32,20 +31,24 @@ from telegram.ext import (
 )
 
 from database import (
-    db,
-    cursor,
     init_db,
+
+    # users / perfil
     ensure_user_row,
     get_user_row,
     get_user_by_nick,
     set_private_profile,
     set_admin_photo,
     get_admin_photo_db,
+    set_collection_name,
+    get_collection_name,
+
+    # coins
     add_coin,
     get_user_coins,
     try_spend_coins,
-    set_collection_name,
-    get_collection_name,
+
+    # coleção
     count_collection,
     get_collection_page,
     user_has_character,
@@ -55,15 +58,22 @@ from database import (
     remove_one_from_collection,
     set_favorite_from_collection,
     clear_favorite,
-    swap_trade_execute,
+    list_collection_cards,
+
+    # trocas
     create_trade,
     get_trade_by_id,
     get_latest_pending_trade_for_to_user,
     mark_trade_status,
+    swap_trade_execute,
     list_pending_trades_for_user,
+
+    # cache top anime
     top_cache_last_updated,
     replace_top_anime_cache,
     get_top_anime_list,
+
+    # dado / rolls
     create_dice_roll,
     get_dice_roll,
     set_dice_roll_status,
@@ -71,21 +81,24 @@ from database import (
     get_dado_state,
     set_dado_state,
     inc_dado_balance,
+
+    # extra_dado
     get_extra_dado,
     add_extra_dado,
     consume_extra_dado,
+
+    # daily
     claim_daily_reward,
+
+    # imagens globais + ban
     set_global_character_image,
     get_global_character_image,
     delete_global_character_image,
     ban_character,
     unban_character,
     is_banned_character,
-    get_user_coins,
-    claim_daily_reward,
-    list_pending_trades_for_user,
-    try_spend_coins,
-    add_extra_dado,
+
+    # rankings / stats / conquistas
     get_top_by_level,
     get_top_by_coins,
     get_top_by_collection,
@@ -5265,6 +5278,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
