@@ -31,6 +31,10 @@ from telegram.ext import (
 )
 
 from database import (
+    set_last_pedido,
+    increment_commands_and_level,
+    try_set_nick,
+    get_collection_quantities,
     init_db,
 
     # users / perfil
@@ -47,6 +51,7 @@ from database import (
     add_coin,
     get_user_coins,
     try_spend_coins,
+    spend_coins_and_add_giro,
 
     # coleção
     count_collection,
@@ -343,71 +348,31 @@ async def registrar_comando(update: Update):
     ensure_user_row(user_id, user.first_name)
 
     # Segurança: se update vier sem message, não tentamos responder
-    lock = _get_level_lock(user_id)
+    
+lock = _get_level_lock(user_id)
     async with lock:
-        cur = db.cursor()
-        try:
-            # 1) trava a linha do usuário (FOR UPDATE) e calcula tudo de forma consistente
-            cur.execute(
-                """
-                WITH old AS (
-                    SELECT
-                        COALESCE(commands, 0) AS old_commands,
-                        COALESCE(level, 1)    AS old_level,
-                        COALESCE(nick, %s)    AS nick_safe
-                    FROM users
-                    WHERE user_id = %s
-                    FOR UPDATE
-                ),
-                upd AS (
-                    UPDATE users
-                    SET
-                        commands = (SELECT old_commands FROM old) + 1,
-                        level = GREATEST(
-                            (SELECT old_level FROM old),
-                            (((SELECT old_commands FROM old) + 1) / %s) + 1
-                        )
-                    WHERE user_id = %s
-                    RETURNING commands, level
-                )
-                SELECT
-                    (SELECT old_level FROM old)    AS old_level,
-                    (SELECT nick_safe FROM old)    AS nick_safe,
-                    (SELECT commands FROM upd)     AS commands,
-                    (SELECT level FROM upd)        AS level
-                ;
-                """,
-                (user.first_name, user_id, COMANDOS_POR_NIVEL, user_id),
-            )
-            data = cur.fetchone()
-            db.commit()
-
-            if not data:
-                return
-
-            old_level = int(data["old_level"])
-            new_level = int(data["level"])
-            nick_safe = data.get("nick_safe") or user.first_name
-
-            if new_level > old_level:
-                mensagem = (
-                    "🎉 <b>LEVEL UP!</b>\n\n"
-                    f"✨ Parabéns <b>{nick_safe}</b>!\n"
-                    f"⬆️ Você alcançou o <b>Nível {new_level}</b>!\n\n"
-                    "🚀 Continue usando o bot!"
-                )
-                if update.message:
-                    await update.message.reply_html(mensagem)
-
-        except Exception:
-            db.rollback()
-            # Não explode o bot por falha de DB (em escala, isso mata a estabilidade)
+        data = increment_commands_and_level(user_id, user.first_name, COMANDOS_POR_NIVEL)
+        if not data:
             return
-        finally:
-            try:
-                cur.close()
-            except Exception:
-                pass
+
+        old_level = int(data["old_level"])
+        new_level = int(data["level"])
+        nick_safe = data.get("nick_safe") or user.first_name
+
+        if new_level > old_level:
+            mensagem = (
+                "🎉 <b>LEVEL UP!</b>
+
+"
+                f"✨ Parabéns <b>{nick_safe}</b>!
+"
+                f"⬆️ Você alcançou o <b>Nível {new_level}</b>!
+
+"
+                "🚀 Continue usando o bot!"
+            )
+            if update.message:
+                await update.message.reply_html(mensagem)
 
 # ==================================================
 # 8) /start
@@ -673,25 +638,14 @@ async def nick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lock = _get_profile_lock(user_id)
     async with lock:
-        cur = db.cursor()
-        try:
-            # Atualiza nick de forma segura (cursor por operação).
-            # Conflito de UNIQUE deve cair no except e manter texto original.
-            cur.execute("UPDATE users SET nick=%s WHERE user_id=%s", (nick_novo, user_id))
-            db.commit()
-        except Exception:
-            db.rollback()
+        ok = try_set_nick(user_id, nick_novo)
+        if not ok:
             await update.message.reply_html(
                 "🚫 <b>Nick indisponível</b>\n\n"
                 f"O nick <code>{nick_novo}</code> já está em uso.\n"
                 "Tente outro 🙂"
             )
             return
-        finally:
-            try:
-                cur.close()
-            except Exception:
-                pass
 
     await update.message.reply_html(
         "✅ <b>Nick definido!</b>\n\n"
@@ -1007,7 +961,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await checar_canal(update, context):
         return
-    if not await anti_spam(user_id):
+    if not await anti_spam(user_id, key="cmd:/anime"):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -1032,7 +986,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_ANIME, nome)
 
     if not msg_id:
-        await msg_busca.delete()
+        await safe_delete(msg_busca)
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n"
             "O anime que você procurou não foi encontrado no canal.\n\n"
@@ -1040,7 +994,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await msg_busca.delete()
+    await safe_delete(msg_busca)
 
     keyboard = [[InlineKeyboardButton("▶️ Assistir no canal", url=f"https://t.me/{CANAL_ANIME}/{msg_id}")]]
     await context.bot.copy_message(
@@ -1055,7 +1009,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await checar_canal(update, context):
         return
-    if not await anti_spam(user_id):
+    if not await anti_spam(user_id, key="cmd:/manga"):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -1080,7 +1034,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = await buscar_post(CANAL_MANGA, nome)
 
     if not msg_id:
-        await msg_busca.delete()
+        await safe_delete(msg_busca)
         await update.message.reply_html(
             "🚫 <b>Nada por aqui…</b>\n"
             "O mangá que você procurou não foi encontrado no canal.\n\n"
@@ -1088,7 +1042,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await msg_busca.delete()
+    await safe_delete(msg_busca)
 
     keyboard = [[InlineKeyboardButton("📖 Ler agora", url=f"https://t.me/{CANAL_MANGA}/{msg_id}")]]
     await context.bot.copy_message(
@@ -1116,7 +1070,7 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    if not await anti_spam(user_id):
+    if not await anti_spam(user_id, key="cmd:/pedido"):
         await update.message.reply_text("⏳ Sem flood 😅\nTente novamente em alguns segundos.")
         return
 
@@ -1161,8 +1115,7 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     ensure_user_row(user_id, user.first_name)
-    cursor.execute("UPDATE users SET last_pedido=%s WHERE user_id=%s", (int(time.time()), user_id))
-    db.commit()
+    set_last_pedido(user_id, int(time.time()))
 
     await update.message.reply_html(
         f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
@@ -1867,30 +1820,7 @@ async def _anilist_post(session: aiohttp.ClientSession, query: str, variables: d
 # DB helper: qty_map em batch (SEM cursor global)
 # ================================
 def _get_user_qty_map(user_id: int, char_ids: List[int]) -> Dict[int, int]:
-    if not char_ids:
-        return {}
-
-    placeholders = ",".join(["%s"] * len(char_ids))
-    sql = f"""
-        SELECT character_id, quantity
-        FROM user_collection
-        WHERE user_id=%s AND character_id IN ({placeholders})
-    """
-
-    cur = db.cursor()
-    try:
-        cur.execute(sql, (user_id, *char_ids))
-        rows = cur.fetchall() or []
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-    out: Dict[int, int] = {}
-    for r in rows:
-        out[int(r["character_id"])] = int(r.get("quantity") or 0)
-    return out
+    return get_collection_quantities(user_id, char_ids)
 
 # ================================
 # AniList fetch por nome / id (com cache + lock)
@@ -3658,10 +3588,6 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if t:
                 trade_id = int(t[0])
     except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
         await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
         return
 
@@ -3792,11 +3718,7 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
             except Exception:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
+        await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
                 return
 
     # final
@@ -3856,10 +3778,6 @@ async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         mark_trade_status(int(trade_id), "recusada")
     except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
         await q.answer("⚠️ Não consegui recusar agora.", show_alert=True)
         return
 
@@ -4033,12 +3951,10 @@ async def callback_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "shop:buy_giro":
             ensure_user_row(user_id, q.from_user.first_name)
 
-            ok_spend = try_spend_coins(user_id, SHOP_GIRO_PRICE)
-            if not ok_spend:
+            ok_buy = spend_coins_and_add_giro(user_id, SHOP_GIRO_PRICE, giros=1)
+            if not ok_buy:
                 await q.answer("Você não tem coins suficientes.", show_alert=True)
                 return
-
-            add_extra_dado(user_id, 1)
 
             coins = get_user_coins(user_id)
             giros = get_extra_dado(user_id)
@@ -5128,6 +5044,34 @@ async def colecaoapp(update, context):
 # 25) MAIN (handlers)
 # ==================================================
 
+
+def cleanup_caches():
+    """Evita crescimento infinito de caches em memória (bot 24/7)."""
+    now = time.time()
+
+    try:
+        dead = [k for k, ts in _seen_callback_ids.items() if now - ts > _SEEN_CB_TTL]
+        for k in dead:
+            _seen_callback_ids.pop(k, None)
+    except Exception:
+        pass
+
+    try:
+        dead = [k for k, ts in _rate_state.items() if now - ts > 3600]
+        for k in dead:
+            _rate_state.pop(k, None)
+    except Exception:
+        pass
+
+    try:
+        for cache in (_member_cache, _channel_search_cache, _anilist_cache):
+            dead = [k for k, (val, exp) in cache.items() if now > exp]
+            for k in dead:
+                cache.pop(k, None)
+    except Exception:
+        pass
+
+
 async def _on_startup(app):
     # inicia DB e Telethon
     try:
@@ -5140,6 +5084,12 @@ async def _on_startup(app):
         await client.start()
     except Exception:
         # se Telethon falhar, o bot ainda pode rodar (comandos de busca vão falhar)
+        pass
+
+    # limpeza periódica de caches (evita RAM crescer infinito)
+    try:
+        app.job_queue.run_repeating(lambda _: cleanup_caches(), interval=600, first=600)
+    except Exception:
         pass
 
 
@@ -5179,7 +5129,6 @@ async def _cards_dot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 def main():
-    init_db()
 
     app = (
         ApplicationBuilder()
@@ -5300,5 +5249,13 @@ if __name__ == "__main__":
 
 
 
+
+async def safe_delete(msg):
+    """Deleta mensagem sem derrubar o handler (grupos grandes dão muito erro de delete)."""
+    try:
+        if msg:
+            await safe_delete(msg)
+    except Exception:
+        pass
 
 
