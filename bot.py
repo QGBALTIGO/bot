@@ -375,6 +375,9 @@ async def registrar_comando(update: Update):
 # ==================================================
 # 8) /start
 # ==================================================
+
+await update.message.reply_text(BOT_BUILD)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Rate limit leve no /start (não muda texto, só protege spam)
     if update.effective_user:
@@ -5049,8 +5052,6 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
 
-await update.message.reply_text(BOT_BUILD)
-
 async def colecaoapp(update, context):
     user_id = update.effective_user.id
     if not MINIAPP_URL:
@@ -5268,5 +5269,6 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
