@@ -6,9 +6,9 @@
 import os
 import re
 import time
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2 import errors as pg_errors
+import psycopg
+from psycopg.rows import dict_row
+from psycopg import errors as pg_errors
 from typing import Optional, Dict, List, Any, Tuple
 
 
