@@ -5093,7 +5093,7 @@ async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🧪 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=owner_url))],
+        [InlineKeyboardButton(f"📚 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=owner_url))],
     ])
 
     await update.message.reply_photo(
@@ -5372,6 +5372,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
