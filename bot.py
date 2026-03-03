@@ -348,8 +348,7 @@ async def registrar_comando(update: Update):
     ensure_user_row(user_id, user.first_name)
 
     # Segurança: se update vier sem message, não tentamos responder
-    
-lock = _get_level_lock(user_id)
+    lock = _get_level_lock(user_id)
     async with lock:
         data = increment_commands_and_level(user_id, user.first_name, COMANDOS_POR_NIVEL)
         if not data:
@@ -361,14 +360,9 @@ lock = _get_level_lock(user_id)
 
         if new_level > old_level:
             mensagem = (
-                "🎉 <b>LEVEL UP!</b>
-
-"
-                f"✨ Parabéns <b>{nick_safe}</b>!
-"
-                f"⬆️ Você alcançou o <b>Nível {new_level}</b>!
-
-"
+                "🎉 <b>LEVEL UP!</b>\n\n"
+                f"✨ Parabéns <b>{nick_safe}</b>!\n"
+                f"⬆️ Você alcançou o <b>Nível {new_level}</b>!\n\n"
                 "🚀 Continue usando o bot!"
             )
             if update.message:
@@ -5257,5 +5251,6 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
