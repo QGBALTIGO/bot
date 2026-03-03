@@ -1,7 +1,9 @@
 # webapp.py — Mini App Coleção (REAL) + validação initData (Telegram WebApp)
-# - NÃO quebra se faltar função no database.py
-# - Importa database dentro das rotas (evita crash no boot)
-# - UI estilo cards (parecido com seu exemplo)
+# Seguro contra:
+# - faltar função no database.py
+# - faltar coins/giros
+# - erro de initData
+# - erro de string (sem """ gigante)
 
 import os
 import json
@@ -19,10 +21,6 @@ if not BOT_TOKEN:
 
 
 def verify_telegram_init_data(init_data: str) -> dict:
-    """
-    Valida initData do Telegram WebApp.
-    Sem isso, qualquer um poderia fingir ser outro usuário.
-    """
     if not init_data:
         raise HTTPException(status_code=401, detail="initData ausente")
 
@@ -46,14 +44,6 @@ def verify_telegram_init_data(init_data: str) -> dict:
     return {"user": user, "raw": data}
 
 
-app = FastAPI()
-
-
-@app.get("/", response_class=HTMLResponse)
-def root():
-    return "✅ Web rodando! Abra /app para ver a miniapp."
-
-
 def _safe_int(x, default: int = 0) -> int:
     try:
         return int(x)
@@ -61,71 +51,63 @@ def _safe_int(x, default: int = 0) -> int:
         return default
 
 
-def _get_user_coins_and_giros(user_id: int) -> tuple[int, int]:
-    """
-    Pega coins e giros sem depender de funções específicas.
-    - coins: tenta vir de get_user_row()
-    - giros: tenta vir de get_extra_state() (extra_dado)
-    """
+def _get_collection_name_safe(db, user_id: int) -> str:
+    try:
+        fn = getattr(db, "get_collection_name", None)
+        if callable(fn):
+            name = fn(user_id)
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    except Exception:
+        pass
+    return "Minha coleção"
+
+
+def _list_collection_cards_safe(db, user_id: int, limit: int = 200) -> list[dict]:
+    try:
+        fn = getattr(db, "list_collection_cards", None)
+        if callable(fn):
+            cards = fn(user_id, limit=limit)
+            if isinstance(cards, list):
+                return [c for c in cards if isinstance(c, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _get_coins_and_giros_safe(db, user_id: int) -> tuple[int, int]:
     coins = 0
     giros = 0
 
-    # Importa database aqui dentro pra não quebrar o boot do uvicorn
-    import database
-
-    # COINS (tenta por user row)
+    # COINS: tenta vir do get_user_row (campo coins)
     try:
-        row = database.get_user_row(user_id)
-        # tenta campos comuns
-        coins = _safe_int(
-            row.get("coins") if isinstance(row, dict) else None,
-            default=0
-        )
+        fn = getattr(db, "get_user_row", None)
+        if callable(fn):
+            row = fn(user_id)
+            if isinstance(row, dict):
+                coins = _safe_int(row.get("coins"), 0)
     except Exception:
         coins = 0
 
-    # GIROS (extra_dado)
+    # GIROS: tenta get_extra_state (campo x)
     try:
-        # seu bot usa get_extra_state(user_id) -> {"x":..., "s":...}
-        st = database.get_extra_state(user_id)
-        if isinstance(st, dict):
-            giros = _safe_int(st.get("x"), default=0)
+        fn = getattr(db, "get_extra_state", None)
+        if callable(fn):
+            st = fn(user_id)
+            if isinstance(st, dict):
+                giros = _safe_int(st.get("x"), 0)
     except Exception:
         giros = 0
 
     return coins, giros
 
 
-def _get_collection_name_safe(user_id: int) -> str:
-    import database
-    try:
-        name = database.get_collection_name(user_id)
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-    except Exception:
-        pass
-    return "Minha coleção"
+app = FastAPI()
 
 
-def _list_collection_cards_safe(user_id: int, limit: int = 200) -> list[dict]:
-    """
-    Busca cards da coleção.
-    Tenta usar list_collection_cards() se existir.
-    Se não existir, retorna lista vazia (webapp sobe igual).
-    """
-    import database
-
-    try:
-        fn = getattr(database, "list_collection_cards", None)
-        if callable(fn):
-            cards = fn(user_id, limit=limit)
-            if isinstance(cards, list):
-                # garante dicts
-                return [c for c in cards if isinstance(c, dict)]
-    except Exception:
-        pass
-
-    return []
+@app.get("/", response_class=HTMLResponse)
+def root():
+    return HTMLResponse(content="✅ Web rodando! Abra /app para ver a miniapp.")
 
 
 @app.get("/api/me/collection")
@@ -135,18 +117,19 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     user_id = int(user["id"])
     first_name = user.get("first_name") or "User"
 
-    import database
+    import database as db
 
-    # garante linha do usuário (se a função existir)
+    # garante user row se existir
     try:
-        database.ensure_user_row(user_id, first_name)
+        fn = getattr(db, "ensure_user_row", None)
+        if callable(fn):
+            fn(user_id, first_name)
     except Exception:
-        # se ensure_user_row não existir ou falhar, não derruba a miniapp
         pass
 
-    coins, giros = _get_user_coins_and_giros(user_id)
-    collection_name = _get_collection_name_safe(user_id)
-    cards = _list_collection_cards_safe(user_id, limit=200)
+    coins, giros = _get_coins_and_giros_safe(db, user_id)
+    collection_name = _get_collection_name_safe(db, user_id)
+    cards = _list_collection_cards_safe(db, user_id, limit=200)
 
     return JSONResponse(
         {
@@ -162,8 +145,7 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
 
 @app.get("/app", response_class=HTMLResponse)
 def miniapp():
-    return """
-<!doctype html>
+    html = r"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -248,9 +230,10 @@ def miniapp():
       background:rgba(255,255,255,.03);
       color:var(--muted);
       font-size:13px;
+      white-space:pre-wrap;
     }
     .status.ok{ border-color: rgba(0,255,140,.18); }
-    .status.err{ border-color: rgba(255,60,60,.18); color: rgba(255,120,120,.9); }
+    .status.err{ border-color: rgba(255,60,60,.18); color: rgba(255,120,120,.95); }
 
     .grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;}
     .card{
@@ -295,4 +278,139 @@ def miniapp():
       padding:10px 8px;
       background:transparent; border:0;
     }
-    .nav.active{ color:#fff; background:rgba(255,255,255,.06
+    .nav.active{ color:#fff; background:rgba(255,255,255,.06); }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="title">
+      <h1 id="h1">Minha coleção</h1>
+      <div class="sub" id="sub">Carregando...</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">🪙 <span id="coins">-</span></div>
+      <div class="dot"></div>
+      <div class="stat">🎡 <span id="giros">-</span></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab_all">📦 Coleção</button>
+    <button class="tab" id="tab_fav">⭐ Favoritos</button>
+  </div>
+
+  <div class="search">
+    <input id="q" placeholder="Buscar personagem ou anime..." />
+  </div>
+
+  <div class="status" id="status">Conectando...</div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="bottom">
+    <button class="nav active" id="nav_explore">Explore</button>
+    <button class="nav" id="nav_chats">Chats</button>
+    <button class="nav" id="nav_profile">Profile</button>
+  </div>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); try { tg.expand(); } catch(e) {} }
+
+    let allCards = [];
+    let showFav = false;
+
+    function setStatus(text, type){
+      const el = document.getElementById("status");
+      el.className = "status" + (type ? (" " + type) : "");
+      el.textContent = text;
+    }
+
+    function render(){
+      const grid = document.getElementById("grid");
+      const q = (document.getElementById("q").value || "").trim().toLowerCase();
+
+      const list = allCards.filter(c => {
+        if (showFav && !c.is_favorite) return false;
+        const name = (c.character_name || "").toLowerCase();
+        const anime = (c.anime_title || "").toLowerCase();
+        if (!q) return true;
+        return name.includes(q) || anime.includes(q) || String(c.character_id).includes(q);
+      });
+
+      grid.innerHTML = "";
+      if (!list.length){
+        grid.innerHTML = "<div style='color:rgba(255,255,255,.65)'>Nenhum card encontrado.</div>";
+        return;
+      }
+
+      for (const c of list){
+        const img = c.custom_image || c.image || "";
+        const qty = c.quantity || 1;
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          ${img ? `<img src="${img}" alt="">` : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}
+          <div class="pill">x${qty} • ID ${c.character_id}</div>
+          <div class="overlay">
+            <div class="name">${c.character_name || "Personagem"}</div>
+            <div class="meta">${c.anime_title || ""}</div>
+          </div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    async function load(){
+      try{
+        setStatus("Carregando sua coleção...", "");
+        const initData = tg?.initData || "";
+        const res = await fetch("/api/me/collection", {
+          headers: { "X-Telegram-Init-Data": initData }
+        });
+
+        if (!res.ok){
+          const txt = await res.text().catch(()=> "");
+          setStatus("❌ Falha ao carregar.\\n\\nMotivo: " + res.status + "\\n" + txt, "err");
+          document.getElementById("sub").textContent = "Erro: " + res.status;
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("h1").textContent = data.collection_name || "Minha coleção";
+        document.getElementById("sub").textContent = "Cards: " + (data.cards?.length || 0);
+        document.getElementById("coins").textContent = String(data.coins ?? "-");
+        document.getElementById("giros").textContent = String(data.giros ?? "-");
+
+        allCards = data.cards || [];
+        setStatus("✅ Coleção carregada.", "ok");
+        render();
+      } catch(e){
+        setStatus("❌ Erro inesperado ao carregar.", "err");
+      }
+    }
+
+    document.getElementById("tab_all").onclick = () => {
+      showFav = false;
+      document.getElementById("tab_all").classList.add("active");
+      document.getElementById("tab_fav").classList.remove("active");
+      render();
+    };
+    document.getElementById("tab_fav").onclick = () => {
+      showFav = true;
+      document.getElementById("tab_fav").classList.add("active");
+      document.getElementById("tab_all").classList.remove("active");
+      render();
+    };
+
+    document.getElementById("q").addEventListener("input", render);
+
+    load();
+  </script>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html)
