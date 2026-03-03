@@ -3,7 +3,7 @@
 # - faltar função no database.py
 # - faltar coins/giros
 # - erro de initData
-# - erro de string (sem """ gigante)
+# - erro de string (HTML em r"""...""" fechado)
 
 import os
 import json
@@ -32,14 +32,10 @@ def verify_telegram_init_data(init_data: str) -> dict:
     if not received_hash:
         raise HTTPException(status_code=401, detail="hash ausente")
 
-    # monta data_check_string
     check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
 
     # ✅ CHAVE CORRETA DO WEBAPP:
-    # secret_key = HMAC_SHA256("WebAppData", bot_token)
     secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-
-    # hash = HMAC_SHA256(secret_key, data_check_string)
     calculated_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(calculated_hash, received_hash):
@@ -51,6 +47,7 @@ def verify_telegram_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="user inválido")
 
     return {"user": user, "raw": data}
+
 
 def _safe_int(x, default: int = 0) -> int:
     try:
@@ -71,7 +68,7 @@ def _get_collection_name_safe(db, user_id: int) -> str:
     return "Minha coleção"
 
 
-def _list_collection_cards_safe(db, user_id: int, limit: int = 200) -> list[dict]:
+def _list_collection_cards_safe(db, user_id: int, limit: int = 500) -> list[dict]:
     try:
         fn = getattr(db, "list_collection_cards", None)
         if callable(fn):
@@ -87,7 +84,7 @@ def _get_coins_and_giros_safe(db, user_id: int) -> tuple[int, int]:
     coins = 0
     giros = 0
 
-    # COINS: tenta vir do get_user_row (campo coins)
+    # COINS
     try:
         fn = getattr(db, "get_user_row", None)
         if callable(fn):
@@ -97,7 +94,7 @@ def _get_coins_and_giros_safe(db, user_id: int) -> tuple[int, int]:
     except Exception:
         coins = 0
 
-    # GIROS: tenta get_extra_state (campo x)
+    # GIROS (extra_dado)
     try:
         fn = getattr(db, "get_extra_state", None)
         if callable(fn):
@@ -137,7 +134,7 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
 
     coins, giros = _get_coins_and_giros_safe(db, user_id)
     collection_name = _get_collection_name_safe(db, user_id)
-    cards = _list_collection_cards_safe(db, user_id, limit=200)
+    cards = _list_collection_cards_safe(db, user_id, limit=500)
 
     return JSONResponse(
         {
@@ -168,6 +165,8 @@ def miniapp():
       --stroke: rgba(255,255,255,.12);
       --accent:#ff4fd8;
       --accent2:#7c4dff;
+      --heart:#ff3b7a;
+      --section: rgba(255,255,255,.06);
     }
     *{box-sizing:border-box}
     body{
@@ -243,6 +242,29 @@ def miniapp():
     .status.ok{ border-color: rgba(0,255,140,.18); }
     .status.err{ border-color: rgba(255,60,60,.18); color: rgba(255,120,120,.95); }
 
+    .section{
+      margin-top: 12px;
+      padding: 10px 10px 6px;
+      border-radius: 16px;
+      border: 1px solid var(--stroke);
+      background: var(--section);
+    }
+    .section-title{
+      font-weight: 900;
+      font-size: 14px;
+      color: rgba(255,255,255,.92);
+      margin: 2px 4px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .section-count{
+      font-size:12px;
+      color: rgba(255,255,255,.55);
+      font-weight: 800;
+    }
+
     .grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;}
     .card{
       position:relative;
@@ -256,10 +278,11 @@ def miniapp():
     .overlay{
       position:absolute; left:0; right:0; bottom:0;
       padding:10px;
-      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.75));
+      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.78));
     }
     .name{font-weight:900; font-size:16px; margin:0;}
     .meta{margin-top:3px; font-size:12px; color:rgba(255,255,255,.75);}
+
     .pill{
       position:absolute; top:10px; left:10px;
       padding:6px 10px;
@@ -267,6 +290,25 @@ def miniapp():
       border:1px solid rgba(255,255,255,.14);
       border-radius:999px;
       font-weight:900; font-size:12px;
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .heart{
+      position:absolute;
+      top:10px;
+      right:10px;
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.14);
+      font-size: 16px;
+      color: var(--heart);
+      text-shadow: 0 10px 25px rgba(0,0,0,.35);
     }
 
     .bottom{
@@ -314,7 +356,7 @@ def miniapp():
 
   <div class="status" id="status">Conectando...</div>
 
-  <div class="grid" id="grid"></div>
+  <div id="sections"></div>
 
   <div class="bottom">
     <button class="nav active" id="nav_explore">Explore</button>
@@ -336,39 +378,159 @@ def miniapp():
       el.textContent = text;
     }
 
+    // ==========================================================
+    // NORMALIZAÇÃO: pega nome/anime/id/qty/favorito mesmo se os
+    // campos do banco tiverem nomes diferentes.
+    // ==========================================================
+    function pickFirstString(obj, keys){
+      for (const k of keys){
+        const v = obj?.[k];
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+      return "";
+    }
+    function pickFirstNumber(obj, keys){
+      for (const k of keys){
+        const v = obj?.[k];
+        if (typeof v === "number") return v;
+        if (typeof v === "string" && v.trim() && !isNaN(Number(v))) return Number(v);
+      }
+      return null;
+    }
+
+    function getCharacterName(c){
+      return pickFirstString(c, [
+        "character_name","name","character","personagem","nome",
+        "char_name","card_name"
+      ]) || "Personagem";
+    }
+
+    function getAnimeTitle(c){
+      return pickFirstString(c, [
+        "anime_title","anime","anime_name","obra","title","series","serie"
+      ]) || "Sem anime";
+    }
+
+    function getImageUrl(c){
+      return pickFirstString(c, [
+        "custom_image","image","img","photo","picture","url"
+      ]) || "";
+    }
+
+    function getCharId(c){
+      return pickFirstNumber(c, [
+        "character_id","char_id","id","card_id","personagem_id"
+      ]) ?? 0;
+    }
+
+    function getQty(c){
+      return pickFirstNumber(c, [
+        "quantity","qty","qtd","amount","count"
+      ]) ?? 1;
+    }
+
+    function isFavorite(c){
+      const v = c?.is_favorite ?? c?.favorite ?? c?.fav;
+      return v === true || v === 1 || v === "1" || v === "true";
+    }
+
+    // ==========================================================
+    // Ordenação A->Z (case-insensitive)
+    // ==========================================================
+    function cmpAZ(a, b){
+      return String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
+    }
+
+    // ==========================================================
+    // Agrupar por anime + ordenar alfabeticamente
+    // ==========================================================
+    function buildGroups(list){
+      const groups = new Map(); // anime -> cards[]
+      for (const c of list){
+        const anime = getAnimeTitle(c) || "Sem anime";
+        if (!groups.has(anime)) groups.set(anime, []);
+        groups.get(anime).push(c);
+      }
+
+      // ordena títulos de anime
+      const animeTitles = Array.from(groups.keys()).sort(cmpAZ);
+
+      // ordena personagens dentro de cada anime
+      const out = [];
+      for (const title of animeTitles){
+        const cards = groups.get(title) || [];
+        cards.sort((x, y) => cmpAZ(getCharacterName(x), getCharacterName(y)));
+        out.push({ title, cards });
+      }
+      return out;
+    }
+
     function render(){
-      const grid = document.getElementById("grid");
       const q = (document.getElementById("q").value || "").trim().toLowerCase();
 
-      const list = allCards.filter(c => {
-        if (showFav && !c.is_favorite) return false;
-        const name = (c.character_name || "").toLowerCase();
-        const anime = (c.anime_title || "").toLowerCase();
+      // filtro base
+      const filtered = allCards.filter(c => {
+        if (showFav && !isFavorite(c)) return false;
+
         if (!q) return true;
-        return name.includes(q) || anime.includes(q) || String(c.character_id).includes(q);
+
+        const name = getCharacterName(c).toLowerCase();
+        const anime = getAnimeTitle(c).toLowerCase();
+        const id = String(getCharId(c));
+        return name.includes(q) || anime.includes(q) || id.includes(q);
       });
 
-      grid.innerHTML = "";
-      if (!list.length){
-        grid.innerHTML = "<div style='color:rgba(255,255,255,.65)'>Nenhum card encontrado.</div>";
+      const sectionsRoot = document.getElementById("sections");
+      sectionsRoot.innerHTML = "";
+
+      if (!filtered.length){
+        sectionsRoot.innerHTML = "<div style='color:rgba(255,255,255,.65)'>Nenhum card encontrado.</div>";
         return;
       }
 
-      for (const c of list){
-        const img = c.custom_image || c.image || "";
-        const qty = c.quantity || 1;
+      const groups = buildGroups(filtered);
 
-        const card = document.createElement("div");
-        card.className = "card";
-        card.innerHTML = `
-          ${img ? `<img src="${img}" alt="">` : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}
-          <div class="pill">x${qty} • ID ${c.character_id}</div>
-          <div class="overlay">
-            <div class="name">${c.character_name || "Personagem"}</div>
-            <div class="meta">${c.anime_title || ""}</div>
-          </div>
+      for (const g of groups){
+        const section = document.createElement("div");
+        section.className = "section";
+
+        const header = document.createElement("div");
+        header.className = "section-title";
+        header.innerHTML = `
+          <div>${g.title}</div>
+          <div class="section-count">${g.cards.length}</div>
         `;
-        grid.appendChild(card);
+        section.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "grid";
+
+        for (const c of g.cards){
+          const img = getImageUrl(c);
+          const qty = getQty(c);
+          const charId = getCharId(c);
+          const name = getCharacterName(c);
+          const fav = isFavorite(c);
+
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            ${img
+              ? `<img src="${img}" alt="">`
+              : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`
+            }
+            <div class="pill">x${qty} • ID ${charId}</div>
+            ${fav ? `<div class="heart">❤️</div>` : ``}
+            <div class="overlay">
+              <div class="name">${name}</div>
+              <div class="meta">${g.title}</div>
+            </div>
+          `;
+          grid.appendChild(card);
+        }
+
+        section.appendChild(grid);
+        sectionsRoot.appendChild(section);
       }
     }
 
@@ -393,7 +555,7 @@ def miniapp():
         document.getElementById("coins").textContent = String(data.coins ?? "-");
         document.getElementById("giros").textContent = String(data.giros ?? "-");
 
-        allCards = data.cards || [];
+        allCards = Array.isArray(data.cards) ? data.cards : [];
         setStatus("✅ Coleção carregada.", "ok");
         render();
       } catch(e){
