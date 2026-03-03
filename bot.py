@@ -3435,13 +3435,6 @@ def _colecao_keyboard(page: int, total_pages: int, owner_id: int) -> InlineKeybo
     if page < total_pages:
         row.append(InlineKeyboardButton("➡️", callback_data=f"colecao:{owner_id}:{page+1}"))
 
-    # linha extra
-    row2 = [
-        InlineKeyboardButton("📸 Fotos da página", callback_data=f"colecao_fotos:{owner_id}:{page}")
-    ]
-
-    return InlineKeyboardMarkup([row, row2])
-
 
 def _format_colecao_text(
     nome_colecao: str,
@@ -3461,7 +3454,6 @@ def _format_colecao_text(
         f"📚 <b>{nome_colecao}</b>\n\n"
         f"📦 <i>Total:</i> <b>{total}</b>\n"
         f"📖 <i>Página:</i> <b>{page}/{total_paginas}</b>\n"
-        f"✨ <i>Dicas:</i> ❤️ favorito • 📸 foto alterada\n\n"
     )
 
     fav_name_norm = (fav_name or "").strip().casefold()
@@ -5738,6 +5730,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
