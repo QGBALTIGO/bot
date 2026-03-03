@@ -5046,24 +5046,61 @@ async def comandos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 
 import os
+import time
+import hmac
+import hashlib
+from urllib.parse import urlencode
+
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes
+from telegram import Update
 
-MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
+MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()  # ex: https://bot-production-1980.up.railway.app/app
+MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()  # crie no Railway
 
-async def colecaoapp(update, context):
-    user_id = update.effective_user.id
-    if not MINIAPP_URL:
-        await update.message.reply_text("❌ MINIAPP_URL não configurada no Railway.")
+def _sign_miniapp_params(user_id: int, ts: int) -> str:
+    """
+    Assina (user_id, ts) pra ninguém conseguir trocar o u= de outra pessoa.
+    """
+    if not MINIAPP_SIGNING_SECRET:
+        # ainda funciona sem assinatura, mas é menos seguro
+        return ""
+    msg = f"{user_id}:{ts}".encode()
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+
+async def colecaoapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
         return
 
-    # passa user_id na URL
-    url = f"{MINIAPP_URL}?user_id={user_id}"
+    if not MINIAPP_URL:
+        await update.message.reply_text("⚠️ MINIAPP_URL não configurada.")
+        return
+
+    owner_id = update.effective_user.id
+    owner_name = update.effective_user.first_name or "Usuário"
+
+    ts = int(time.time())
+    sig = _sign_miniapp_params(owner_id, ts)
+
+    params = {"u": str(owner_id), "ts": str(ts)}
+    if sig:
+        params["sig"] = sig
+
+    url = MINIAPP_URL
+    # se já tiver ? no MINIAPP_URL, concatena com &
+    sep = "&" if "?" in url else "?"
+    url = url + sep + urlencode(params)
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Abrir coleção", web_app=WebAppInfo(url=url))]
+        [InlineKeyboardButton(f"📦 Abrir coleção de {owner_name}", web_app=WebAppInfo(url=url))],
+        [InlineKeyboardButton("👤 Ver minha coleção", web_app=WebAppInfo(url=MINIAPP_URL))],
     ])
-    await update.message.reply_text("Sua coleção em miniapp:", reply_markup=kb)
 
+    await update.message.reply_html(
+        "📦 <b>Coleção</b>\n\nClique para abrir:",
+        reply_markup=kb
+    )
+    
 # ==================================================
     
 def _start_webapp():
@@ -5267,6 +5304,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
