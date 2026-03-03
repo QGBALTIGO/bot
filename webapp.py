@@ -1,6 +1,19 @@
-from database import audit_list, metrics_get, get_user_flags, set_block, clear_block
-import os
-ADMINS = set(int(x) for x in os.getenv('ADMINS_CSV','').split(',') if x.strip().isdigit())
+
+# =========================
+# TITAN WEB SECURITY LAYER
+# =========================
+from collections import defaultdict
+import time
+
+_api_rate = defaultdict(list)
+
+def titan_rate_limit(ip, limit=40, window=10):
+    now = time.time()
+    arr = _api_rate[ip]
+    arr[:] = [t for t in arr if now - t < window]
+    if len(arr) >= limit:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    arr.append(now)
 
 
 # webapp.py — MiniApps (Coleção + Loja) — FastAPI
@@ -90,23 +103,6 @@ def _sign_owner_link(user_id: int, ts: int) -> str:
         return ""
     msg = f"{int(user_id)}:{int(ts)}".encode()
     return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
-# =========================
-# Rate limit (DB) para WebApp
-# =========================
-def _web_rl(user_id: int, key: str, limit: int, window: int) -> None:
-    try:
-        import database as db
-        fn = getattr(db, "allow_rate_limit", None)
-        if callable(fn):
-            ok = bool(fn(int(user_id), f"web:{key}", int(limit), int(window)))
-            if not ok:
-                raise HTTPException(status_code=429, detail="rate limit")
-    except HTTPException:
-        raise
-    except Exception:
-        # Se der erro no RL, não derruba a app (mas mantém segura o bastante).
-        return
-
 
 
 def _verify_owner_sig(user_id: int, ts: int, sig: str) -> bool:
@@ -282,7 +278,6 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
-    _web_rl(user_id, 'me_collection', limit=60, window=60)
     first_name = user.get("first_name") or "User"
 
     import database as db
@@ -359,7 +354,6 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
-    _web_rl(user_id, 'shop_state', limit=60, window=60)
     first_name = user.get("first_name") or "User"
 
     import database as db
@@ -380,7 +374,6 @@ def api_sell_list(page: int = 1, q: str = "", x_telegram_init_data: str = Header
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
-    _web_rl(user_id, 'shop_sell_list', limit=80, window=60)
     first_name = user.get("first_name") or "User"
 
     import database as db
@@ -445,7 +438,6 @@ def api_sell_confirm(payload_body: dict = Body(default={}), x_telegram_init_data
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
-    _web_rl(user_id, 'shop_sell_confirm', limit=30, window=60)
     first_name = user.get("first_name") or "User"
 
     import database as db
@@ -1089,68 +1081,3 @@ def miniapp_shop():
 </html>
 """
     return HTMLResponse(content=html)
-
-
-# --------------------
-# Admin endpoints (observabilidade)
-# --------------------
-def _is_admin_uid(uid: int) -> bool:
-    try:
-        return int(uid) in set(ADMINS)
-    except Exception:
-        return False
-
-@app.get("/api/admin/audit")
-def api_admin_audit(user_id: int | None = None, action: str | None = None, limit: int = 50, x_telegram_init_data: str = Header("")):
-    init_data = x_telegram_init_data or ""
-    user = _validate_init_data(init_data)
-    uid = int(user.get("id"))
-    if not _is_admin_uid(uid):
-        raise HTTPException(status_code=403, detail="forbidden")
-
-    limit = max(1, min(200, int(limit)))
-    rows = audit_list(action=action, user_id=user_id, limit=limit)
-    return {"ok": True, "items": rows}
-
-@app.get("/api/admin/metrics")
-def api_admin_metrics(key: str, minutes: int = 60, x_telegram_init_data: str = Header("")):
-    init_data = x_telegram_init_data or ""
-    user = _validate_init_data(init_data)
-    uid = int(user.get("id"))
-    if not _is_admin_uid(uid):
-        raise HTTPException(status_code=403, detail="forbidden")
-
-    minutes = max(1, min(1440, int(minutes)))
-    rows = metrics_get(key, minutes=minutes)
-    total = sum(int(r["value"]) for r in rows) if rows else 0
-    return {"ok": True, "key": key, "minutes": minutes, "total": total, "series": rows}
-
-@app.get("/api/admin/user")
-def api_admin_user(target_user_id: int, x_telegram_init_data: str = Header("")):
-    init_data = x_telegram_init_data or ""
-    user = _validate_init_data(init_data)
-    uid = int(user.get("id"))
-    if not _is_admin_uid(uid):
-        raise HTTPException(status_code=403, detail="forbidden")
-    flags = get_user_flags(int(target_user_id))
-    return {"ok": True, "flags": flags}
-
-@app.post("/api/admin/ban")
-def api_admin_ban(target_user_id: int, seconds: int = 3600, reason: str = "manual", x_telegram_init_data: str = Header("")):
-    init_data = x_telegram_init_data or ""
-    user = _validate_init_data(init_data)
-    uid = int(user.get("id"))
-    if not _is_admin_uid(uid):
-        raise HTTPException(status_code=403, detail="forbidden")
-    set_block(int(target_user_id), reason=reason, seconds=int(seconds))
-    return {"ok": True}
-
-@app.post("/api/admin/unban")
-def api_admin_unban(target_user_id: int, x_telegram_init_data: str = Header("")):
-    init_data = x_telegram_init_data or ""
-    user = _validate_init_data(init_data)
-    uid = int(user.get("id"))
-    if not _is_admin_uid(uid):
-        raise HTTPException(status_code=403, detail="forbidden")
-    clear_block(int(target_user_id))
-    return {"ok": True}
