@@ -5496,7 +5496,6 @@ def main():
 
     # loja
     app.add_handler(CommandHandler("loja", loja))
-    app.add_handler(CallbackQueryHandler(callback_shop, pattern=r"^shop:"))
     app.add_handler(CommandHandler("saldo", saldo))
     app.add_handler(CommandHandler("daily", daily))
     app.add_handler(CommandHandler("trocas", trocas))
@@ -5523,3 +5522,4 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
