@@ -5250,7 +5250,6 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
-    app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
     app.add_handler(InlineQueryHandler(inline_colecao))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
@@ -5328,6 +5327,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
