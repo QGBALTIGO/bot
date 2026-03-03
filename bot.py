@@ -11,6 +11,9 @@ import time
 import json
 import random
 import asyncio
+import os
+import threading
+import uvicorn
 from typing import Optional, Dict, Any, List, Tuple, Set
 
 import aiohttp
@@ -5058,6 +5061,23 @@ async def colecaoapp(update, context):
         [InlineKeyboardButton("📦 Abrir coleção", web_app=WebAppInfo(url=url))]
     ])
     await update.message.reply_text("Sua coleção em miniapp:", reply_markup=kb)
+
+# ==================================================
+
+if __name__ == "__main__":
+    threading.Thread(target=_start_webapp, daemon=True).start()
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+    
+def _start_webapp():
+    port = int(os.getenv("PORT", "8000"))
+    config = uvicorn.Config(
+        "webapp:app",          # webapp.py tem app = FastAPI()
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+    server.run()
     
 # ==================================================
 # 25) MAIN (handlers)
@@ -5276,6 +5296,7 @@ async def safe_delete(msg):
             await safe_delete(msg)
     except Exception:
         pass
+
 
 
 
