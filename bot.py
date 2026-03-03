@@ -5111,7 +5111,82 @@ async def colecaoteste_command(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML",
         reply_markup=kb,
     )
-    
+
+# ==================================================
+# /linkcolecao — Gera link compartilhável da coleção
+# (usar no PV do bot)
+# ==================================================
+
+import os
+import time
+import hmac
+import hashlib
+from urllib.parse import urlencode
+
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.ext import ContextTypes, CommandHandler
+
+MINIAPP_URL = os.getenv("MINIAPP_URL", "").strip()
+MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
+
+COLECAO_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
+
+
+def _sign_owner(user_id: int, ts: int) -> str:
+    if not MINIAPP_SIGNING_SECRET:
+        return ""
+    msg = f"{int(user_id)}:{int(ts)}".encode()
+    return hmac.new(MINIAPP_SIGNING_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def _build_owner_url(user_id: int) -> str:
+    ts = int(time.time())
+    sig = _sign_owner(user_id, ts)
+
+    params = {"u": str(user_id), "ts": str(ts)}
+    if sig:
+        params["sig"] = sig
+
+    sep = "&" if "?" in MINIAPP_URL else "?"
+    return MINIAPP_URL + sep + urlencode(params)
+
+
+async def linkcolecao_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.effective_message:
+        return
+
+    user = update.effective_user
+    msg = update.effective_message
+
+    # Só permitir no PV
+    if update.effective_chat.type != "private":
+        await msg.reply_text("⚠️ Use este comando no privado do bot.")
+        return
+
+    if not MINIAPP_URL:
+        await msg.reply_text("⚠️ MINIAPP_URL não configurada.")
+        return
+
+    owner_url = _build_owner_url(user.id)
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Abrir minha coleção", web_app=WebAppInfo(url=owner_url))]
+    ])
+
+    texto = (
+        f"📦 <b>Coleção de {user.first_name}</b>\n\n"
+        "🔗 Copie e envie este link no grupo:\n\n"
+        f"{owner_url}"
+    )
+
+    await msg.reply_photo(
+        photo=COLECAO_PREVIEW_IMAGE,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+
+
 # ==================================================
     
 def _start_webapp():
@@ -5238,6 +5313,7 @@ def main():
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
+    app.add_handler(CommandHandler("linkcolecao", linkcolecao_command))
 
     app.add_handler(CommandHandler("infomanga", infomanga))
     app.add_handler(CallbackQueryHandler(callback_info_manga, pattern=r"^info_manga:"))
@@ -5314,6 +5390,7 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
 
 
 
