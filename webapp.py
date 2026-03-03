@@ -21,6 +21,9 @@ if not BOT_TOKEN:
 
 
 def verify_telegram_init_data(init_data: str) -> dict:
+    """
+    Valida initData do Telegram WebApp (MÉTODO CERTO).
+    """
     if not init_data:
         raise HTTPException(status_code=401, detail="initData ausente")
 
@@ -29,8 +32,14 @@ def verify_telegram_init_data(init_data: str) -> dict:
     if not received_hash:
         raise HTTPException(status_code=401, detail="hash ausente")
 
+    # monta data_check_string
     check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
-    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+
+    # ✅ CHAVE CORRETA DO WEBAPP:
+    # secret_key = HMAC_SHA256("WebAppData", bot_token)
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+
+    # hash = HMAC_SHA256(secret_key, data_check_string)
     calculated_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(calculated_hash, received_hash):
@@ -42,7 +51,6 @@ def verify_telegram_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="user inválido")
 
     return {"user": user, "raw": data}
-
 
 def _safe_int(x, default: int = 0) -> int:
     try:
