@@ -3306,70 +3306,30 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 # 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
 # ==================================================
-
-
-# DADOS (saldo normal do /dado)
-DADO_MAX_BALANCE = 18
-DADO_NEW_USER_START = 4
-DADO_EXPIRE_SECONDS = 5 * 60
-
-# GIROS (extra_dado) — recarga automática
-GIRO_MAX_BALANCE = 24  # 3 dias (8 por dia)
-GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # horários SP
-
-CMD_ANTIFLOOD_SECONDS = 3
-BTN_ANTIFLOOD_SECONDS = 2
-
-DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
-DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
-
-_REFRESH_LOCK = asyncio.Lock()
-
-# Locks (processo)
-_dado_roll_locks: Dict[int, asyncio.Lock] = {}
-_user_dado_locks: Dict[int, asyncio.Lock] = {}
-
-def _get_roll_lock(roll_id: int) -> asyncio.Lock:
-    lock = _dado_roll_locks.get(roll_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _dado_roll_locks[roll_id] = lock
-    return lock
-
-def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
-    lock = _user_dado_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _user_dado_locks[user_id] = lock
-    return lock
-
-
-def _format_time_sp() -> str:
-    return datetime.now(tz=SP_TZ).strftime("%H:%M")
-
+GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # 8 slots/dia
 
 def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
     """
-    Slot de 4h baseado em SP:
+    Slot de 4h baseado no fuso do bot (BOT_TZ):
     00/04/08/12/16/20.
     """
     if ts is None:
         ts = time.time()
-    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
+    now_sp = datetime.fromtimestamp(ts, tz=BOT_TZ)
     offset = int(now_sp.utcoffset().total_seconds())
     return int((int(ts) + offset) // (4 * 3600))
 
 
 def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
     """
-    Slot de GIRO baseado em SP:
+    Slot de GIRO baseado no fuso do bot (BOT_TZ):
     01/04/07/10/13/16/19/22 (8 slots/dia)
     Retorna um inteiro crescente (dia*8 + idx).
     """
     if ts is None:
         ts = time.time()
 
-    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
+    now_sp = datetime.fromtimestamp(ts, tz=BOT_TZ)
     day_id = now_sp.date().toordinal()
 
     h = now_sp.hour
@@ -3387,11 +3347,9 @@ def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
 
 def _refresh_user_dado_balance(user_id: int) -> int:
     """
-    Atualiza saldo normal baseado em slots perdidos (4h), cap 18.
+    Atualiza saldo normal baseado em slots perdidos (4h), cap 18
     """
-    st = get_dado_state(user_id)
-    if not st:
-        return 0
+    st = get_dado_state(user_id) or {"b": 0, "s": -1}
     balance = int(st["b"])
     last_slot = int(st["s"])
 
@@ -3404,9 +3362,10 @@ def _refresh_user_dado_balance(user_id: int) -> int:
     if diff <= 0:
         return balance
 
-    new_balance = min(DADO_MAX_BALANCE, balance + diff)
-    set_dado_state(user_id, new_balance, cur_slot)
-    return new_balance
+    # recarrega +1 por slot de 4h perdido
+    balance2 = min(18, balance + diff)
+    set_dado_state(user_id, balance2, cur_slot)
+    return balance2
 
 
 def _refresh_user_giros(user_id: int) -> int:
@@ -3428,50 +3387,42 @@ def _refresh_user_giros(user_id: int) -> int:
     if diff <= 0:
         return extra
 
-    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
+    new_extra = min(24, extra + diff)
     set_extra_state(user_id, new_extra, cur_slot)
     return new_extra
 
 
-def _consume_one_die(user_id: int) -> bool:
+def _next_slot_dt_sp() -> datetime:
     """
-    Consome 1 dado, priorizando saldo normal, depois GIRO (extra_dado).
+    Próximo horário de recarga do dado:
+    00/04/08/12/16/20 (BOT_TZ)
     """
-    st = get_dado_state(user_id)
-    b = int(st["b"] if st else 0)
-    s = int(st["s"] if st else -1)
+    now = datetime.now(tz=BOT_TZ)
+    hour = now.hour
+    slots = [0, 4, 8, 12, 16, 20]
 
-    if b > 0:
-        set_dado_state(user_id, b - 1, s)
-        return True
+    nxt = None
+    for s in slots:
+        if hour < s:
+            nxt = s
+            break
 
-    return consume_extra_dado(user_id)
+    if nxt is None:
+        return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    return now.replace(hour=nxt, minute=0, second=0, microsecond=0)
 
 
-def _refund_one_die(user_id: int, prefer_extra: bool = False):
+def _daily_day_start_ts_sp(ts: Optional[float] = None) -> int:
     """
-    Devolve 1 tentativa:
-    - se prefer_extra=True: devolve 1 GIRO (até cap 24)
-    - senão: devolve 1 no saldo normal (até cap 18)
+    Retorna o timestamp do começo do dia (00:00) no fuso do bot (BOT_TZ).
     """
-    if prefer_extra:
-        from database import get_extra_state, set_extra_state
-        st = get_extra_state(user_id)
-        x = int(st["x"])
-        s = int(st["s"])
-        set_extra_state(user_id, min(GIRO_MAX_BALANCE, x + 1), s)
-        return
+    if ts is None:
+        ts = time.time()
+    dt = datetime.fromtimestamp(ts, tz=BOT_TZ)
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
 
-    inc_dado_balance(user_id, 1, max_balance=DADO_MAX_BALANCE)
-
-
-def _nice_group_block_text() -> str:
-    return (
-        "🎲 <b>DADO</b>\n\n"
-        "Esse comando funciona <b>somente no privado</b> do bot.\n"
-        "👉 Abra o bot no PV e use <code>/dado</code> por lá.\n\n"
-        "✨ No PV você escolhe o anime e ganha um personagem!"
-    )
     
 # ==================================================
 # /dado (PV only) — Dado Premium (MiniApp)
@@ -3511,21 +3462,48 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==========================
     # Fallback: modo clássico
     # ==========================
-    ensure_user_row(user_id, update.effective_user.first_name, new_user_dice=DADO_NEW_USER_START)
+  # ==================================================
+#  FIX 2: /saldo agora atualiza GIROS pelo slot antes de mostrar
+# ==================================================
 
-    user_lock = _get_user_dado_lock(user_id)
-    async with user_lock:
+async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+
+    if not _cmd_flood_ok(_SALDO_FLOOD, user_id, 2.0):
+        await update.message.reply_html("Calma 🙂")
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    # atualiza saldo por slots (pra mostrar certo)
+    try:
         balance = _refresh_user_dado_balance(user_id)
-        extra = _refresh_user_giros(user_id)
+    except Exception:
+        st = get_dado_state(user_id)
+        balance = int(st["b"]) if st else 0
 
-        if balance <= 0 and extra <= 0:
-            await update.message.reply_html(
-                "🎲 <b>DADO</b>\n\n"
-                "Você está sem dados/giros agora.\n\n"
-                "🕒 <b>Dados</b>: 00h, 04h, 08h, 12h, 16h, 20h\n"
-                "🎡 <b>Giros</b>: 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h\n"
-                f"⏱ Agora: <b>{_format_time_sp()}</b>"
-            )
+    coins = get_user_coins(user_id)
+
+    try:
+        giros = _refresh_user_giros(user_id)
+    except Exception:
+        giros = get_extra_dado(user_id)
+
+    nxt = _next_slot_dt_sp()
+    nxt_txt = nxt.strftime("%H:%M")
+
+    await update.message.reply_html(
+        "💳 <b>SALDO</b>\n\n"
+        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+        f"🎟️ <b>Dados:</b> <code>{balance}</code>\n"
+        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+        "🕒 Próxima recarga do dado:\n"
+        f"• <b>{nxt_txt}</b> (horário local)"
+    )
             return
 
         try:
@@ -4145,9 +4123,20 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
                 to_user_id = int(trade["to_user"])
                 from_char = int(trade["from_character_id"])
                 to_char = int(trade["to_character_id"])
+
             except Exception:
                 await q.answer("Erro ao ler a troca.", show_alert=True)
                 return
+
+            # garante linha users pros 2 lados (swap usa locks em users)
+            try:
+                ensure_user_row(int(from_user_id), "User")
+            except Exception:
+                pass
+            try:
+                ensure_user_row(int(to_user_id), "User")
+            except Exception:
+                pass
 
             if int(to_user_id) != int(user_id):
                 await q.answer("Essa troca não é para você.", show_alert=True)
@@ -4159,6 +4148,16 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
                 await q.answer("Nenhuma troca pendente.", show_alert=True)
                 return
             trade_id, from_user_id, from_char, to_char = t
+
+            # garante linha users pros 2 lados (swap usa locks em users)
+            try:
+                ensure_user_row(int(from_user_id), "User")
+            except Exception:
+                pass
+            try:
+                ensure_user_row(int(user_id), "User")
+            except Exception:
+                pass
 
         trade_lock = _get_trade_lock(int(trade_id)) if trade_id else asyncio.Lock()
         async with trade_lock:
@@ -4186,14 +4185,20 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
                 await q.answer()
                 return
 
-            # executa swap (ideal: transação atômica no DB)
+            # executa swap (transação atômica no DB)
             try:
-                swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
+                ok_swap = swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
+                if not ok_swap:
+                    try:
+                        await q.answer("❌ Troca não está mais pendente.", show_alert=True)
+                    except Exception:
+                        pass
+                    return
             except Exception:
                 await q.answer(
                     "⚠️ Não consegui concluir agora. Tente novamente.",
                     show_alert=True
-                    )
+                )
                 return
 
     # final
@@ -4207,65 +4212,6 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await q.message.edit_text(
                 "✅ <b>Troca realizada com sucesso!</b>\n\n🎉 Boa! Os personagens foram trocados.",
-                parse_mode="HTML",
-                reply_markup=None
-            )
-    except Exception:
-        pass
-
-    await q.answer()
-
-
-async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    if not q:
-        return
-
-    if not callback_dedupe(q.id):
-        try:
-            await q.answer()
-        except Exception:
-            pass
-        return
-
-    user_id = q.from_user.id
-
-    ok = await anti_spam(user_id, key="cb:trade_reject", window=2)
-    if not ok:
-        await q.answer("Calma 🙂", show_alert=False)
-        return
-
-    trade_id = None
-    try:
-        parts = (q.data or "").split(":")
-        if len(parts) == 2 and parts[1].isdigit():
-            trade_id = int(parts[1])
-    except Exception:
-        trade_id = None
-
-    if not trade_id:
-        t = get_latest_pending_trade_for_to_user(user_id)
-        if not t:
-            await q.answer("Nenhuma troca pendente.", show_alert=True)
-            return
-        trade_id = int(t[0])
-
-    try:
-        mark_trade_status(int(trade_id), "recusada")
-    except Exception:
-        await q.answer("⚠️ Não consegui recusar agora.", show_alert=True)
-        return
-
-    try:
-        if q.message and q.message.caption:
-            await q.message.edit_caption(
-                caption="❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
-                parse_mode="HTML",
-                reply_markup=None
-            )
-        else:
-            await q.message.edit_text(
-                "❌ <b>Troca recusada.</b>\n\nTudo certo 🙂",
                 parse_mode="HTML",
                 reply_markup=None
             )
@@ -6029,6 +5975,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
