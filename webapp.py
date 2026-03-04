@@ -1428,337 +1428,531 @@ def api_admin_stats(x_telegram_init_data: str = Header(default="")):
     except Exception:
         pass
     return {"ok": True, "stats": {"users": 0, "coins": 0, "chars": 0, "market": 0}}
-# ==================================================
-# API DADO (MiniApp) — Dado Premium no WebApp
-# ==================================================
+<!-- =========================
+🎲 DADO PREMIUM — UI 3D + LOOTBOX + GRID + SEARCH + RECOMENDADO
+Cole isto DENTRO do HTML do /app (webapp.py)
+========================= -->
 
-DADO_WEB_EXPIRE_SECONDS = 5 * 60
-DADO_WEB_MAX_OPTIONS = 50
+<!-- 1) COLE ESTE CSS DENTRO DO <style> ... </style> -->
+<style>
+/* ===== DADO PREMIUM UI ===== */
+.dado-card {
+  padding: 14px;
+  border: 1px solid var(--stroke, rgba(255,255,255,.12));
+  background: rgba(255,255,255,.04);
+  border-radius: 18px;
+}
 
-DADO_MAX_BALANCE = 18
-DADO_NEW_USER_START = 4
-GIRO_MAX_BALANCE = 24
-GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]
+.dado-header {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
 
-try:
-    from zoneinfo import ZoneInfo
-    _SP_TZ = ZoneInfo("America/Sao_Paulo")
-except Exception:
-    _SP_TZ = None
+.dado-title { font-weight: 900; font-size: 16px; }
+.dado-sub { color: rgba(255,255,255,.65); font-size: 12px; margin-top: 2px; }
 
-def _format_time_sp() -> str:
-    try:
-        if _SP_TZ:
-            return datetime.now(tz=_SP_TZ).strftime("%H:%M")
-    except Exception:
-        pass
-    return datetime.now().strftime("%H:%M")
+.dado-pill {
+  font-weight: 900;
+  font-size: 12px;
+  border: 1px solid var(--stroke, rgba(255,255,255,.12));
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.03);
+  white-space: nowrap;
+}
 
-def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
-    if ts is None:
-        ts = time.time()
-    if not _SP_TZ:
-        return int(int(ts) // (4 * 3600))
-    now_sp = datetime.fromtimestamp(ts, tz=_SP_TZ)
-    offset = int(now_sp.utcoffset().total_seconds())
-    return int((int(ts) + offset) // (4 * 3600))
+.dado-actions { margin-top: 14px; display:flex; gap:12px; align-items:center; }
+.dado-btn {
+  flex: 1;
+  border: 0;
+  border-radius: 16px;
+  padding: 14px 14px;
+  font-weight: 900;
+  font-size: 14px;
+  color: #000;
+  background: linear-gradient(90deg, var(--accent, #7cffb2), var(--accent2, #a5b4fc));
+}
 
-def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
-    if ts is None:
-        ts = time.time()
-    if not _SP_TZ:
-        day_id = int(datetime.fromtimestamp(ts).date().toordinal())
-        hh = int(datetime.fromtimestamp(ts).hour)
-        idx = 0
-        for i, h in enumerate(GIRO_HOURS):
-            if hh >= h:
-                idx = i
-        return day_id * 8 + idx
+.dado-btn.secondary {
+  flex: 0;
+  padding: 14px 14px;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+}
 
-    now_sp = datetime.fromtimestamp(ts, tz=_SP_TZ)
-    day_id = now_sp.date().toordinal()
-    h = now_sp.hour
-    m = now_sp.minute
-    idx = -1
-    for i, hh in enumerate(GIRO_HOURS):
-        if (h > hh) or (h == hh and m >= 0):
-            idx = i
-    if idx < 0:
-        return (day_id - 1) * 8 + 7
-    return day_id * 8 + idx
+.dado-controls { margin-top: 10px; display:flex; gap:10px; align-items:center; }
+.dado-input, .dado-select {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  padding: 12px 12px;
+  outline: none;
+  font-weight: 700;
+}
 
-def _refresh_user_dado_balance(db, user_id: int) -> int:
-    st = getattr(db, "get_dado_state", lambda _uid: None)(user_id)
-    if not st:
-        return 0
-    balance = int(st.get("b") or 0)
-    last_slot = int(st.get("s") or -1)
+.dado-tip { margin-top: 10px; color: rgba(255,255,255,.65); font-size: 12px; }
 
-    cur_slot = _now_slot_sp_4h()
-    if last_slot < 0:
-        getattr(db, "set_dado_state")(user_id, balance, cur_slot)
-        return balance
+/* ===== GRID CARDS ===== */
+.anime-grid {
+  margin-top: 12px;
+  display:grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 520px){
+  .anime-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.anime-card {
+  text-align:left;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  border-radius: 16px;
+  padding: 10px;
+  cursor:pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+.anime-card:active { transform: scale(.98); }
+.anime-cover {
+  width:100%;
+  aspect-ratio: 16/9;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,.10);
+  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), rgba(255,255,255,.02));
+}
+.anime-title {
+  margin-top: 8px;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 1.2;
+  max-height: 2.4em;
+  overflow: hidden;
+}
 
-    diff = cur_slot - last_slot
-    if diff <= 0:
-        return balance
+/* ===== 3D DICE ===== */
+.dice-wrap {
+  width: 74px;
+  height: 74px;
+  perspective: 700px;
+}
+.dice {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  transform-style: preserve-3d;
+  transition: transform 900ms cubic-bezier(.2,.85,.2,1);
+}
+.dice-face {
+  position: absolute;
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 900;
+  font-size: 22px;
+  box-shadow: 0 12px 28px rgba(0,0,0,.25);
+  user-select:none;
+}
+.dice-face::after{
+  content:"";
+  position:absolute;
+  inset: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  pointer-events:none;
+}
 
-    new_balance = min(DADO_MAX_BALANCE, balance + diff)
-    getattr(db, "set_dado_state")(user_id, new_balance, cur_slot)
-    return new_balance
+.dice-face.f1 { transform: translateZ(37px); }
+.dice-face.f2 { transform: rotateY(90deg) translateZ(37px); }
+.dice-face.f3 { transform: rotateY(180deg) translateZ(37px); }
+.dice-face.f4 { transform: rotateY(-90deg) translateZ(37px); }
+.dice-face.f5 { transform: rotateX(90deg) translateZ(37px); }
+.dice-face.f6 { transform: rotateX(-90deg) translateZ(37px); }
 
-def _refresh_user_giros(db, user_id: int) -> int:
-    st = getattr(db, "get_extra_state")(user_id)
-    extra = int(st.get("x") or 0)
-    last_slot = int(st.get("s") or -1)
+@keyframes diceShake {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-2px); }
+  60% { transform: translateY(2px); }
+  100% { transform: translateY(0); }
+}
+.dice-shake { animation: diceShake 300ms ease 2; }
 
-    cur_slot = _now_giro_slot_sp()
-    if last_slot < 0:
-        getattr(db, "set_extra_state")(user_id, extra, cur_slot)
-        return extra
+/* ===== LOOTBOX OVERLAY ===== */
+.lootbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.10), rgba(0,0,0,.85));
+  backdrop-filter: blur(10px);
+  padding: 18px;
+}
+.lootbox.on { display:flex; }
 
-    diff = cur_slot - last_slot
-    if diff <= 0:
-        return extra
+.lootbox-panel {
+  width: min(520px, 100%);
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(10,10,12,.85);
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+  overflow: hidden;
+  transform: translateY(10px) scale(.98);
+  opacity: 0;
+  transition: all 420ms cubic-bezier(.2,.85,.2,1);
+}
+.lootbox.on .lootbox-panel { transform: translateY(0) scale(1); opacity: 1; }
 
-    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
-    getattr(db, "set_extra_state")(user_id, new_extra, cur_slot)
-    return new_extra
+.lootbox-top {
+  padding: 14px 14px 0 14px;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lootbox-title { font-weight: 900; }
+.lootbox-close {
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+  color:#fff;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
 
-def _consume_one_die(db, user_id: int) -> bool:
-    st = getattr(db, "get_dado_state", lambda _uid: None)(user_id)
-    b = int(st.get("b") or 0) if st else 0
-    s = int(st.get("s") or -1) if st else -1
+.lootbox-stage {
+  padding: 14px;
+  display:flex;
+  gap: 12px;
+  align-items:center;
+}
+.lootbox-img {
+  width: 104px;
+  height: 104px;
+  border-radius: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,.14);
+  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), rgba(255,255,255,.02));
+}
+.lootbox-info { min-width:0; }
+.lootbox-name {
+  font-weight: 900;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lootbox-anime {
+  margin-top: 4px;
+  color: rgba(255,255,255,.70);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lootbox-note {
+  margin-top: 10px;
+  color: rgba(255,255,255,.70);
+  font-size: 12px;
+}
+@keyframes revealPulse {
+  0% { box-shadow: 0 0 0 rgba(124,255,178,0); }
+  100% { box-shadow: 0 0 60px rgba(124,255,178,.22); }
+}
+.reveal-glow { animation: revealPulse 800ms ease 1; }
+</style>
 
-    if b > 0:
-        getattr(db, "set_dado_state")(user_id, b - 1, s)
-        return True
+<!-- 2) COLE ESTE HTML NO LUGAR DO SEU <div id="dado_view"> ... </div> -->
+<div id="dado_view" style="display:none;margin-top:12px;">
+  <div class="dado-card">
+    <div class="dado-header">
+      <div>
+        <div class="dado-title">🎲 Dado Premium</div>
+        <div class="dado-sub">Rola aqui no MiniApp (3D). Escolha 1 anime no grid e receba o personagem no PV.</div>
+      </div>
+      <div class="dado-pill">Dados: <span id="dado_balance">-</span> | Giros: <span id="dado_extra">-</span></div>
+    </div>
 
-    fn = getattr(db, "consume_extra_dado", None)
-    if callable(fn):
-        return bool(fn(user_id))
-    return False
+    <div class="dado-actions">
+      <div class="dice-wrap">
+        <div id="dice3d" class="dice">
+          <div class="dice-face f1">1</div>
+          <div class="dice-face f2">2</div>
+          <div class="dice-face f3">3</div>
+          <div class="dice-face f4">4</div>
+          <div class="dice-face f5">5</div>
+          <div class="dice-face f6">6</div>
+        </div>
+      </div>
 
-def _refund_one_die(db, user_id: int):
-    try:
-        fn = getattr(db, "inc_dado_balance", None)
-        if callable(fn):
-            fn(user_id, 1, max_balance=DADO_MAX_BALANCE)
-    except Exception:
-        pass
+      <button id="btn_roll" class="dado-btn">ROLAR AGORA</button>
+      <button id="btn_reco" class="dado-btn secondary" title="Escolhe uma opção recomendada sozinho">🧠</button>
+    </div>
 
-async def _tg_send_photo(chat_id: int, photo: str, caption: str):
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(timeout=timeout) as s:
-            await s.post(url, data={
-                "chat_id": str(int(chat_id)),
-                "photo": str(photo),
-                "caption": str(caption),
-                "parse_mode": "HTML",
-                "disable_web_page_preview": "true",
-            })
-    except Exception:
-        return
+    <div class="dado-controls">
+      <input id="dado_search" class="dado-input" placeholder="🔎 Buscar anime..." />
+      <select id="dado_filter" class="dado-select" style="max-width: 150px;">
+        <option value="popular">Popular</option>
+        <option value="az">A–Z</option>
+        <option value="random">Aleatório</option>
+      </select>
+    </div>
 
-_CHAR_POOL_CACHE: dict[int, dict] = {}
-_USER_RECENT_CHARS: dict[int, dict] = {}
-RECENT_TTL_SECONDS = 6 * 3600
-RECENT_MAX = 25
-MIN_POOL_SIZE = 8
+    <div class="dado-tip" id="dado_tip">Dica: clique em um card. Se quiser, aperta 🧠 pra ele escolher recomendado.</div>
 
-def _recent_get(user_id: int) -> list[int]:
-    st = _USER_RECENT_CHARS.get(int(user_id))
-    now = int(time.time())
-    if not st or int(st.get("exp") or 0) < now:
-        _USER_RECENT_CHARS[int(user_id)] = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
-        return []
-    return list(st.get("ids") or [])
+    <div id="anime_grid" class="anime-grid"></div>
+  </div>
+</div>
 
-def _recent_add(user_id: int, char_id: int):
-    user_id = int(user_id)
-    char_id = int(char_id)
-    now = int(time.time())
-    st = _USER_RECENT_CHARS.get(user_id)
-    if not st or int(st.get("exp") or 0) < now:
-        st = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
-        _USER_RECENT_CHARS[user_id] = st
-    ids = list(st.get("ids") or [])
-    if char_id in ids:
-        ids.remove(char_id)
-    ids.append(char_id)
-    if len(ids) > RECENT_MAX:
-        ids = ids[-RECENT_MAX:]
-    st["ids"] = ids
+<!-- Lootbox overlay -->
+<div id="lootbox" class="lootbox">
+  <div class="lootbox-panel" id="lootbox_panel">
+    <div class="lootbox-top">
+      <div class="lootbox-title">✨ Lootbox Reveal</div>
+      <button class="lootbox-close" id="lootbox_close">FECHAR</button>
+    </div>
+    <div class="lootbox-stage" id="lootbox_stage">
+      <img class="lootbox-img" id="lootbox_img" src="" alt="character"/>
+      <div class="lootbox-info">
+        <div class="lootbox-name" id="lootbox_name">...</div>
+        <div class="lootbox-anime" id="lootbox_anime">...</div>
+        <div class="lootbox-note">✅ Entregue no PV do bot</div>
+      </div>
+    </div>
+  </div>
+</div>
 
-async def _build_char_pool_for_anime(db, anime_id: int, max_pages: int = 6) -> Optional[dict]:
-    anime_id = int(anime_id)
-    try:
-        if getattr(db, "is_bad_anime")(anime_id):
-            return None
-    except Exception:
-        pass
+<!-- 3) COLE ESTE JS DENTRO DO <script> ... </script>
+     (perto do seu bloco do dado; ele assume que existem: initData, escapeHtml, apiPost)
+-->
+<script>
+/* =========================
+🎲 DADO PREMIUM — JS 3D + LOOTBOX + GRID + SEARCH + RECO
+========================= */
 
-    q = """
-    query ($id: Int, $page: Int) {
-      Media(id: $id, type: ANIME) {
-        title { romaji }
-        coverImage { large }
-        characters(page: $page, perPage: 25) {
-          pageInfo { currentPage lastPage }
-          edges {
-            role
-            node {
-              id
-              name { full }
-              image { large }
-            }
-          }
-        }
-      }
+const tabDado = document.getElementById('tab_dado');
+const dadoView = document.getElementById('dado_view');
+const animeGrid = document.getElementById('anime_grid');
+const btnRoll = document.getElementById('btn_roll');
+const btnReco = document.getElementById('btn_reco');
+const dadoBalance = document.getElementById('dado_balance');
+const dadoExtra = document.getElementById('dado_extra');
+const dice3d = document.getElementById('dice3d');
+
+const dadoSearch = document.getElementById('dado_search');
+const dadoFilter = document.getElementById('dado_filter');
+
+const lootbox = document.getElementById('lootbox');
+const lootboxClose = document.getElementById('lootbox_close');
+const lootboxImg = document.getElementById('lootbox_img');
+const lootboxName = document.getElementById('lootbox_name');
+const lootboxAnime = document.getElementById('lootbox_anime');
+const lootboxStage = document.getElementById('lootbox_stage');
+
+let currentRollId = null;
+let currentOptions = [];
+
+function showView(mode){
+  const grid = document.getElementById('grid');
+  const favGrid = document.getElementById('grid_fav');
+  if(mode === 'dado'){
+    if(grid) grid.style.display = 'none';
+    if(favGrid) favGrid.style.display = 'none';
+    if(dadoView) dadoView.style.display = 'block';
+    document.getElementById('tab_all')?.classList.remove('active');
+    document.getElementById('tab_fav')?.classList.remove('active');
+    tabDado?.classList.add('active');
+  } else if(mode === 'fav'){
+    if(grid) grid.style.display = 'none';
+    if(favGrid) favGrid.style.display = 'grid';
+    if(dadoView) dadoView.style.display = 'none';
+    document.getElementById('tab_all')?.classList.remove('active');
+    tabDado?.classList.remove('active');
+    document.getElementById('tab_fav')?.classList.add('active');
+  } else {
+    if(grid) grid.style.display = 'grid';
+    if(favGrid) favGrid.style.display = 'none';
+    if(dadoView) dadoView.style.display = 'none';
+    document.getElementById('tab_fav')?.classList.remove('active');
+    tabDado?.classList.remove('active');
+    document.getElementById('tab_all')?.classList.add('active');
+  }
+}
+tabDado?.addEventListener('click', () => showView('dado'));
+
+// ========= 3D Dice rotation mapping =========
+// Queremos que o N fique na frente (face 1 = translateZ)
+const FACE_ROT = {
+  1: 'rotateX(0deg) rotateY(0deg)',
+  2: 'rotateX(0deg) rotateY(-90deg)',
+  3: 'rotateX(0deg) rotateY(180deg)',
+  4: 'rotateX(0deg) rotateY(90deg)',
+  5: 'rotateX(-90deg) rotateY(0deg)',
+  6: 'rotateX(90deg) rotateY(0deg)',
+};
+
+function diceRoll3D(finalValue){
+  if(!dice3d) return;
+  dice3d.classList.add('dice-shake');
+
+  // gira aleatório antes de parar
+  const sx = (Math.random() > 0.5 ? 1 : -1) * (360 * (2 + Math.floor(Math.random()*2)));
+  const sy = (Math.random() > 0.5 ? 1 : -1) * (360 * (2 + Math.floor(Math.random()*2)));
+  dice3d.style.transform = `rotateX(${sx}deg) rotateY(${sy}deg)`;
+
+  setTimeout(() => {
+    dice3d.classList.remove('dice-shake');
+    dice3d.style.transform = FACE_ROT[finalValue] || FACE_ROT[1];
+  }, 860);
+}
+
+// ========= Lootbox overlay =========
+function openLootbox(character){
+  if(!lootbox) return;
+  lootboxImg.src = character.image || '';
+  lootboxName.textContent = character.name || '???';
+  lootboxAnime.textContent = character.anime || 'Obra';
+
+  lootbox.classList.add('on');
+  // glow no reveal
+  lootboxStage.classList.remove('reveal-glow');
+  void lootboxStage.offsetWidth;
+  lootboxStage.classList.add('reveal-glow');
+}
+function closeLootbox(){
+  lootbox?.classList.remove('on');
+}
+lootboxClose?.addEventListener('click', closeLootbox);
+lootbox?.addEventListener('click', (e) => { if(e.target === lootbox) closeLootbox(); });
+
+// ========= Render grid =========
+function normalizeOptions(opts){
+  return (opts || []).map(o => ({
+    id: o.id,
+    title: o.title || 'Anime',
+    cover: o.cover || o.image || '' // aceita cover se backend mandar
+  }));
+}
+
+function applyFilterAndSearch(){
+  const q = (dadoSearch?.value || '').trim().toLowerCase();
+  const mode = (dadoFilter?.value || 'popular');
+
+  let list = [...currentOptions];
+
+  if(q){
+    list = list.filter(o => (o.title || '').toLowerCase().includes(q));
+  }
+
+  if(mode === 'az'){
+    list.sort((a,b)=> (a.title||'').localeCompare(b.title||''));
+  } else if(mode === 'random'){
+    list.sort(()=> Math.random() - 0.5);
+  } // popular = mantém
+
+  renderGrid(list);
+}
+
+function renderGrid(list){
+  if(!animeGrid) return;
+  animeGrid.innerHTML = '';
+
+  const maxShow = Math.min(list.length, 30);
+  for(let i=0;i<maxShow;i++){
+    const o = list[i];
+    const btn = document.createElement('button');
+    btn.className = 'anime-card';
+    btn.innerHTML = `
+      <img class="anime-cover" src="${o.cover ? o.cover : ''}" onerror="this.style.display='none'" />
+      <div class="anime-title">🎴 ${escapeHtml(o.title)}</div>
+    `;
+    btn.onclick = () => pickAnime(o.id, btn);
+    animeGrid.appendChild(btn);
+  }
+
+  if(maxShow === 0){
+    animeGrid.innerHTML = `<div style="grid-column:1/-1;color:rgba(255,255,255,.65);font-size:12px;padding:10px;">Nenhum anime encontrado.</div>`;
+  }
+}
+
+async function pickAnime(animeId, btn){
+  if(!currentRollId) return;
+  if(btn){
+    btn.disabled = true;
+    btn.style.opacity = .7;
+  }
+  const out = await apiPost(`/api/dado/pick?roll_id=${encodeURIComponent(currentRollId)}&anime_id=${encodeURIComponent(animeId)}`);
+  if(!out.ok){
+    if(btn){
+      btn.disabled = false;
+      btn.style.opacity = 1;
     }
-    """
-    timeout = aiohttp.ClientTimeout(total=25)
-    chars: list[dict] = []
-    anime_title = "Obra"
-    cover = None
+    alert('⚠️ Falha ao entregar. Tenta outra opção.');
+    return;
+  }
+  openLootbox(out.character);
+}
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": 1}}) as resp:
-            data = await resp.json()
+// ========= Recomendado (auto pick) =========
+function pickRecommended(){
+  if(!currentRollId || currentOptions.length === 0) return;
+  // “recomendado”: pega um item do topo, com leve aleatoriedade
+  const idx = Math.min(currentOptions.length - 1, Math.floor(Math.random() * Math.min(8, currentOptions.length)));
+  const o = currentOptions[idx];
+  pickAnime(o.id, null);
+}
+btnReco?.addEventListener('click', pickRecommended);
 
-        media = data.get("data", {}).get("Media")
-        if not media:
-            try:
-                getattr(db, "mark_bad_anime")(anime_id, reason="no_media")
-            except Exception:
-                pass
-            return None
+// ========= Hook inputs =========
+dadoSearch?.addEventListener('input', applyFilterAndSearch);
+dadoFilter?.addEventListener('change', applyFilterAndSearch);
 
-        anime_title = (media.get("title") or {}).get("romaji") or "Obra"
-        cover = (media.get("coverImage") or {}).get("large") or None
-        last_page = int(((media.get("characters") or {}).get("pageInfo") or {}).get("lastPage") or 1)
+// ========= Roll =========
+btnRoll?.addEventListener('click', async () => {
+  btnRoll.disabled = true;
+  btnRoll.textContent = 'ROLANDO...';
+  animeGrid.innerHTML = '';
 
-        pages = {1, last_page}
-        while len(pages) < min(max_pages, last_page):
-            pages.add(random.randint(1, max(1, last_page)))
+  const out = await apiPost('/api/dado/start');
+  if(!out.ok){
+    btnRoll.disabled = false;
+    btnRoll.textContent = 'ROLAR AGORA';
+    if(out.error === 'no_balance'){
+      alert(out.msg + '\nAgora: ' + (out.now || ''));
+    } else {
+      alert('Falha ao rolar agora. Tenta novamente.');
+    }
+    return;
+  }
 
-        for page in pages:
-            async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": int(page)}}) as r2:
-                d2 = await r2.json()
+  currentRollId = out.roll_id;
+  dadoBalance.textContent = out.balance;
+  dadoExtra.textContent = out.extra;
 
-            m2 = d2.get("data", {}).get("Media")
-            if not m2:
-                continue
+  diceRoll3D(out.dice);
 
-            edges = (((m2.get("characters") or {}).get("edges")) or [])
-            for e in edges:
-                if e.get("role") not in ("MAIN", "SUPPORTING"):
-                    continue
-                node = (e.get("node") or {})
-                cid = node.get("id")
-                name = ((node.get("name") or {}).get("full")) or None
-                img = ((node.get("image") or {}).get("large")) or None
-                if cid and name:
-                    chars.append({"id": int(cid), "name": name, "image": img})
+  // opções
+  currentOptions = normalizeOptions(out.options || []);
+  applyFilterAndSearch();
 
-    seen = set()
-    uniq = []
-    for c in chars:
-        if c["id"] in seen:
-            continue
-        seen.add(c["id"])
-        uniq.append(c)
+  btnRoll.disabled = false;
+  btnRoll.textContent = 'ROLAR DE NOVO';
+});
 
-    if len(uniq) < MIN_POOL_SIZE:
-        try:
-            getattr(db, "mark_bad_anime")(anime_id, reason=f"small_pool:{len(uniq)}")
-        except Exception:
-            pass
-        return None
-
-    return {"title": anime_title, "cover": cover, "chars": uniq}
-
-async def _anilist_random_character_from_anime(db, anime_id: int, user_id: int, tries: int = 24) -> Optional[dict]:
-    now = int(time.time())
-    anime_id = int(anime_id)
-
-    cached = _CHAR_POOL_CACHE.get(anime_id)
-    if not cached or int(cached.get("exp") or 0) < now:
-        built = await _build_char_pool_for_anime(db, anime_id, max_pages=6)
-        if not built:
-            return None
-        cached = {"exp": now + 6 * 3600, "title": built["title"], "cover": built["cover"], "chars": built["chars"]}
-        _CHAR_POOL_CACHE[anime_id] = cached
-
-    chars = list(cached.get("chars") or [])
-    if not chars:
-        return None
-
-    recent = set(_recent_get(user_id))
-    random.shuffle(chars)
-    preferred = [c for c in chars if int(c["id"]) not in recent]
-    fallback = [c for c in chars if int(c["id"]) in recent]
-    pick_order = (preferred + fallback)[:max(1, min(len(preferred + fallback), tries))]
-
-    for c in pick_order:
-        img = c.get("image")
-        if img:
-            return {"id": int(c["id"]), "name": c["name"], "image": img, "anime_title": cached.get("title") or "Obra"}
-
-    cover = cached.get("cover") or ""
-    c = pick_order[0]
-    return {"id": int(c["id"]), "name": c["name"], "image": cover, "anime_title": cached.get("title") or "Obra"}
-
-async def _auto_reroll_character(db, options: list[dict], preferred_anime_id: int, user_id: int) -> Optional[dict]:
-    ids = [int(o["id"]) for o in options if "id" in o]
-    ordered = []
-    if preferred_anime_id:
-        ordered.append(int(preferred_anime_id))
-    ordered += [x for x in ids if x != int(preferred_anime_id)]
-    if ordered:
-        tail = ordered[1:]
-        random.shuffle(tail)
-        ordered = [ordered[0]] + tail
-
-    for aid in ordered:
-        info = await _anilist_random_character_from_anime(db, aid, user_id=user_id, tries=28)
-        if info:
-            _recent_add(user_id, int(info["id"]))
-            try:
-                getattr(db, "vault_put_character")(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
-            except Exception:
-                pass
-            return info
-
-    try:
-        all_items = getattr(db, "get_top_anime_list")(500) or []
-        if all_items:
-            extra_opts = random.sample(all_items, min(18, len(all_items)))
-            extra_ids = [int(x["anime_id"]) for x in extra_opts if "anime_id" in x]
-            random.shuffle(extra_ids)
-            for aid in extra_ids:
-                info = await _anilist_random_character_from_anime(db, aid, user_id=user_id, tries=32)
-                if info:
-                    _recent_add(user_id, int(info["id"]))
-                    try:
-                        getattr(db, "vault_put_character")(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
-                    except Exception:
-                        pass
-                    return info
-    except Exception:
-        pass
-
-    try:
-        v = getattr(db, "vault_random_character")()
-        if v:
-            _recent_add(user_id, int(v["character_id"]))
-            return {"id": int(v["character_id"]), "name": v["character_name"], "image": v.get("image") or "", "anime_title": v.get("anime_title") or "Obra"}
-    except Exception:
-        pass
-
-    return None
-
-
-
+// auto abre tab
+try{
+  const url = new URL(location.href);
+  if((url.searchParams.get('tab')||'') === 'dado'){
+    showView('dado');
+  }
+}catch(e){}
+</script>
