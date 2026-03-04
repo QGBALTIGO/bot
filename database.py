@@ -454,6 +454,65 @@ def ensure_user_row(user_id: int, default_name: str, new_user_dice: int = 0):
         (user_id, f"user_{user_id}", "Minha Coleção", int(new_user_dice or 0), -1, 0, -1, 0),
     )
 
+# ================================
+# TITAN: tabelas de sistema (pool TOP500 + ledger + cooldown + audit + metrics + settings)
+# ================================
+_run("""
+    CREATE TABLE IF NOT EXISTS characters_pool (
+        character_id BIGINT PRIMARY KEY,
+        name TEXT NOT NULL,
+        anime TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+""")
+_run("""
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+""")
+_run("""
+    CREATE TABLE IF NOT EXISTS economy_ledger (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        amount BIGINT NOT NULL,
+        reason TEXT NOT NULL,
+        action_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        UNIQUE(action_id)
+    );
+""")
+_run("""
+    CREATE TABLE IF NOT EXISTS cooldowns (
+        user_id BIGINT NOT NULL,
+        key TEXT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        PRIMARY KEY(user_id, key)
+    );
+""")
+_run("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT,
+        action TEXT NOT NULL,
+        meta JSONB,
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+""")
+_run("""
+    CREATE TABLE IF NOT EXISTS metrics (
+        key TEXT PRIMARY KEY,
+        value BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+""")
+# migração trades: created_at
+try:
+    _run("""ALTER TABLE trades ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();""")
+except Exception:
+    pass
 
 def get_user_row(user_id: int):
     return _run("SELECT * FROM users WHERE user_id=%s", (int(user_id),), fetch="one")
@@ -1757,3 +1816,216 @@ def top500_job_read_top_list(job_row: dict) -> list[dict]:
         return _json.loads(job_row.get("top_json") or "[]") or []
     except Exception:
         return []
+
+# ================================
+# TITAN: SETTINGS
+# ================================
+def setting_get(key: str, default: str = "") -> str:
+    row = _one("SELECT value FROM settings WHERE key=%s", (key,))
+    return (row.get("value") if row else None) or default
+
+def setting_set(key: str, value: str):
+    _run(
+        "INSERT INTO settings(key,value,updated_at) VALUES(%s,%s,now()) "
+        "ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()",
+        (key, str(value)),
+    )
+
+# ================================
+# TITAN: LEDGER (idempotência via action_id)
+# ================================
+def ledger_add(user_id: int, amount: int, reason: str, action_id: Optional[str] = None) -> bool:
+    try:
+        _run(
+            "INSERT INTO economy_ledger(user_id,amount,reason,action_id) VALUES(%s,%s,%s,%s)",
+            (int(user_id), int(amount), str(reason), action_id),
+        )
+        # mantém coluna coins compatível (se existir)
+        try:
+            _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 0;")
+            _run("UPDATE users SET coins = coins + %s WHERE user_id=%s", (int(amount), int(user_id)))
+        except Exception:
+            pass
+        return True
+    except Exception:
+        # action_id duplicado ou erro -> não duplica
+        return False
+
+def coins_get(user_id: int) -> int:
+    try:
+        _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 0;")
+        row = _one("SELECT coins FROM users WHERE user_id=%s", (int(user_id),))
+        return int(row["coins"]) if row and row.get("coins") is not None else 0
+    except Exception:
+        return 0
+
+# ================================
+# TITAN: COOLDOWN persistente
+# ================================
+def cooldown_check(user_id: int, key: str, now_ts: Optional[int] = None) -> bool:
+    now_ts = int(now_ts or time.time())
+    row = _one("SELECT expires_at FROM cooldowns WHERE user_id=%s AND key=%s", (int(user_id), str(key)))
+    if row and int(row.get("expires_at") or 0) > now_ts:
+        return False
+    return True
+
+def cooldown_set(user_id: int, key: str, seconds: int, now_ts: Optional[int] = None):
+    now_ts = int(now_ts or time.time())
+    exp = now_ts + int(seconds)
+    _run(
+        "INSERT INTO cooldowns(user_id,key,expires_at) VALUES(%s,%s,%s) "
+        "ON CONFLICT(user_id,key) DO UPDATE SET expires_at=EXCLUDED.expires_at",
+        (int(user_id), str(key), int(exp)),
+    )
+
+# ================================
+# TITAN: AUDIT + METRICS
+# ================================
+def audit(user_id: Optional[int], action: str, meta: Optional[dict] = None):
+    try:
+        _run("INSERT INTO audit_log(user_id,action,meta) VALUES(%s,%s,%s)", (user_id, str(action), meta or {}))
+    except Exception:
+        pass
+
+def metric_inc(key: str, n: int = 1):
+    _run(
+        "INSERT INTO metrics(key,value,updated_at) VALUES(%s,%s,now()) "
+        "ON CONFLICT(key) DO UPDATE SET value=metrics.value+EXCLUDED.value, updated_at=now()",
+        (str(key), int(n)),
+    )
+
+# ================================
+# TITAN: TOP500 POOL
+# ================================
+_TOP500_LINE_CHAR = re.compile(r"^-\s*(.+?)\s*\((\d+)\)\s*$")
+_TOP500_LINE_ANIME = re.compile(r"^#\d+\s*(.+?)\s*\((\d+)\)\s*$")
+
+def import_top500_to_pool(file_path: str) -> Dict[str, int]:
+    inserted = 0
+    skipped = 0
+    current_anime = None
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            mA = _TOP500_LINE_ANIME.match(line)
+            if mA:
+                current_anime = (mA.group(1) or "").strip()
+                continue
+            mC = _TOP500_LINE_CHAR.match(line)
+            if mC and current_anime:
+                name = (mC.group(1) or "").strip()
+                cid = int(mC.group(2))
+                try:
+                    _run(
+                        "INSERT INTO characters_pool(character_id,name,anime,is_active) VALUES(%s,%s,%s,TRUE) "
+                        "ON CONFLICT(character_id) DO NOTHING",
+                        (cid, name, current_anime),
+                    )
+                    inserted += 1
+                except Exception:
+                    skipped += 1
+    return {"inserted": inserted, "skipped": skipped}
+
+def pool_set_active(character_id: int, active: bool):
+    _run("UPDATE characters_pool SET is_active=%s WHERE character_id=%s", (bool(active), int(character_id)))
+
+def pool_upsert(character_id: int, name: str, anime: str, active: bool = True):
+    _run(
+        "INSERT INTO characters_pool(character_id,name,anime,is_active) VALUES(%s,%s,%s,%s) "
+        "ON CONFLICT(character_id) DO UPDATE SET name=EXCLUDED.name, anime=EXCLUDED.anime, is_active=EXCLUDED.is_active",
+        (int(character_id), str(name), str(anime), bool(active)),
+    )
+
+def pool_stats() -> Dict[str, int]:
+    row = _one(
+        "SELECT "
+        "COUNT(*) AS total, "
+        "SUM(CASE WHEN is_active THEN 1 ELSE 0 END) AS active "
+        "FROM characters_pool",
+        (),
+    ) or {}
+    return {"total": int(row.get("total") or 0), "active": int(row.get("active") or 0)}
+
+def pool_random_animes(limit: int) -> List[str]:
+    limit = max(1, min(12, int(limit)))
+    rows = _all(
+        "SELECT anime FROM (SELECT DISTINCT anime FROM characters_pool WHERE is_active=TRUE) s "
+        "ORDER BY RANDOM() LIMIT %s",
+        (limit,),
+    )
+    return [r["anime"] for r in rows if r.get("anime")]
+
+def pool_random_character(anime: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if anime:
+        row = _one(
+            "SELECT character_id,name,anime FROM characters_pool "
+            "WHERE is_active=TRUE AND anime=%s ORDER BY RANDOM() LIMIT 1",
+            (str(anime),),
+        )
+        if row:
+            return {"id": int(row["character_id"]), "name": row["name"], "anime": row["anime"]}
+    row = _one(
+        "SELECT character_id,name,anime FROM characters_pool WHERE is_active=TRUE ORDER BY RANDOM() LIMIT 1",
+        (),
+    )
+    if not row:
+        return None
+    return {"id": int(row["character_id"]), "name": row["name"], "anime": row["anime"]}
+
+def resolve_character_image(character_id: int) -> str:
+    # prioridade: setfoto global (character_images)
+    try:
+        row = _one("SELECT image_url FROM character_images WHERE character_id=%s", (int(character_id),))
+        if row and row.get("image_url"):
+            return str(row["image_url"])
+    except Exception:
+        pass
+    # fallback: padrão AniList por ID (você pode trocar depois por cache AniList real)
+    return f"https://img.anili.st/media/{int(character_id)}"
+
+# ================================
+# TITAN: coleção - delete -> +1 coin/cópia (idempotente opcional via action_id)
+# ================================
+def delete_character_to_coin(user_id: int, character_id: int, action_id: Optional[str] = None) -> int:
+    # remove 1 cópia, credita +1 coin
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            # lock item
+            cur.execute(
+                "SELECT qty FROM user_collection WHERE user_id=%s AND character_id=%s FOR UPDATE",
+                (int(user_id), int(character_id)),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return 0
+            qty = int(row[0] if isinstance(row, (list, tuple)) else row.get("qty") or 0)
+            if qty <= 1:
+                cur.execute("DELETE FROM user_collection WHERE user_id=%s AND character_id=%s", (int(user_id), int(character_id)))
+            else:
+                cur.execute(
+                    "UPDATE user_collection SET qty=qty-1 WHERE user_id=%s AND character_id=%s",
+                    (int(user_id), int(character_id)),
+                )
+            # ledger (idempotente)
+            if action_id:
+                cur.execute(
+                    "INSERT INTO economy_ledger(user_id,amount,reason,action_id) VALUES(%s,%s,%s,%s) "
+                    "ON CONFLICT(action_id) DO NOTHING",
+                    (int(user_id), 1, "delete_character", str(action_id)),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO economy_ledger(user_id,amount,reason) VALUES(%s,%s,%s)",
+                    (int(user_id), 1, "delete_character"),
+                )
+            # compat coins
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 0;")
+                cur.execute("UPDATE users SET coins=coins+1 WHERE user_id=%s", (int(user_id),))
+            except Exception:
+                pass
+            conn.commit()
+            return 1
