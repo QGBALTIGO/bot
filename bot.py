@@ -113,57 +113,10 @@ from database import (
     get_user_stats,
     list_user_achievement_keys,
     grant_achievements_and_reward,
-    top500_job_create,
-    top500_job_get,
-    top500_job_latest,
-    top500_job_set_status,
-    top500_job_checkpoint,
-    top500_job_mark_done,
-    top500_job_read_top_list,
-
-    # TOP500 pool
-    create_characters_pool_tables,
-    pool_import_top500_txt,
-    pool_add_character,
-    pool_delete_character,
-    pool_set_active,
-    pool_random_character,
-    delete_one_character_for_coin,
 )
 
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
-
-# ==================================================
-# GLOBALS (TZ + SAFE HELPERS)
-# ==================================================
-try:
-    from zoneinfo import ZoneInfo
-except Exception:  # pragma: no cover
-    ZoneInfo = None  # type: ignore
-
-# Timezone padrão do bot (você está em Campo Grande)
-BOT_TZ_NAME = os.getenv("BOT_TZ", "America/Campo_Grande")
-SP_TZ_NAME = os.getenv("SP_TZ", "America/Sao_Paulo")
-
-def _get_tz(name: str):
-    if ZoneInfo is None:
-        return None
-    try:
-        return ZoneInfo(name)
-    except Exception:
-        return None
-
-BOT_TZ = _get_tz(BOT_TZ_NAME)
-SP_TZ = _get_tz(SP_TZ_NAME) or BOT_TZ
-
-async def safe_delete(msg):
-    """Deleta mensagem sem estourar exceção (mensagem já apagada, sem permissão, etc)."""
-    try:
-        if msg:
-            await msg.delete()
-    except Exception:
-        pass
 
 # ==================================================
 # 1) CONFIG (TUDO VIA VARIÁVEIS DO RAILWAY)
@@ -370,511 +323,6 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 
     return True
 
-
- # ==================================================
-# TOP500 "SEM FALHAS": 2 ETAPAS + CHECKPOINT NO DB
-# Comandos:
-#  - /top500_seed [seed]   -> cria job com top500 (id+title) consolidado/rankeado
-#  - /top500_chars [job]   -> monta TXT buscando personagens e salvando progresso
-#  - /top500_last          -> envia o último TXT pronto
-# ==================================================
-import io
-import math
-import re
-
-TOP500_SEED_ITEMS_DEFAULT = int(os.getenv("TOP500_SEED_ITEMS", "2500"))
-TOP500_SEED_PER_PAGE = 50
-TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "2.5"))  # aumente pra 3.5 se precisar
-TOP500_ADMIN_ONLY = True
-
-_top500_seed_lock = asyncio.Lock()
-_top500_chars_lock = asyncio.Lock()
-
-def _best_title(media: dict) -> str:
-    t = media.get("title") or {}
-    return (t.get("romaji") or t.get("english") or t.get("native") or f"Media {media.get('id')}").strip()
-
-def _titles_lower(media: dict) -> str:
-    t = media.get("title") or {}
-    joined = " | ".join([(t.get("romaji") or ""), (t.get("english") or ""), (t.get("native") or "")])
-    return joined.lower()
-
-def _excluded_title_any(title_lower: str) -> bool:
-    return ("naruto" in title_lower) or ("boruto" in title_lower) or ("shippuuden" in title_lower)
-
-def _excluded(media: dict) -> bool:
-    return _excluded_title_any(_titles_lower(media))
-
-def _score(media: dict) -> int:
-    s = media.get("averageScore")
-    if s is None:
-        s = media.get("meanScore")
-    return int(s or 0)
-
-def _pop(media: dict) -> int:
-    return int(media.get("popularity") or 0)
-
-def _rank(score: int, pop: int) -> float:
-    return float(score) + (float(pop) / 1000.0)
-
-def _startdate_key(media: dict):
-    sd = media.get("startDate") or {}
-    y = sd.get("year") or 9999
-    m = sd.get("month") or 12
-    d = sd.get("day") or 31
-    return (y, m, d, int(media.get("id") or 10**9))
-
-def _normalize_base_title(title: str) -> str:
-    s = (title or "").lower().strip()
-    s = re.sub(r"[\(\[\{].*?[\)\]\}]", " ", s)
-    s = re.sub(r"[:\-–—_]", " ", s)
-    s = re.sub(r"\b(season|temporada|part|cour)\s*\d+\b", " ", s)
-    s = re.sub(r"\b\d+\s*(season|temporada|part|cour)\b", " ", s)
-    kill_words = [
-        "season","saison","temporada","part","cour",
-        "movie","film","ova","oav","special","tv",
-        "edition","final","complete","recap","summary",
-        "ii","iii","iv","v","vi","vii","viii","ix","x"
-    ]
-    for w in kill_words:
-        s = re.sub(rf"\b{re.escape(w)}\b", " ", s)
-    s = re.sub(r"\b\d+\b", " ", s)
-    s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-SEED_QUERY = """
-query ($page: Int, $perPage: Int) {
-  Page(page: $page, perPage: $perPage) {
-    pageInfo { hasNextPage }
-    media(type: ANIME, sort: POPULARITY_DESC) {
-      id
-      title { romaji english native }
-      popularity
-      averageScore
-      meanScore
-      startDate { year month day }
-    }
-  }
-}
-"""
-
-CHARACTERS_QUERY = """
-query ($id: Int, $page: Int, $perPage: Int) {
-  Media(id: $id, type: ANIME) {
-    id
-    characters(page: $page, perPage: $perPage, sort: [ROLE, RELEVANCE, ID]) {
-      pageInfo { hasNextPage }
-      edges {
-        role
-        node {
-          id
-          name { full }
-        }
-      }
-    }
-  }
-}
-"""
-
-async def _gql_aio(session: aiohttp.ClientSession, query: str, variables: dict) -> dict:
-    """
-    Retry/Backoff TOTAL (não quebra em 429). Isso é o coração do "sem falhas".
-    """
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Railway) SourceBaltigoTop500/3.0",
-    }
-
-    last_err = None
-    for attempt in range(1, 21):  # até 20 tentativas
-        try:
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": variables},
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as resp:
-
-                if resp.status == 429:
-                    ra = resp.headers.get("Retry-After")
-                    if ra:
-                        try:
-                            wait = float(ra)
-                        except Exception:
-                            wait = 5.0
-                    else:
-                        wait = min(60.0, 2.0 * attempt * attempt)
-
-                    print(f"[TOP500] 429 rate limit. aguardando {wait:.1f}s (tentativa {attempt}/20)")
-                    await asyncio.sleep(wait)
-                    continue
-
-                if resp.status >= 500:
-                    txt = await resp.text()
-                    wait = min(40.0, 1.5 * attempt * attempt)
-                    print(f"[TOP500] HTTP {resp.status} server. retry {wait:.1f}s. preview={txt[:120]!r}")
-                    await asyncio.sleep(wait)
-                    continue
-
-                if resp.status != 200:
-                    txt = await resp.text()
-                    raise RuntimeError(f"AniList HTTP {resp.status}: {txt[:250]}")
-
-                data = await resp.json()
-                if "errors" in data:
-                    wait = min(40.0, 1.5 * attempt * attempt)
-                    print(f"[TOP500] GraphQL errors. retry {wait:.1f}s. err={str(data['errors'][:1])}")
-                    await asyncio.sleep(wait)
-                    continue
-
-                return data["data"]
-
-        except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
-            last_err = e
-            wait = min(40.0, 1.5 * attempt * attempt)
-            print(f"[TOP500] conexão/timeout: {e}. retry {wait:.1f}s.")
-            await asyncio.sleep(wait)
-        except Exception as e:
-            last_err = e
-            wait = min(40.0, 1.5 * attempt * attempt)
-            print(f"[TOP500] erro: {type(e).__name__}: {e}. retry {wait:.1f}s.")
-            await asyncio.sleep(wait)
-
-    raise RuntimeError(f"Falha após muitos retries AniList. Último erro: {last_err}")
-
-async def _fetch_seed(session: aiohttp.ClientSession, seed_items: int) -> list[dict]:
-    out = []
-    pages = math.ceil(seed_items / TOP500_SEED_PER_PAGE)
-    page = 1
-    while page <= pages:
-        data = await _gql_aio(session, SEED_QUERY, {"page": page, "perPage": TOP500_SEED_PER_PAGE})
-        items = (data.get("Page") or {}).get("media") or []
-        out.extend(items)
-        has_next = bool(((data.get("Page") or {}).get("pageInfo") or {}).get("hasNextPage"))
-        page += 1
-        await asyncio.sleep(TOP500_SLEEP)
-        if not has_next:
-            break
-
-    seen = set()
-    uniq = []
-    for m in out:
-        mid = int(m["id"])
-        if mid not in seen:
-            seen.add(mid)
-            uniq.append(m)
-    return uniq
-
-def _consolidate_fast(seed_list: list[dict]) -> list[dict]:
-    """
-    Consolidação por "título base" normalizado (rápido, poucas queries).
-    - pop soma
-    - score max
-    - base = mais antigo
-    - exclui Naruto/Boruto total
-    """
-    groups: dict[str, list[dict]] = {}
-    for m in seed_list:
-        if _excluded(m):
-            continue
-        title = _best_title(m)
-        key = _normalize_base_title(title)
-        if not key:
-            continue
-        groups.setdefault(key, []).append(m)
-
-    consolidated = []
-    for key, items in groups.items():
-        if any(_excluded(x) for x in items):
-            continue
-
-        total_pop = sum(_pop(x) for x in items)
-        max_score = max((_score(x) for x in items), default=0)
-        base_media = sorted(items, key=_startdate_key)[0]
-        base_id = int(base_media.get("id"))
-        base_title = _best_title(base_media)
-
-        consolidated.append({
-            "id": base_id,
-            "title": base_title,
-            "rank": _rank(max_score, total_pop),
-            "popularity": total_pop,
-            "score": max_score,
-        })
-
-    consolidated.sort(key=lambda x: (x["rank"], x["popularity"], x["score"]), reverse=True)
-    return consolidated
-
-async def _fetch_all_characters(session: aiohttp.ClientSession, media_id: int):
-    main = []
-    supporting = []
-    seen_main = set()
-    seen_sup = set()
-    page = 1
-    per_page = 50
-
-    while True:
-        data = await _gql_aio(session, CHARACTERS_QUERY, {"id": int(media_id), "page": int(page), "perPage": int(per_page)})
-        chars = ((((data.get("Media") or {}).get("characters") or {}).get("edges")) or [])
-        page_info = ((((data.get("Media") or {}).get("characters") or {}).get("pageInfo")) or {})
-        has_next = bool(page_info.get("hasNextPage"))
-
-        for e in chars:
-            role = (e.get("role") or "").upper()
-            node = e.get("node") or {}
-            cid = node.get("id")
-            nm = ((node.get("name") or {}).get("full") or "").strip()
-            if not cid or not nm:
-                continue
-            cid = int(cid)
-
-            if role == "MAIN":
-                if cid not in seen_main:
-                    seen_main.add(cid)
-                    main.append((nm, cid))
-            else:
-                if cid not in seen_sup and cid not in seen_main:
-                    seen_sup.add(cid)
-                    supporting.append((nm, cid))
-
-        await asyncio.sleep(TOP500_SLEEP)
-        if not has_next:
-            break
-        page += 1
-
-    return main, supporting
-
-async def top500_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
-    uid = update.effective_user.id
-
-    if TOP500_ADMIN_ONLY and not is_admin(uid):
-        await update.message.reply_html("⛔ <b>Acesso negado</b>")
-        return
-
-    if _top500_seed_lock.locked():
-        await update.message.reply_html("⏳ Já tem um /top500_seed rodando. Tente mais tarde.")
-        return
-
-    seed_items = TOP500_SEED_ITEMS_DEFAULT
-    if context.args and context.args[0].isdigit():
-        seed_items = max(800, min(20000, int(context.args[0])))
-
-    async with _top500_seed_lock:
-        msg = await update.message.reply_html(
-            "⚙️ <b>TOP500 SEED</b>\n\n"
-            "Vou gerar o ranking consolidado e salvar no banco.",
-        )
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                await msg.edit_text("1/2) Buscando seed no AniList...", parse_mode="HTML")
-                seed = await _fetch_seed(session, seed_items)
-
-                await msg.edit_text("2/2) Consolidando e rankeando...", parse_mode="HTML")
-                consolidated = _consolidate_fast(seed)
-                top500 = consolidated[:500]
-
-                # checagem forte
-                for it in top500:
-                    if _excluded_title_any((it.get("title") or "").lower()):
-                        raise RuntimeError("Falha: Naruto/Boruto apareceu no TOP500 seed.")
-
-                top_list = [{"id": int(x["id"]), "title": str(x["title"])} for x in top500]
-                job_id = top500_job_create(uid, seed_items, top_list)
-
-                await msg.edit_text(
-                    "✅ <b>SEED pronto!</b>\n\n"
-                    f"🆔 Job: <code>{job_id}</code>\n"
-                    f"📦 Seed Items: <code>{seed_items}</code>\n"
-                    f"🎬 Consolidados: <code>{len(consolidated)}</code>\n"
-                    f"🏆 TOP: <code>{len(top_list)}</code>\n\n"
-                    "Agora rode:\n"
-                    f"<code>/top500_chars {job_id}</code>",
-                    parse_mode="HTML"
-                )
-
-        except Exception as e:
-            try:
-                await msg.edit_text(f"❌ Falhou no SEED:\n<code>{str(e)[:900]}</code>", parse_mode="HTML")
-            except Exception:
-                pass
-
-async def top500_chars(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
-    uid = update.effective_user.id
-
-    if TOP500_ADMIN_ONLY and not is_admin(uid):
-        await update.message.reply_html("⛔ <b>Acesso negado</b>")
-        return
-
-    if _top500_chars_lock.locked():
-        await update.message.reply_html("⏳ Já tem um /top500_chars rodando. Tente mais tarde.")
-        return
-
-    # escolhe job
-    job = None
-    if context.args and context.args[0].isdigit():
-        job = top500_job_get(int(context.args[0]))
-    else:
-        job = top500_job_latest()
-
-    if not job:
-        await update.message.reply_html("❌ Nenhum job encontrado. Rode <code>/top500_seed</code> primeiro.")
-        return
-
-    job_id = int(job["job_id"])
-    status = (job.get("status") or "").lower()
-    if status == "done":
-        # já pronto, só envia
-        content = job.get("txt_text") or ""
-        bio = io.BytesIO(content.encode("utf-8"))
-        bio.name = "top500_anilist_consolidado.txt"
-        await update.message.reply_document(document=bio, filename=bio.name, caption=f"📄 TOP500 pronto (Job {job_id})")
-        return
-
-    top_list = top500_job_read_top_list(job)
-    if not top_list or len(top_list) < 500:
-        await update.message.reply_html("❌ Esse job não tem TOP500 válido. Rode <code>/top500_seed</code> de novo.")
-        return
-
-    start_progress = int(job.get("progress") or 0)
-    if start_progress < 0:
-        start_progress = 0
-    if start_progress > 500:
-        start_progress = 500
-
-    async with _top500_chars_lock:
-        msg = await update.message.reply_html(
-            "⚙️ <b>TOP500 CHARS</b>\n\n"
-            f"Job: <code>{job_id}</code>\n"
-            f"Continuando do item: <code>{start_progress+1}</code>/500\n\n"
-            "Vou montar o TXT e salvar progresso no DB automaticamente.",
-        )
-
-        top500_job_set_status(job_id, "building", None)
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                buffer_parts = []
-                progress = start_progress
-
-                # checkpoint a cada N animes para NÃO perder nada
-                CHECKPOINT_EVERY = 10
-
-                while progress < 500:
-                    idx = progress + 1
-                    item = top_list[progress]
-                    anime_id = int(item["id"])
-                    title = str(item["title"])
-
-                    # segurança extra: nunca deixa Naruto/Boruto entrar
-                    if _excluded_title_any(title.lower()):
-                        progress += 1
-                        continue
-
-                    main, supporting = await _fetch_all_characters(session, anime_id)
-
-                    buffer_parts.append(f"#{idx} {title} ({anime_id})\n\n")
-                    buffer_parts.append("MAIN:\n")
-                    if main:
-                        for nm, cid in main:
-                            buffer_parts.append(f"- {nm} ({cid})\n")
-                    else:
-                        buffer_parts.append("- (nenhum)\n")
-
-                    buffer_parts.append("\nSUPPORTING:\n")
-                    if supporting:
-                        for nm, cid in supporting:
-                            buffer_parts.append(f"- {nm} ({cid})\n")
-                    else:
-                        buffer_parts.append("- (nenhum)\n")
-
-                    buffer_parts.append("\n----------------------------------------\n\n")
-
-                    progress += 1
-
-                    # checkpoint
-                    if (progress % CHECKPOINT_EVERY) == 0 or progress == 500:
-                        chunk = "".join(buffer_parts)
-                        buffer_parts = []
-                        top500_job_checkpoint(job_id, progress, chunk)
-
-                        try:
-                            await msg.edit_text(
-                                "⚙️ <b>TOP500 CHARS</b>\n\n"
-                                f"Job: <code>{job_id}</code>\n"
-                                f"Progresso: <code>{progress}</code>/500\n\n"
-                                "✅ Progresso salvo no DB.\n"
-                                "Você pode parar e rodar de novo que continua.",
-                                parse_mode="HTML"
-                            )
-                        except Exception:
-                            pass
-
-                top500_job_mark_done(job_id)
-
-                # envia arquivo final
-                final_job = top500_job_get(job_id) or {}
-                content = final_job.get("txt_text") or ""
-                bio = io.BytesIO(content.encode("utf-8"))
-                bio.name = "top500_anilist_consolidado.txt"
-
-                await msg.edit_text(
-                    "✅ <b>TOP500 finalizado!</b>\n\n"
-                    f"Job: <code>{job_id}</code>\n"
-                    "📄 Enviando arquivo...",
-                    parse_mode="HTML"
-                )
-                await update.message.reply_document(document=bio, filename=bio.name, caption=f"📄 TOP500 pronto (Job {job_id})")
-
-        except Exception as e:
-            top500_job_set_status(job_id, "error", str(e)[:900])
-            try:
-                await msg.edit_text(
-                    "❌ <b>Falhou, mas seu progresso foi salvo.</b>\n\n"
-                    f"Job: <code>{job_id}</code>\n"
-                    f"Erro: <code>{str(e)[:900]}</code>\n\n"
-                    "✅ Rode de novo para continuar:\n"
-                    f"<code>/top500_chars {job_id}</code>",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
-
-async def top500_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
-    uid = update.effective_user.id
-    if TOP500_ADMIN_ONLY and not is_admin(uid):
-        await update.message.reply_html("⛔ <b>Acesso negado</b>")
-        return
-
-    job = top500_job_latest()
-    if not job:
-        await update.message.reply_html("❌ Nenhum job existe ainda. Rode <code>/top500_seed</code>.")
-        return
-
-    if (job.get("status") or "").lower() != "done":
-        await update.message.reply_html(
-            "⚠️ O último job ainda não está pronto.\n\n"
-            f"Job: <code>{job['job_id']}</code>\n"
-            f"Status: <code>{job.get('status')}</code>\n"
-            f"Progresso: <code>{job.get('progress')}</code>/500\n\n"
-            "Continue com:\n"
-            f"<code>/top500_chars {job['job_id']}</code>",
-        )
-        return
-
-    content = job.get("txt_text") or ""
-    bio = io.BytesIO(content.encode("utf-8"))
-    bio.name = "top500_anilist_consolidado.txt"
-    await update.message.reply_document(document=bio, filename=bio.name, caption=f"📄 TOP500 pronto (Job {job['job_id']})")
-                
 # ==================================================
 # 7) SISTEMA DE NÍVEL (SALVO NO POSTGRES)
 # ==================================================
@@ -3302,11 +2750,11 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🧧 ID: <code>{char_id}</code>"
     )
 
-
 # ==================================================
 # 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
 # ==================================================
 
+SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 # DADOS (saldo normal do /dado)
 DADO_MAX_BALANCE = 18
@@ -3472,45 +2920,219 @@ def _nice_group_block_text() -> str:
         "👉 Abra o bot no PV e use <code>/dado</code> por lá.\n\n"
         "✨ No PV você escolhe o anime e ganha um personagem!"
     )
-    
-# ==================================================
-# /dado (PV only) — Dado Premium (MiniApp)
-# ==================================================
-BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
 
-DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
-DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
 
-async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = f"{BASE_URL}/dado"
-
-    texto = (
+def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
+    return (
         "🎲 <b>DADO DA SORTE</b>\n\n"
-        "Toque no botão abaixo para abrir o dado e testar sua sorte.\n\n"
-        "Quem sabe qual personagem o destino vai escolher hoje? ✨"
+        f"🔢 Resultado: <b>{dice_value}</b>\n"
+        "🎴 Agora escolha um <b>anime</b> para sortear um personagem!\n\n"
+        f"🎟️ Dados: <b>{balance}</b> | 🎡 Giros: <b>{extra}</b>\n"
+        "⏳ Você tem <b>5 minutos</b> para escolher."
     )
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]
-    ])
 
-    try:
-        await update.message.reply_photo(
-            photo=DADO_PICK_IMAGE,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-    except:
-        await update.message.reply_photo(
-            photo=DADO_FALLBACK_IMAGE,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-    # ==========================
-    # Fallback: modo clássico
-    # ==========================
+async def _fetch_top500_anime_from_anilist() -> list[dict]:
+    query = """
+    query ($page: Int) {
+      Page(page: $page, perPage: 50) {
+        media(type: ANIME, sort: POPULARITY_DESC) {
+          id
+          title { romaji }
+        }
+      }
+    }
+    """
+    items: list[dict] = []
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        rank = 1
+        for page in range(1, 11):
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": {"page": page}},
+            ) as resp:
+                data = await resp.json()
+
+            media = data.get("data", {}).get("Page", {}).get("media", []) or []
+            for m in media:
+                anime_id = m.get("id")
+                title = (m.get("title") or {}).get("romaji") or "Anime"
+                if anime_id is None:
+                    continue
+                items.append({"anime_id": int(anime_id), "title": title, "rank": rank})
+                rank += 1
+
+    return items[:500]
+
+
+async def _ensure_top_cache_fresh():
+    async with _REFRESH_LOCK:
+        last = int(top_cache_last_updated() or 0)
+        now = int(time.time())
+        if now - last < 24 * 3600 and last != 0:
+            return
+
+        items = await _fetch_top500_anime_from_anilist()
+        if items:
+            # ✅ FIX: replace_top_anime_cache precisa de updated_at
+            replace_top_anime_cache(items, updated_at=now)
+
+
+def _pick_random_animes(n: int) -> list[dict]:
+    all_items = get_top_anime_list(500)
+    if not all_items:
+        return []
+
+    n = max(1, min(n, len(all_items)))
+    chosen = random.sample(all_items, n)
+    return [{"id": int(x["anime_id"]), "title": x["title"]} for x in chosen]
+
+
+# Cache simples por anime (reduz falhas e chamadas)
+_CHAR_POOL_CACHE: dict[int, dict] = {}  # anime_id -> {exp:int, title:str, cover:str, chars:[{id,name,image}]}
+
+async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optional[dict]:
+    """
+    Monta pool de personagens. Se personagem não tiver foto, a gente usa coverImage do anime.
+    """
+    q = """
+    query ($id: Int, $page: Int) {
+      Media(id: $id, type: ANIME) {
+        title { romaji }
+        coverImage { large }
+        characters(page: $page, perPage: 25) {
+          pageInfo { currentPage lastPage }
+          edges {
+            node {
+              id
+              name { full }
+              image { large }
+            }
+          }
+        }
+      }
+    }
+    """
+    timeout = aiohttp.ClientTimeout(total=20)
+
+    chars: list[dict] = []
+    anime_title = "Obra"
+    cover = None
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": 1}}) as resp:
+            data = await resp.json()
+
+        media = data.get("data", {}).get("Media")
+        if not media:
+            return None
+
+        anime_title = (media.get("title") or {}).get("romaji") or "Obra"
+        cover = (media.get("coverImage") or {}).get("large") or None
+        last_page = int(((media.get("characters") or {}).get("pageInfo") or {}).get("lastPage") or 1)
+
+        pages = {1}
+        for _ in range(max_pages - 1):
+            pages.add(random.randint(1, max(1, last_page)))
+
+        for page in pages:
+            async with session.post(ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": int(page)}}) as r2:
+                d2 = await r2.json()
+            m2 = d2.get("data", {}).get("Media")
+            if not m2:
+                continue
+            edges = (((m2.get("characters") or {}).get("edges")) or [])
+            for e in edges:
+                node = (e.get("node") or {})
+                cid = node.get("id")
+                name = ((node.get("name") or {}).get("full")) or None
+                img = ((node.get("image") or {}).get("large")) or None
+                if cid and name:
+                    chars.append({"id": int(cid), "name": name, "image": img})
+
+    seen = set()
+    uniq = []
+    for c in chars:
+        if c["id"] in seen:
+            continue
+        seen.add(c["id"])
+        uniq.append(c)
+
+    return {"title": anime_title, "cover": cover, "chars": uniq}
+
+
+async def _anilist_random_character_from_anime(anime_id: int, tries: int = 12) -> Optional[dict]:
+    """
+    Retorna SEMPRE que possível um personagem.
+    Se o personagem não tiver foto, usa cover do anime como fallback (quase zera falha).
+    """
+    now = int(time.time())
+    cached = _CHAR_POOL_CACHE.get(int(anime_id))
+    if not cached or int(cached.get("exp") or 0) < now:
+        built = await _build_char_pool_for_anime(int(anime_id), max_pages=4)
+        if not built:
+            return None
+        cached = {
+            "exp": now + 6 * 3600,
+            "title": built["title"],
+            "cover": built["cover"],
+            "chars": built["chars"],
+        }
+        _CHAR_POOL_CACHE[int(anime_id)] = cached
+
+    chars = list(cached.get("chars") or [])
+    if not chars:
+        return None
+
+    random.shuffle(chars)
+    pick_list = chars[:max(1, min(len(chars), tries))]
+
+    for c in pick_list:
+        img = c.get("image")
+        if img:
+            return {
+                "id": int(c["id"]),
+                "name": c["name"],
+                "image": img,
+                "anime_title": cached.get("title") or "Obra"
+            }
+
+    cover = cached.get("cover") or DADO_FALLBACK_IMAGE
+    c = pick_list[0]
+    return {
+        "id": int(c["id"]),
+        "name": c["name"],
+        "image": cover,
+        "anime_title": cached.get("title") or "Obra"
+    }
+
+
+def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for op in options:
+        rows.append([InlineKeyboardButton(op["title"], callback_data=f"dado_pick:{roll_id}:{op['id']}")])
+    return InlineKeyboardMarkup(rows)
+
+
+# ==================================================
+# /dado (PV only)
+# ==================================================
+async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = update.effective_user.id
+    chat = update.effective_chat
+
+    ok = await anti_spam(user_id, key="cmd:/dado", window=CMD_ANTIFLOOD_SECONDS)
+    if not ok:
+        return
+
+    if chat.type != "private":
+        await update.message.reply_html(_nice_group_block_text())
+        return
+
     ensure_user_row(user_id, update.effective_user.first_name, new_user_dice=DADO_NEW_USER_START)
 
     user_lock = _get_user_dado_lock(user_id)
@@ -3548,7 +3170,9 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
         return
 
+    # ✅ FIX: se DB falhar ao criar o roll, reembolsa e não “some o resto”
     try:
+        # compatível com create_dice_roll(old) e create_dice_roll(new)
         roll_id = create_dice_roll(
             user_id,
             dice_value,
@@ -3557,6 +3181,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             int(time.time())
         )
     except TypeError:
+        # fallback para assinatura antiga (sem status/created_at)
         try:
             roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
         except Exception:
@@ -3574,6 +3199,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = _nice_pick_text(dice_value, balance2, extra2)
     kb = _anime_buttons_for_roll(roll_id, options)
 
+    # ✅ FIX: se a imagem falhar, manda texto + botões
     try:
         await update.message.reply_photo(
             photo=DADO_PICK_IMAGE,
@@ -3582,7 +3208,135 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb
         )
     except Exception:
-        await update.message.reply_html(caption, reply_markup=kb)
+        await update.message.reply_html(
+            caption,
+            reply_markup=kb
+        )
+
+
+# ==================================================
+# Callback: escolher anime do dado
+# callback_data = dado_pick:ROLL_ID:ANIME_ID
+# ==================================================
+async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q:
+        return
+
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    user_id = q.from_user.id
+
+    ok = await anti_spam(user_id, key="cb:dado_pick", window=BTN_ANTIFLOOD_SECONDS)
+    if not ok:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    try:
+        _, rid_s, anime_id_s = q.data.split(":")
+        roll_id = int(rid_s)
+        anime_id = int(anime_id_s)
+    except Exception:
+        await q.answer()
+        return
+
+    roll_lock = _get_roll_lock(roll_id)
+    async with roll_lock:
+        roll = get_dice_roll(roll_id)
+        if not roll:
+            await q.answer("Esse pedido não existe mais.", show_alert=True)
+            return
+
+        if int(roll["user_id"]) != int(user_id):
+            await q.answer("Só quem rolou o dado pode escolher 🙂", show_alert=True)
+            return
+
+        status = str(roll.get("status") or "")
+        created_at = int(roll.get("created_at") or 0)
+
+        if status not in ("pending",):
+            await q.answer("Esse dado já foi usado.", show_alert=True)
+            return
+
+        if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
+            set_dice_roll_status(roll_id, "expired")
+            _refund_one_die(user_id)
+            try:
+                await q.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
+            return
+
+        try:
+            options = json.loads(roll["options_json"])
+        except Exception:
+            options = []
+
+        valid_ids = {int(o["id"]) for o in options if "id" in o}
+        if anime_id not in valid_ids:
+            await q.answer("Opção inválida.", show_alert=True)
+            return
+
+        ok_lock_db = try_set_dice_roll_status(roll_id, expected="pending", new_status="processing")
+        if not ok_lock_db:
+            await q.answer("Esse dado já foi usado.", show_alert=True)
+            return
+
+        try:
+            await q.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    try:
+        info = await _anilist_random_character_from_anime(anime_id, tries=12)
+    except Exception:
+        info = None
+
+    if not info:
+        try:
+            set_dice_roll_status(roll_id, "pending")
+        except Exception:
+            pass
+        _refund_one_die(user_id)
+        await q.message.reply_html(
+            "⚠️ <b>Esse anime está com poucas informações agora.</b>\n\n"
+            "✅ Devolvi seu dado. Tenta novamente 🙂"
+        )
+        return
+
+    set_dice_roll_status(roll_id, "resolved")
+
+    char_id = int(info["id"])
+    name = info["name"]
+    image = info["image"] or DADO_FALLBACK_IMAGE
+    anime_title = info.get("anime_title") or "Obra"
+
+    from database import user_has_character, add_coin
+
+    if user_has_character(user_id, char_id):
+        add_coin(user_id, 1)
+        resultado = "🪙 Personagem repetido → <b>+1 coin</b>"
+    else:
+        add_character_to_collection(user_id, char_id, name, image, anime_title=anime_title)
+        resultado = "📦 <b>Adicionado à sua coleção!</b>"
+
+    await q.message.reply_photo(
+        photo=image,
+        caption=(
+            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+            f"<i>{anime_title}</i>\n\n"
+            f"{resultado}"
+        ),
+        parse_mode="HTML"
+    )
+
 
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
@@ -5666,135 +5420,6 @@ async def _cards_dot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await cards(update, context)
 
 
-
-# ==================================================
-# TOP500 POOL — ADMIN + APAGAR->COIN
-# ==================================================
-# ✅ Não remove nada do bot, apenas adiciona.
-# ✅ Pool é a fonte única para sorteios (via WebApp).
-# ✅ Comandos abaixo ajudam a manter/ajustar manualmente.
-
-TOP500_TX_PATH = os.getenv("TOP500_TX_PATH", "top500_anilist_consolidado.txt").strip()
-
-async def poolimport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        return await update.message.reply_text("🚫 Apenas admins.")
-
-    # rate limit leve
-    if not await anti_spam(uid, "cmd:/poolimport", 8):
-        return
-
-    try:
-        create_characters_pool_tables()
-    except Exception:
-        pass
-
-    path = TOP500_TX_PATH
-    if context.args and context.args[0].strip():
-        path = context.args[0].strip()
-
-    try:
-        res = pool_import_top500_txt(path)
-        await update.message.reply_html(
-            "✅ <b>Import TOP500 concluído</b>\n\n"
-            f"📄 Arquivo: <code>{path}</code>\n"
-            f"➕ Inseridos: <b>{res.get('inserted')}</b>\n"
-            f"⏭️ Ignorados: <b>{res.get('skipped')}</b>\n"
-            f"📦 Linhas: <b>{res.get('total_lines')}</b>"
-        )
-    except FileNotFoundError:
-        await update.message.reply_text(f"❌ Arquivo não encontrado: {path}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro ao importar: {e}")
-
-
-async def pooladd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        return await update.message.reply_text("🚫 Apenas admins.")
-
-    if not context.args:
-        return await update.message.reply_text("Uso: /pooladd <id> | <nome> | <anime>")
-
-    raw = " ".join(context.args)
-    parts = [p.strip() for p in raw.split("|")]
-    if len(parts) < 3:
-        return await update.message.reply_text("Uso: /pooladd <id> | <nome> | <anime>")
-
-    try:
-        cid = int(parts[0])
-    except Exception:
-        return await update.message.reply_text("❌ ID inválido.")
-
-    name = parts[1]
-    anime = parts[2]
-    try:
-        ok = pool_add_character(cid, name, anime)
-        await update.message.reply_text("✅ Adicionado no pool." if ok else "⚠️ Não foi possível adicionar.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro: {e}")
-
-
-async def pooldel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        return await update.message.reply_text("🚫 Apenas admins.")
-    if not context.args or not context.args[0].isdigit():
-        return await update.message.reply_text("Uso: /pooldel <id>")
-    cid = int(context.args[0])
-    try:
-        ok = pool_delete_character(cid)
-        await update.message.reply_text("✅ Personagem desativado no pool." if ok else "⚠️ ID não encontrado.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro: {e}")
-
-
-async def poolon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        return await update.message.reply_text("🚫 Apenas admins.")
-    if not context.args or not context.args[0].isdigit():
-        return await update.message.reply_text("Uso: /poolon <id>")
-    cid = int(context.args[0])
-    try:
-        ok = pool_set_active(cid, True)
-        await update.message.reply_text("✅ Personagem reativado no pool." if ok else "⚠️ ID não encontrado.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro: {e}")
-
-
-async def apagar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Apaga 1 personagem da coleção do usuário e converte em +1 coin.
-    Idempotente por update_id (evita double tap).
-    """
-    uid = update.effective_user.id
-
-    if not await checar_canal(update, context):
-        return
-
-    if not context.args or not context.args[0].isdigit():
-        return await update.message.reply_text("Uso: /apagar <id_do_personagem>")
-
-    char_id = int(context.args[0])
-    action_id = f"cmd:apagar:{update.update_id}"
-
-    try:
-        got = int(delete_one_character_for_coin(uid, char_id, action_id))
-    except Exception as e:
-        return await update.message.reply_text(f"❌ Não consegui apagar: {e}")
-
-    if got <= 0:
-        return await update.message.reply_text("⚠️ Você não tem esse personagem na coleção.")
-    coins = get_user_coins(uid)
-    await update.message.reply_html(
-        "🗑️ <b>Personagem apagado</b>\n\n"
-        "💰 Você recebeu <b>+1 coin</b>.\n"
-        f"🪙 Coins atuais: <b>{coins}</b>"
-    )
-
-
 def main():
 
     app = (
@@ -5816,6 +5441,7 @@ def main():
     app.add_handler(CommandHandler("infoanime", infoanime))
 
     app.add_handler(CommandHandler("dado", dado_command))
+    app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
@@ -5883,18 +5509,6 @@ def main():
     app.add_handler(CommandHandler("tutorial", tutorial))
     app.add_handler(CommandHandler("comandos", comandos))
     app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
-    app.add_handler(CommandHandler("top500_seed", top500_seed))
-    app.add_handler(CommandHandler("top500_chars", top500_chars))
-    app.add_handler(CommandHandler("top500_last", top500_last))
-
-    # TOP500 Pool (admin)
-    app.add_handler(CommandHandler("poolimport", poolimport_command))
-    app.add_handler(CommandHandler("pooladd", pooladd_command))
-    app.add_handler(CommandHandler("pooldel", pooldel_command))
-    app.add_handler(CommandHandler("poolon", poolon_command))
-
-    # Apagar personagem -> +1 coin
-    app.add_handler(CommandHandler("apagar", apagar_command))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -6029,20 +5643,4 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
