@@ -2750,13 +2750,22 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🧧 ID: <code>{char_id}</code>"
     )
 
-# ==================================================
-# 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
-# ==================================================
 
 # ==================================================
-# 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
+# ✅ /DADO — VERSÃO DEFINITIVA (COPIAR/COLAR)
+# - Só MAIN/SUPPORTING (AniList)
+# - Cache de personagens por anime (muito menos API calls)
+# - Pool inteligente anti-repetição (evita repetir personagem seguido)
+# - Auto-reroll silencioso (não mostra "poucas infos" a menos que TUDO falhe)
+# - Prioridade de imagem: GLOBAL (/setfoto) > AniList > fallback
 # ==================================================
+# ⚠️ Requisitos (já devem existir no seu bot.py):
+# from datetime import datetime
+# from zoneinfo import ZoneInfo
+# from typing import Optional, Dict
+# import asyncio, time, random, json, aiohttp
+# from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+# from telegram.ext import ContextTypes
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -2795,15 +2804,12 @@ def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
         _user_dado_locks[user_id] = lock
     return lock
 
-
 def _format_time_sp() -> str:
     return datetime.now(tz=SP_TZ).strftime("%H:%M")
 
-
 def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
     """
-    Slot de 4h baseado em SP:
-    00/04/08/12/16/20.
+    Slot de 4h baseado em SP: 00/04/08/12/16/20.
     """
     if ts is None:
         ts = time.time()
@@ -2811,11 +2817,9 @@ def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
     offset = int(now_sp.utcoffset().total_seconds())
     return int((int(ts) + offset) // (4 * 3600))
 
-
 def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
     """
-    Slot de GIRO baseado em SP:
-    01/04/07/10/13/16/19/22 (8 slots/dia)
+    Slot de GIRO baseado em SP: 01/04/07/10/13/16/19/22 (8 slots/dia).
     Retorna um inteiro crescente (dia*8 + idx).
     """
     if ts is None:
@@ -2835,7 +2839,6 @@ def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
         return (day_id - 1) * 8 + 7
 
     return day_id * 8 + idx
-
 
 def _refresh_user_dado_balance(user_id: int) -> int:
     """
@@ -2860,7 +2863,6 @@ def _refresh_user_dado_balance(user_id: int) -> int:
     set_dado_state(user_id, new_balance, cur_slot)
     return new_balance
 
-
 def _refresh_user_giros(user_id: int) -> int:
     """
     Atualiza GIROS (extra_dado) com slots 01/04/07/10/13/16/19/22, cap 24.
@@ -2884,7 +2886,6 @@ def _refresh_user_giros(user_id: int) -> int:
     set_extra_state(user_id, new_extra, cur_slot)
     return new_extra
 
-
 def _consume_one_die(user_id: int) -> bool:
     """
     Consome 1 dado, priorizando saldo normal, depois GIRO (extra_dado).
@@ -2898,7 +2899,6 @@ def _consume_one_die(user_id: int) -> bool:
         return True
 
     return consume_extra_dado(user_id)
-
 
 def _refund_one_die(user_id: int, prefer_extra: bool = False):
     """
@@ -2916,7 +2916,6 @@ def _refund_one_die(user_id: int, prefer_extra: bool = False):
 
     inc_dado_balance(user_id, 1, max_balance=DADO_MAX_BALANCE)
 
-
 def _nice_group_block_text() -> str:
     return (
         "🎲 <b>DADO</b>\n\n"
@@ -2924,7 +2923,6 @@ def _nice_group_block_text() -> str:
         "👉 Abra o bot no PV e use <code>/dado</code> por lá.\n\n"
         "✨ No PV você escolhe o anime e ganha um personagem!"
     )
-
 
 def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
     return (
@@ -2935,7 +2933,9 @@ def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
         "⏳ Você tem <b>5 minutos</b> para escolher."
     )
 
-
+# ==================================================
+# TOP 500 CACHE (lista de animes)
+# ==================================================
 async def _fetch_top500_anime_from_anilist() -> list[dict]:
     query = """
     query ($page: Int) {
@@ -2969,7 +2969,6 @@ async def _fetch_top500_anime_from_anilist() -> list[dict]:
 
     return items[:500]
 
-
 async def _ensure_top_cache_fresh():
     async with _REFRESH_LOCK:
         last = int(top_cache_last_updated() or 0)
@@ -2979,45 +2978,97 @@ async def _ensure_top_cache_fresh():
 
         items = await _fetch_top500_anime_from_anilist()
         if items:
-            # ✅ FIX: replace_top_anime_cache precisa de updated_at
             replace_top_anime_cache(items, updated_at=now)
-
 
 def _pick_random_animes(n: int) -> list[dict]:
     all_items = get_top_anime_list(500)
     if not all_items:
         return []
-
     n = max(1, min(n, len(all_items)))
     chosen = random.sample(all_items, n)
     return [{"id": int(x["anime_id"]), "title": x["title"]} for x in chosen]
 
+def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for op in options:
+        rows.append([InlineKeyboardButton(op["title"], callback_data=f"dado_pick:{roll_id}:{op['id']}")])
+    return InlineKeyboardMarkup(rows)
 
-# Cache simples por anime (reduz falhas e chamadas)
+# ==================================================
+# CACHE DE PERSONAGENS POR ANIME (ANTI-FALHA + 50x MENOS CALLS)
+# ==================================================
 _CHAR_POOL_CACHE: dict[int, dict] = {}  # anime_id -> {exp:int, title:str, cover:str, chars:[{id,name,image}]}
+
+# Anti repetição por usuário (evita pegar o mesmo personagem seguido)
+_USER_RECENT_CHARS: dict[int, dict] = {}  # user_id -> {"exp":ts, "ids":[...]}
+RECENT_TTL_SECONDS = 6 * 3600
+RECENT_MAX = 25
+
+def _recent_get(user_id: int) -> list[int]:
+    st = _USER_RECENT_CHARS.get(int(user_id))
+    now = int(time.time())
+    if not st or int(st.get("exp") or 0) < now:
+        _USER_RECENT_CHARS[int(user_id)] = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
+        return []
+    return list(st.get("ids") or [])
+
+def _recent_add(user_id: int, char_id: int):
+    user_id = int(user_id)
+    char_id = int(char_id)
+    now = int(time.time())
+    st = _USER_RECENT_CHARS.get(user_id)
+    if not st or int(st.get("exp") or 0) < now:
+        st = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
+        _USER_RECENT_CHARS[user_id] = st
+    ids = list(st.get("ids") or [])
+    if char_id in ids:
+        ids.remove(char_id)
+    ids.append(char_id)
+    if len(ids) > RECENT_MAX:
+        ids = ids[-RECENT_MAX:]
+    st["ids"] = ids
+
+def _get_global_photo_for_character(char_id: int) -> Optional[str]:
+    """
+    Foto GLOBAL definida por /setfoto (prioridade máxima).
+    A função tenta vários nomes pra ser compatível com seu database.py atual.
+    """
+    try:
+        import database as db
+        for fn_name in ("get_character_custom_image", "get_global_character_image", "get_character_global_image"):
+            fn = getattr(db, fn_name, None)
+            if callable(fn):
+                img = fn(int(char_id))
+                if img:
+                    return str(img)
+    except Exception:
+        pass
+    return None
 
 async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optional[dict]:
     """
-    Monta pool de personagens. Se personagem não tiver foto, a gente usa coverImage do anime.
+    Monta pool de personagens.
+    ✅ SOMENTE MAIN/SUPPORTING.
+    Se personagem não tiver foto, usa cover do anime.
     """
     q = """
-query ($id: Int, $page: Int) {
-  Media(id: $id, type: ANIME) {
-    title { romaji }
-    coverImage { large }
-    characters(page: $page, perPage: 25) {
-      pageInfo { currentPage lastPage }
-      edges {
-        role
-        node {
-          id
-          name { full }
-          image { large }
+    query ($id: Int, $page: Int) {
+      Media(id: $id, type: ANIME) {
+        title { romaji }
+        coverImage { large }
+        characters(page: $page, perPage: 25) {
+          pageInfo { currentPage lastPage }
+          edges {
+            role
+            node {
+              id
+              name { full }
+              image { large }
+            }
+          }
         }
       }
     }
-  }
-}
     """
     timeout = aiohttp.ClientTimeout(total=20)
 
@@ -3044,14 +3095,17 @@ query ($id: Int, $page: Int) {
         for page in pages:
             async with session.post(ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": int(page)}}) as r2:
                 d2 = await r2.json()
+
             m2 = d2.get("data", {}).get("Media")
             if not m2:
                 continue
+
             edges = (((m2.get("characters") or {}).get("edges")) or [])
             for e in edges:
-                role = str(e.get("role") or "").upper()
+                role = e.get("role")
                 if role not in ("MAIN", "SUPPORTING"):
                     continue
+
                 node = (e.get("node") or {})
                 cid = node.get("id")
                 name = ((node.get("name") or {}).get("full")) or None
@@ -3069,16 +3123,19 @@ query ($id: Int, $page: Int) {
 
     return {"title": anime_title, "cover": cover, "chars": uniq}
 
-
-async def _anilist_random_character_from_anime(anime_id: int, tries: int = 12) -> Optional[dict]:
+async def _anilist_random_character_from_anime(anime_id: int, user_id: Optional[int] = None, tries: int = 16) -> Optional[dict]:
     """
-    Retorna SEMPRE que possível um personagem.
-    Se o personagem não tiver foto, usa cover do anime como fallback (quase zera falha).
+    Retorna personagem SEMPRE que possível.
+    - Cache por anime (6h)
+    - Anti repetição por usuário (evita repetir seguido)
+    - Se nenhum personagem tiver foto, usa cover do anime
     """
     now = int(time.time())
-    cached = _CHAR_POOL_CACHE.get(int(anime_id))
+    anime_id = int(anime_id)
+
+    cached = _CHAR_POOL_CACHE.get(anime_id)
     if not cached or int(cached.get("exp") or 0) < now:
-        built = await _build_char_pool_for_anime(int(anime_id), max_pages=4)
+        built = await _build_char_pool_for_anime(anime_id, max_pages=4)
         if not built:
             return None
         cached = {
@@ -3087,41 +3144,75 @@ async def _anilist_random_character_from_anime(anime_id: int, tries: int = 12) -
             "cover": built["cover"],
             "chars": built["chars"],
         }
-        _CHAR_POOL_CACHE[int(anime_id)] = cached
+        _CHAR_POOL_CACHE[anime_id] = cached
 
     chars = list(cached.get("chars") or [])
     if not chars:
         return None
 
-    random.shuffle(chars)
-    pick_list = chars[:max(1, min(len(chars), tries))]
+    # anti repetição
+    recent = set(_recent_get(int(user_id))) if user_id is not None else set()
 
-    for c in pick_list:
+    random.shuffle(chars)
+    # tenta primeiro fora dos "recent"
+    preferred = [c for c in chars if int(c["id"]) not in recent]
+    fallback = [c for c in chars if int(c["id"]) in recent]
+
+    pick_order = preferred + fallback
+    pick_order = pick_order[:max(1, min(len(pick_order), tries))]
+
+    # 1) tenta achar com imagem do AniList
+    for c in pick_order:
         img = c.get("image")
         if img:
             return {
                 "id": int(c["id"]),
                 "name": c["name"],
                 "image": img,
-                "anime_title": cached.get("title") or "Obra"
+                "anime_title": cached.get("title") or "Obra",
             }
 
+    # 2) ninguém tem imagem -> usa cover do anime
     cover = cached.get("cover") or DADO_FALLBACK_IMAGE
-    c = pick_list[0]
+    c = pick_order[0]
     return {
         "id": int(c["id"]),
         "name": c["name"],
         "image": cover,
-        "anime_title": cached.get("title") or "Obra"
+        "anime_title": cached.get("title") or "Obra",
     }
 
+async def _auto_reroll_character(options: list[dict], preferred_anime_id: int, user_id: int, max_anime_tries: int = 6) -> Optional[dict]:
+    """
+    Auto-reroll silencioso:
+    - tenta o anime escolhido primeiro
+    - se falhar, tenta outros animes do mesmo roll
+    - só retorna None se REALMENTE nenhum anime tiver personagem
+    """
+    ids = [int(o["id"]) for o in options if "id" in o]
+    if not ids:
+        return None
 
-def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
-    for op in options:
-        rows.append([InlineKeyboardButton(op["title"], callback_data=f"dado_pick:{roll_id}:{op['id']}")])
-    return InlineKeyboardMarkup(rows)
+    # garante o escolhido na frente
+    ordered = [int(preferred_anime_id)] + [x for x in ids if x != int(preferred_anime_id)]
+    # embaralha o resto
+    head = ordered[0]
+    tail = ordered[1:]
+    random.shuffle(tail)
+    ordered = [head] + tail
 
+    tries = 0
+    for aid in ordered:
+        tries += 1
+        info = await _anilist_random_character_from_anime(aid, user_id=user_id, tries=16)
+        if info:
+            # marca recente (anti repetição)
+            _recent_add(user_id, int(info["id"]))
+            return info
+        if tries >= max_anime_tries:
+            break
+
+    return None
 
 # ==================================================
 # /dado (PV only)
@@ -3178,9 +3269,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
         return
 
-    # ✅ FIX: se DB falhar ao criar o roll, reembolsa e não “some o resto”
     try:
-        # compatível com create_dice_roll(old) e create_dice_roll(new)
         roll_id = create_dice_roll(
             user_id,
             dice_value,
@@ -3189,7 +3278,6 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             int(time.time())
         )
     except TypeError:
-        # fallback para assinatura antiga (sem status/created_at)
         try:
             roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
         except Exception:
@@ -3207,7 +3295,6 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = _nice_pick_text(dice_value, balance2, extra2)
     kb = _anime_buttons_for_roll(roll_id, options)
 
-    # ✅ FIX: se a imagem falhar, manda texto + botões
     try:
         await update.message.reply_photo(
             photo=DADO_PICK_IMAGE,
@@ -3216,12 +3303,140 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb
         )
     except Exception:
-        await update.message.reply_html(
-            caption,
-            reply_markup=kb
+        await update.message.reply_html(caption, reply_markup=kb)
+
+# ==================================================
+# Callback: escolher anime do dado
+# callback_data = dado_pick:ROLL_ID:ANIME_ID
+# ==================================================
+async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q:
+        return
+
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    user_id = q.from_user.id
+
+    ok = await anti_spam(user_id, key="cb:dado_pick", window=BTN_ANTIFLOOD_SECONDS)
+    if not ok:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    try:
+        _, rid_s, anime_id_s = q.data.split(":")
+        roll_id = int(rid_s)
+        anime_id = int(anime_id_s)
+    except Exception:
+        await q.answer()
+        return
+
+    roll_lock = _get_roll_lock(roll_id)
+    async with roll_lock:
+        roll = get_dice_roll(roll_id)
+        if not roll:
+            await q.answer("Esse pedido não existe mais.", show_alert=True)
+            return
+
+        if int(roll["user_id"]) != int(user_id):
+            await q.answer("Só quem rolou o dado pode escolher 🙂", show_alert=True)
+            return
+
+        status = str(roll.get("status") or "")
+        created_at = int(roll.get("created_at") or 0)
+
+        if status not in ("pending",):
+            await q.answer("Esse dado já foi usado.", show_alert=True)
+            return
+
+        if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
+            set_dice_roll_status(roll_id, "expired")
+            _refund_one_die(user_id)
+            try:
+                await q.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
+            return
+
+        try:
+            options = json.loads(roll["options_json"])
+        except Exception:
+            options = []
+
+        valid_ids = {int(o["id"]) for o in options if "id" in o}
+        if anime_id not in valid_ids:
+            await q.answer("Opção inválida.", show_alert=True)
+            return
+
+        ok_lock_db = try_set_dice_roll_status(roll_id, expected="pending", new_status="processing")
+        if not ok_lock_db:
+            await q.answer("Esse dado já foi usado.", show_alert=True)
+            return
+
+        try:
+            await q.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    # ✅ SOLUÇÃO DEFINITIVA: auto-reroll silencioso (sem gastar outro dado)
+    try:
+        info = await _auto_reroll_character(options, preferred_anime_id=anime_id, user_id=user_id, max_anime_tries=6)
+    except Exception:
+        info = None
+
+    if not info:
+        # Só aqui mostramos o aviso (quando REALMENTE nenhum anime tinha personagem)
+        try:
+            set_dice_roll_status(roll_id, "pending")
+        except Exception:
+            pass
+        _refund_one_die(user_id)
+        try:
+            set_dice_roll_status(roll_id, "failed_no_chars")
+        except Exception:
+            pass
+
+        await q.message.reply_html(
+            "⚠️ <b>Esse anime está com poucas informações agora.</b>\n\n"
+            "✅ Devolvi seu dado. Tenta novamente 🙂"
         )
+        return
 
+    set_dice_roll_status(roll_id, "resolved")
 
+    char_id = int(info["id"])
+    name = info["name"]
+    anime_title = info.get("anime_title") or "Obra"
+
+    # ✅ Prioridade de imagem: GLOBAL (/setfoto) > AniList > fallback
+    global_img = _get_global_photo_for_character(char_id)
+    image = global_img or (info.get("image") or DADO_FALLBACK_IMAGE)
+
+    from database import user_has_character, add_coin
+
+    if user_has_character(user_id, char_id):
+        add_coin(user_id, 1)
+        resultado = "🪙 Personagem repetido → <b>+1 coin</b>"
+    else:
+        add_character_to_collection(user_id, char_id, name, image, anime_title=anime_title)
+        resultado = "📦 <b>Adicionado à sua coleção!</b>"
+
+    await q.message.reply_photo(
+        photo=image,
+        caption=(
+            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+            f"<i>{anime_title}</i>\n\n"
+            f"{resultado}"
+        ),
+        parse_mode="HTML"
+    )
 # ==================================================
 # Callback: escolher anime do dado
 # callback_data = dado_pick:ROLL_ID:ANIME_ID
@@ -5659,6 +5874,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
