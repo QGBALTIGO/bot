@@ -1,10 +1,13 @@
 # webapp.py — MiniApps (Coleção + Dado + Loja) — FastAPI
-# - valida initData (Telegram WebApp) corretamente
-# - /app: coleção + favoritos + DADO (tudo no mesmo MiniApp)
-# - /shop: loja (MiniApp separado) (continua existindo)
-# - Dado: 3D + lootbox reveal + grid com capas + busca/filtro + recomendado
-# - Dado: MAIN/SUPPORTING only (no backend), auto-reroll silencioso, cache por anime, blacklist persistida (best-effort)
-# - setfoto: usa custom_image primeiro; se não tiver, usa AniList; se não tiver, fallback
+# ✅ Ajustes pedidos:
+# - /app: só "Coleção" + "Favoritos" + "Dado" (remove Loja do topo)
+# - Paleta vermelha (degradê vermelho), estilo gacha (Genshin/Honkai vibe)
+# - Favoritos: mostra só o favoritado do usuário (fav_name / fav_image) + (se quiser) também os cards marcados como favorito
+# - Imagens: prioridade SETFOTO (custom_image/global) -> AniList (image) -> fallback
+# - /shop: Vender igual Coleção (separado por anime + A-Z), remove botão voltar
+# - Dado: remove 3D bugado, usa 🎲 animado; máximo 6 animes
+# - Dado: se clicar e falhar, pode escolher outra opção da mesma lista (SEM perder dado)
+# - Anti-falhas: rate-limit simples, rollback em falhas, roll idempotente, expiração devolve dado
 
 import os
 import json
@@ -28,23 +31,22 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
 
-# Segredo para assinar links compartilhados (?u=&ts=&sig=) — tem que ser IGUAL no bot e no webapp
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 SHOP_SELL_GAIN = int(os.getenv("SHOP_SELL_GAIN", "1"))
 SHOP_GIRO_PRICE = int(os.getenv("SHOP_GIRO_PRICE", "2"))
-SHOP_PER_PAGE = int(os.getenv("SHOP_PER_PAGE", "8"))
+SHOP_PER_PAGE = int(os.getenv("SHOP_PER_PAGE", "9999"))  # ✅ não usamos paginação no layout novo, mas mantemos compat
 
-# limite seguro pra não pesar
 COLLECTION_LIMIT = int(os.getenv("COLLECTION_LIMIT", "500"))
 
-# AniList
 ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
 
-# Dado MiniApp
 DADO_NEW_USER_START = int(os.getenv("DADO_NEW_USER_START", "4"))
 DADO_WEB_EXPIRE_SECONDS = int(os.getenv("DADO_WEB_EXPIRE_SECONDS", "300"))
-DADO_WEB_MAX_OPTIONS = int(os.getenv("DADO_WEB_MAX_OPTIONS", "36"))  # quantas opções no grid (máx 36)
+
+# ✅ agora é no máximo 6 opções mesmo
+DADO_WEB_MAX_OPTIONS = int(os.getenv("DADO_WEB_MAX_OPTIONS", "6"))
+
 DADO_PICK_IMAGE = os.getenv(
     "DADO_PICK_IMAGE",
     "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
@@ -54,11 +56,12 @@ DADO_FALLBACK_IMAGE = os.getenv(
     "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-# Anti-abuso simples (web)
-WEB_RATE_LIMIT_SECONDS = float(os.getenv("WEB_RATE_LIMIT_SECONDS", "0.5"))
+WEB_RATE_LIMIT_SECONDS = float(os.getenv("WEB_RATE_LIMIT_SECONDS", "0.45"))
 _WEB_RATE: Dict[Tuple[int, str], float] = {}
 
-
+# =========================
+# helpers
+# =========================
 def _rate_limit(user_id: int, key: str) -> bool:
     now = time.time()
     k = (int(user_id), str(key))
@@ -69,13 +72,21 @@ def _rate_limit(user_id: int, key: str) -> bool:
     return True
 
 
+def _safe_int(x, default: int = 0) -> int:
+    try:
+        return int(x)
+    except Exception:
+        return default
+
+
+def _safe_str(x) -> str:
+    return x.strip() if isinstance(x, str) else ""
+
+
 # =========================
 # Telegram WebApp initData verify (correto)
 # =========================
 def verify_telegram_init_data(init_data: str) -> dict:
-    """
-    Valida initData do Telegram WebApp (método correto).
-    """
     if not init_data:
         raise HTTPException(status_code=401, detail="initData ausente")
 
@@ -99,17 +110,6 @@ def verify_telegram_init_data(init_data: str) -> dict:
     return {"user": user, "raw": data}
 
 
-def _safe_int(x, default: int = 0) -> int:
-    try:
-        return int(x)
-    except Exception:
-        return default
-
-
-def _safe_str(x) -> str:
-    return x.strip() if isinstance(x, str) else ""
-
-
 # =========================
 # Assinatura do link "coleção do dono"
 # =========================
@@ -122,14 +122,13 @@ def _sign_owner_link(user_id: int, ts: int) -> str:
 
 def _verify_owner_sig(user_id: int, ts: int, sig: str) -> bool:
     if not MINIAPP_SIGNING_SECRET:
-        # sem secret -> não bloqueia (menos seguro)
         return True
     expected = _sign_owner_link(user_id, ts)
     return hmac.compare_digest(expected, sig or "")
 
 
 # =========================
-# DB safe wrappers
+# DB safe wrappers (compat)
 # =========================
 def _ensure_user(db, user_id: int, first_name: str):
     try:
@@ -219,19 +218,12 @@ def _get_owner_display_name_safe(db, owner_id: int) -> str:
     return "Usuário"
 
 
-def _get_fav_name(db, user_id: int) -> str:
+def _get_fav_profile(db, user_id: int) -> dict:
     row = _get_user_row(db, user_id)
-    return _safe_str(row.get("fav_name"))
-
-
-def _get_sell_page(db, user_id: int, page: int, per_page: int):
-    fn = getattr(db, "get_collection_page", None)
-    if not callable(fn):
-        raise HTTPException(status_code=500, detail="Função get_collection_page não existe no database.py")
-    itens, total, total_pages = fn(user_id, page, per_page)
-    if itens is None:
-        itens = []
-    return itens, _safe_int(total, 0), max(1, _safe_int(total_pages, 1))
+    return {
+        "fav_name": _safe_str(row.get("fav_name")),
+        "fav_image": _safe_str(row.get("fav_image")),
+    }
 
 
 def _get_character_full(db, user_id: int, char_id: int) -> Optional[dict]:
@@ -277,7 +269,6 @@ def _buy_giro(db, user_id: int, price: int) -> bool:
 # Telegram send (PV)
 # =========================
 async def _tg_send_photo(chat_id: int, photo: str, caption: str):
-    # envio best-effort
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     payload = {
         "chat_id": int(chat_id),
@@ -296,7 +287,7 @@ async def _tg_send_photo(chat_id: int, photo: str, caption: str):
 
 
 # =========================
-# DADO backend helpers (compatíveis com database.py via getattr)
+# DADO backend
 # =========================
 DADO_MAX_BALANCE = int(os.getenv("DADO_MAX_BALANCE", "18"))
 GIRO_MAX_BALANCE = int(os.getenv("GIRO_MAX_BALANCE", "24"))
@@ -309,7 +300,6 @@ def _now_slot_4h(ts: Optional[float] = None) -> int:
 
 
 def _now_giro_slot_3h(ts: Optional[float] = None) -> int:
-    # 8 slots/dia (aprox a cada 3h) sem timezone (web), estável o suficiente
     if ts is None:
         ts = time.time()
     return int(int(ts) // (3 * 3600))
@@ -407,14 +397,13 @@ def _consume_one_die(db, user_id: int) -> bool:
 
 
 def _refund_one_die(db, user_id: int):
-    # devolve no saldo normal (simples)
     _inc_dado_balance(db, user_id, 1, max_balance=DADO_MAX_BALANCE)
 
 
 # -------------------------
 # Cache / blacklist (best-effort)
 # -------------------------
-_CHAR_POOL_CACHE: Dict[int, dict] = {}  # anime_id -> {"exp":ts, "title":..., "cover":..., "chars":[...]}
+_CHAR_POOL_CACHE: Dict[int, dict] = {}
 _POOL_LOCKS: Dict[int, asyncio.Lock] = {}
 _REFRESH_LOCK = asyncio.Lock()
 
@@ -428,20 +417,34 @@ def _get_pool_lock(anime_id: int) -> asyncio.Lock:
 
 
 def _db_is_anime_blacklisted(db, anime_id: int) -> bool:
-    fn = getattr(db, "is_dado_anime_blacklisted", None)
+    # compat: se seu DB tem is_bad_anime / mark_bad_anime (como no seu database.py), usa
+    fn = getattr(db, "is_bad_anime", None)
     if callable(fn):
         try:
             return bool(fn(int(anime_id)))
+        except Exception:
+            return False
+    fn2 = getattr(db, "is_dado_anime_blacklisted", None)
+    if callable(fn2):
+        try:
+            return bool(fn2(int(anime_id)))
         except Exception:
             return False
     return False
 
 
 def _db_blacklist_anime(db, anime_id: int, reason: str = "no_chars"):
-    fn = getattr(db, "blacklist_dado_anime", None)
+    fn = getattr(db, "mark_bad_anime", None)
     if callable(fn):
         try:
             fn(int(anime_id), str(reason))
+        except Exception:
+            pass
+        return
+    fn2 = getattr(db, "blacklist_dado_anime", None)
+    if callable(fn2):
+        try:
+            fn2(int(anime_id), str(reason))
         except Exception:
             pass
 
@@ -513,15 +516,10 @@ def _pick_random_animes(db, n: int) -> list[dict]:
 
     n = max(1, min(n, len(all_items)))
     chosen = random.sample(all_items, n)
-    # opcional: trazer capa no frontend depois (grid)
     return [{"id": int(x["anime_id"]), "title": x.get("title") or "Anime"} for x in chosen]
 
 
 async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optional[dict]:
-    """
-    Pool MAIN/SUPPORTING only.
-    Se personagem não tiver foto, usa coverImage do anime.
-    """
     q = """
     query ($id: Int, $page: Int) {
       Media(id: $id, type: ANIME) {
@@ -593,13 +591,8 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
 
 
 async def _get_random_character_from_anime(db, anime_id: int, tries: int = 14) -> Optional[dict]:
-    """
-    Cache por anime + fallback cover se sem foto.
-    Nunca retorna None se conseguir montar pool com chars.
-    """
     now = int(time.time())
 
-    # blacklist persistida (best-effort)
     if _db_is_anime_blacklisted(db, anime_id):
         return None
 
@@ -624,7 +617,6 @@ async def _get_random_character_from_anime(db, anime_id: int, tries: int = 14) -
         _db_blacklist_anime(db, anime_id, "no_chars_cached")
         return None
 
-    # auto-reroll silencioso: tenta vários antes de desistir
     random.shuffle(chars)
     pick_list = chars[: max(1, min(len(chars), tries))]
 
@@ -639,7 +631,6 @@ async def _get_random_character_from_anime(db, anime_id: int, tries: int = 14) -
                 "anime_cover": (_CHAR_POOL_CACHE[int(anime_id)].get("cover") or ""),
             }
 
-    # sem foto em todos: usa cover do anime (não falha)
     cover = (_CHAR_POOL_CACHE[int(anime_id)].get("cover") or "") or DADO_FALLBACK_IMAGE
     c = pick_list[0]
     return {
@@ -651,44 +642,51 @@ async def _get_random_character_from_anime(db, anime_id: int, tries: int = 14) -
     }
 
 
-async def _auto_reroll_character(db, options: list[dict], preferred_anime_id: int, user_id: int) -> Optional[dict]:
-    """
-    Solução definitiva:
-    - tenta o anime clicado
-    - se falhar, tenta outros da lista (silencioso)
-    - se todos falharem, tenta “reserva”: mais animes aleatórios do top cache (silencioso)
-    - só retorna None se realmente não existir personagem MAIN/SUPPORTING em nada (muito raro)
-    """
-    # tenta o preferido
-    order: list[int] = []
+async def _try_get_character_from_selected_only(db, anime_id: int) -> Optional[dict]:
+    # ✅ tenta só o anime selecionado (o "falha" aqui permite o usuário escolher outra opção)
+    return await _get_random_character_from_anime(db, int(anime_id), tries=14)
+
+
+def _get_custom_global_image_if_any(db, char_id: int) -> str:
+    # compat com seu database.py atual:
+    # - tabela character_images (set_global_character_image / get_global_character_image)
+    # - e/ou custom_image no user_collection (já vem pro miniapp na coleção)
     try:
-        order.append(int(preferred_anime_id))
+        fn = getattr(db, "get_global_character_image", None)
+        if callable(fn):
+            url = fn(int(char_id)) or ""
+            return _safe_str(url)
     except Exception:
         pass
+    try:
+        fn2 = getattr(db, "get_character_custom_image", None)
+        if callable(fn2):
+            url = fn2(int(char_id)) or ""
+            return _safe_str(url)
+    except Exception:
+        pass
+    return ""
 
-    for o in options or []:
-        try:
-            aid = int(o.get("id"))
-            if aid not in order:
-                order.append(aid)
-        except Exception:
-            continue
 
-    # tenta até 20 da própria lista
-    for aid in order[:20]:
-        info = await _get_random_character_from_anime(db, aid, tries=14)
-        if info:
-            return info
-
-    # reserva: tenta 18 aleatórios extras
-    extra_pool = _pick_random_animes(db, 18)
-    for o in extra_pool:
-        aid = int(o["id"])
-        info = await _get_random_character_from_anime(db, aid, tries=14)
-        if info:
-            return info
-
-    return None
+def _choose_rarity(dice_value: int, char_id: int) -> dict:
+    # ✅ "raridade" só pro visual (não mexe na coleção/bot)
+    # determinístico por char_id pra ficar consistente:
+    seed = (int(char_id) * 1103515245 + int(dice_value) * 12345) & 0xFFFFFFFF
+    r = seed % 1000  # 0..999
+    # pesos: 5★ 3%, 4★ 12%, 3★ 30%, 2★ 55% (ajuste livre)
+    if r < 30:
+        stars = 5
+        tier = "mythic"
+    elif r < 150:
+        stars = 4
+        tier = "epic"
+    elif r < 450:
+        stars = 3
+        tier = "rare"
+    else:
+        stars = 2
+        tier = "common"
+    return {"stars": stars, "tier": tier}
 
 
 # =========================
@@ -719,6 +717,7 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     giros = _get_giros(db, user_id)
     collection_name = _get_collection_name_safe(db, user_id)
     cards = _list_collection_cards_safe(db, user_id, limit=COLLECTION_LIMIT)
+    fav = _get_fav_profile(db, user_id)
 
     return JSONResponse(
         {
@@ -729,6 +728,7 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
             "collection_name": collection_name,
             "coins": coins,
             "giros": giros,
+            "fav": fav,
             "cards": cards,
         }
     )
@@ -762,6 +762,8 @@ def api_owner_collection(
     collection_name = _get_collection_name_safe(db, owner_id)
     cards = _list_collection_cards_safe(db, owner_id, limit=COLLECTION_LIMIT)
     owner_name = _get_owner_display_name_safe(db, owner_id)
+    # não vaza favorito do dono (privacidade) — mas se você quiser, pode retornar também
+    fav = {"fav_name": "", "fav_image": ""}
 
     return JSONResponse(
         {
@@ -772,6 +774,7 @@ def api_owner_collection(
             "collection_name": collection_name,
             "coins": coins,
             "giros": giros,
+            "fav": fav,
             "cards": cards,
         }
     )
@@ -792,7 +795,6 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
 
     coins = _get_coins(db, user_id)
     giros = _get_giros(db, user_id)
-    fav_name = _get_fav_name(db, user_id)
 
     return JSONResponse(
         {
@@ -800,51 +802,39 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
             "user_id": user_id,
             "coins": coins,
             "giros": giros,
-            "fav_name": fav_name,
             "sell_gain": SHOP_SELL_GAIN,
             "giro_price": SHOP_GIRO_PRICE,
-            "per_page": SHOP_PER_PAGE,
         }
     )
 
 
-@app.get("/api/shop/sell/list")
-def api_sell_list(page: int = 1, q: str = "", x_telegram_init_data: str = Header(default="")):
+@app.get("/api/shop/sell/all")
+def api_sell_all(q: str = "", x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
     first_name = user.get("first_name") or "User"
 
-    if not _rate_limit(user_id, "shop_list"):
+    if not _rate_limit(user_id, "shop_all"):
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
 
     import database as db
     _ensure_user(db, user_id, first_name)
 
-    fav_name = _get_fav_name(db, user_id)
-    fav_norm = fav_name.strip().casefold()
+    items = _list_collection_cards_safe(db, user_id, limit=COLLECTION_LIMIT)
+
     qn = (q or "").strip().casefold()
-
-    page = max(1, _safe_int(page, 1))
-    per_page = max(1, min(30, SHOP_PER_PAGE))
-
-    itens, total, total_pages = _get_sell_page(db, user_id, page, per_page)
-
     out = []
-    for r in itens:
+    for r in items:
         if not isinstance(r, dict):
             continue
-
-        char_id = _safe_int(r.get("character_id") or r.get("id") or r.get("char_id") or 0, 0)
-        name = _safe_str(r.get("character_name") or r.get("name") or r.get("char_name") or "Personagem")
-        anime = _safe_str(r.get("anime_title") or r.get("anime") or r.get("title") or "")
-        qty = max(1, _safe_int(r.get("quantity") or r.get("qty") or 1, 1))
+        char_id = _safe_int(r.get("character_id") or 0, 0)
+        name = _safe_str(r.get("character_name") or "Personagem")
+        anime = _safe_str(r.get("anime_title") or "Sem anime")
+        qty = max(1, _safe_int(r.get("quantity") or 1, 1))
 
         custom_image = _safe_str(r.get("custom_image"))
-        image = custom_image or _safe_str(r.get("image"))
-
-        is_custom = bool(custom_image)
-        is_fav = bool(fav_norm) and (name.strip().casefold() == fav_norm)
+        image = custom_image or _safe_str(r.get("image")) or ""
 
         if qn:
             if qn not in name.casefold() and qn not in anime.casefold() and qn not in str(char_id):
@@ -858,21 +848,10 @@ def api_sell_list(page: int = 1, q: str = "", x_telegram_init_data: str = Header
                 "quantity": qty,
                 "image": image,
                 "custom_image": custom_image,
-                "is_custom": is_custom,
-                "is_favorite": is_fav,
             }
         )
 
-    return JSONResponse(
-        {
-            "ok": True,
-            "page": page,
-            "total_pages": total_pages,
-            "total": total,
-            "items": out,
-            "sell_gain": SHOP_SELL_GAIN,
-        }
-    )
+    return JSONResponse({"ok": True, "items": out, "sell_gain": SHOP_SELL_GAIN})
 
 
 @app.post("/api/shop/sell/confirm")
@@ -901,16 +880,10 @@ def api_sell_confirm(payload_body: dict = Body(default={}), x_telegram_init_data
 
     coins = _get_coins(db, user_id)
     giros = _get_giros(db, user_id)
-    sold_name = _safe_str(item.get("character_name") or item.get("name") or "Personagem")
+    sold_name = _safe_str(item.get("character_name") or "Personagem")
 
     return JSONResponse(
-        {
-            "ok": True,
-            "sold": {"character_id": char_id, "character_name": sold_name},
-            "coins": coins,
-            "giros": giros,
-            "sell_gain": SHOP_SELL_GAIN,
-        }
+        {"ok": True, "sold": {"character_id": char_id, "character_name": sold_name}, "coins": coins, "giros": giros, "sell_gain": SHOP_SELL_GAIN}
     )
 
 
@@ -935,7 +908,7 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
 
 
 # =========================
-# API: DADO (MiniApp)
+# API: DADO
 # =========================
 @app.post("/api/dado/start")
 async def api_dado_start(x_telegram_init_data: str = Header(default="")):
@@ -953,15 +926,20 @@ async def api_dado_start(x_telegram_init_data: str = Header(default="")):
     balance = _refresh_user_dado_balance(db, user_id)
     extra = _refresh_user_giros(db, user_id)
     if balance <= 0 and extra <= 0:
+        # ✅ mensagem mais explicada
         return JSONResponse(
-            {"ok": False, "error": "no_balance", "msg": "Você está sem dados/giros agora.", "now": datetime.utcnow().strftime("%H:%M")},
+            {
+                "ok": False,
+                "error": "no_balance",
+                "msg": "Você está sem dados/giros agora.\n\nEles recarregam automaticamente com o tempo.\nVolte mais tarde e tente de novo.",
+                "now": datetime.utcnow().strftime("%H:%M"),
+            },
             status_code=200,
         )
 
     if not _consume_one_die(db, user_id):
         return JSONResponse({"ok": False, "error": "consume_failed"}, status_code=200)
 
-    # garante top cache (best-effort)
     try:
         await _ensure_top_cache_fresh(db)
     except Exception:
@@ -969,14 +947,14 @@ async def api_dado_start(x_telegram_init_data: str = Header(default="")):
 
     dice_value = random.SystemRandom().randint(1, 6)
 
-    # mais opções pra grid (ex: 1->6, 6->36)
-    n = max(6, min(int(dice_value) * 6, DADO_WEB_MAX_OPTIONS))
+    # ✅ no máximo 6 opções
+    n = max(6, min(6, DADO_WEB_MAX_OPTIONS))
     options = _pick_random_animes(db, n)
     if not options:
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "no_anime_cache"}, status_code=200)
 
-    # cria roll
+    # cria roll (pending)
     try:
         fn = getattr(db, "create_dice_roll", None)
         if callable(fn):
@@ -994,18 +972,11 @@ async def api_dado_start(x_telegram_init_data: str = Header(default="")):
     balance2 = _refresh_user_dado_balance(db, user_id)
     extra2 = _refresh_user_giros(db, user_id)
 
-    return JSONResponse(
-        {"ok": True, "roll_id": int(roll_id), "dice": int(dice_value), "options": options, "balance": int(balance2), "extra": int(extra2)},
-        status_code=200,
-    )
+    return JSONResponse({"ok": True, "roll_id": int(roll_id), "dice": int(dice_value), "options": options, "balance": int(balance2), "extra": int(extra2)})
 
 
 @app.post("/api/dado/pick")
-async def api_dado_pick(
-    anime_id: int = Query(...),
-    roll_id: int = Query(...),
-    x_telegram_init_data: str = Header(default=""),
-):
+async def api_dado_pick(anime_id: int = Query(...), roll_id: int = Query(...), x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
@@ -1025,10 +996,13 @@ async def api_dado_pick(
 
     status = str(roll.get("status") or "")
     created_at = int(roll.get("created_at") or 0)
+    dice_value = _safe_int(roll.get("dice_value") or 1, 1)
 
-    if status not in ("pending", "processing"):
+    # ✅ se já resolveu, não deixa duplicar
+    if status == "resolved":
         return JSONResponse({"ok": False, "error": "used"}, status_code=200)
 
+    # ✅ expiração devolve o dado (se ainda não resolveu)
     if created_at and int(time.time()) - created_at > DADO_WEB_EXPIRE_SECONDS:
         try:
             fn = getattr(db, "set_dice_roll_status", None)
@@ -1039,7 +1013,7 @@ async def api_dado_pick(
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "expired"}, status_code=200)
 
-    # lock no DB (best-effort)
+    # lock best-effort (evita duplo clique ao mesmo tempo)
     if status == "pending":
         try:
             fn = getattr(db, "try_set_dice_roll_status", None)
@@ -1050,21 +1024,17 @@ async def api_dado_pick(
         except Exception:
             pass
 
-    try:
-        options = json.loads(roll.get("options_json") or "[]")
-    except Exception:
-        options = []
-
-    info = await _auto_reroll_character(db, options, preferred_anime_id=int(anime_id), user_id=user_id)
+    # tenta somente o anime clicado
+    info = await _try_get_character_from_selected_only(db, int(anime_id))
     if not info:
-        _refund_one_die(db, user_id)
+        # ✅ permite escolher OUTRO da mesma lista (sem perder dado)
         try:
             fn = getattr(db, "set_dice_roll_status", None)
             if callable(fn):
-                fn(int(roll_id), "failed_soft")
+                fn(int(roll_id), "pending")
         except Exception:
             pass
-        return JSONResponse({"ok": False, "error": "no_char"}, status_code=200)
+        return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
 
     # resolved
     try:
@@ -1078,17 +1048,11 @@ async def api_dado_pick(
     name = info["name"]
     anime_title = info.get("anime_title") or "Obra"
 
-    # prioridade: custom_image global (setfoto) -> anilist -> fallback
-    img = ""
-    try:
-        fn = getattr(db, "get_character_custom_image", None)
-        if callable(fn):
-            img = fn(char_id) or ""
-    except Exception:
-        img = ""
-    image = img or (info.get("image") or "") or DADO_FALLBACK_IMAGE
+    # ✅ prioridade: setfoto global -> anilist -> fallback
+    gimg = _get_custom_global_image_if_any(db, char_id)
+    image = gimg or (info.get("image") or "") or DADO_FALLBACK_IMAGE
 
-    # permite repetir (sem coin por repetido)
+    # adiciona na coleção
     try:
         fn_add = getattr(db, "add_character_to_collection", None)
         if callable(fn_add):
@@ -1099,7 +1063,7 @@ async def api_dado_pick(
     except Exception:
         pass
 
-    # entrega no PV do bot (best-effort)
+    # PV do bot (mantém texto padrão)
     await _tg_send_photo(
         chat_id=user_id,
         photo=image,
@@ -1111,11 +1075,15 @@ async def api_dado_pick(
         ),
     )
 
-    return JSONResponse({"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image}}, status_code=200)
+    rarity = _choose_rarity(dice_value=dice_value, char_id=char_id)
+    return JSONResponse(
+        {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image, "rarity": rarity}},
+        status_code=200,
+    )
 
 
 # =========================
-# UI: Coleção + Dado (/app)
+# UI: /app — Coleção + Favoritos + Dado (Gacha)
 # =========================
 @app.get("/app", response_class=HTMLResponse)
 def miniapp_collection():
@@ -1127,88 +1095,268 @@ def miniapp_collection():
   <title>Baltigo MiniApp</title>
   <style>
     :root{
-      --bg:#0b0b0f; --card:#151522; --muted: rgba(255,255,255,.65);
-      --muted2: rgba(255,255,255,.45); --stroke: rgba(255,255,255,.12);
-      --accent:#ff4fd8; --accent2:#7c4dff; --heart:#ff3b7a; --section: rgba(255,255,255,.06);
+      --bg:#07070b;
+      --panel: rgba(255,255,255,.04);
+      --card:#111118;
+      --stroke: rgba(255,255,255,.10);
+      --muted: rgba(255,255,255,.68);
+      --muted2: rgba(255,255,255,.48);
+
+      /* ✅ paleta vermelha */
+      --r1:#ff1f1f;
+      --r2:#b30000;
+      --r3:#ff4d4d;
+
+      --good: rgba(0,255,140,.18);
+      --bad: rgba(255,60,60,.18);
+
+      /* raridades (visual) */
+      --c-common:#c9c9c9;
+      --c-rare:#4da3ff;
+      --c-epic:#b06cff;
+      --c-mythic:#ffcc33;
     }
+
     *{box-sizing:border-box}
-    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#fff;padding:12px 12px 88px;}
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,31,31,.22), transparent 55%),
+        radial-gradient(900px 600px at 85% 10%, rgba(179,0,0,.18), transparent 55%),
+        var(--bg);
+      color:#fff;
+      padding:14px 14px 90px;
+      overflow-x:hidden;
+    }
+
     .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
-    .title{display:flex;flex-direction:column;gap:2px;min-width:0;}
-    .title h1{margin:0;font-size:18px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .title{display:flex;flex-direction:column;gap:3px;min-width:0;}
+    .title h1{margin:0;font-size:18px;font-weight:1000;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .title .sub{font-size:12px;color:var(--muted2);}
-    .stats{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;flex-shrink:0;}
-    .stat{display:flex;align-items:center;gap:6px;font-weight:900;font-size:13px;}
+
+    .stats{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
+      background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;flex-shrink:0;
+      box-shadow: 0 12px 38px rgba(0,0,0,.35);
+    }
+    .stat{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}
     .dot{width:1px;height:16px;background:var(--stroke);}
-    .tabs{display:flex;gap:10px;margin:14px 0 10px;padding:8px;border:1px solid var(--stroke);border-radius:999px;background:rgba(255,255,255,.04);}
-    .tab{flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:900;font-size:14px;color:var(--muted);background:transparent;border:0;}
-    .tab.active{color:#fff;background:linear-gradient(90deg, rgba(255,79,216,.9), rgba(124,77,255,.9));box-shadow:0 10px 30px rgba(255,79,216,.15);}
-    .search{display:flex;gap:10px;align-items:center;margin:8px 0 14px;}
-    .search input{width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);color:#fff;outline:none;font-size:14px;}
+
+    .tabs{
+      display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
+      border-radius:999px;background:rgba(255,255,255,.04);
+      box-shadow: 0 14px 46px rgba(0,0,0,.35);
+    }
+    .tab{
+      flex:1;text-align:center;padding:10px 12px;border-radius:999px;
+      font-weight:950;font-size:14px;color:var(--muted);
+      background:transparent;border:0;cursor:pointer;
+      transition: transform .12s ease, background .12s ease;
+    }
+    .tab:active{transform: scale(.98);}
+    .tab.active{
+      color:#fff;
+      background: linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));
+      box-shadow: 0 12px 40px rgba(255,31,31,.15);
+    }
+
+    .search{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}
+    .search input{
+      width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);
+      background:rgba(255,255,255,.04);color:#fff;outline:none;font-size:14px;
+    }
     .search input::placeholder{color:rgba(255,255,255,.35)}
+
     .status{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;}
-    .status.ok{border-color: rgba(0,255,140,.18);}
-    .status.err{border-color: rgba(255,60,60,.18);color: rgba(255,120,120,.95);}
-    .section{margin-top:12px;padding:10px 10px 6px;border-radius:16px;border:1px solid var(--stroke);background:var(--section);}
-    .section-title{font-weight:900;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
-    .section-count{font-size:12px;color:rgba(255,255,255,.55);font-weight:800;}
+    .status.ok{border-color: var(--good);}
+    .status.err{border-color: var(--bad);color: rgba(255,120,120,.95);}
+
+    .section{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}
+    .section-title{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .section-count{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}
+
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-    .card{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);background:var(--card);min-height:220px;}
-    .card img{width:100%;height:220px;object-fit:cover;display:block;}
-    .overlay{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.78));}
-    .name{font-weight:900;font-size:16px;margin:0;}
-    .meta{margin-top:3px;font-size:12px;color:rgba(255,255,255,.75);}
-    .pill{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:900;font-size:12px;}
-    .heart{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);font-size:16px;color:var(--heart);}
+    .card{
+      position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);
+      background:var(--card);min-height:220px;
+      box-shadow: 0 18px 56px rgba(0,0,0,.45);
+      transform: translateZ(0);
+    }
+    .card img{width:100%;height:220px;object-fit:cover;display:block;filter:saturate(1.05) contrast(1.05);}
+    .overlay{
+      position:absolute;left:0;right:0;bottom:0;padding:10px;
+      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.82));
+    }
+    .name{font-weight:1000;font-size:15px;margin:0;letter-spacing:.1px;}
+    .meta{margin-top:3px;font-size:12px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .pill{
+      position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);
+      border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;
+      backdrop-filter: blur(8px);
+    }
 
-    /* ===== DADO PREMIUM UI ===== */
-    .dado-card { padding: 14px; border: 1px solid var(--stroke); background: rgba(255,255,255,.04); border-radius: 18px; }
-    .dado-header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .dado-title { font-weight: 900; font-size: 16px; }
-    .dado-sub { color: rgba(255,255,255,.65); font-size: 12px; margin-top: 2px; }
-    .dado-pill { font-weight: 900; font-size: 12px; border: 1px solid var(--stroke); padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.03); white-space: nowrap; }
-    .dado-actions { margin-top: 14px; display:flex; gap:12px; align-items:center; }
-    .dado-btn { flex: 1; border: 0; border-radius: 16px; padding: 14px 14px; font-weight: 900; font-size: 14px; color: #000; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
-    .dado-btn.secondary { flex: 0; padding: 14px 14px; color: #fff; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); }
-    .dado-controls { margin-top: 10px; display:flex; gap:10px; align-items:center; }
-    .dado-input, .dado-select { width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color: #fff; padding: 12px 12px; outline: none; font-weight: 700; }
-    .dado-tip { margin-top: 10px; color: rgba(255,255,255,.65); font-size: 12px; }
+    /* ✅ brilho das cartas */
+    .shine{
+      position:absolute;inset:-40%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 35%);
+      transform: rotate(12deg);
+      opacity:.0; pointer-events:none;
+      transition: opacity .2s ease;
+      mix-blend-mode: screen;
+    }
+    .card:hover .shine{opacity:.35}
+    .card:active .shine{opacity:.45}
 
-    .anime-grid { margin-top: 12px; display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    @media (min-width: 520px){ .anime-grid { grid-template-columns: repeat(3, 1fr); } }
-    .anime-card { text-align:left; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color: #fff; border-radius: 16px; padding: 10px; cursor:pointer; transition: transform .12s ease, background .12s ease; }
-    .anime-card:active { transform: scale(.98); }
-    .anime-cover { width:100%; aspect-ratio: 16/9; border-radius: 12px; object-fit: cover; border: 1px solid rgba(255,255,255,.10); background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), rgba(255,255,255,.02)); }
-    .anime-title { margin-top: 8px; font-weight: 900; font-size: 12px; line-height: 1.2; max-height: 2.4em; overflow: hidden; }
+    /* ✅ badge raridade */
+    .rar{
+      position:absolute;top:10px;right:10px;padding:6px 10px;border-radius:999px;
+      background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);
+      font-weight:1000;font-size:12px;backdrop-filter: blur(8px);
+      display:flex;align-items:center;gap:6px;
+    }
+    .rar .dot{width:8px;height:8px;border-radius:99px;background:#fff;opacity:.9}
+    .tier-common .rar .dot{background:var(--c-common)}
+    .tier-rare   .rar .dot{background:var(--c-rare)}
+    .tier-epic   .rar .dot{background:var(--c-epic)}
+    .tier-mythic .rar .dot{background:var(--c-mythic)}
+    .tier-common{outline: 0 solid transparent;}
+    .tier-rare  {box-shadow: 0 0 0 1px rgba(77,163,255,.16), 0 24px 70px rgba(77,163,255,.08);}
+    .tier-epic  {box-shadow: 0 0 0 1px rgba(176,108,255,.16), 0 24px 70px rgba(176,108,255,.08);}
+    .tier-mythic{box-shadow: 0 0 0 1px rgba(255,204,51,.18), 0 24px 70px rgba(255,204,51,.09);}
 
-    .dice-wrap { width: 74px; height: 74px; perspective: 700px; }
-    .dice { position: relative; width: 74px; height: 74px; transform-style: preserve-3d; transition: transform 900ms cubic-bezier(.2,.85,.2,1); }
-    .dice-face { position: absolute; width: 74px; height: 74px; border-radius: 18px; border: 1px solid rgba(255,255,255,.18); background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); display:flex; align-items:center; justify-content:center; font-weight: 900; font-size: 22px; box-shadow: 0 12px 28px rgba(0,0,0,.25); user-select:none; }
-    .dice-face::after{ content:""; position:absolute; inset: 10px; border-radius: 14px; border: 1px solid rgba(255,255,255,.10); pointer-events:none; }
-    .dice-face.f1 { transform: translateZ(37px); }
-    .dice-face.f2 { transform: rotateY(90deg) translateZ(37px); }
-    .dice-face.f3 { transform: rotateY(180deg) translateZ(37px); }
-    .dice-face.f4 { transform: rotateY(-90deg) translateZ(37px); }
-    .dice-face.f5 { transform: rotateX(90deg) translateZ(37px); }
-    .dice-face.f6 { transform: rotateX(-90deg) translateZ(37px); }
-    @keyframes diceShake { 0% { transform: translateY(0); } 30% { transform: translateY(-2px); } 60% { transform: translateY(2px); } 100% { transform: translateY(0); } }
-    .dice-shake { animation: diceShake 300ms ease 2; }
+    /* ===== DADO (gacha) ===== */
+    .dado-card{
+      padding:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);
+      border-radius:18px;box-shadow: 0 18px 56px rgba(0,0,0,.45);
+    }
+    .dado-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+    .dado-title{font-weight:1000;font-size:16px;}
+    .dado-sub{color:rgba(255,255,255,.68);font-size:12px;margin-top:4px;line-height:1.35;}
+    .dado-pill{
+      font-weight:1000;font-size:12px;border:1px solid var(--stroke);
+      padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.03);white-space:nowrap;
+    }
 
-    .lootbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.10), rgba(0,0,0,.85)); backdrop-filter: blur(10px); padding: 18px; }
-    .lootbox.on { display:flex; }
-    .lootbox-panel { width: min(520px, 100%); border-radius: 22px; border: 1px solid rgba(255,255,255,.14); background: rgba(10,10,12,.85); box-shadow: 0 24px 80px rgba(0,0,0,.6); overflow: hidden; transform: translateY(10px) scale(.98); opacity: 0; transition: all 420ms cubic-bezier(.2,.85,.2,1); }
-    .lootbox.on .lootbox-panel { transform: translateY(0) scale(1); opacity: 1; }
-    .lootbox-top { padding: 14px 14px 0 14px; display:flex; align-items:center; justify-content: space-between; gap: 10px; }
-    .lootbox-title { font-weight: 900; }
-    .lootbox-close { border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color:#fff; border-radius: 14px; padding: 10px 12px; font-weight: 900; cursor: pointer; }
-    .lootbox-stage { padding: 14px; display:flex; gap: 12px; align-items:center; }
-    .lootbox-img { width: 104px; height: 104px; border-radius: 18px; object-fit: cover; border: 1px solid rgba(255,255,255,.14); background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), rgba(255,255,255,.02)); }
-    .lootbox-info { min-width:0; }
-    .lootbox-name { font-weight: 900; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .lootbox-anime { margin-top: 4px; color: rgba(255,255,255,.70); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .lootbox-note { margin-top: 10px; color: rgba(255,255,255,.70); font-size: 12px; }
-    @keyframes revealPulse { 0% { box-shadow: 0 0 0 rgba(124,255,178,0); } 100% { box-shadow: 0 0 60px rgba(124,255,178,.22); } }
-    .reveal-glow { animation: revealPulse 800ms ease 1; }
+    .dado-actions{margin-top:14px;display:flex;gap:12px;align-items:center;}
+    .roll-emoji{
+      width:72px;height:72px;border-radius:18px;border:1px solid rgba(255,255,255,.14);
+      background: radial-gradient(circle at 20% 20%, rgba(255,31,31,.22), rgba(255,255,255,.02));
+      display:flex;align-items:center;justify-content:center;
+      font-size:34px;font-weight:1000;
+      box-shadow: 0 18px 56px rgba(0,0,0,.35);
+      user-select:none;
+    }
+    @keyframes wobble{
+      0%{transform:rotate(0deg) scale(1)}
+      20%{transform:rotate(-10deg) scale(1.02)}
+      45%{transform:rotate(12deg) scale(1.03)}
+      70%{transform:rotate(-8deg) scale(1.02)}
+      100%{transform:rotate(0deg) scale(1)}
+    }
+    .wobble{animation:wobble 650ms cubic-bezier(.2,.85,.2,1) 1;}
+
+    .dado-btn{
+      flex:1;border:0;border-radius:16px;padding:14px 14px;font-weight:1000;font-size:14px;color:#fff;
+      background: linear-gradient(90deg, rgba(255,31,31,.96), rgba(179,0,0,.96));
+      box-shadow: 0 18px 56px rgba(255,31,31,.10);
+      cursor:pointer;
+    }
+    .dado-btn:disabled{opacity:.55;cursor:not-allowed}
+
+    .anime-grid{margin-top:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+    .anime-card{
+      text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;
+      border-radius:16px;padding:10px;cursor:pointer;transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      position:relative;overflow:hidden;
+    }
+    .anime-card:active{transform:scale(.98)}
+    .anime-card:hover{border-color: rgba(255,31,31,.25)}
+    .anime-title{margin-top:2px;font-weight:1000;font-size:12px;line-height:1.25;max-height:2.6em;overflow:hidden;}
+    .anime-sheen{
+      position:absolute;inset:-30%;
+      background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.14) 50%, transparent 65%);
+      transform: translateX(-30%);
+      opacity:.0; pointer-events:none;
+    }
+    .anime-card:hover .anime-sheen{opacity:.25; animation: sweep 900ms ease 1;}
+    @keyframes sweep{0%{transform:translateX(-30%)}100%{transform:translateX(30%)}}
+
+    /* ===== Lootbox (Honkai vibe) ===== */
+    .lootbox{
+      position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(255,31,31,.18), transparent 55%),
+        radial-gradient(circle at 40% 70%, rgba(179,0,0,.18), transparent 55%),
+        rgba(0,0,0,.82);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+    }
+    .lootbox.on{display:flex;}
+    .lootbox-panel{
+      width:min(520px, 100%);
+      border-radius:22px;border:1px solid rgba(255,255,255,.14);
+      background: rgba(10,10,12,.86);
+      box-shadow: 0 30px 120px rgba(0,0,0,.75);
+      overflow:hidden;
+      transform: translateY(10px) scale(.98);
+      opacity: 0;
+      transition: all 420ms cubic-bezier(.2,.85,.2,1);
+      position:relative;
+    }
+    .lootbox.on .lootbox-panel{transform: translateY(0) scale(1);opacity:1;}
+
+    .lootbox-top{
+      padding: 14px 14px 0 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .lootbox-title{font-weight:1000;letter-spacing:.2px}
+    .lootbox-close{
+      border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04);
+      color:#fff; border-radius:14px; padding:10px 12px; font-weight:1000; cursor:pointer;
+    }
+
+    .lootbox-stage{padding:14px;display:flex;gap:12px;align-items:center;position:relative;}
+    .lootbox-img{
+      width:110px;height:110px;border-radius:18px;object-fit:cover;border:1px solid rgba(255,255,255,.14);
+      background: radial-gradient(circle at 20% 20%, rgba(255,31,31,.20), rgba(255,255,255,.02));
+      box-shadow: 0 20px 70px rgba(0,0,0,.55);
+    }
+    .lootbox-info{min-width:0;}
+    .lootbox-name{font-weight:1000;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .lootbox-anime{margin-top:4px;color:rgba(255,255,255,.72);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .lootbox-note{margin-top:10px;color:rgba(255,255,255,.70);font-size:12px;}
+
+    .stars{margin-top:8px;font-size:14px;letter-spacing:1px}
+    .stars.common{color:var(--c-common)}
+    .stars.rare{color:var(--c-rare)}
+    .stars.epic{color:var(--c-epic)}
+    .stars.mythic{color:var(--c-mythic)}
+
+    /* partículas */
+    .spark{
+      position:absolute; inset:0; pointer-events:none;
+      background:
+        radial-gradient(2px 2px at 15% 30%, rgba(255,255,255,.55), transparent 55%),
+        radial-gradient(2px 2px at 35% 65%, rgba(255,255,255,.45), transparent 55%),
+        radial-gradient(2px 2px at 70% 25%, rgba(255,255,255,.50), transparent 55%),
+        radial-gradient(2px 2px at 82% 60%, rgba(255,255,255,.40), transparent 55%),
+        radial-gradient(2px 2px at 55% 40%, rgba(255,255,255,.45), transparent 55%);
+      opacity:.0;
+    }
+    .lootbox.on .spark{opacity:.55; animation: twinkle 1.2s ease infinite;}
+    @keyframes twinkle{0%,100%{opacity:.40}50%{opacity:.70}}
+
+    /* glow raridade */
+    .glow-common{box-shadow: 0 0 0 1px rgba(201,201,201,.14), 0 0 80px rgba(201,201,201,.06) inset;}
+    .glow-rare{box-shadow: 0 0 0 1px rgba(77,163,255,.18), 0 0 90px rgba(77,163,255,.10) inset;}
+    .glow-epic{box-shadow: 0 0 0 1px rgba(176,108,255,.18), 0 0 90px rgba(176,108,255,.10) inset;}
+    .glow-mythic{box-shadow: 0 0 0 1px rgba(255,204,51,.20), 0 0 100px rgba(255,204,51,.12) inset;}
+
+    @keyframes pop{
+      0%{transform: scale(.96);opacity:.0}
+      100%{transform: scale(1);opacity:1}
+    }
+    .pop{animation: pop 260ms ease 1;}
   </style>
 </head>
 <body>
@@ -1226,9 +1374,8 @@ def miniapp_collection():
 
   <div class="tabs">
     <button class="tab active" id="tab_all">📦 Coleção</button>
-    <button class="tab" id="tab_fav">⭐ Favoritos</button>
+    <button class="tab" id="tab_fav">⭐ Favorito</button>
     <button class="tab" id="tab_dado">🎲 Dado</button>
-    <button class="tab" id="tab_shop">🛒 Loja</button>
   </div>
 
   <div class="search" id="search_box">
@@ -1242,54 +1389,38 @@ def miniapp_collection():
     <div class="dado-card">
       <div class="dado-header">
         <div>
-          <div class="dado-title">🎲 Dado Premium</div>
-          <div class="dado-sub">Rola aqui no MiniApp (3D). Escolha 1 anime no grid e receba o personagem no PV.</div>
+          <div class="dado-title">🎲 Gacha</div>
+          <div class="dado-sub">Role e escolha um anime. Se uma opção falhar, você pode tentar outra da mesma lista sem perder o dado.</div>
         </div>
         <div class="dado-pill">Dados: <span id="dado_balance">-</span> | Giros: <span id="dado_extra">-</span></div>
       </div>
 
       <div class="dado-actions">
-        <div class="dice-wrap">
-          <div id="dice3d" class="dice">
-            <div class="dice-face f1">1</div>
-            <div class="dice-face f2">2</div>
-            <div class="dice-face f3">3</div>
-            <div class="dice-face f4">4</div>
-            <div class="dice-face f5">5</div>
-            <div class="dice-face f6">6</div>
-          </div>
-        </div>
-
-        <button id="btn_roll" class="dado-btn">ROLAR AGORA</button>
-        <button id="btn_reco" class="dado-btn secondary" title="Escolhe uma opção recomendada sozinho">🧠</button>
+        <div class="roll-emoji" id="diceEmoji">🎲</div>
+        <button id="btn_roll" class="dado-btn">ROLAR</button>
       </div>
 
-      <div class="dado-controls">
-        <input id="dado_search" class="dado-input" placeholder="🔎 Buscar anime..." />
-        <select id="dado_filter" class="dado-select" style="max-width: 150px;">
-          <option value="popular">Popular</option>
-          <option value="az">A–Z</option>
-          <option value="random">Aleatório</option>
-        </select>
+      <div class="anime-grid" id="anime_grid"></div>
+      <div style="margin-top:10px;color:rgba(255,255,255,.65);font-size:12px;line-height:1.35" id="dado_hint">
+        Dica: escolha uma das 6 opções. Se falhar, tente outra.
       </div>
-
-      <div class="dado-tip" id="dado_tip">Dica: clique em um card. Se quiser, aperta 🧠 pra ele escolher recomendado.</div>
-      <div id="anime_grid" class="anime-grid"></div>
     </div>
   </div>
 
   <!-- LOOTBOX -->
   <div id="lootbox" class="lootbox">
     <div class="lootbox-panel" id="lootbox_panel">
+      <div class="spark"></div>
       <div class="lootbox-top">
-        <div class="lootbox-title">✨ Lootbox Reveal</div>
+        <div class="lootbox-title">✨ REVELAÇÃO</div>
         <button class="lootbox-close" id="lootbox_close">FECHAR</button>
       </div>
-      <div class="lootbox-stage" id="lootbox_stage">
+      <div class="lootbox-stage pop" id="lootbox_stage">
         <img class="lootbox-img" id="lootbox_img" src="" alt="character"/>
         <div class="lootbox-info">
           <div class="lootbox-name" id="lootbox_name">...</div>
           <div class="lootbox-anime" id="lootbox_anime">...</div>
+          <div class="stars" id="lootbox_stars">☆☆☆☆☆</div>
           <div class="lootbox-note">✅ Entregue no PV do bot</div>
         </div>
       </div>
@@ -1325,7 +1456,8 @@ def miniapp_collection():
     }
 
     let allCards = [];
-    let showFav = false;
+    let mode = "all"; // all | fav | dado
+    let favProfile = { fav_name: "", fav_image: "" };
 
     function setStatus(text, type){
       const el = document.getElementById("status");
@@ -1356,6 +1488,7 @@ def miniapp_collection():
       return pickFirstString(c, ["anime_title","anime","anime_name","obra","title","series","serie"]) || "Sem anime";
     }
     function getImageUrl(c){
+      // ✅ prioridade custom_image -> image
       return pickFirstString(c, ["custom_image","image","img","photo","picture","url"]) || "";
     }
     function getCharId(c){
@@ -1363,10 +1496,6 @@ def miniapp_collection():
     }
     function getQty(c){
       return pickFirstNumber(c, ["quantity","qty","qtd","amount","count"]) ?? 1;
-    }
-    function isFavorite(c){
-      const v = c?.is_favorite ?? c?.favorite ?? c?.fav;
-      return v === true || v === 1 || v === "1" || v === "true";
     }
 
     function cmpAZ(a, b){
@@ -1390,10 +1519,71 @@ def miniapp_collection():
       return out;
     }
 
-    function render(){
+    function computeTierHint(c){
+      // visual só: heurística por quantidade (mais qty = mais brilho leve)
+      const q = getQty(c);
+      if (q >= 5) return "tier-epic";
+      if (q >= 3) return "tier-rare";
+      return "tier-common";
+    }
+
+    function renderCollection(){
       const q = (document.getElementById("q").value || "").trim().toLowerCase();
-      const filtered = allCards.filter(c => {
-        if (showFav && !isFavorite(c)) return false;
+      let filtered = allCards;
+
+      if (mode === "fav"){
+        // ✅ Favoritos: mostra o personagem favoritado do user (fav_name/fav_image).
+        // Se não tiver, mostra "vazio" amigável.
+        const root = document.getElementById("sections");
+        root.innerHTML = "";
+        const favName = (favProfile?.fav_name || "").trim();
+        const favImg = (favProfile?.fav_image || "").trim();
+
+        if (!favName){
+          root.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Você ainda não definiu um favorito.</div>";
+          return;
+        }
+
+        const fake = [{ character_name: favName, anime_title: "Favorito", image: favImg, quantity: 1, character_id: 0 }];
+        const g = buildGroups(fake);
+        for (const secData of g){
+          const section = document.createElement("div");
+          section.className = "section";
+          const header = document.createElement("div");
+          header.className = "section-title";
+          header.innerHTML = `<div>${escapeHtml(secData.title)}</div><div class="section-count">${secData.cards.length}</div>`;
+          section.appendChild(header);
+
+          const grid = document.createElement("div");
+          grid.className = "grid";
+
+          for (const c of secData.cards){
+            const img = getImageUrl(c);
+            const name = getCharacterName(c);
+
+            const card = document.createElement("div");
+            card.className = "card tier-mythic";
+            card.innerHTML = `
+              <div class="shine"></div>
+              ${img ? `<img src="${escapeHtml(img)}" alt="">`
+                   : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}
+              <div class="rar"><span class="dot"></span> Favorito</div>
+              <div class="overlay">
+                <div class="name">${escapeHtml(name)}</div>
+                <div class="meta">Seu favorito</div>
+              </div>
+            `;
+            grid.appendChild(card);
+          }
+
+          section.appendChild(grid);
+          root.appendChild(section);
+        }
+        return;
+      }
+
+      // modo coleção
+      filtered = filtered.filter(c => {
         if (!q) return true;
         const name = getCharacterName(c).toLowerCase();
         const anime = getAnimeTitle(c).toLowerCase();
@@ -1405,7 +1595,7 @@ def miniapp_collection():
       sectionsRoot.innerHTML = "";
 
       if (!filtered.length){
-        sectionsRoot.innerHTML = "<div style='color:rgba(255,255,255,.65)'>Nenhum card encontrado.</div>";
+        sectionsRoot.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Nenhum card encontrado.</div>";
         return;
       }
 
@@ -1428,15 +1618,16 @@ def miniapp_collection():
           const qty = getQty(c);
           const charId = getCharId(c);
           const name = getCharacterName(c);
-          const fav = isFavorite(c);
+          const tier = computeTierHint(c);
 
           const card = document.createElement("div");
-          card.className = "card";
+          card.className = "card " + tier;
           card.innerHTML = `
+            <div class="shine"></div>
             ${img ? `<img src="${escapeHtml(img)}" alt="">`
                  : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}
             <div class="pill">x${qty} • ID ${charId}</div>
-            ${fav ? `<div class="heart">❤️</div>` : ``}
+            <div class="rar"><span class="dot"></span> ${tier.replace("tier-","").toUpperCase()}</div>
             <div class="overlay">
               <div class="name">${escapeHtml(name)}</div>
               <div class="meta">${escapeHtml(g.title)}</div>
@@ -1485,180 +1676,143 @@ def miniapp_collection():
         document.getElementById("coins").textContent = String(data.coins ?? "-");
         document.getElementById("giros").textContent = String(data.giros ?? "-");
 
+        favProfile = data.fav || { fav_name:"", fav_image:"" };
         allCards = Array.isArray(data.cards) ? data.cards : [];
-        setStatus("✅ Coleção carregada.", "ok");
-        render();
+
+        setStatus("✅ Pronto.", "ok");
+        renderCollection();
       } catch(e){
         setStatus("❌ Erro inesperado.", "err");
       }
     }
 
     // =========================
-    // Tabs + Views
+    // Tabs / Views
     // =========================
     const tabAll = document.getElementById("tab_all");
     const tabFav = document.getElementById("tab_fav");
     const tabDado = document.getElementById("tab_dado");
-    const tabShop = document.getElementById("tab_shop");
 
     const sections = document.getElementById("sections");
     const searchBox = document.getElementById("search_box");
     const statusBox = document.getElementById("status");
     const dadoView = document.getElementById("dado_view");
 
-    function showView(mode){
-      if(mode === "dado"){
+    function setActiveTab(which){
+      [tabAll, tabFav, tabDado].forEach(t=>t.classList.remove("active"));
+      if(which==="all") tabAll.classList.add("active");
+      if(which==="fav") tabFav.classList.add("active");
+      if(which==="dado") tabDado.classList.add("active");
+    }
+
+    function showView(which){
+      mode = which;
+
+      if(which === "dado"){
         if(sections) sections.style.display = "none";
         if(searchBox) searchBox.style.display = "none";
         if(statusBox) statusBox.style.display = "none";
         if(dadoView) dadoView.style.display = "block";
-
-        tabAll?.classList.remove("active");
-        tabFav?.classList.remove("active");
-        tabShop?.classList.remove("active");
-        tabDado?.classList.add("active");
+        setActiveTab("dado");
         return;
       }
 
-      if(mode === "shop"){
-        // abre a loja em miniapp separado (mais leve)
-        try { tg?.openLink(window.location.origin + "/shop"); } catch(e){ window.location.href = "/shop"; }
-        return;
-      }
-
-      // coleção/fav
       if(dadoView) dadoView.style.display = "none";
       if(sections) sections.style.display = "";
       if(searchBox) searchBox.style.display = "";
       if(statusBox) statusBox.style.display = "";
 
-      if(mode === "fav"){
-        showFav = true;
-        tabFav?.classList.add("active");
-        tabAll?.classList.remove("active");
-        tabDado?.classList.remove("active");
-        tabShop?.classList.remove("active");
-        render();
-        return;
-      }
-
-      // all
-      showFav = false;
-      tabAll?.classList.add("active");
-      tabFav?.classList.remove("active");
-      tabDado?.classList.remove("active");
-      tabShop?.classList.remove("active");
-      render();
+      setActiveTab(which);
+      renderCollection();
     }
 
     tabAll.onclick = () => showView("all");
     tabFav.onclick = () => showView("fav");
     tabDado.onclick = () => showView("dado");
-    tabShop.onclick = () => showView("shop");
 
-    document.getElementById("q").addEventListener("input", render);
+    document.getElementById("q").addEventListener("input", renderCollection);
 
     // =========================
-    // 🎲 DADO (Premium)
+    // 🎲 DADO (Gacha)
     // =========================
     const animeGrid = document.getElementById("anime_grid");
     const btnRoll = document.getElementById("btn_roll");
-    const btnReco = document.getElementById("btn_reco");
     const dadoBalance = document.getElementById("dado_balance");
     const dadoExtra = document.getElementById("dado_extra");
-    const dice3d = document.getElementById("dice3d");
-    const dadoSearch = document.getElementById("dado_search");
-    const dadoFilter = document.getElementById("dado_filter");
+    const diceEmoji = document.getElementById("diceEmoji");
 
     const lootbox = document.getElementById("lootbox");
     const lootboxClose = document.getElementById("lootbox_close");
     const lootboxImg = document.getElementById("lootbox_img");
     const lootboxName = document.getElementById("lootbox_name");
     const lootboxAnime = document.getElementById("lootbox_anime");
-    const lootboxStage = document.getElementById("lootbox_stage");
+    const lootboxStars = document.getElementById("lootbox_stars");
+    const lootboxPanel = document.getElementById("lootbox_panel");
 
     let currentRollId = null;
     let currentOptions = [];
 
-    const FACE_ROT = {
-      1: 'rotateX(0deg) rotateY(0deg)',
-      2: 'rotateX(0deg) rotateY(-90deg)',
-      3: 'rotateX(0deg) rotateY(180deg)',
-      4: 'rotateX(0deg) rotateY(90deg)',
-      5: 'rotateX(-90deg) rotateY(0deg)',
-      6: 'rotateX(90deg) rotateY(0deg)',
-    };
+    function closeLootbox(){ lootbox?.classList.remove("on"); }
+    lootboxClose?.addEventListener("click", closeLootbox);
+    lootbox?.addEventListener("click", (e) => { if(e.target === lootbox) closeLootbox(); });
 
-    function diceRoll3D(finalValue){
-      if(!dice3d) return;
-      dice3d.classList.add('dice-shake');
-      const sx = (Math.random() > 0.5 ? 1 : -1) * (360 * (2 + Math.floor(Math.random()*2)));
-      const sy = (Math.random() > 0.5 ? 1 : -1) * (360 * (2 + Math.floor(Math.random()*2)));
-      dice3d.style.transform = `rotateX(${sx}deg) rotateY(${sy}deg)`;
-      setTimeout(() => {
-        dice3d.classList.remove('dice-shake');
-        dice3d.style.transform = FACE_ROT[finalValue] || FACE_ROT[1];
-      }, 860);
+    function starsString(n){
+      n = Math.max(1, Math.min(5, Number(n||1)));
+      let s = "";
+      for(let i=0;i<n;i++) s += "★";
+      for(let i=n;i<5;i++) s += "☆";
+      return s;
+    }
+
+    function applyLootboxGlow(tier){
+      lootboxPanel.classList.remove("glow-common","glow-rare","glow-epic","glow-mythic");
+      if(tier==="mythic") lootboxPanel.classList.add("glow-mythic");
+      else if(tier==="epic") lootboxPanel.classList.add("glow-epic");
+      else if(tier==="rare") lootboxPanel.classList.add("glow-rare");
+      else lootboxPanel.classList.add("glow-common");
+
+      lootboxStars.classList.remove("common","rare","epic","mythic");
+      if(tier==="mythic") lootboxStars.classList.add("mythic");
+      else if(tier==="epic") lootboxStars.classList.add("epic");
+      else if(tier==="rare") lootboxStars.classList.add("rare");
+      else lootboxStars.classList.add("common");
     }
 
     function openLootbox(character){
       if(!lootbox) return;
-      lootboxImg.src = character.image || '';
-      lootboxName.textContent = character.name || '???';
-      lootboxAnime.textContent = character.anime || 'Obra';
+      lootboxImg.src = character.image || "";
+      lootboxName.textContent = character.name || "???";
+      lootboxAnime.textContent = character.anime || "Obra";
 
-      lootbox.classList.add('on');
-      lootboxStage.classList.remove('reveal-glow');
-      void lootboxStage.offsetWidth;
-      lootboxStage.classList.add('reveal-glow');
-    }
-    function closeLootbox(){ lootbox?.classList.remove('on'); }
-    lootboxClose?.addEventListener('click', closeLootbox);
-    lootbox?.addEventListener('click', (e) => { if(e.target === lootbox) closeLootbox(); });
+      const rar = character.rarity || {stars:2,tier:"common"};
+      lootboxStars.textContent = starsString(rar.stars || 2);
+      applyLootboxGlow(rar.tier || "common");
 
-    function normalizeOptions(opts){
-      return (opts || []).map(o => ({
-        id: o.id,
-        title: o.title || 'Anime',
-        cover: o.cover || o.image || ''
-      }));
+      lootbox.classList.add("on");
+      // mini pop
+      const stage = document.getElementById("lootbox_stage");
+      stage.classList.remove("pop");
+      void stage.offsetWidth;
+      stage.classList.add("pop");
     }
 
-    function applyFilterAndSearch(){
-      const q = (dadoSearch?.value || '').trim().toLowerCase();
-      const mode = (dadoFilter?.value || 'popular');
-      let list = [...currentOptions];
-
-      if(q){
-        list = list.filter(o => (o.title || '').toLowerCase().includes(q));
+    function renderAnimeButtons(){
+      animeGrid.innerHTML = "";
+      if(!currentOptions.length){
+        animeGrid.innerHTML = `<div style="grid-column:1/-1;color:rgba(255,255,255,.68);font-size:12px;padding:8px;">
+          Role para aparecerem 6 opções.
+        </div>`;
+        return;
       }
-      if(mode === 'az'){
-        list.sort((a,b)=> (a.title||'').localeCompare(b.title||''));
-      } else if(mode === 'random'){
-        list.sort(()=> Math.random() - 0.5);
-      }
-      renderGrid(list);
-    }
-
-    function renderGrid(list){
-      if(!animeGrid) return;
-      animeGrid.innerHTML = '';
-
-      const maxShow = Math.min(list.length, 36);
-      for(let i=0;i<maxShow;i++){
-        const o = list[i];
-        const btn = document.createElement('button');
-        btn.className = 'anime-card';
+      for(const o of currentOptions){
+        const btn = document.createElement("button");
+        btn.className = "anime-card";
         btn.innerHTML = `
-          <img class="anime-cover" src="${o.cover ? o.cover : ''}" onerror="this.style.display='none'" />
-          <div class="anime-title">🎴 ${escapeHtml(o.title)}</div>
+          <div class="anime-sheen"></div>
+          <div class="anime-title">🎴 ${escapeHtml(o.title || "Anime")}</div>
         `;
         btn.onclick = () => pickAnime(o.id, btn);
         animeGrid.appendChild(btn);
-      }
-
-      if(maxShow === 0){
-        animeGrid.innerHTML = `<div style="grid-column:1/-1;color:rgba(255,255,255,.65);font-size:12px;padding:10px;">Nenhum anime encontrado.</div>`;
       }
     }
 
@@ -1667,42 +1821,57 @@ def miniapp_collection():
       if(btn){ btn.disabled = true; btn.style.opacity = .7; }
 
       const out = await apiPost(`/api/dado/pick?roll_id=${encodeURIComponent(currentRollId)}&anime_id=${encodeURIComponent(animeId)}`);
-      const data = out.data || out; // compat
+      const data = out.data || out;
 
       if(!(data && data.ok)){
         if(btn){ btn.disabled = false; btn.style.opacity = 1; }
-        alert('⚠️ Falha ao entregar. Tenta outra opção.');
+        // ✅ se falhar, pode escolher outra
+        if(data && data.error === "try_other"){
+          try{ tg?.showAlert?.("⚠️ Essa opção falhou. Escolha outro anime da lista."); }catch(e){ alert("⚠️ Essa opção falhou. Escolha outro anime da lista."); }
+          return;
+        }
+        try{ tg?.showAlert?.("⚠️ Falha ao entregar. Tente outra opção."); }catch(e){ alert("⚠️ Falha ao entregar. Tente outra opção."); }
         return;
       }
-      openLootbox(data.character);
+
+      openLootbox(data.character || {});
+      // ✅ trava o roll depois de sucesso
+      currentRollId = null;
+      currentOptions = [];
+      renderAnimeButtons();
     }
 
-    function pickRecommended(){
-      if(!currentRollId || currentOptions.length === 0) return;
-      const idx = Math.min(currentOptions.length - 1, Math.floor(Math.random() * Math.min(8, currentOptions.length)));
-      const o = currentOptions[idx];
-      pickAnime(o.id, null);
+    function animateDiceOnce(finalValue){
+      const faces = ["🎲","🎯","🎲","🎴","🎲","✨","🎲","🔥","🎲"];
+      let i = 0;
+      diceEmoji.classList.add("wobble");
+      const t = setInterval(() => {
+        diceEmoji.textContent = faces[i % faces.length];
+        i++;
+      }, 90);
+
+      setTimeout(() => {
+        clearInterval(t);
+        diceEmoji.textContent = "🎲 " + String(finalValue || "");
+        diceEmoji.classList.remove("wobble");
+      }, 720);
     }
 
-    btnReco?.addEventListener('click', pickRecommended);
-    dadoSearch?.addEventListener('input', applyFilterAndSearch);
-    dadoFilter?.addEventListener('change', applyFilterAndSearch);
-
-    btnRoll?.addEventListener('click', async () => {
+    btnRoll?.addEventListener("click", async () => {
       btnRoll.disabled = true;
-      btnRoll.textContent = 'ROLANDO...';
-      animeGrid.innerHTML = '';
+      btnRoll.textContent = "ROLANDO...";
+      animeGrid.innerHTML = "";
 
-      const out = await apiPost('/api/dado/start');
+      const out = await apiPost("/api/dado/start");
       const data = out.data || out;
 
       if(!(data && data.ok)){
         btnRoll.disabled = false;
-        btnRoll.textContent = 'ROLAR AGORA';
-        if(data && data.error === 'no_balance'){
-          alert((data.msg || 'Sem saldo') + '\nAgora: ' + (data.now || ''));
+        btnRoll.textContent = "ROLAR";
+        if(data && data.error === "no_balance"){
+          try{ tg?.showAlert?.(data.msg || "Sem saldo"); }catch(e){ alert(data.msg || "Sem saldo"); }
         } else {
-          alert('Falha ao rolar agora. Tenta novamente.');
+          try{ tg?.showAlert?.("Falha ao rolar agora. Tenta novamente."); }catch(e){ alert("Falha ao rolar agora. Tenta novamente."); }
         }
         return;
       }
@@ -1711,23 +1880,23 @@ def miniapp_collection():
       dadoBalance.textContent = data.balance;
       dadoExtra.textContent = data.extra;
 
-      diceRoll3D(data.dice);
+      animateDiceOnce(data.dice);
 
-      currentOptions = normalizeOptions(data.options || []);
-      applyFilterAndSearch();
+      currentOptions = Array.isArray(data.options) ? data.options.slice(0, 6) : [];
+      renderAnimeButtons();
 
       btnRoll.disabled = false;
-      btnRoll.textContent = 'ROLAR DE NOVO';
+      btnRoll.textContent = "ROLAR DE NOVO";
     });
 
     // bootstrap
     (async () => {
       await loadCollection();
-      // auto abre a aba dado se veio por URL (?tab=dado)
       try{
         const url = new URL(location.href);
-        if((url.searchParams.get('tab')||'') === 'dado'){ showView('dado'); }
+        if((url.searchParams.get("tab")||"") === "dado"){ showView("dado"); }
       }catch(e){}
+      renderAnimeButtons();
     })();
   </script>
 </body>
@@ -1737,11 +1906,10 @@ def miniapp_collection():
 
 
 # =========================
-# UI: Loja (/shop) — MiniApp separado
+# UI: /shop — Loja (Vender igual Coleção + Comprar)
 # =========================
 @app.get("/shop", response_class=HTMLResponse)
 def miniapp_shop():
-    cfg = json.dumps({"sell_gain": SHOP_SELL_GAIN, "giro_price": SHOP_GIRO_PRICE, "per_page": SHOP_PER_PAGE}, ensure_ascii=False)
     html = f"""<!doctype html>
 <html>
 <head>
@@ -1750,52 +1918,85 @@ def miniapp_shop():
   <title>Loja</title>
   <style>
     :root{{
-      --bg:#0b0b0f; --card:#151522; --muted: rgba(255,255,255,.65); --muted2: rgba(255,255,255,.45);
-      --stroke: rgba(255,255,255,.12); --accent:#ff4fd8; --accent2:#7c4dff; --heart:#ff3b7a;
-      --good: rgba(0,255,140,.18); --bad: rgba(255,60,60,.18);
+      --bg:#07070b;
+      --panel: rgba(255,255,255,.04);
+      --card:#111118;
+      --stroke: rgba(255,255,255,.10);
+      --muted: rgba(255,255,255,.68);
+      --muted2: rgba(255,255,255,.48);
+      --r1:#ff1f1f;
+      --r2:#b30000;
+      --good: rgba(0,255,140,.18);
+      --bad: rgba(255,60,60,.18);
     }}
     *{{box-sizing:border-box}}
-    body{{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#fff;padding:12px 12px 88px;}}
+    body{{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,31,31,.22), transparent 55%),
+        radial-gradient(900px 600px at 85% 10%, rgba(179,0,0,.18), transparent 55%),
+        var(--bg);
+      color:#fff;
+      padding:14px 14px 90px;
+    }}
     .top{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}}
-    .title{{display:flex;flex-direction:column;gap:2px;}}
-    .title h1{{margin:0;font-size:18px;font-weight:900;}}
+    .title{{display:flex;flex-direction:column;gap:3px;}}
+    .title h1{{margin:0;font-size:18px;font-weight:1000;}}
     .title .sub{{font-size:12px;color:var(--muted2);}}
-    .stats{{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;}}
-    .stat{{display:flex;align-items:center;gap:6px;font-weight:900;font-size:13px;}}
+    .stats{{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
+      background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;
+    }}
+    .stat{{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}}
     .dot{{width:1px;height:16px;background:var(--stroke);}}
-    .tabs{{display:flex;gap:10px;margin:14px 0 10px;padding:8px;border:1px solid var(--stroke);border-radius:999px;background:rgba(255,255,255,.04);}}
-    .tab{{flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:900;font-size:14px;color:var(--muted);background:transparent;border:0;}}
-    .tab.active{{color:#fff;background:linear-gradient(90deg, rgba(255,79,216,.9), rgba(124,77,255,.9));box-shadow:0 10px 30px rgba(255,79,216,.15);}}
+
+    .tabs{{
+      display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
+      border-radius:999px;background:rgba(255,255,255,.04);
+    }}
+    .tab{{
+      flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:950;font-size:14px;color:var(--muted);
+      background:transparent;border:0;cursor:pointer;
+    }}
+    .tab.active{{
+      color:#fff;background:linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));
+      box-shadow:0 12px 40px rgba(255,31,31,.12);
+    }}
+
     .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;}}
     .status.ok{{border-color: var(--good);}}
     .status.err{{border-color: var(--bad);color: rgba(255,120,120,.95);}}
-    .search{{display:flex;gap:10px;align-items:center;margin:8px 0 14px;}}
+
+    .search{{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}}
     .search input{{width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);color:#fff;outline:none;font-size:14px;}}
     .search input::placeholder{{color:rgba(255,255,255,.35)}}
+
+    .section{{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
+    .section-title{{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}}
+    .section-count{{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}}
+
     .grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}}
     .card{{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);background:var(--card);min-height:220px;}}
     .card img{{width:100%;height:220px;object-fit:cover;display:block;}}
-    .overlay{{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.78));}}
-    .name{{font-weight:900;font-size:15px;margin:0;}}
-    .meta{{margin-top:3px;font-size:12px;color:rgba(255,255,255,.75);}}
-    .pill{{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:900;font-size:12px;}}
-    .heart{{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);font-size:16px;color: var(--heart);}}
-    .actions{{display:flex;gap:10px;margin-top:12px;}}
-    .btn{{flex:1;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:900;font-size:14px;}}
-    .btn.primary{{background:linear-gradient(90deg, rgba(255,79,216,.9), rgba(124,77,255,.9));border:0;}}
-    .btn:disabled{{opacity:.5}}
-    .pager{{display:flex;gap:10px;margin:14px 0 0;align-items:center;justify-content:space-between;}}
-    .pager .pbtn{{padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:900;min-width:70px;}}
-    .pager .info{{color:rgba(255,255,255,.75);font-weight:900;}}
+    .overlay{{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.82));}}
+    .name{{font-weight:1000;font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .meta{{margin-top:3px;font-size:12px;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .pill{{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;}}
+    .actions{{display:flex;gap:10px;margin-top:10px;}}
+    .btn{{flex:1;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:1000;font-size:14px;cursor:pointer;}}
+    .btn.primary{{background:linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));border:0;}}
+    .btn:disabled{{opacity:.55;cursor:not-allowed;}}
+
     .buyBox{{margin-top:10px;padding:12px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);}}
-    .buyBox h2{{margin:0 0 8px;font-size:16px;font-weight:900;}}
+    .buyBox h2{{margin:0 0 8px;font-size:16px;font-weight:1000;}}
     .buyBox p{{margin:0;color:rgba(255,255,255,.75);font-size:13px;line-height:1.35;}}
   </style>
 </head>
 <body>
   <div class="top">
     <div class="title">
-      <h1>🛒 Loja Baltigo</h1>
+      <h1>🛒 Loja</h1>
       <div class="sub" id="sub">Carregando...</div>
     </div>
     <div class="stats">
@@ -1808,7 +2009,6 @@ def miniapp_shop():
   <div class="tabs">
     <button class="tab active" id="tab_sell">📦 Vender</button>
     <button class="tab" id="tab_buy">🎡 Comprar</button>
-    <button class="tab" id="tab_back">⬅️ Voltar</button>
   </div>
 
   <div class="status" id="status">Conectando...</div>
@@ -1817,20 +2017,14 @@ def miniapp_shop():
     <div class="search">
       <input id="q" placeholder="Buscar personagem ou anime..." />
     </div>
-    <div class="grid" id="grid"></div>
-
-    <div class="pager">
-      <button class="pbtn" id="prev">⬅️</button>
-      <div class="info" id="pinfo">1/1</div>
-      <button class="pbtn" id="next">➡️</button>
-    </div>
+    <div id="sellSections"></div>
   </div>
 
   <div id="buyView" style="display:none;">
     <div class="buyBox">
       <h2>🎡 Comprar GIRO</h2>
       <p id="buyText">Carregando...</p>
-      <div class="actions">
+      <div class="actions" style="margin-top:12px">
         <button class="btn primary" id="buyBtn">Comprar</button>
       </div>
     </div>
@@ -1838,7 +2032,6 @@ def miniapp_shop():
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
-    const CFG = {cfg};
     const tg = window.Telegram?.WebApp;
     if (tg) {{ tg.ready(); try {{ tg.expand(); }} catch(e) {{}} }}
     const INIT_DATA = tg?.initData || "";
@@ -1851,16 +2044,7 @@ def miniapp_shop():
     function esc(s){{
       return String(s || "").replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[m]));
     }}
-
-    let coins = 0;
-    let giros = 0;
-    let page = 1;
-    let totalPages = 1;
-    let items = [];
-    let tab = "sell";
-
-    let sellGain = Number(CFG.sell_gain || 1);
-    let price = Number(CFG.giro_price || 2);
+    function cmpAZ(a,b){{ return String(a).localeCompare(String(b),"pt-BR",{{sensitivity:"base"}}); }}
 
     async function apiGet(url){{
       const res = await fetch(url, {{ headers: {{ "X-Telegram-Init-Data": INIT_DATA }} }});
@@ -1877,51 +2061,91 @@ def miniapp_shop():
       return {{ ok: res.ok, status: res.status, data }};
     }}
 
-    function updateStats(){{
+    let coins=0, giros=0;
+    let sellGain={SHOP_SELL_GAIN};
+    let price={SHOP_GIRO_PRICE};
+    let allItems=[];
+
+    function updateStats(tab){{
       document.getElementById("coins").textContent = String(coins ?? "-");
       document.getElementById("giros").textContent = String(giros ?? "-");
-      document.getElementById("sub").textContent = tab === "sell"
+      document.getElementById("sub").textContent = tab==="sell"
         ? "Venda 1 unidade e ganhe +" + sellGain + " coin"
         : "Compre GIRO por " + price + " coins";
     }}
 
-    function renderGrid(){{
-      const grid = document.getElementById("grid");
-      grid.innerHTML = "";
+    function buildGroups(list){{
+      const groups = new Map();
+      for(const c of list){{
+        const anime = (c.anime_title || "Sem anime").trim() || "Sem anime";
+        if(!groups.has(anime)) groups.set(anime, []);
+        groups.get(anime).push(c);
+      }}
+      const keys = Array.from(groups.keys()).sort(cmpAZ);
+      const out=[];
+      for(const k of keys){{
+        const arr = groups.get(k) || [];
+        arr.sort((a,b)=>cmpAZ(a.character_name||"", b.character_name||""));
+        out.push({{title:k, items:arr}});
+      }}
+      return out;
+    }}
 
-      if (!items.length){{
-        grid.innerHTML = "<div style='color:rgba(255,255,255,.65)'>Nada para mostrar.</div>";
+    function renderSell(){{
+      const q = (document.getElementById("q").value || "").trim().toLowerCase();
+      let filtered = allItems;
+
+      if(q){{
+        filtered = filtered.filter(x => {{
+          const name = String(x.character_name||"").toLowerCase();
+          const anime = String(x.anime_title||"").toLowerCase();
+          const id = String(x.character_id||"");
+          return name.includes(q) || anime.includes(q) || id.includes(q);
+        }});
+      }}
+
+      const root = document.getElementById("sellSections");
+      root.innerHTML = "";
+
+      if(!filtered.length){{
+        root.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Nada para mostrar.</div>";
         return;
       }}
 
-      for (const c of items){{
-        const img = c.custom_image || c.image || "";
-        const qty = c.quantity || 1;
-        const isFav = !!c.is_favorite;
-        const isCustom = !!c.is_custom;
+      const groups = buildGroups(filtered);
+      for(const g of groups){{
+        const section = document.createElement("div");
+        section.className = "section";
+        section.innerHTML = `<div class="section-title"><div>${{esc(g.title)}}</div><div class="section-count">${{g.items.length}}</div></div>`;
 
-        const badgeLeft = `x${{qty}} • ID ${{c.character_id}}`;
-        const badgeRight = (isFav ? "❤️" : (isCustom ? "📸" : ""));
+        const grid = document.createElement("div");
+        grid.className = "grid";
 
-        const card = document.createElement("div");
-        card.className = "card";
-        card.innerHTML = `
-          ${{img ? `<img src="${{esc(img)}}" alt="">`
-                 : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}}
-          <div class="pill">${{esc(badgeLeft)}}</div>
-          ${{badgeRight ? `<div class="heart">${{esc(badgeRight)}}</div>` : ``}}
-          <div class="overlay">
-            <div class="name">${{esc(c.character_name || "Personagem")}}</div>
-            <div class="meta">${{esc(c.anime_title || "")}}</div>
-            <div class="actions">
-              <button class="btn primary" data-sell="${{c.character_id}}">Vender (+${{sellGain}})</button>
+        for(const c of g.items){{
+          const img = c.custom_image || c.image || "";
+          const qty = c.quantity || 1;
+
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            ${{img ? `<img src="${{esc(img)}}" alt="">` : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}}
+            <div class="pill">x${{qty}} • ID ${{c.character_id}}</div>
+            <div class="overlay">
+              <div class="name">${{esc(c.character_name || "Personagem")}}</div>
+              <div class="meta">${{esc(c.anime_title || "")}}</div>
+              <div class="actions">
+                <button class="btn primary" data-sell="${{c.character_id}}">Vender (+${{sellGain}})</button>
+              </div>
             </div>
-          </div>
-        `;
-        grid.appendChild(card);
+          `;
+          grid.appendChild(card);
+        }}
+
+        section.appendChild(grid);
+        root.appendChild(section);
       }}
 
-      grid.querySelectorAll("button[data-sell]").forEach(btn=>{{
+      root.querySelectorAll("button[data-sell]").forEach(btn => {{
         btn.onclick = async () => {{
           const id = Number(btn.getAttribute("data-sell"));
           btn.disabled = true;
@@ -1933,7 +2157,7 @@ def miniapp_shop():
 
             coins = r.data.coins ?? coins;
             giros = r.data.giros ?? giros;
-            updateStats();
+            updateStats("sell");
             setStatus("✅ Venda concluída!", "ok");
             await loadSell();
           }} finally {{
@@ -1946,44 +2170,32 @@ def miniapp_shop():
     async function loadState(){{
       setStatus("Carregando...", "");
       const r = await apiGet("/api/shop/state");
-      if (!r.ok){{ setStatus("❌ Falha ao conectar.", "err"); return false; }}
-
+      if(!r.ok){{ setStatus("❌ Falha ao conectar.", "err"); return false; }}
       coins = r.data.coins ?? 0;
       giros = r.data.giros ?? 0;
-
       sellGain = Number(r.data.sell_gain ?? sellGain);
       price = Number(r.data.giro_price ?? price);
-
-      updateStats();
+      updateStats("sell");
       return true;
     }}
 
     async function loadSell(){{
       const q = (document.getElementById("q").value || "").trim();
-      const r = await apiGet("/api/shop/sell/list?page=" + page + "&q=" + encodeURIComponent(q));
-      if (!r.ok){{ setStatus("❌ Falha ao carregar lista.", "err"); return; }}
-      if (!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Erro ao carregar."), "err"); return; }}
+      const r = await apiGet("/api/shop/sell/all?q=" + encodeURIComponent(q));
+      if(!r.ok){{ setStatus("❌ Falha ao carregar lista.", "err"); return; }}
+      if(!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Erro ao carregar."), "err"); return; }}
 
-      items = Array.isArray(r.data.items) ? r.data.items : [];
-      totalPages = Number(r.data.total_pages ?? 1);
-      sellGain = Number(r.data.sell_gain ?? sellGain);
-
-      document.getElementById("pinfo").textContent = page + "/" + totalPages;
-      document.getElementById("prev").disabled = page <= 1;
-      document.getElementById("next").disabled = page >= totalPages;
-
-      updateStats();
+      allItems = Array.isArray(r.data.items) ? r.data.items : [];
       setStatus("✅ Pronto.", "ok");
-      renderGrid();
+      renderSell();
     }}
 
     async function loadBuy(){{
       document.getElementById("buyText").textContent = "Troque " + price + " coins por +1 giro.";
-      updateStats();
+      updateStats("buy");
     }}
 
     document.getElementById("tab_sell").onclick = async () => {{
-      tab = "sell";
       document.getElementById("tab_sell").classList.add("active");
       document.getElementById("tab_buy").classList.remove("active");
       document.getElementById("sellView").style.display = "";
@@ -1993,7 +2205,6 @@ def miniapp_shop():
     }};
 
     document.getElementById("tab_buy").onclick = async () => {{
-      tab = "buy";
       document.getElementById("tab_buy").classList.add("active");
       document.getElementById("tab_sell").classList.remove("active");
       document.getElementById("sellView").style.display = "none";
@@ -2002,22 +2213,9 @@ def miniapp_shop():
       setStatus("✅ Pronto.", "ok");
     }};
 
-    document.getElementById("tab_back").onclick = () => {{
-      try {{ tg?.openLink(window.location.origin + "/app"); }} catch(e) {{ window.location.href = "/app"; }}
-    }};
-
     document.getElementById("q").addEventListener("input", async () => {{
-      page = 1;
       await loadSell();
     }});
-    document.getElementById("prev").onclick = async () => {{
-      page = Math.max(1, page - 1);
-      await loadSell();
-    }};
-    document.getElementById("next").onclick = async () => {{
-      page = Math.min(totalPages, page + 1);
-      await loadSell();
-    }};
 
     document.getElementById("buyBtn").onclick = async () => {{
       const btn = document.getElementById("buyBtn");
@@ -2025,12 +2223,12 @@ def miniapp_shop():
       try{{
         setStatus("Processando compra...", "");
         const r = await apiPost("/api/shop/buy/giro", {{}});
-        if (!r.ok){{ setStatus("❌ Falha ao comprar.", "err"); return; }}
-        if (!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Você não tem coins suficientes."), "err"); return; }}
+        if(!r.ok){{ setStatus("❌ Falha ao comprar.", "err"); return; }}
+        if(!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Você não tem coins suficientes."), "err"); return; }}
 
         coins = r.data.coins ?? coins;
         giros = r.data.giros ?? giros;
-        updateStats();
+        updateStats("buy");
         setStatus("✅ GIRO comprado!", "ok");
       }} finally {{
         btn.disabled = false;
@@ -2039,7 +2237,7 @@ def miniapp_shop():
 
     (async () => {{
       const ok = await loadState();
-      if (!ok) return;
+      if(!ok) return;
       await loadSell();
       await loadBuy();
     }})();
