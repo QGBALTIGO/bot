@@ -2754,6 +2754,10 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
 # ==================================================
 
+# ==================================================
+# 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
+# ==================================================
+
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 # DADOS (saldo normal do /dado)
@@ -2997,22 +3001,23 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
     Monta pool de personagens. Se personagem não tiver foto, a gente usa coverImage do anime.
     """
     q = """
-    query ($id: Int, $page: Int) {
-      Media(id: $id, type: ANIME) {
-        title { romaji }
-        coverImage { large }
-        characters(page: $page, perPage: 25) {
-          pageInfo { currentPage lastPage }
-          edges {
-            node {
-              id
-              name { full }
-              image { large }
-            }
-          }
+query ($id: Int, $page: Int) {
+  Media(id: $id, type: ANIME) {
+    title { romaji }
+    coverImage { large }
+    characters(page: $page, perPage: 25) {
+      pageInfo { currentPage lastPage }
+      edges {
+        role
+        node {
+          id
+          name { full }
+          image { large }
         }
       }
     }
+  }
+}
     """
     timeout = aiohttp.ClientTimeout(total=20)
 
@@ -3044,6 +3049,9 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
                 continue
             edges = (((m2.get("characters") or {}).get("edges")) or [])
             for e in edges:
+                role = str(e.get("role") or "").upper()
+                if role not in ("MAIN", "SUPPORTING"):
+                    continue
                 node = (e.get("node") or {})
                 cid = node.get("id")
                 name = ((node.get("name") or {}).get("full")) or None
@@ -3317,6 +3325,15 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
     image = info["image"] or DADO_FALLBACK_IMAGE
     anime_title = info.get("anime_title") or "Obra"
 
+    # Prioridade de foto: /setfoto (global) > AniList > fallback
+    try:
+        from database import get_global_character_image
+        gimg = get_global_character_image(char_id)
+        if gimg:
+            image = gimg
+    except Exception:
+        pass
+
     from database import user_has_character, add_coin
 
     if user_has_character(user_id, char_id):
@@ -3336,7 +3353,6 @@ async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ),
         parse_mode="HTML"
     )
-
 
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
@@ -5643,5 +5659,6 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
