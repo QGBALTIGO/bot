@@ -1,16 +1,17 @@
 
-# webapp_ultra.py
-# Ultra UI: Coleção + Loja + Dado estilo gacha premium
+# WEBAPP_ULTRA_PREMIUM.py
+# Coleção + Loja + Dado com UI estilo jogo gacha
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-HTML = """
+HTML = '''
 <!DOCTYPE html>
 <html>
 <head>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -19,7 +20,7 @@ HTML = """
 body{
 margin:0;
 font-family:system-ui;
-background:radial-gradient(circle at top,#1a1a35,#050510);
+background:radial-gradient(circle at top,#1b1b3a,#050510);
 color:white;
 overflow-x:hidden;
 }
@@ -34,22 +35,22 @@ z-index:-1;
 .container{
 max-width:520px;
 margin:auto;
-padding:18px;
+padding:20px;
 }
 
 .header{
 display:flex;
 justify-content:space-between;
 align-items:center;
-margin-bottom:20px;
+margin-bottom:18px;
 }
 
 .balance{
 display:flex;
 gap:10px;
-background:rgba(255,255,255,0.05);
 padding:8px 14px;
 border-radius:16px;
+background:rgba(255,255,255,0.05);
 backdrop-filter:blur(10px);
 }
 
@@ -85,8 +86,8 @@ position:relative;
 border-radius:20px;
 overflow:hidden;
 background:rgba(255,255,255,0.06);
-backdrop-filter:blur(16px);
 border:1px solid rgba(255,255,255,0.1);
+backdrop-filter:blur(14px);
 transition:transform .25s;
 }
 
@@ -109,9 +110,27 @@ background:linear-gradient(transparent,black);
 }
 
 .rarity-common{color:#aaa}
-.rarity-rare{color:#4fc3f7;text-shadow:0 0 10px #4fc3f7}
-.rarity-epic{color:#ba68c8;text-shadow:0 0 14px #ba68c8}
-.rarity-mythic{color:gold;text-shadow:0 0 22px gold}
+
+.rarity-rare{
+color:#4fc3f7;
+text-shadow:0 0 10px #4fc3f7;
+}
+
+.rarity-epic{
+color:#ba68c8;
+text-shadow:0 0 14px #ba68c8;
+}
+
+.rarity-mythic{
+color:gold;
+text-shadow:0 0 25px gold;
+animation:glow 1s infinite alternate;
+}
+
+@keyframes glow{
+from{text-shadow:0 0 10px gold}
+to{text-shadow:0 0 30px gold}
+}
 
 .shop-card{
 background:rgba(255,255,255,0.06);
@@ -143,18 +162,18 @@ button:hover{
 transform:scale(1.05);
 }
 
-.dice3d{
+.dice{
 font-size:90px;
 text-align:center;
 margin-top:40px;
 transition:transform 1s;
 }
 
-.open-card{
+.gacha{
 width:260px;
 height:360px;
 margin:auto;
-margin-top:40px;
+margin-top:30px;
 border-radius:20px;
 overflow:hidden;
 background:rgba(255,255,255,0.05);
@@ -165,21 +184,13 @@ font-size:60px;
 backdrop-filter:blur(10px);
 }
 
-.glow{
-animation:glow 1s infinite alternate;
-}
-
-@keyframes glow{
-from{text-shadow:0 0 10px gold}
-to{text-shadow:0 0 30px gold}
-}
-
 </style>
+
 </head>
 
 <body>
 
-<canvas id="bg"></canvas>
+<canvas id="particles"></canvas>
 
 <div class="container">
 
@@ -193,8 +204,6 @@ to{text-shadow:0 0 30px gold}
 <div class="tab" onclick="showPage('shop')">Loja</div>
 <div class="tab" onclick="showPage('dice')">Dado</div>
 </div>
-
-<!-- COLEÇÃO -->
 
 <div id="collection">
 
@@ -228,15 +237,13 @@ Luna
 <img src="https://i.imgur.com/rm5K6Xk.jpeg">
 <div class="card-info">
 Elysia
-<div class="rarity-mythic glow">Mythic</div>
+<div class="rarity-mythic">Mythic</div>
 </div>
 </div>
 
 </div>
 
 </div>
-
-<!-- LOJA -->
 
 <div id="shop" style="display:none">
 
@@ -256,15 +263,13 @@ Elysia
 
 </div>
 
-<div class="open-card" id="gacha">🎴</div>
+<div class="gacha" id="gacha">🎴</div>
 
 </div>
 
-<!-- DADO -->
-
 <div id="dice" style="display:none">
 
-<div class="dice3d" id="dice3d">🎲</div>
+<div class="dice" id="dice">🎲</div>
 
 <div style="text-align:center">
 <button onclick="rollDice()">Rolar Dado</button>
@@ -276,14 +281,11 @@ Elysia
 
 <script>
 
-function showPage(p){
-
+function showPage(page){
 document.getElementById("collection").style.display="none"
 document.getElementById("shop").style.display="none"
 document.getElementById("dice").style.display="none"
-
-document.getElementById(p).style.display="block"
-
+document.getElementById(page).style.display="block"
 }
 
 function buy(item){
@@ -291,34 +293,22 @@ alert("Comprado: "+item)
 }
 
 function openCard(){
-
 const card=document.getElementById("gacha")
-
 card.innerText="✨"
-
 setTimeout(()=>{
-
 card.innerHTML='<img src="https://i.imgur.com/rm5K6Xk.jpeg" style="width:100%;height:100%;object-fit:cover">'
-
 },1200)
-
 }
 
 function rollDice(){
-
-const d=document.getElementById("dice3d")
-
+const d=document.getElementById("dice")
 d.style.transform="rotateX(720deg) rotateY(720deg)"
-
 setTimeout(()=>{
-
 d.innerText=Math.floor(Math.random()*6)+1
-
 },1000)
-
 }
 
-const canvas=document.getElementById("bg")
+const canvas=document.getElementById("particles")
 const ctx=canvas.getContext("2d")
 
 canvas.width=window.innerWidth
@@ -335,24 +325,16 @@ r:Math.random()*2
 }
 
 function draw(){
-
 ctx.clearRect(0,0,canvas.width,canvas.height)
-
 particles.forEach(p=>{
-
 ctx.beginPath()
 ctx.arc(p.x,p.y,p.r,0,Math.PI*2)
 ctx.fillStyle="white"
 ctx.fill()
-
 p.y+=0.3
-
 if(p.y>canvas.height)p.y=0
-
 })
-
 requestAnimationFrame(draw)
-
 }
 
 draw()
@@ -361,7 +343,7 @@ draw()
 
 </body>
 </html>
-"""
+'''
 
 @app.get("/")
 def root():
