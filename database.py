@@ -1227,25 +1227,19 @@ def list_collection_cards(user_id: int, limit: int = 200):
         for r in rows
     ]
 
+
 # ==========================================================
-# BALTIGO ENGINE DATABASE TABLES
+# BALTIGO ENGINE V4 TABLES
 # ==========================================================
+
 def create_engine_tables():
     _run("""
     CREATE TABLE IF NOT EXISTS market_listings (
         listing_id SERIAL PRIMARY KEY,
         seller_id BIGINT,
-        character_id INT,
+        character TEXT,
         price INT,
         created_at BIGINT
-    );
-    """)
-
-    _run("""
-    CREATE TABLE IF NOT EXISTS security_flags (
-        user_id BIGINT PRIMARY KEY,
-        risk_score INT,
-        updated_at BIGINT
     );
     """)
 
@@ -1256,5 +1250,13 @@ def create_engine_tables():
         start_time BIGINT,
         end_time BIGINT,
         active BOOLEAN
+    );
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS security_flags (
+        user_id BIGINT PRIMARY KEY,
+        risk_score INT,
+        updated_at BIGINT
     );
     """)
