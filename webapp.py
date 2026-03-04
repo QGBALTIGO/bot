@@ -1065,13 +1065,15 @@ def miniapp_shop():
 """
     return HTMLResponse(content=html)
 
+
 # ==========================================================
-# BALTIGO ENGINE WEB EXTENSIONS
+# BALTIGO ENGINE DASHBOARD API
 # ==========================================================
-@app.get("/api/engine/stats")
-def api_engine_stats():
+
+@app.get("/api/admin/stats")
+def admin_stats():
     return {
-        "status": "ok",
-        "engine": "Baltigo",
-        "message": "Engine running"
+        "engine": "Baltigo V4",
+        "status": "running"
     }
+
