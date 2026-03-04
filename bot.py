@@ -3303,24 +3303,70 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# bot_minidado.py — SOMENTE /dado + /saldo + GIROS SLOT (horário certo) + init_db
+# Requer: python-telegram-bot v20+ e seu database.py (psycopg_pool)
 # ==================================================
-# 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
+
+import os
+import time
+from typing import Optional
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+from database import (
+    init_db,
+    ensure_user_row,
+    get_user_coins,
+    get_extra_dado,
+    get_dado_state,
+    set_dado_state,
+)
+
 # ==================================================
+# CONFIG
+# ==================================================
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN não encontrado.")
+
+BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
+
+BOT_TZ_NAME = os.getenv("BOT_TZ", "America/Campo_Grande")
+BOT_TZ = ZoneInfo(BOT_TZ_NAME)
+
+# Imagens
+DADO_PICK_IMAGE = os.getenv(
+    "DADO_PICK_IMAGE",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
+)
+DADO_FALLBACK_IMAGE = os.getenv(
+    "DADO_FALLBACK_IMAGE",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg",
+)
+
+# Slots de GIRO por dia (horário local do BOT_TZ)
 GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # 8 slots/dia
 
-def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
+# ==================================================
+# SLOTS: DADO (4h) e GIROS (8 por dia)
+# ==================================================
+def _now_slot_4h(ts: Optional[float] = None) -> int:
     """
     Slot de 4h baseado no fuso do bot (BOT_TZ):
     00/04/08/12/16/20.
+    Retorna um int monotônico.
     """
     if ts is None:
         ts = time.time()
-    now_sp = datetime.fromtimestamp(ts, tz=BOT_TZ)
-    offset = int(now_sp.utcoffset().total_seconds())
+    now_local = datetime.fromtimestamp(ts, tz=BOT_TZ)
+    offset = int(now_local.utcoffset().total_seconds())
     return int((int(ts) + offset) // (4 * 3600))
 
 
-def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
+def _now_giro_slot(ts: Optional[float] = None) -> int:
     """
     Slot de GIRO baseado no fuso do bot (BOT_TZ):
     01/04/07/10/13/16/19/22 (8 slots/dia)
@@ -3329,31 +3375,49 @@ def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
     if ts is None:
         ts = time.time()
 
-    now_sp = datetime.fromtimestamp(ts, tz=BOT_TZ)
-    day_id = now_sp.date().toordinal()
+    now_local = datetime.fromtimestamp(ts, tz=BOT_TZ)
+    day_id = now_local.date().toordinal()
 
-    h = now_sp.hour
-    m = now_sp.minute
+    h = now_local.hour
+    m = now_local.minute
 
     idx = -1
     for i, hh in enumerate(GIRO_HOURS):
         if (h > hh) or (h == hh and m >= 0):
             idx = i
+
+    # antes do primeiro slot do dia -> considera o último slot do dia anterior
     if idx < 0:
         return (day_id - 1) * 8 + 7
 
     return day_id * 8 + idx
 
 
-def _refresh_user_dado_balance(user_id: int) -> int:
+def _next_dado_refill_dt() -> datetime:
+    """Próximo horário (local) de recarga do dado: 00/04/08/12/16/20."""
+    now = datetime.now(tz=BOT_TZ)
+    slots = [0, 4, 8, 12, 16, 20]
+
+    for s in slots:
+        if now.hour < s:
+            return now.replace(hour=s, minute=0, second=0, microsecond=0)
+
+    # passou de 20 -> amanhã 00
+    nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return nxt
+
+
+def _refresh_user_dado_balance(user_id: int, cap: int = 18) -> int:
     """
-    Atualiza saldo normal baseado em slots perdidos (4h), cap 18
+    Recarrega dado_balance +1 por slot de 4h perdido, cap=18.
     """
     st = get_dado_state(user_id) or {"b": 0, "s": -1}
-    balance = int(st["b"])
-    last_slot = int(st["s"])
+    balance = int(st.get("b") or 0)
+    last_slot = int(st.get("s") or -1)
 
-    cur_slot = _now_slot_sp_4h()
+    cur_slot = _now_slot_4h()
+
+    # primeira vez: só grava slot atual
     if last_slot < 0:
         set_dado_state(user_id, balance, cur_slot)
         return balance
@@ -3362,23 +3426,25 @@ def _refresh_user_dado_balance(user_id: int) -> int:
     if diff <= 0:
         return balance
 
-    # recarrega +1 por slot de 4h perdido
-    balance2 = min(18, balance + diff)
+    balance2 = min(int(cap), balance + diff)
     set_dado_state(user_id, balance2, cur_slot)
     return balance2
 
 
-def _refresh_user_giros(user_id: int) -> int:
+def _refresh_user_giros(user_id: int, cap: int = 24) -> int:
     """
-    Atualiza GIROS (extra_dado) com slots 01/04/07/10/13/16/19/22, cap 24.
+    Recarrega extra_dado +1 por slot perdido (8 slots/dia), cap=24.
+    Usa get_extra_state/set_extra_state do seu database.py.
     """
     from database import get_extra_state, set_extra_state
 
     st = get_extra_state(user_id)
-    extra = int(st["x"])
-    last_slot = int(st["s"])
+    extra = int(st.get("x") or 0)
+    last_slot = int(st.get("s") or -1)
 
-    cur_slot = _now_giro_slot_sp()
+    cur_slot = _now_giro_slot()
+
+    # primeira vez: só grava slot atual
     if last_slot < 0:
         set_extra_state(user_id, extra, cur_slot)
         return extra
@@ -3387,63 +3453,46 @@ def _refresh_user_giros(user_id: int) -> int:
     if diff <= 0:
         return extra
 
-    new_extra = min(24, extra + diff)
+    new_extra = min(int(cap), extra + diff)
     set_extra_state(user_id, new_extra, cur_slot)
     return new_extra
 
 
-def _next_slot_dt_sp() -> datetime:
-    """
-    Próximo horário de recarga do dado:
-    00/04/08/12/16/20 (BOT_TZ)
-    """
-    now = datetime.now(tz=BOT_TZ)
-    hour = now.hour
-    slots = [0, 4, 8, 12, 16, 20]
-
-    nxt = None
-    for s in slots:
-        if hour < s:
-            nxt = s
-            break
-
-    if nxt is None:
-        return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-
-    return now.replace(hour=nxt, minute=0, second=0, microsecond=0)
-
-
-def _daily_day_start_ts_sp(ts: Optional[float] = None) -> int:
-    """
-    Retorna o timestamp do começo do dia (00:00) no fuso do bot (BOT_TZ).
-    """
-    if ts is None:
-        ts = time.time()
-    dt = datetime.fromtimestamp(ts, tz=BOT_TZ)
-    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    return int(start.timestamp())
-
-    
 # ==================================================
-# /dado (PV only) — Dado Premium (MiniApp)
+# COMANDOS
 # ==================================================
-BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
-
-DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
-DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
-
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = f"{BASE_URL}/dado"
+    """
+    /dado:
+    - garante usuário
+    - atualiza slots (dado e giros) para ficar sempre certinho
+    - envia foto + botão abrindo o MiniApp (/dado)
+    """
+    if not update.message:
+        return
 
+    user_id = update.effective_user.id
+    name = update.effective_user.username or update.effective_user.first_name or "user"
+    ensure_user_row(user_id, name)
+
+    # refresh silencioso (garante “giros no horário certo”)
+    try:
+        _refresh_user_dado_balance(user_id)
+    except Exception:
+        pass
+    try:
+        _refresh_user_giros(user_id)
+    except Exception:
+        pass
+
+    url = f"{BASE_URL}/dado"
     texto = (
         "🎲 <b>DADO DA SORTE</b>\n\n"
         "Toque no botão abaixo para abrir o dado e testar sua sorte.\n\n"
         "Quem sabe qual personagem o destino vai escolher hoje? ✨"
     )
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]
-    ])
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]])
 
     try:
         await update.message.reply_photo(
@@ -3452,105 +3501,55 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=kb
         )
-    except:
+    except Exception:
         await update.message.reply_photo(
             photo=DADO_FALLBACK_IMAGE,
             caption=texto,
             parse_mode="HTML",
             reply_markup=kb
         )
-    # ==========================
-    # Fallback: modo clássico
-    # ==========================
-  # ==================================================
-#  FIX 2: /saldo agora atualiza GIROS pelo slot antes de mostrar
-# ==================================================
 
-async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
+
+async def saldo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /saldo:
+    - garante usuário
+    - atualiza slots do dado e dos giros antes de mostrar
+    """
+    if not update.message:
         return
-    await registrar_comando(update)
 
     user_id = update.effective_user.id
+    name = update.effective_user.username or update.effective_user.first_name or "user"
+    ensure_user_row(user_id, name)
 
-    if not _cmd_flood_ok(_SALDO_FLOOD, user_id, 2.0):
-        await update.message.reply_html("Calma 🙂")
-        return
-
-    ensure_user_row(user_id, update.effective_user.first_name)
-
-    # atualiza saldo por slots (pra mostrar certo)
+    # refresh antes de ler
     try:
         balance = _refresh_user_dado_balance(user_id)
     except Exception:
-        st = get_dado_state(user_id)
-        balance = int(st["b"]) if st else 0
+        st = get_dado_state(user_id) or {"b": 0}
+        balance = int(st.get("b") or 0)
 
-    coins = get_user_coins(user_id)
+    coins = 0
+    try:
+        coins = int(get_user_coins(user_id) or 0)
+    except Exception:
+        coins = 0
 
     try:
         giros = _refresh_user_giros(user_id)
     except Exception:
-        giros = get_extra_dado(user_id)
+        giros = int(get_extra_dado(user_id) or 0)
 
-    nxt = _next_slot_dt_sp()
-    nxt_txt = nxt.strftime("%H:%M")
+    nxt = _next_dado_refill_dt().strftime("%H:%M")
 
-        try:
-            await _ensure_top_cache_fresh()
-        except Exception:
-            pass
-
-        ok_consume = _consume_one_die(user_id)
-        if not ok_consume:
-            await update.message.reply_html("⚠️ Não consegui consumir seu dado agora. Tente novamente.")
-            return
-
-    dice_msg = await context.bot.send_dice(chat_id=chat.id, emoji="🎲")
-    await asyncio.sleep(2)
-    dice_value = int(dice_msg.dice.value or 1)
-
-    options = _pick_random_animes(dice_value)
-    if not options:
-        _refund_one_die(user_id)
-        await update.message.reply_html("❌ Não consegui carregar a lista de animes agora. Tente novamente.")
-        return
-
-    try:
-        roll_id = create_dice_roll(
-            user_id,
-            dice_value,
-            json.dumps(options, ensure_ascii=False),
-            "pending",
-            int(time.time())
-        )
-    except TypeError:
-        try:
-            roll_id = create_dice_roll(user_id, dice_value, json.dumps(options, ensure_ascii=False))
-        except Exception:
-            _refund_one_die(user_id)
-            await update.message.reply_html("⚠️ Não consegui concluir agora. Tente novamente.")
-            return
-    except Exception:
-        _refund_one_die(user_id)
-        await update.message.reply_html("⚠️ Não consegui concluir agora. Tente novamente.")
-        return
-
-    balance2 = _refresh_user_dado_balance(user_id)
-    extra2 = _refresh_user_giros(user_id)
-
-    caption = _nice_pick_text(dice_value, balance2, extra2)
-    kb = _anime_buttons_for_roll(roll_id, options)
-
-    try:
-        await update.message.reply_photo(
-            photo=DADO_PICK_IMAGE,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-    except Exception:
-        await update.message.reply_html(caption, reply_markup=kb)
+    await update.message.reply_html(
+        "💳 <b>SALDO</b>\n\n"
+        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
+        f"🎟️ <b>Dados:</b> <code>{balance}</code>\n"
+        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
+        f"🕒 Próxima recarga do dado: <b>{nxt}</b> (horário local)"
+    )
 
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
@@ -5965,6 +5964,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
