@@ -635,3 +635,40 @@ def claim_daily_reward(
                 except Exception:
                     pass
                 raise
+
+# ================================
+# COMPATIBILIDADE (exports antigos)
+# ================================
+# Seu bot.py antigo importa funções que podem ter sumido em refactors.
+# Mantemos wrappers simples para não quebrar imports.
+
+def set_last_pedido(user_id: int, ts: int):
+    """
+    Compat: atualiza users.last_pedido
+    """
+    _run("UPDATE users SET last_pedido=%s WHERE user_id=%s", (int(ts), int(user_id)))
+
+
+def set_last_dado(user_id: int, ts: int):
+    """
+    Compat: atualiza users.last_dado (se você ainda usa em algum comando)
+    """
+    _run("UPDATE users SET last_dado=%s WHERE user_id=%s", (int(ts), int(user_id)))
+
+
+def get_last_pedido(user_id: int) -> int:
+    r = _run(
+        "SELECT COALESCE(last_pedido,0)::bigint AS t FROM users WHERE user_id=%s",
+        (int(user_id),),
+        fetch="one",
+    ) or {}
+    return int(r.get("t") or 0)
+
+
+def get_last_dado(user_id: int) -> int:
+    r = _run(
+        "SELECT COALESCE(last_dado,0)::bigint AS t FROM users WHERE user_id=%s",
+        (int(user_id),),
+        fetch="one",
+    ) or {}
+    return int(r.get("t") or 0)
