@@ -1,6 +1,6 @@
 # ================================
 # database.py — Postgres (Railway)
-# (POOL + TRANSACOES SEGURAS + MIGRACAO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
+# (POOL + TRANSACOES SEGURAS + MIGRACAO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS + MINIAPP + ENGINE)
 # ================================
 
 import os
@@ -91,6 +91,7 @@ def _run_many(statements: List[Tuple[str, Tuple]]):
 # ================================
 def _ensure_columns_users():
     stmts = [
+        # identidade / perfil
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS collection_name TEXT;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT;", ()),
@@ -98,19 +99,24 @@ def _ensure_columns_users():
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS private_profile BOOLEAN DEFAULT FALSE;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_photo TEXT;", ()),
 
+        # economia / progressão
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS coins INT DEFAULT 0;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS commands INT DEFAULT 0;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS level INT DEFAULT 1;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INT DEFAULT 0;", ()),
 
+        # cooldowns
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_dado BIGINT DEFAULT 0;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_pedido BIGINT DEFAULT 0;", ()),
 
+        # DAILY
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily BIGINT DEFAULT 0;", ()),
 
+        # DADO (saldo normal + slot 4h)
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_balance INT DEFAULT 0;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT DEFAULT -1;", ()),
 
+        # GIROS (extra_dado) + slot
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_dado INT DEFAULT 0;", ()),
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_slot BIGINT DEFAULT -1;", ()),
     ]
@@ -163,6 +169,7 @@ def _ensure_achievements_table():
 
 
 def _try_create_indexes():
+    # dedupe + unique nick
     try:
         _dedupe_nicks_before_unique_index()
     except Exception as e:
@@ -182,14 +189,22 @@ def _try_create_indexes():
     indexes = [
         ("user_collection_user_idx", "CREATE INDEX IF NOT EXISTS user_collection_user_idx ON user_collection (user_id);"),
         ("user_collection_char_idx", "CREATE INDEX IF NOT EXISTS user_collection_char_idx ON user_collection (character_id);"),
+        ("collection_user_qty_idx", "CREATE INDEX IF NOT EXISTS collection_user_qty_idx ON user_collection (user_id, quantity DESC);"),
+
         ("trades_to_user_idx", "CREATE INDEX IF NOT EXISTS trades_to_user_idx ON trades (to_user);"),
         ("trades_status_idx", "CREATE INDEX IF NOT EXISTS trades_status_idx ON trades (status);"),
+
         ("dice_rolls_user_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);"),
         ("dice_rolls_status_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_status_idx ON dice_rolls (status);"),
+
         ("top_cache_rank_idx", "CREATE INDEX IF NOT EXISTS top_cache_rank_idx ON top_anime_cache (rank);"),
+
         ("shop_sales_user_idx", "CREATE INDEX IF NOT EXISTS shop_sales_user_idx ON shop_sales (user_id);"),
-        # ✅ para MiniApp (coleção rápida por quantidade)
-        ("collection_user_qty_idx", "CREATE INDEX IF NOT EXISTS collection_user_qty_idx ON user_collection (user_id, quantity DESC);"),
+
+        # ❗ estavam no antigo e podem fazer diferença em consultas / filtros
+        ("users_last_daily_idx", "CREATE INDEX IF NOT EXISTS users_last_daily_idx ON users (last_daily);"),
+        ("users_dado_slot_idx", "CREATE INDEX IF NOT EXISTS users_dado_slot_idx ON users (dado_slot);"),
+        ("users_extra_slot_idx", "CREATE INDEX IF NOT EXISTS users_extra_slot_idx ON users (extra_slot);"),
     ]
     for name, sql in indexes:
         try:
@@ -199,32 +214,17 @@ def _try_create_indexes():
 
 
 def init_db():
-    # tabelas principais (idêntico ao seu, só que com pool)
+    # USERS base + colunas (migrável)
     _run(
         """
         CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            nick TEXT,
-            collection_name TEXT DEFAULT 'Minha Coleção',
-            fav_name TEXT,
-            fav_image TEXT,
-            private_profile BOOLEAN DEFAULT FALSE,
-            admin_photo TEXT,
-            coins INT DEFAULT 0,
-            commands INT DEFAULT 0,
-            level INT DEFAULT 1,
-            xp INT DEFAULT 0,
-            last_dado BIGINT DEFAULT 0,
-            last_pedido BIGINT DEFAULT 0,
-            last_daily BIGINT DEFAULT 0,
-            dado_balance INT DEFAULT 0,
-            dado_slot BIGINT DEFAULT -1,
-            extra_dado INT DEFAULT 0,
-            extra_slot BIGINT DEFAULT -1
+            user_id BIGINT PRIMARY KEY
         );
         """
     )
+    _ensure_columns_users()
 
+    # COLEÇÃO
     _run(
         """
         CREATE TABLE IF NOT EXISTS user_collection (
@@ -232,14 +232,15 @@ def init_db():
             character_id INT NOT NULL,
             character_name TEXT NOT NULL,
             image TEXT,
-            custom_image TEXT,
             anime_title TEXT,
+            custom_image TEXT,
             quantity INT DEFAULT 1,
             PRIMARY KEY (user_id, character_id)
         );
         """
     )
 
+    # TROCAS
     _run(
         """
         CREATE TABLE IF NOT EXISTS trades (
@@ -254,6 +255,26 @@ def init_db():
         """
     )
 
+    # BATALHAS (tava no antigo e sumiu no atual)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS battles (
+            chat_id BIGINT PRIMARY KEY,
+            player1_id BIGINT,
+            player2_id BIGINT,
+            player1_name TEXT,
+            player2_name TEXT,
+            player1_char TEXT,
+            player2_char TEXT,
+            player1_hp INT DEFAULT 100,
+            player2_hp INT DEFAULT 100,
+            turno INT DEFAULT 0,
+            vez INT DEFAULT 0
+        );
+        """
+    )
+
+    # LOJA (log)
     _run(
         """
         CREATE TABLE IF NOT EXISTS shop_sales (
@@ -265,6 +286,7 @@ def init_db():
         """
     )
 
+    # imagens globais
     _run(
         """
         CREATE TABLE IF NOT EXISTS character_images (
@@ -276,6 +298,7 @@ def init_db():
         """
     )
 
+    # ban
     _run(
         """
         CREATE TABLE IF NOT EXISTS banned_characters (
@@ -287,6 +310,7 @@ def init_db():
         """
     )
 
+    # cache top
     _run(
         """
         CREATE TABLE IF NOT EXISTS top_anime_cache (
@@ -298,6 +322,7 @@ def init_db():
         """
     )
 
+    # rolls dado
     _run(
         """
         CREATE TABLE IF NOT EXISTS dice_rolls (
@@ -311,7 +336,6 @@ def init_db():
         """
     )
 
-    _ensure_columns_users()
     _ensure_achievements_table()
     _try_create_indexes()
 
@@ -351,11 +375,9 @@ def ensure_user_row(user_id: int, default_name: str, new_user_dice: int = 0):
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (user_id, nick, "Minha Coleção", int(new_user_dice or 0), -1, 0, -1, 0),
-                fetch="none",
             )
             return
         except pg_errors.UniqueViolation:
-            # nick já existe -> tenta outro
             continue
 
     _run(
@@ -376,8 +398,40 @@ def get_user_row(user_id: int):
     return _run("SELECT * FROM users WHERE user_id=%s", (int(user_id),), fetch="one")
 
 
+def get_user_row_safe(user_id: int) -> dict:
+    row = get_user_row(user_id)
+    return row or {
+        "user_id": int(user_id),
+        "nick": "User",
+        "coins": 0,
+        "level": 1,
+        "commands": 0,
+        "extra_dado": 0,
+        "extra_slot": -1,
+        "dado_balance": 0,
+        "dado_slot": -1,
+        "last_daily": 0,
+    }
+
+
 def get_user_by_nick(nick: str):
     return _run("SELECT * FROM users WHERE LOWER(nick)=LOWER(%s) LIMIT 1", (str(nick),), fetch="one")
+
+
+def try_set_nick(user_id: int, nick: str) -> bool:
+    """Tenta setar nick. Retorna False se violar unique."""
+    try:
+        _run("UPDATE users SET nick=%s WHERE user_id=%s", (str(nick), int(user_id)))
+        return True
+    except pg_errors.UniqueViolation:
+        return False
+    except Exception:
+        return False
+
+
+def set_user_nick(user_id: int, nick: str) -> bool:
+    """Compatibilidade com o antigo: sanitiza e tenta setar."""
+    return try_set_nick(int(user_id), _sanitize_nick(nick))
 
 
 def set_private_profile(user_id: int, is_private: bool):
@@ -473,8 +527,8 @@ def count_collection(user_id: int) -> int:
     return int(row.get("n") or 0)
 
 
-# ✅ Ajuste para MiniApp/Loja: assinatura correta (page, per_page) e retorna (itens, total, total_pages)
 def get_collection_page(user_id: int, page: int, per_page: int):
+    """MiniApp/Loja: retorna (itens, total, total_pages)"""
     page = max(1, int(page))
     per_page = max(1, min(50, int(per_page)))
 
@@ -507,10 +561,10 @@ def get_collection_page(user_id: int, page: int, per_page: int):
 
 
 def list_collection_cards(user_id: int, limit: int = 200):
-    # ✅ Mantém payload completo (coleção + loja)
-    return _run(
+    """Compatível com versões antigas: devolve 'name' também."""
+    rows = _run(
         """
-        SELECT character_id, character_name, image, custom_image, anime_title, quantity
+        SELECT character_id, character_name, image, custom_image, COALESCE(anime_title,'') AS anime_title, quantity
         FROM user_collection
         WHERE user_id=%s
         ORDER BY quantity DESC, character_id ASC
@@ -519,6 +573,20 @@ def list_collection_cards(user_id: int, limit: int = 200):
         (int(user_id), int(limit)),
         fetch="all",
     ) or []
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "character_id": int(r["character_id"]),
+                "character_name": r["character_name"],
+                "name": r["character_name"],  # compat
+                "image": r.get("image"),
+                "custom_image": r.get("custom_image"),
+                "anime_title": r.get("anime_title") or "",
+                "quantity": int(r.get("quantity") or 1),
+            }
+        )
+    return out
 
 
 def user_has_character(user_id: int, char_id: int) -> bool:
@@ -631,6 +699,7 @@ def add_extra_dado(user_id: int, amount: int):
 
 
 def get_extra_dado(user_id: int) -> int:
+    """Compatibilidade com versões antigas do bot: retorna apenas a quantidade de giros."""
     st = get_extra_state(user_id)
     return int(st.get("x") or 0)
 
@@ -974,17 +1043,6 @@ def increment_commands_and_level(user_id: int, nick_fallback: str, comandos_por_
                 return None
 
 
-def try_set_nick(user_id: int, nick: str) -> bool:
-    """Tenta setar nick. Retorna False se violar unique."""
-    try:
-        _run("UPDATE users SET nick=%s WHERE user_id=%s", (str(nick), int(user_id)))
-        return True
-    except pg_errors.UniqueViolation:
-        return False
-    except Exception:
-        return False
-
-
 def get_collection_quantities(user_id: int, char_ids: List[int]) -> Dict[int, int]:
     if not char_ids:
         return {}
@@ -1003,13 +1061,6 @@ def get_collection_quantities(user_id: int, char_ids: List[int]) -> Dict[int, in
 
 # ================================
 # RANKINGS / STATS / CONQUISTAS
-# ================================
-# Mantive a interface do seu arquivo original — por brevidade e compatibilidade.
-# Estas funções são as mesmas do seu "novo database.txt" (não alteram textos do bot).
-# Para não estourar tamanho aqui, eu carrego o restante do seu arquivo original e anexo no final.
-
-# ================================
-# RANKINGS
 # ================================
 def get_top_by_level(limit: int = 10):
     return _run(
@@ -1071,9 +1122,6 @@ def get_top_by_collection(limit: int = 10):
     ) or []
 
 
-# ================================
-# STATS / CONQUISTAS
-# ================================
 def get_collection_unique_count(user_id: int) -> int:
     row = _run("SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s", (int(user_id),), fetch="one") or {}
     return int(row.get("c") or 0)
@@ -1183,7 +1231,6 @@ def count_user_achievements(user_id: int) -> int:
 
 
 def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extra_dado_per: int = 1) -> int:
-    # ✅ FIX: não existia "db" aqui; agora usa pool + transação
     if not new_keys:
         return 0
 
@@ -1263,7 +1310,6 @@ def create_engine_tables():
 # DADO — Blacklist persistente + Vault (fallback definitivo)
 # ==================================================
 def create_dado_tables():
-    # blacklist de animes “ruins” (sem MAIN/SUPPORTING suficiente)
     _run("""
     CREATE TABLE IF NOT EXISTS bad_anime (
       anime_id INT PRIMARY KEY,
@@ -1274,7 +1320,6 @@ def create_dado_tables():
     """)
     _run("CREATE INDEX IF NOT EXISTS bad_anime_until_idx ON bad_anime (until_ts);")
 
-    # vault de personagens já vistos (pra nunca depender 100% do AniList)
     _run("""
     CREATE TABLE IF NOT EXISTS character_vault (
       character_id INT PRIMARY KEY,
@@ -1299,7 +1344,7 @@ def is_bad_anime(anime_id: int) -> bool:
 
 def mark_bad_anime(anime_id: int, reason: str = ""):
     now = int(time.time())
-    ttl = 7 * 24 * 3600  # 7 dias
+    ttl = 7 * 24 * 3600
     until_ts = now + ttl
     _run("""
     INSERT INTO bad_anime (anime_id, until_ts, reason, updated_at)
@@ -1334,13 +1379,9 @@ def vault_random_character():
 
 
 # ==========================================================
-# MINIAPP (AJUSTE DEFINITIVO): coleção/loja sem conflito
+# MINIAPP: coleção/loja sem conflito
 # ==========================================================
 def get_collection_for_webapp(user_id: int, limit: int = 500):
-    """
-    Retorna lista pronta para o MiniApp (coleção) com:
-    character_id, character_name, image (custom primeiro), anime_title, quantity
-    """
     rows = _run(
         """
         SELECT character_id, character_name, image, custom_image, COALESCE(anime_title,'') AS anime_title, quantity
@@ -1368,11 +1409,15 @@ def get_collection_for_webapp(user_id: int, limit: int = 500):
     return out
 
 
+def record_shop_sale(user_id: int, character_id: int, created_at: Optional[int] = None):
+    _run(
+        "INSERT INTO shop_sales (user_id, character_id, created_at) VALUES (%s,%s,%s)",
+        (int(user_id), int(character_id), int(created_at or time.time())),
+    )
+
+
 def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -> bool:
-    """
-    Venda segura (MiniApp Loja):
-    remove 1 unidade do personagem e credita coins.
-    """
+    """Venda segura (MiniApp Loja): remove 1 unidade do personagem e credita coins."""
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1406,6 +1451,15 @@ def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -
                     "UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s",
                     (int(coin_gain), int(user_id)),
                 )
+
+                # log de venda (não quebra se falhar)
+                try:
+                    cur.execute(
+                        "INSERT INTO shop_sales (user_id, character_id, created_at) VALUES (%s,%s,%s)",
+                        (int(user_id), int(char_id), int(time.time())),
+                    )
+                except Exception:
+                    pass
 
                 conn.commit()
                 return True
