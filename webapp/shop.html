@@ -1,26 +1,103 @@
 <!DOCTYPE html>
 <html>
+
 <head>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Shop</title>
+<title>Loja Baltigo</title>
 
 <link rel="stylesheet" href="/css/style.css">
 
 </head>
 
-<body>
+<body class="bg">
 
-<h1>🏪 Loja</h1>
+<div class="container">
 
-<button onclick="buyGiro()">Comprar Giro</button>
+<h1 class="title">🏪 Loja</h1>
+
+<div id="coinsBox">
+
+🪙 Coins: <span id="coins">-</span>
+
+</div>
+
+<button class="shop-btn" onclick="buyGiro()">
+🎡 Comprar Giro
+</button>
+
+<button class="shop-btn" onclick="buyDado()">
+🎲 Comprar Dado
+</button>
 
 <div id="status"></div>
 
+</div>
+
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/js/script.js"></script>
+
+<script>
+
+const tg = window.Telegram?.WebApp;
+
+if(tg){
+tg.ready();
+tg.expand();
+}
+
+async function loadShop(){
+
+const res = await fetch("/api/shop/state",{
+headers:{
+"X-Telegram-Init-Data":tg.initData
+}
+});
+
+const data = await res.json();
+
+document.getElementById("coins").innerText=data.coins;
+
+}
+
+async function buyGiro(){
+
+const res = await fetch("/api/shop/buy/giro",{
+method:"POST",
+headers:{
+"X-Telegram-Init-Data":tg.initData
+}
+});
+
+const data = await res.json();
+
+document.getElementById("status").innerText=JSON.stringify(data);
+
+loadShop();
+
+}
+
+async function buyDado(){
+
+const res = await fetch("/api/shop/buy/dado",{
+method:"POST",
+headers:{
+"X-Telegram-Init-Data":tg.initData
+}
+});
+
+const data = await res.json();
+
+document.getElementById("status").innerText=JSON.stringify(data);
+
+loadShop();
+
+}
+
+loadShop();
+
+</script>
 
 </body>
 </html>
