@@ -135,6 +135,37 @@ from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
 
 # ==================================================
+# GLOBALS (TZ + SAFE HELPERS)
+# ==================================================
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
+
+# Timezone padrão do bot (você está em Campo Grande)
+BOT_TZ_NAME = os.getenv("BOT_TZ", "America/Campo_Grande")
+SP_TZ_NAME = os.getenv("SP_TZ", "America/Sao_Paulo")
+
+def _get_tz(name: str):
+    if ZoneInfo is None:
+        return None
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return None
+
+BOT_TZ = _get_tz(BOT_TZ_NAME)
+SP_TZ = _get_tz(SP_TZ_NAME) or BOT_TZ
+
+async def safe_delete(msg):
+    """Deleta mensagem sem estourar exceção (mensagem já apagada, sem permissão, etc)."""
+    try:
+        if msg:
+            await msg.delete()
+    except Exception:
+        pass
+
+# ==================================================
 # 1) CONFIG (TUDO VIA VARIÁVEIS DO RAILWAY)
 # ==================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -3276,7 +3307,6 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
 # ==================================================
 
-    SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 # DADOS (saldo normal do /dado)
 DADO_MAX_BALANCE = 18
@@ -5999,7 +6029,6 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
-
 
 
 
