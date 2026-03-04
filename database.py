@@ -408,6 +408,12 @@ def init_db():
     except Exception as e:
         print("⚠️ create_dado_tables falhou (ok continuar):", e)
 
+    # TOP500 pool (fonte única de personagens)
+    try:
+        create_characters_pool_tables()
+    except Exception as e:
+        print('⚠️ create_characters_pool_tables falhou (ok continuar):', e)
+
     _try_create_indexes()
 
 
@@ -1757,3 +1763,294 @@ def top500_job_read_top_list(job_row: dict) -> list[dict]:
         return _json.loads(job_row.get("top_json") or "[]") or []
     except Exception:
         return []
+
+
+# ================================
+# TOP500 POOL (FONTE ÚNICA)
+# ================================
+# Regras:
+# - Sorteios (dado/cards/drops/loja) DEVEM usar somente characters_pool
+# - AniList fica apenas como fallback de imagem (via id) se não houver setfoto
+#
+# Arquivo de import: top500_anilist_consolidado.txt
+# Formatos aceitos:
+#   "Nome (123)"
+#   "- Nome (123)"
+#   "#123 Anime Title"  (linha de anime, opcional)
+#
+# Observação: mantemos coleções antigas (LEGACY). O pool controla apenas o que é GERADO.
+# ================================
+
+def create_characters_pool_tables():
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS characters_pool (
+            character_id BIGINT PRIMARY KEY,
+            name TEXT NOT NULL,
+            anime TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at BIGINT DEFAULT 0
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_anime_idx ON characters_pool (anime);")
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_active_idx ON characters_pool (is_active);")
+
+
+def pool_import_top500_txt(file_path: str = "top500_anilist_consolidado.txt") -> dict:
+    """
+    Importa o pool a partir do TXT consolidado.
+    - sem duplicação (PK + ON CONFLICT DO NOTHING)
+    - idempotente (pode rodar quantas vezes quiser)
+    Retorna: {inserted, skipped, total_lines}
+    """
+    inserted = 0
+    skipped = 0
+    total = 0
+    now = int(time.time())
+
+    # Cache simples de último anime encontrado (se o TXT tiver headers de anime)
+    current_anime = "TOP500"
+
+    # regex: pega "Nome (123)" mesmo com prefixo "-"
+    rx = re.compile(r"^\s*-?\s*(?P<name>.+?)\s*\((?P<id>\d+)\)\s*$")
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            total += 1
+            s = (line or "").strip()
+            if not s:
+                continue
+
+            # header de anime: "#123 Nome do anime"
+            if s.startswith("#"):
+                # remove "#<rank>" se houver
+                t = re.sub(r"^#\s*\d+\s*", "", s).strip()
+                if t:
+                    current_anime = t
+                continue
+
+            m = rx.match(s)
+            if not m:
+                continue
+
+            char_id = int(m.group("id"))
+            name = (m.group("name") or "").strip()
+            anime = (current_anime or "TOP500").strip() or "TOP500"
+
+            row = _run(
+                """
+                INSERT INTO characters_pool (character_id, name, anime, is_active, created_at)
+                VALUES (%s, %s, %s, TRUE, %s)
+                ON CONFLICT (character_id) DO NOTHING
+                RETURNING character_id
+                """,
+                (int(char_id), str(name), str(anime), int(now)),
+                fetch="one",
+            )
+            if row:
+                inserted += 1
+            else:
+                skipped += 1
+
+    return {"inserted": inserted, "skipped": skipped, "total_lines": total}
+
+
+def pool_set_active(character_id: int, active: bool) -> bool:
+    row = _run(
+        "UPDATE characters_pool SET is_active=%s WHERE character_id=%s RETURNING character_id",
+        (bool(active), int(character_id)),
+        fetch="one",
+    )
+    return bool(row)
+
+
+def pool_add_character(character_id: int, name: str, anime: str) -> bool:
+    row = _run(
+        """
+        INSERT INTO characters_pool (character_id, name, anime, is_active, created_at)
+        VALUES (%s, %s, %s, TRUE, %s)
+        ON CONFLICT (character_id) DO UPDATE
+        SET name=EXCLUDED.name,
+            anime=EXCLUDED.anime
+        RETURNING character_id
+        """,
+        (int(character_id), str(name), str(anime), int(time.time())),
+        fetch="one",
+    )
+    return bool(row)
+
+
+def pool_delete_character(character_id: int) -> bool:
+    # "deletar" do pool = desativar, para não quebrar referências
+    return pool_set_active(int(character_id), False)
+
+
+def pool_random_animes(limit: int) -> List[dict]:
+    """
+    Retorna uma lista de animes aleatórios existentes no pool.
+    Formato: [{anime: str}]
+    """
+    limit = max(1, min(int(limit), 6))
+    rows = _run(
+        """
+        SELECT anime
+        FROM (
+            SELECT DISTINCT anime
+            FROM characters_pool
+            WHERE is_active=TRUE
+        ) t
+        ORDER BY RANDOM()
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all",
+    ) or []
+    out = []
+    for r in rows:
+        a = (r.get("anime") or "").strip()
+        if a:
+            out.append({"anime": a})
+    return out
+
+
+def pool_random_character(anime: Optional[str] = None) -> Optional[dict]:
+    """
+    Padrão: SELECT ... ORDER BY RANDOM() LIMIT 1
+    (para pool ~5000 é ok. Se crescer muito, podemos trocar por TABLESAMPLE/OFFSET)
+    Retorna: {character_id, name, anime}
+    """
+    if anime:
+        row = _run(
+            """
+            SELECT character_id, name, anime
+            FROM characters_pool
+            WHERE is_active=TRUE AND anime=%s
+            ORDER BY RANDOM()
+            LIMIT 1
+            """,
+            (str(anime),),
+            fetch="one",
+        )
+    else:
+        row = _run(
+            """
+            SELECT character_id, name, anime
+            FROM characters_pool
+            WHERE is_active=TRUE
+            ORDER BY RANDOM()
+            LIMIT 1
+            """,
+            fetch="one",
+        )
+    return row if isinstance(row, dict) else None
+
+
+# ================================
+# APAGAR PERSONAGEM -> +1 COIN
+# ================================
+# IMPORTANTE:
+# - Isso é APENAS para a ação explícita do usuário "apagar".
+# - NÃO usar em trade/swap, dado, loja (vender), etc.
+# - Implementação transacional + idempotência por action_id (anti duplo clique)
+# ================================
+
+_run(
+    """
+    CREATE TABLE IF NOT EXISTS economy_actions (
+        user_id BIGINT NOT NULL,
+        action_id TEXT NOT NULL,
+        created_at BIGINT NOT NULL,
+        amount INT NOT NULL,
+        reason TEXT NOT NULL,
+        PRIMARY KEY (user_id, action_id)
+    );
+    """
+)
+_run("CREATE INDEX IF NOT EXISTS economy_actions_user_idx ON economy_actions (user_id);")
+
+
+def delete_one_character_for_coin(user_id: int, character_id: int, action_id: str) -> int:
+    """
+    Remove 1 unidade do personagem da coleção e credita +1 coin.
+    Retorna coins creditadas (0 ou 1).
+    Idempotente por (user_id, action_id).
+    """
+    if not action_id:
+        raise ValueError("action_id obrigatório")
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                _set_local_timeouts(cur)
+
+                # idempotência
+                cur.execute(
+                    "SELECT amount FROM economy_actions WHERE user_id=%s AND action_id=%s LIMIT 1",
+                    (int(user_id), str(action_id)),
+                )
+                seen = cur.fetchone()
+                if seen:
+                    conn.commit()
+                    return int(seen.get("amount") or 0)
+
+                # trava a linha da coleção
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM user_collection
+                    WHERE user_id=%s AND character_id=%s
+                    FOR UPDATE
+                    """,
+                    (int(user_id), int(character_id)),
+                )
+                row = cur.fetchone()
+                if not row:
+                    # registra action como 0 para bloquear retry infinito
+                    cur.execute(
+                        """
+                        INSERT INTO economy_actions (user_id, action_id, created_at, amount, reason)
+                        VALUES (%s,%s,%s,%s,%s)
+                        """,
+                        (int(user_id), str(action_id), int(time.time()), 0, "delete_character"),
+                    )
+                    conn.commit()
+                    return 0
+
+                q = int(row.get("quantity") or 0)
+                if q <= 1:
+                    cur.execute(
+                        "DELETE FROM user_collection WHERE user_id=%s AND character_id=%s",
+                        (int(user_id), int(character_id)),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE user_collection SET quantity=quantity-1 WHERE user_id=%s AND character_id=%s",
+                        (int(user_id), int(character_id)),
+                    )
+
+                # credita coin
+                cur.execute(
+                    "UPDATE users SET coins=COALESCE(coins,0)+1 WHERE user_id=%s",
+                    (int(user_id),),
+                )
+
+                # log idempotente
+                cur.execute(
+                    """
+                    INSERT INTO economy_actions (user_id, action_id, created_at, amount, reason)
+                    VALUES (%s,%s,%s,%s,%s)
+                    """,
+                    (int(user_id), str(action_id), int(time.time()), 1, "delete_character"),
+                )
+
+                conn.commit()
+                return 1
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
