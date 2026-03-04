@@ -98,6 +98,23 @@ def _set_local_timeouts(cur, lock_timeout_ms: int = 3000, statement_timeout_ms: 
         # se o driver/ambiente rejeitar, não quebra
         pass
 
+# ================================
+# TOP500 (arquivo gerado - salvo no DB)
+# ================================
+_run(
+    """
+    CREATE TABLE IF NOT EXISTS anilist_top500_files (
+        file_id SERIAL PRIMARY KEY,
+        created_at BIGINT NOT NULL,
+        created_by BIGINT,
+        seed_items INT NOT NULL,
+        total_franchises INT NOT NULL,
+        total_selected INT NOT NULL,
+        content_text TEXT NOT NULL
+    );
+    """
+)
+_run("CREATE INDEX IF NOT EXISTS anilist_top500_created_at_idx ON anilist_top500_files (created_at DESC);")
 
 # ================================
 # MIGRAÇÃO / INIT
@@ -1656,3 +1673,56 @@ def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -
                 except Exception:
                     pass
                 raise
+
+# ================================
+# TOP500 FILE STORE
+# ================================
+def save_top500_file(
+    created_by: Optional[int],
+    seed_items: int,
+    total_franchises: int,
+    total_selected: int,
+    content_text: str,
+) -> int:
+    row = _run(
+        """
+        INSERT INTO anilist_top500_files (created_at, created_by, seed_items, total_franchises, total_selected, content_text)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING file_id
+        """,
+        (
+            int(time.time()),
+            int(created_by) if created_by is not None else None,
+            int(seed_items),
+            int(total_franchises),
+            int(total_selected),
+            str(content_text),
+        ),
+        fetch="one",
+    ) or {}
+    return int(row.get("file_id") or 0)
+
+
+def get_latest_top500_file() -> Optional[dict]:
+    return _run(
+        """
+        SELECT file_id, created_at, created_by, seed_items, total_franchises, total_selected, content_text
+        FROM anilist_top500_files
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        fetch="one",
+    )
+
+
+def get_top500_file_by_id(file_id: int) -> Optional[dict]:
+    return _run(
+        """
+        SELECT file_id, created_at, created_by, seed_items, total_franchises, total_selected, content_text
+        FROM anilist_top500_files
+        WHERE file_id=%s
+        LIMIT 1
+        """,
+        (int(file_id),),
+        fetch="one",
+    )
