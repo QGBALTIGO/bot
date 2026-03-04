@@ -2925,58 +2925,14 @@ def _nice_group_block_text() -> str:
 # ==================================================
 # /dado (PV only) — Dado Premium (MiniApp)
 # ==================================================
+BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
+
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
-
-    user_id = update.effective_user.id
-    chat = update.effective_chat
-
-    ok = await anti_spam(user_id, key="cmd:/dado", window=CMD_ANTIFLOOD_SECONDS)
-    if not ok:
-        return
-
-    if chat.type != "private":
-        await update.message.reply_html(_nice_group_block_text())
-        return
-
-    # ✅ Dado Premium (MiniApp)
-    webapp_url = os.getenv("WEBAPP_URL", "").strip()
-    if not webapp_url:
-        # Railway: domínio público automático (se WEBAPP_URL não estiver setado)
-        dom = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
-        if dom:
-            webapp_url = dom if dom.startswith("http") else f"https://{dom}"
-
-    # normaliza: se o user colocou WEBAPP_URL como ".../app", evita "/app/app"
-    if webapp_url.endswith("/app"):
-        webapp_url = webapp_url[:-4]
-
-    if webapp_url:
-        try:
-            from telegram import WebAppInfo
-
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton(
-                    "🎲 Abrir Dado (MiniApp)",
-                    web_app=WebAppInfo(url=f"{webapp_url.rstrip('/')}/app?tab=dado")
-                )]
-            ])
-
-            await update.message.reply_html(
-                "🎲 <b>DADO PREMIUM</b>\n\n"
-                "Agora o <b>dado é no MiniApp</b>:\n"
-                "✅ dado 3D animado\n"
-                "✅ grid com capa\n"
-                "✅ busca/filtro\n"
-                "✅ lootbox reveal\n\n"
-                "Clique abaixo para abrir:",
-                reply_markup=kb
-            )
-            return
-        except Exception:
-            # se der erro no WebAppInfo, cai no modo clássico
-            pass
+    url = f"{BASE_URL}/dado"
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]
+    ])
+    await update.message.reply_text("🎲 Abrindo o Dado no Mini App:", reply_markup=kb)
 
     # ==========================
     # Fallback: modo clássico
@@ -5358,6 +5314,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
