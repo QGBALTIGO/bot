@@ -53,7 +53,7 @@ MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 SHOP_SELL_GAIN = int(os.getenv("SHOP_SELL_GAIN", "1"))
 SHOP_GIRO_PRICE = int(os.getenv("SHOP_GIRO_PRICE", "2"))
-SHOP_DADO_PRICE = int(os.getenv("SHOP_DADO_PRICE", "1"))
+SHOP_DADO_PRICE = int(os.getenv("SHOP_DADO_PRICE", "2"))
 COLLECTION_LIMIT = int(os.getenv("COLLECTION_LIMIT", "500"))
 
 ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
