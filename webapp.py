@@ -1127,11 +1127,6 @@ def _theme_css() -> str:
   --a4:#b06cff;
   --a5:#4da3ff;
 
-  --c-common:#c9c9c9;
-  --c-rare:#4da3ff;
-  --c-epic:#b06cff;
-  --c-mythic:#ffcc33;
-
   --shadow: 0 22px 70px rgba(0,0,0,.55);
 }
 *{box-sizing:border-box}
