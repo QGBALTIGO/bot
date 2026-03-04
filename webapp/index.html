@@ -1,72 +1,97 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
+
 <head>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Baltigo • Coleção</title>
+<title>Coleção Baltigo</title>
 
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/animations.css">
+<link rel="stylesheet" href="/css/style.css">
 
 </head>
 
 <body class="bg">
 
-<div class="app">
+<div class="container">
 
-<header class="top">
+<h1 class="title">📦 Minha Coleção</h1>
 
-<div class="title">
-<h1 id="h1">Minha coleção</h1>
-<span id="sub">Carregando...</span>
-</div>
+<div id="stats">
 
-<div class="stats">
-
-<div class="stat">
 🪙 <span id="coins">-</span>
-</div>
-
-<div class="divider"></div>
-
-<div class="stat">
 🎡 <span id="giros">-</span>
-</div>
 
 </div>
 
-</header>
+<input
+id="search"
+placeholder="Buscar personagem..."
+class="search"
+/>
 
-<div class="tabs">
-
-<button id="tab_all" class="tab active">
-📦 Coleção
-</button>
-
-<button id="tab_fav" class="tab">
-⭐ Favorito
-</button>
-
-</div>
-
-<div class="search">
-
-<input id="q" placeholder="Buscar personagem ou anime">
-
-</div>
-
-<div id="status" class="status">
-Conectando...
-</div>
-
-<main id="sections"></main>
+<div id="cards" class="grid"></div>
 
 </div>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="js/script.js"></script>
+
+<script>
+
+const tg = window.Telegram?.WebApp;
+
+if(tg){
+tg.ready();
+tg.expand();
+}
+
+async function loadCollection(){
+
+const res = await fetch("/api/me/collection",{
+headers:{
+"X-Telegram-Init-Data":tg.initData
+}
+});
+
+const data = await res.json();
+
+document.getElementById("coins").innerText=data.coins;
+document.getElementById("giros").innerText=data.giros;
+
+const grid=document.getElementById("cards");
+
+grid.innerHTML="";
+
+data.cards.forEach(card=>{
+
+const el=document.createElement("div");
+
+el.className="card";
+
+el.innerHTML=`
+
+<img src="${card.image}">
+
+<div class="card-info">
+
+<div class="card-name">${card.character_name}</div>
+
+<div class="card-anime">${card.anime_title}</div>
+
+</div>
+
+`;
+
+grid.appendChild(el);
+
+});
+
+}
+
+loadCollection();
+
+</script>
 
 </body>
 </html>
