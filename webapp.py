@@ -1066,18 +1066,13 @@ def miniapp_shop():
     return HTMLResponse(content=html)
 
 
+# ==========================================================
+# BALTIGO ENGINE DASHBOARD API
+# ==========================================================
 
-# ==========================================================
-# BALTIGO ENGINE — ADMIN DASHBOARD API (read-only)
-# ==========================================================
 @app.get("/api/admin/stats")
-def api_admin_stats(x_telegram_init_data: str = Header(default="")):
-    verify_telegram_init_data(x_telegram_init_data)
-    import database as db
-    try:
-        fn = getattr(db, "get_global_stats", None)
-        if callable(fn):
-            return {"ok": True, "stats": fn()}
-    except Exception:
-        pass
-    return {"ok": True, "stats": {"users": 0, "coins": 0, "chars": 0, "market": 0}}
+def admin_stats():
+    return {
+        "engine": "Baltigo V4",
+        "status": "running"
+    }
