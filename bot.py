@@ -120,6 +120,15 @@ from database import (
     top500_job_checkpoint,
     top500_job_mark_done,
     top500_job_read_top_list,
+
+    # TOP500 pool
+    create_characters_pool_tables,
+    pool_import_top500_txt,
+    pool_add_character,
+    pool_delete_character,
+    pool_set_active,
+    pool_random_character,
+    delete_one_character_for_coin,
 )
 
 from zoneinfo import ZoneInfo
@@ -5627,6 +5636,135 @@ async def _cards_dot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await cards(update, context)
 
 
+
+# ==================================================
+# TOP500 POOL — ADMIN + APAGAR->COIN
+# ==================================================
+# ✅ Não remove nada do bot, apenas adiciona.
+# ✅ Pool é a fonte única para sorteios (via WebApp).
+# ✅ Comandos abaixo ajudam a manter/ajustar manualmente.
+
+TOP500_TX_PATH = os.getenv("TOP500_TX_PATH", "top500_anilist_consolidado.txt").strip()
+
+async def poolimport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("🚫 Apenas admins.")
+
+    # rate limit leve
+    if not await anti_spam(uid, "cmd:/poolimport", 8):
+        return
+
+    try:
+        create_characters_pool_tables()
+    except Exception:
+        pass
+
+    path = TOP500_TX_PATH
+    if context.args and context.args[0].strip():
+        path = context.args[0].strip()
+
+    try:
+        res = pool_import_top500_txt(path)
+        await update.message.reply_html(
+            "✅ <b>Import TOP500 concluído</b>\n\n"
+            f"📄 Arquivo: <code>{path}</code>\n"
+            f"➕ Inseridos: <b>{res.get('inserted')}</b>\n"
+            f"⏭️ Ignorados: <b>{res.get('skipped')}</b>\n"
+            f"📦 Linhas: <b>{res.get('total_lines')}</b>"
+        )
+    except FileNotFoundError:
+        await update.message.reply_text(f"❌ Arquivo não encontrado: {path}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro ao importar: {e}")
+
+
+async def pooladd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("🚫 Apenas admins.")
+
+    if not context.args:
+        return await update.message.reply_text("Uso: /pooladd <id> | <nome> | <anime>")
+
+    raw = " ".join(context.args)
+    parts = [p.strip() for p in raw.split("|")]
+    if len(parts) < 3:
+        return await update.message.reply_text("Uso: /pooladd <id> | <nome> | <anime>")
+
+    try:
+        cid = int(parts[0])
+    except Exception:
+        return await update.message.reply_text("❌ ID inválido.")
+
+    name = parts[1]
+    anime = parts[2]
+    try:
+        ok = pool_add_character(cid, name, anime)
+        await update.message.reply_text("✅ Adicionado no pool." if ok else "⚠️ Não foi possível adicionar.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
+async def pooldel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("🚫 Apenas admins.")
+    if not context.args or not context.args[0].isdigit():
+        return await update.message.reply_text("Uso: /pooldel <id>")
+    cid = int(context.args[0])
+    try:
+        ok = pool_delete_character(cid)
+        await update.message.reply_text("✅ Personagem desativado no pool." if ok else "⚠️ ID não encontrado.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
+async def poolon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("🚫 Apenas admins.")
+    if not context.args or not context.args[0].isdigit():
+        return await update.message.reply_text("Uso: /poolon <id>")
+    cid = int(context.args[0])
+    try:
+        ok = pool_set_active(cid, True)
+        await update.message.reply_text("✅ Personagem reativado no pool." if ok else "⚠️ ID não encontrado.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
+async def apagar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Apaga 1 personagem da coleção do usuário e converte em +1 coin.
+    Idempotente por update_id (evita double tap).
+    """
+    uid = update.effective_user.id
+
+    if not await checar_canal(update, context):
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        return await update.message.reply_text("Uso: /apagar <id_do_personagem>")
+
+    char_id = int(context.args[0])
+    action_id = f"cmd:apagar:{update.update_id}"
+
+    try:
+        got = int(delete_one_character_for_coin(uid, char_id, action_id))
+    except Exception as e:
+        return await update.message.reply_text(f"❌ Não consegui apagar: {e}")
+
+    if got <= 0:
+        return await update.message.reply_text("⚠️ Você não tem esse personagem na coleção.")
+    coins = get_user_coins(uid)
+    await update.message.reply_html(
+        "🗑️ <b>Personagem apagado</b>\n\n"
+        "💰 Você recebeu <b>+1 coin</b>.\n"
+        f"🪙 Coins atuais: <b>{coins}</b>"
+    )
+
+
 def main():
 
     app = (
@@ -5718,6 +5856,15 @@ def main():
     app.add_handler(CommandHandler("top500_seed", top500_seed))
     app.add_handler(CommandHandler("top500_chars", top500_chars))
     app.add_handler(CommandHandler("top500_last", top500_last))
+
+    # TOP500 Pool (admin)
+    app.add_handler(CommandHandler("poolimport", poolimport_command))
+    app.add_handler(CommandHandler("pooladd", pooladd_command))
+    app.add_handler(CommandHandler("pooldel", pooldel_command))
+    app.add_handler(CommandHandler("poolon", poolon_command))
+
+    # Apagar personagem -> +1 coin
+    app.add_handler(CommandHandler("apagar", apagar_command))
 
     print("✅ Bot rodando...")
     app.run_polling(
@@ -5852,7 +5999,6 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
-
 
 
 
