@@ -336,9 +336,9 @@ import io
 import math
 from collections import deque
 
-TOP500_SEED_ITEMS = int(os.getenv("TOP500_SEED_ITEMS", "2500"))  # pode aumentar (mais pesado)
+TOP500_SEED_ITEMS = int(os.getenv("TOP500_SEED_ITEMS", "1200"))
 TOP500_SEED_PER_PAGE = 50
-TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "0.8"))          # pausa entre requests
+TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "1.6"))
 TOP500_ADMIN_ONLY = True
 
 _top500_lock = asyncio.Lock()
@@ -442,32 +442,47 @@ query ($id: Int, $page: Int, $perPage: Int) {
 """
 
 async def _gql_aio(session: aiohttp.ClientSession, query: str, variables: dict) -> dict:
-    # Header com user-agent ajuda bastante
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Railway) SourceBaltigoTop500/1.0",
+        "User-Agent": "Mozilla/5.0 SourceBaltigoBot",
     }
-    async with session.post(
-        ANILIST_API,
-        json={"query": query, "variables": variables},
-        headers=headers,
-        timeout=aiohttp.ClientTimeout(total=60),
-    ) as resp:
-        # 429 -> respeita retry-after se existir
-        if resp.status == 429:
-            ra = resp.headers.get("Retry-After")
-            wait = float(ra) if ra and ra.isdigit() else 3.0
-            await asyncio.sleep(wait)
-            raise RuntimeError("Rate limit 429")
-        if resp.status != 200:
-            txt = await resp.text()
-            raise RuntimeError(f"AniList HTTP {resp.status}: {txt[:300]}")
-        data = await resp.json()
-        if "errors" in data:
-            raise RuntimeError(f"AniList GraphQL error: {str(data['errors'][:1])}")
-        return data["data"]
 
+    for attempt in range(1, 10):
+        try:
+            async with session.post(
+                ANILIST_API,
+                json={"query": query, "variables": variables},
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+
+                if resp.status == 429:
+                    wait = min(30, attempt * attempt)
+                    print(f"Rate limit 429. Esperando {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+
+                if resp.status != 200:
+                    txt = await resp.text()
+                    raise RuntimeError(f"AniList HTTP {resp.status}: {txt[:200]}")
+
+                data = await resp.json()
+
+                if "errors" in data:
+                    wait = min(20, attempt * attempt)
+                    await asyncio.sleep(wait)
+                    continue
+
+                return data["data"]
+
+        except Exception as e:
+            wait = min(20, attempt * attempt)
+            print("Erro AniList:", e)
+            await asyncio.sleep(wait)
+
+    raise RuntimeError("Falha após várias tentativas na API AniList")
+    
 async def _fetch_seed(session: aiohttp.ClientSession, seed_items: int) -> list[dict]:
     out = []
     pages = math.ceil(seed_items / TOP500_SEED_PER_PAGE)
@@ -5747,6 +5762,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
