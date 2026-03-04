@@ -3303,121 +3303,105 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# bot_minidado.py — SOMENTE /dado + /saldo + GIROS SLOT (horário certo) + init_db
-# Requer: python-telegram-bot v20+ e seu database.py (psycopg_pool)
+# ==================================================
+# bot_trade_daily_dado.py — (TRECHOS COMPLETOS)
+# TROCAS + DAILY + REFRESH GIROS/DADO + /dado (miniapp botão)
 # ==================================================
 
 import os
 import time
-from typing import Optional
+import asyncio
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from typing import Optional, Dict
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    WebAppInfo,
+)
+from telegram.ext import ContextTypes
 
+# >>> IMPORTA DO SEU database.py
 from database import (
     init_db,
     ensure_user_row,
-    get_user_coins,
-    get_extra_dado,
+    user_has_character,
+    create_trade,
+    get_trade_by_id,
+    get_latest_pending_trade_for_to_user,
+    mark_trade_status,
+    swap_trade_execute,
+    claim_daily_reward,
+    get_extra_state,
+    set_extra_state,
     get_dado_state,
     set_dado_state,
+    get_user_coins,
 )
 
-# ==================================================
-# CONFIG
-# ==================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN não encontrado.")
-
-BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
-
-BOT_TZ_NAME = os.getenv("BOT_TZ", "America/Campo_Grande")
-BOT_TZ = ZoneInfo(BOT_TZ_NAME)
-
-# Imagens
-DADO_PICK_IMAGE = os.getenv(
-    "DADO_PICK_IMAGE",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
-)
-DADO_FALLBACK_IMAGE = os.getenv(
-    "DADO_FALLBACK_IMAGE",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg",
-)
-
-# Slots de GIRO por dia (horário local do BOT_TZ)
-GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # 8 slots/dia
+# ==========================
+# GARANTA init_db UMA VEZ NO STARTUP DO BOT
+# (chame no main do seu bot)
+# init_db()
+# ==========================
 
 # ==================================================
-# SLOTS: DADO (4h) e GIROS (8 por dia)
+# TIMEZONE (ajuste conforme seu bot usa)
 # ==================================================
-def _now_slot_4h(ts: Optional[float] = None) -> int:
-    """
-    Slot de 4h baseado no fuso do bot (BOT_TZ):
-    00/04/08/12/16/20.
-    Retorna um int monotônico.
-    """
+# Se você já tem BOT_TZ no seu bot principal, mantenha o seu e remova isso.
+try:
+    import pytz
+    BOT_TZ = pytz.timezone(os.getenv("BOT_TZ", "America/Sao_Paulo"))
+except Exception:
+    BOT_TZ = None  # fallback
+
+
+# ==================================================
+# GIROS SLOT (8 por dia): 01/04/07/10/13/16/19/22
+# ==================================================
+GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]
+
+def _now_sp(ts: Optional[float] = None) -> datetime:
     if ts is None:
         ts = time.time()
-    now_local = datetime.fromtimestamp(ts, tz=BOT_TZ)
-    offset = int(now_local.utcoffset().total_seconds())
-    return int((int(ts) + offset) // (4 * 3600))
+    if BOT_TZ:
+        return datetime.fromtimestamp(ts, tz=BOT_TZ)
+    return datetime.fromtimestamp(ts)
 
-
-def _now_giro_slot(ts: Optional[float] = None) -> int:
-    """
-    Slot de GIRO baseado no fuso do bot (BOT_TZ):
-    01/04/07/10/13/16/19/22 (8 slots/dia)
-    Retorna um inteiro crescente (dia*8 + idx).
-    """
+def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
     if ts is None:
         ts = time.time()
+    dt = _now_sp(ts)
+    # slot de 4h: 00/04/08/12/16/20 => id crescente
+    # transforma em "slot index global"
+    day_id = dt.date().toordinal()
+    slot_in_day = dt.hour // 4  # 0..5
+    return day_id * 6 + slot_in_day
 
-    now_local = datetime.fromtimestamp(ts, tz=BOT_TZ)
-    day_id = now_local.date().toordinal()
-
-    h = now_local.hour
-    m = now_local.minute
-
+def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
+    dt = _now_sp(ts)
+    day_id = dt.date().toordinal()
+    h = dt.hour
     idx = -1
     for i, hh in enumerate(GIRO_HOURS):
-        if (h > hh) or (h == hh and m >= 0):
+        if h > hh or (h == hh and dt.minute >= 0):
             idx = i
-
-    # antes do primeiro slot do dia -> considera o último slot do dia anterior
     if idx < 0:
         return (day_id - 1) * 8 + 7
-
     return day_id * 8 + idx
 
+def _daily_day_start_ts_sp(ts: Optional[float] = None) -> int:
+    dt = _now_sp(ts)
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
 
-def _next_dado_refill_dt() -> datetime:
-    """Próximo horário (local) de recarga do dado: 00/04/08/12/16/20."""
-    now = datetime.now(tz=BOT_TZ)
-    slots = [0, 4, 8, 12, 16, 20]
-
-    for s in slots:
-        if now.hour < s:
-            return now.replace(hour=s, minute=0, second=0, microsecond=0)
-
-    # passou de 20 -> amanhã 00
-    nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return nxt
-
-
-def _refresh_user_dado_balance(user_id: int, cap: int = 18) -> int:
-    """
-    Recarrega dado_balance +1 por slot de 4h perdido, cap=18.
-    """
+def _refresh_user_dado_balance(user_id: int) -> int:
     st = get_dado_state(user_id) or {"b": 0, "s": -1}
-    balance = int(st.get("b") or 0)
-    last_slot = int(st.get("s") or -1)
+    balance = int(st["b"])
+    last_slot = int(st["s"])
 
-    cur_slot = _now_slot_4h()
-
-    # primeira vez: só grava slot atual
+    cur_slot = _now_slot_sp_4h()
     if last_slot < 0:
         set_dado_state(user_id, balance, cur_slot)
         return balance
@@ -3426,25 +3410,16 @@ def _refresh_user_dado_balance(user_id: int, cap: int = 18) -> int:
     if diff <= 0:
         return balance
 
-    balance2 = min(int(cap), balance + diff)
+    balance2 = min(18, balance + diff)
     set_dado_state(user_id, balance2, cur_slot)
     return balance2
 
-
-def _refresh_user_giros(user_id: int, cap: int = 24) -> int:
-    """
-    Recarrega extra_dado +1 por slot perdido (8 slots/dia), cap=24.
-    Usa get_extra_state/set_extra_state do seu database.py.
-    """
-    from database import get_extra_state, set_extra_state
-
+def _refresh_user_giros(user_id: int) -> int:
     st = get_extra_state(user_id)
-    extra = int(st.get("x") or 0)
-    last_slot = int(st.get("s") or -1)
+    extra = int(st["x"])
+    last_slot = int(st["s"])
 
-    cur_slot = _now_giro_slot()
-
-    # primeira vez: só grava slot atual
+    cur_slot = _now_giro_slot_sp()
     if last_slot < 0:
         set_extra_state(user_id, extra, cur_slot)
         return extra
@@ -3453,34 +3428,27 @@ def _refresh_user_giros(user_id: int, cap: int = 24) -> int:
     if diff <= 0:
         return extra
 
-    new_extra = min(int(cap), extra + diff)
+    new_extra = min(24, extra + diff)
     set_extra_state(user_id, new_extra, cur_slot)
     return new_extra
 
+# ==================================================
+# /dado (MiniApp) — só botão + imagem + refresh slots
+# ==================================================
+BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
+DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
+DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
 
-# ==================================================
-# COMANDOS
-# ==================================================
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /dado:
-    - garante usuário
-    - atualiza slots (dado e giros) para ficar sempre certinho
-    - envia foto + botão abrindo o MiniApp (/dado)
-    """
-    if not update.message:
+    if not update.effective_user or not update.message:
         return
 
     user_id = update.effective_user.id
-    name = update.effective_user.username or update.effective_user.first_name or "user"
-    ensure_user_row(user_id, name)
+    ensure_user_row(user_id, update.effective_user.first_name)
 
-    # refresh silencioso (garante “giros no horário certo”)
+    # IMPORTANTÍSSIMO: atualiza slots antes de mostrar
     try:
         _refresh_user_dado_balance(user_id)
-    except Exception:
-        pass
-    try:
         _refresh_user_giros(user_id)
     except Exception:
         pass
@@ -3491,65 +3459,13 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Toque no botão abaixo para abrir o dado e testar sua sorte.\n\n"
         "Quem sabe qual personagem o destino vai escolher hoje? ✨"
     )
-
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]])
 
     try:
-        await update.message.reply_photo(
-            photo=DADO_PICK_IMAGE,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+        await update.message.reply_photo(photo=DADO_PICK_IMAGE, caption=texto, parse_mode="HTML", reply_markup=kb)
     except Exception:
-        await update.message.reply_photo(
-            photo=DADO_FALLBACK_IMAGE,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+        await update.message.reply_photo(photo=DADO_FALLBACK_IMAGE, caption=texto, parse_mode="HTML", reply_markup=kb)
 
-
-async def saldo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /saldo:
-    - garante usuário
-    - atualiza slots do dado e dos giros antes de mostrar
-    """
-    if not update.message:
-        return
-
-    user_id = update.effective_user.id
-    name = update.effective_user.username or update.effective_user.first_name or "user"
-    ensure_user_row(user_id, name)
-
-    # refresh antes de ler
-    try:
-        balance = _refresh_user_dado_balance(user_id)
-    except Exception:
-        st = get_dado_state(user_id) or {"b": 0}
-        balance = int(st.get("b") or 0)
-
-    coins = 0
-    try:
-        coins = int(get_user_coins(user_id) or 0)
-    except Exception:
-        coins = 0
-
-    try:
-        giros = _refresh_user_giros(user_id)
-    except Exception:
-        giros = int(get_extra_dado(user_id) or 0)
-
-    nxt = _next_dado_refill_dt().strftime("%H:%M")
-
-    await update.message.reply_html(
-        "💳 <b>SALDO</b>\n\n"
-        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-        f"🎟️ <b>Dados:</b> <code>{balance}</code>\n"
-        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-        f"🕒 Próxima recarga do dado: <b>{nxt}</b> (horário local)"
-    )
 
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
@@ -3911,10 +3827,8 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await enviar_colecao_by_owner(owner_id, q.from_user.first_name, update, context, page, edit=True)
 
 # ==================================================
-# TROCA (MELHORADO) — bonito + anti-falhas + nomes + ofertas + imagem
-# (FIX: garante users, exige trade_id>0, accept sempre busca pelo ID, logs em erro, callbacks coerentes)
+# TROCAS — consertado (chama ensure_user_row + valida retorno + retry no DB)
 # ==================================================
-
 TRADE_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
 
 _trade_locks: Dict[int, asyncio.Lock] = {}
@@ -3938,11 +3852,7 @@ def _mention_html(user) -> str:
     name = (user.full_name or user.first_name or "User").strip()
     return f'<a href="tg://user?id={user.id}">{name}</a>'
 
-
 async def _get_char_label(user_id: int, char_id: int) -> str:
-    """
-    Pega o nome do personagem no DB (se tiver), senão mostra só o ID.
-    """
     try:
         from database import get_collection_character_full
         item = get_collection_character_full(user_id, int(char_id))
@@ -3954,17 +3864,12 @@ async def _get_char_label(user_id: int, char_id: int) -> str:
         pass
     return f"<code>{int(char_id)}</code>"
 
-
+# OBS: aqui eu não incluo suas funções anti_spam/callback_dedupe porque elas são do seu bot principal.
+# Você só precisa colar em cima das suas, mantendo suas funções.
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
 
-    # antiflood por comando
-    ok = await anti_spam(update.effective_user.id, key="cmd:/trocar", window=3)
-    if not ok:
-        return
-
-    # precisa responder alguém
     if not update.message.reply_to_message:
         await update.message.reply_html(
             "❌ <b>Troca inválida</b>\n\n"
@@ -3976,7 +3881,6 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # validar args
     if len(context.args) != 2 or (not context.args[0].isdigit()) or (not context.args[1].isdigit()):
         await update.message.reply_html(
             "❌ <b>Uso correto</b>\n\n"
@@ -3989,7 +3893,6 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from_user = update.effective_user
     to_user = update.message.reply_to_message.from_user
 
-    # evita trocar com bot ou consigo mesmo
     if not to_user or getattr(to_user, "is_bot", False):
         await update.message.reply_html("❌ Você não pode fazer troca com bot.")
         return
@@ -3997,60 +3900,33 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Você não pode trocar com você mesmo.")
         return
 
-    # ✅ garante linha users pros 2 lados (swap usa locks em users)
-    try:
-        ensure_user_row(int(from_user.id), from_user.full_name or from_user.first_name or "User")
-    except Exception:
-        pass
-    try:
-        ensure_user_row(int(to_user.id), to_user.full_name or to_user.first_name or "User")
-    except Exception:
-        pass
+    ensure_user_row(from_user.id, from_user.first_name)
+    ensure_user_row(to_user.id, to_user.first_name)
 
     from_char = int(context.args[0])
     to_char = int(context.args[1])
 
-    # checa posse (pré-checagem)
     if not user_has_character(from_user.id, from_char):
-        await update.message.reply_html(
-            "❌ <b>Troca cancelada</b>\n\n"
-            "Esse personagem <b>não é seu</b>."
-        )
+        await update.message.reply_html("❌ <b>Troca cancelada</b>\n\nEsse personagem <b>não é seu</b>.")
         return
     if not user_has_character(to_user.id, to_char):
-        await update.message.reply_html(
-            "❌ <b>Troca cancelada</b>\n\n"
-            "O outro usuário <b>não possui</b> esse personagem."
-        )
+        await update.message.reply_html("❌ <b>Troca cancelada</b>\n\nO outro usuário <b>não possui</b> esse personagem.")
         return
 
-    # cria trade e captura trade_id de forma segura (✅ exige >0)
-    trade_id = None
     try:
-        maybe_id = create_trade(from_user.id, to_user.id, from_char, to_char)
-        if isinstance(maybe_id, int) and maybe_id > 0:
-            trade_id = maybe_id
-        else:
-            t = get_latest_pending_trade_for_to_user(to_user.id)
-            if t and int(t[0]) > 0:
-                trade_id = int(t[0])
+        trade_id = create_trade(from_user.id, to_user.id, from_char, to_char)
+        if not trade_id:
+            raise RuntimeError("trade_id vazio")
     except Exception:
-        await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
-        return
-
-    if not trade_id or trade_id <= 0:
         await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
         return
 
     a_name = await _get_char_label(from_user.id, from_char)
     b_name = await _get_char_label(to_user.id, to_char)
 
-    accept_cb = f"trade_accept:{trade_id}"
-    reject_cb = f"trade_reject:{trade_id}"
-
     teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Aceitar", callback_data=accept_cb),
-        InlineKeyboardButton("❌ Recusar", callback_data=reject_cb),
+        InlineKeyboardButton("✅ Aceitar", callback_data=f"trade_accept:{trade_id}"),
+        InlineKeyboardButton("❌ Recusar", callback_data=f"trade_reject:{trade_id}"),
     ]])
 
     texto = (
@@ -4064,66 +3940,35 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        await update.message.reply_photo(
-            photo=TRADE_BANNER,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=teclado
-        )
+        await update.message.reply_photo(photo=TRADE_BANNER, caption=texto, parse_mode="HTML", reply_markup=teclado)
     except Exception:
         await update.message.reply_html(texto, reply_markup=teclado)
 
 
-# ==================================================
-# CALLBACKS — agora aceitam trade_id e são anti-falhas
-# ==================================================
 async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not q:
         return
 
-    # dedupe (duplo clique / retry)
-    if not callback_dedupe(q.id):
-        try:
-            await q.answer()
-        except Exception:
-            pass
-        return
-
     user_id = q.from_user.id
 
-    # antiflood por callback
-    ok = await anti_spam(user_id, key="cb:trade_accept", window=2)
-    if not ok:
-        await q.answer("Calma 🙂", show_alert=False)
-        return
-
-    trade_id = None
-    try:
+    # trava por usuário + por trade
+    user_lock = _get_trade_user_lock(user_id)
+    async with user_lock:
+        trade_id = None
         parts = (q.data or "").split(":")
         if len(parts) == 2 and parts[1].isdigit():
             trade_id = int(parts[1])
-    except Exception:
-        trade_id = None
 
-    # ✅ sem trade_id válido: para (evita aceitar o "último pendente" errado)
-    if not trade_id or trade_id <= 0:
-        await q.answer("⚠️ Troca inválida.", show_alert=True)
-        return
-
-    # trava por usuário (anti spam)
-    user_lock = _get_trade_user_lock(user_id)
-    async with user_lock:
-        # ✅ sempre busca o trade pelo ID
         trade = None
-        try:
-            from database import get_trade_by_id
-            trade = get_trade_by_id(trade_id)
-        except Exception:
-            trade = None
+        if trade_id:
+            try:
+                trade = get_trade_by_id(trade_id)
+            except Exception:
+                trade = None
 
         if not trade:
-            await q.answer("⚠️ Troca não encontrada.", show_alert=True)
+            await q.answer("Nenhuma troca pendente.", show_alert=True)
             return
 
         try:
@@ -4145,51 +3990,31 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
             await q.answer("Essa troca não é para você.", show_alert=True)
             return
 
-        # garante linha users pros 2 lados (swap usa locks em users)
+        # garante rows users (importante pro lock no DB)
         try:
             ensure_user_row(int(from_user_id), "User")
-        except Exception:
-            pass
-        try:
             ensure_user_row(int(to_user_id), "User")
         except Exception:
             pass
 
-        trade_lock = _get_trade_lock(int(trade_id))
+        trade_lock = _get_trade_lock(trade_id)
         async with trade_lock:
-            # checa posse de novo
+            # re-checagem de posse
             if (not user_has_character(int(from_user_id), int(from_char))) or (not user_has_character(int(user_id), int(to_char))):
                 try:
                     mark_trade_status(int(trade_id), "falhou")
                 except Exception:
                     pass
-                try:
-                    if q.message and q.message.caption:
-                        await q.message.edit_caption(
-                            caption=(q.message.caption or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
-                            parse_mode="HTML",
-                            reply_markup=None
-                        )
-                    else:
-                        await q.message.edit_text(
-                            text=(q.message.text or "") + "\n\n❌ <b>Troca falhou:</b> alguém não tem mais os personagens.",
-                            parse_mode="HTML",
-                            reply_markup=None
-                        )
-                except Exception:
-                    pass
-                await q.answer()
+                await q.answer("❌ Troca falhou: alguém não tem mais os personagens.", show_alert=True)
                 return
 
-            # executa swap (transação atômica no DB)
+            # swap: agora o DB faz retry e fallback
             try:
-                ok_swap = swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
-                if not ok_swap:
+                ok = swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
+                if not ok:
                     await q.answer("❌ Troca não está mais pendente.", show_alert=True)
                     return
             except Exception:
-                import traceback
-                print("TRADE_ACCEPT ERROR:", traceback.format_exc())
                 await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
                 return
 
@@ -4211,92 +4036,7 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
         pass
 
     await q.answer()
-
-
-async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    if not q:
-        return
-
-    if not callback_dedupe(q.id):
-        try:
-            await q.answer()
-        except Exception:
-            pass
-        return
-
-    user_id = q.from_user.id
-    ok = await anti_spam(user_id, key="cb:trade_reject", window=2)
-    if not ok:
-        await q.answer("Calma 🙂", show_alert=False)
-        return
-
-    trade_id = None
-    try:
-        parts = (q.data or "").split(":")
-        if len(parts) == 2 and parts[1].isdigit():
-            trade_id = int(parts[1])
-    except Exception:
-        trade_id = None
-
-    if not trade_id or trade_id <= 0:
-        await q.answer("⚠️ Troca inválida.", show_alert=True)
-        return
-
-    user_lock = _get_trade_user_lock(user_id)
-    async with user_lock:
-        trade = None
-        try:
-            from database import get_trade_by_id
-            trade = get_trade_by_id(trade_id)
-        except Exception:
-            trade = None
-
-        if not trade:
-            await q.answer("⚠️ Troca não encontrada.", show_alert=True)
-            return
-
-        try:
-            to_user_id = int(trade["to_user"])
-            status = str(trade.get("status") or "")
-        except Exception:
-            await q.answer("Erro ao ler a troca.", show_alert=True)
-            return
-
-        if status != "pendente":
-            await q.answer("❌ Troca não está mais pendente.", show_alert=True)
-            return
-
-        if int(to_user_id) != int(user_id):
-            await q.answer("Essa troca não é para você.", show_alert=True)
-            return
-
-        trade_lock = _get_trade_lock(trade_id)
-        async with trade_lock:
-            try:
-                mark_trade_status(trade_id, "recusada")
-            except Exception:
-                await q.answer("⚠️ Não consegui recusar agora. Tente novamente.", show_alert=True)
-                return
-
-    try:
-        if q.message and q.message.caption:
-            await q.message.edit_caption(
-                caption="❌ <b>Troca recusada.</b>",
-                parse_mode="HTML",
-                reply_markup=None
-            )
-        else:
-            await q.message.edit_text(
-                "❌ <b>Troca recusada.</b>",
-                parse_mode="HTML",
-                reply_markup=None
-            )
-    except Exception:
-        pass
-
-    await q.answer("Recusada.")
-
+    
 # ==================================================
 # LOJA (PV) — VENDER pro BOT (+1 coin) / COMPRAR GIRO (-2 coins -> +1 giro)
 # ==================================================
@@ -6052,6 +5792,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
