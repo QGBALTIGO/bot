@@ -2925,19 +2925,18 @@ def _nice_group_block_text() -> str:
 # ==================================================
 # /dado (PV only) — Dado Premium (MiniApp)
 # ==================================================
+BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
+
+DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
+DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
+
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # exemplo de valores (troque pela função do seu banco)
-    dice_value = "?"
-    balance = 0
-    extra = 0
-
     url = f"{BASE_URL}/dado"
 
-    text = (
+    texto = (
         "🎲 <b>DADO DA SORTE</b>\n\n"
-        "🎴 Agora escolha um <b>anime</b> para sortear um personagem!\n\n"
-        f"🎟️ Dados: <b>{balance}</b> | 🎡 Giros: <b>{extra}</b>\n"
+        "Toque no botão abaixo para abrir o dado e testar sua sorte.\n"
+        "Quem sabe qual personagem o destino vai escolher hoje? ✨"
     )
 
     kb = InlineKeyboardMarkup([
@@ -2947,18 +2946,17 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await update.message.reply_photo(
             photo=DADO_PICK_IMAGE,
-            caption=text,
+            caption=texto,
             parse_mode="HTML",
             reply_markup=kb
         )
     except:
         await update.message.reply_photo(
             photo=DADO_FALLBACK_IMAGE,
-            caption=text,
+            caption=texto,
             parse_mode="HTML",
             reply_markup=kb
         )
-
     # ==========================
     # Fallback: modo clássico
     # ==========================
@@ -5339,6 +5337,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
