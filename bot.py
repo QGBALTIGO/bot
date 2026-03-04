@@ -332,21 +332,24 @@ async def checar_canal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 # /top500 -> gera, salva no DB e envia TXT
 # /top500_last -> envia o último gerado do DB
 # ==================================================
+# ==================================================
+# TOP 500 AniList Consolidado (MODO RÁPIDO)
+# - Consolida franquias por "título base" normalizado (sem relações -> MUITO menos requests)
+# - Ranking: score + (popularity/1000)
+# - Exclui Naruto/Boruto (qualquer título contendo)
+# - Busca personagens MAIN/SUPPORTING sem limitar (pagina até acabar)
+# - Salva TXT no DB (opção B) e envia
+# ==================================================
 import io
 import math
-from collections import deque
+import re
 
-TOP500_SEED_ITEMS = int(os.getenv("TOP500_SEED_ITEMS", "1200"))
+TOP500_SEED_ITEMS = int(os.getenv("TOP500_SEED_ITEMS", "3500"))  # pode subir/baixar
 TOP500_SEED_PER_PAGE = 50
-TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "1.6"))
+TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "1.2"))          # mais alto = menos 429
 TOP500_ADMIN_ONLY = True
 
 _top500_lock = asyncio.Lock()
-
-FRANCHISE_RELATION_TYPES = {
-    "PREQUEL", "SEQUEL", "PARENT", "SIDE_STORY", "SPIN_OFF",
-    "SUMMARY", "ALTERNATIVE", "OTHER", "COMPILATION", "CONTAINS",
-}
 
 def _best_title(media: dict) -> str:
     t = media.get("title") or {}
@@ -380,6 +383,45 @@ def _startdate_key(media: dict):
     d = sd.get("day") or 31
     return (y, m, d, int(media.get("id") or 10**9))
 
+def _normalize_base_title(title: str) -> str:
+    """
+    Normaliza para consolidar franquias por "título base".
+    Remove sufixos comuns: season, part, cour, movie, ova, special, tv, etc.
+    Remove números/romanos em finais quando parecem indicar temporada.
+    """
+    s = (title or "").lower().strip()
+
+    # remove conteúdo entre parênteses/colchetes (muitas vezes "TV", ano, etc)
+    s = re.sub(r"[\(\[\{].*?[\)\]\}]", " ", s)
+
+    # substitui separadores por espaço
+    s = re.sub(r"[:\-–—_]", " ", s)
+
+    # remove palavras que indicam formato/temporada (bem agressivo)
+    kill_words = [
+        "season", "saison", "temporada", "part", "cour",
+        "movie", "film", "the movie", "ova", "oav", "special", "sp",
+        "tv", "edition", "final", "complete", "recap", "summary",
+        "2nd", "3rd", "4th", "5th",
+        "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    ]
+    # remove padrões tipo "2nd season", "season 2", "part 2"
+    s = re.sub(r"\b(season|temporada|part|cour)\s*\d+\b", " ", s)
+    s = re.sub(r"\b\d+\s*(season|temporada|part|cour)\b", " ", s)
+
+    for w in kill_words:
+        s = re.sub(rf"\b{re.escape(w)}\b", " ", s)
+
+    # remove números no final (ex.: "xxx 2", "xxx 3")
+    s = re.sub(r"\b\d+\b", " ", s)
+
+    # limpa caracteres não alfanum (mantém espaços)
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+
+    # colapsa espaços
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 SEED_QUERY = """
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
@@ -391,33 +433,6 @@ query ($page: Int, $perPage: Int) {
       averageScore
       meanScore
       startDate { year month day }
-    }
-  }
-}
-"""
-
-RELATIONS_QUERY = """
-query ($id: Int) {
-  Media(id: $id, type: ANIME) {
-    id
-    title { romaji english native }
-    popularity
-    averageScore
-    meanScore
-    startDate { year month day }
-    relations {
-      edges {
-        relationType
-        node {
-          id
-          type
-          title { romaji english native }
-          popularity
-          averageScore
-          meanScore
-          startDate { year month day }
-        }
-      }
     }
   }
 }
@@ -445,10 +460,11 @@ async def _gql_aio(session: aiohttp.ClientSession, query: str, variables: dict) 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 SourceBaltigoBot",
+        "User-Agent": "Mozilla/5.0 (Railway) SourceBaltigoTop500/2.0",
     }
 
-    for attempt in range(1, 10):
+    last_err = None
+    for attempt in range(1, 11):
         try:
             async with session.post(
                 ANILIST_API,
@@ -458,31 +474,52 @@ async def _gql_aio(session: aiohttp.ClientSession, query: str, variables: dict) 
             ) as resp:
 
                 if resp.status == 429:
-                    wait = min(30, attempt * attempt)
-                    print(f"Rate limit 429. Esperando {wait}s")
+                    ra = resp.headers.get("Retry-After")
+                    if ra:
+                        try:
+                            wait = float(ra)
+                        except Exception:
+                            wait = 3.0
+                    else:
+                        wait = min(30.0, 1.5 * attempt * attempt)
+
+                    print(f"[TOP500] 429 rate limit. aguardando {wait:.1f}s (tentativa {attempt}/10)")
+                    await asyncio.sleep(wait)
+                    continue
+
+                if resp.status >= 500:
+                    txt = await resp.text()
+                    wait = min(20.0, 1.2 * attempt * attempt)
+                    print(f"[TOP500] HTTP {resp.status} server. retry {wait:.1f}s. preview={txt[:120]!r}")
                     await asyncio.sleep(wait)
                     continue
 
                 if resp.status != 200:
                     txt = await resp.text()
-                    raise RuntimeError(f"AniList HTTP {resp.status}: {txt[:200]}")
+                    raise RuntimeError(f"AniList HTTP {resp.status}: {txt[:250]}")
 
                 data = await resp.json()
-
                 if "errors" in data:
-                    wait = min(20, attempt * attempt)
+                    wait = min(15.0, 1.2 * attempt * attempt)
+                    print(f"[TOP500] GraphQL errors. retry {wait:.1f}s. err={str(data['errors'][:1])}")
                     await asyncio.sleep(wait)
                     continue
 
                 return data["data"]
 
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
+            last_err = e
+            wait = min(20.0, 1.2 * attempt * attempt)
+            print(f"[TOP500] conexão/timeout: {e}. retry {wait:.1f}s.")
+            await asyncio.sleep(wait)
         except Exception as e:
-            wait = min(20, attempt * attempt)
-            print("Erro AniList:", e)
+            last_err = e
+            wait = min(20.0, 1.2 * attempt * attempt)
+            print(f"[TOP500] erro: {type(e).__name__}: {e}. retry {wait:.1f}s.")
             await asyncio.sleep(wait)
 
-    raise RuntimeError("Falha após várias tentativas na API AniList")
-    
+    raise RuntimeError(f"Falha após retries AniList. Último erro: {last_err}")
+
 async def _fetch_seed(session: aiohttp.ClientSession, seed_items: int) -> list[dict]:
     out = []
     pages = math.ceil(seed_items / TOP500_SEED_PER_PAGE)
@@ -507,69 +544,37 @@ async def _fetch_seed(session: aiohttp.ClientSession, seed_items: int) -> list[d
             uniq.append(m)
     return uniq
 
-async def _franchise_component(session: aiohttp.ClientSession, root_id: int, cache_media: dict, cache_rel: dict) -> set[int]:
-    comp = set()
-    q = deque([root_id])
-
-    while q:
-        mid = q.popleft()
-        if mid in comp:
-            continue
-        comp.add(mid)
-
-        if mid not in cache_rel:
-            data = await _gql_aio(session, RELATIONS_QUERY, {"id": int(mid)})
-            media = data["Media"]
-            cache_media[mid] = media
-            edges = ((media.get("relations") or {}).get("edges")) or []
-            cache_rel[mid] = edges
-            await asyncio.sleep(TOP500_SLEEP)
-
-        for e in cache_rel[mid]:
-            rtype = e.get("relationType")
-            node = e.get("node") or {}
-            if node.get("type") != "ANIME":
-                continue
-            nid = node.get("id")
-            if not nid:
-                continue
-            nid = int(nid)
-
-            if nid not in cache_media:
-                cache_media[nid] = node
-
-            if rtype in FRANCHISE_RELATION_TYPES and nid not in comp:
-                q.append(nid)
-
-    return comp
-
-async def _consolidate(session: aiohttp.ClientSession, seed_list: list[dict]) -> list[dict]:
-    cache_media = {int(m["id"]): m for m in seed_list}
-    cache_rel = {}
-    visited = set()
-    consolidated = []
-
+async def _consolidate_fast(seed_list: list[dict]) -> list[dict]:
+    """
+    Consolida por título base normalizado:
+    - Popularidade soma
+    - Score = maior
+    - Base_id = item mais antigo (startDate)
+    - Base_title = melhor título do base_id
+    - Exclui franquia inteira se algum item for Naruto/Boruto
+    """
+    groups: dict[str, list[dict]] = {}
     for m in seed_list:
-        rid = int(m["id"])
-        if rid in visited:
+        if _excluded(m):
+            # exclui já
+            continue
+        title = _best_title(m)
+        key = _normalize_base_title(title)
+        if not key:
+            continue
+        groups.setdefault(key, []).append(m)
+
+    consolidated = []
+    for key, items in groups.items():
+        # se algum item do grupo for Naruto/Boruto (segurança extra), exclui tudo
+        if any(_excluded(x) for x in items):
             continue
 
-        comp_ids = await _franchise_component(session, rid, cache_media, cache_rel)
-        for cid in comp_ids:
-            visited.add(cid)
-
-        comp_medias = [cache_media[cid] for cid in comp_ids if cid in cache_media]
-
-        # exclusão total se QUALQUER item for Naruto/Boruto
-        if any(_excluded(x) for x in comp_medias):
-            continue
-
-        total_pop = sum(_pop(x) for x in comp_medias)
-        max_score = max((_score(x) for x in comp_medias), default=0)
-
-        base_media = sorted(comp_medias, key=_startdate_key)[0] if comp_medias else m
+        total_pop = sum(_pop(x) for x in items)
+        max_score = max((_score(x) for x in items), default=0)
+        base_media = sorted(items, key=_startdate_key)[0]
+        base_id = int(base_media.get("id"))
         base_title = _best_title(base_media)
-        base_id = int(base_media.get("id") or rid)
 
         consolidated.append({
             "base_id": base_id,
@@ -579,16 +584,8 @@ async def _consolidate(session: aiohttp.ClientSession, seed_list: list[dict]) ->
             "rank": _rank(max_score, total_pop),
         })
 
-    # dedupe por título base (segurança)
-    best = {}
-    for it in consolidated:
-        k = it["base_title"].strip().lower()
-        if (k not in best) or (it["rank"] > best[k]["rank"]):
-            best[k] = it
-
-    out = list(best.values())
-    out.sort(key=lambda x: (x["rank"], x["popularity"], x["score"]), reverse=True)
-    return out
+    consolidated.sort(key=lambda x: (x["rank"], x["popularity"], x["score"]), reverse=True)
+    return consolidated
 
 async def _fetch_all_characters(session: aiohttp.ClientSession, media_id: int):
     main = []
@@ -655,21 +652,18 @@ async def top500_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("⛔ <b>Acesso negado</b>")
         return
 
-    # evita 2 gerações simultâneas
     if _top500_lock.locked():
         await update.message.reply_html("⏳ Já tem uma geração em andamento. Tente mais tarde.")
         return
 
     seed_items = TOP500_SEED_ITEMS
-    # opcional: /top500 4000
     if context.args and context.args[0].isdigit():
-        seed_items = max(500, min(12000, int(context.args[0])))
+        seed_items = max(800, min(20000, int(context.args[0])))
 
     async with _top500_lock:
         msg = await update.message.reply_html(
-            "⚙️ <b>Gerando TOP500 AniList</b>\n\n"
-            "Isso é um processo pesado (franquias + personagens).\n"
-            "Vou te enviar o TXT quando terminar."
+            "⚙️ <b>Gerando TOP500 AniList (modo rápido)</b>\n\n"
+            "Vou te enviar o TXT quando terminar.",
         )
 
         try:
@@ -677,11 +671,11 @@ async def top500_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.edit_text("1/3) Buscando seed no AniList...", parse_mode="HTML")
                 seed = await _fetch_seed(session, seed_items)
 
-                await msg.edit_text("2/3) Consolidando franquias e aplicando ranking...", parse_mode="HTML")
-                consolidated = await _consolidate(session, seed)
+                await msg.edit_text("2/3) Consolidando por título base + ranking...", parse_mode="HTML")
+                consolidated = await _consolidate_fast(seed)
                 top500 = consolidated[:500]
 
-                # dupla checagem forte (Naruto/Boruto)
+                # checagem forte Naruto/Boruto no top500
                 for it in top500:
                     t = it["base_title"].lower()
                     if "naruto" in t or "boruto" in t or "shippuuden" in t:
@@ -689,7 +683,6 @@ async def top500_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await msg.edit_text("3/3) Buscando personagens e montando TXT...", parse_mode="HTML")
 
-                # monta TXT
                 parts = []
                 for idx, it in enumerate(top500, start=1):
                     title = it["base_title"]
@@ -716,7 +709,6 @@ async def top500_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 txt = "".join(parts)
 
-                # salva no DB (opção B)
                 file_id = save_top500_file(
                     created_by=uid,
                     seed_items=seed_items,
@@ -729,10 +721,10 @@ async def top500_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bio.name = "top500_anilist_consolidado.txt"
 
                 await msg.edit_text(
-                    f"✅ <b>TOP500 gerado e salvo no DB!</b>\n\n"
+                    "✅ <b>TOP500 gerado e salvo no DB!</b>\n\n"
                     f"🆔 File ID: <code>{file_id}</code>\n"
                     f"📦 Seed: <code>{seed_items}</code>\n"
-                    f"🎬 Franquias: <code>{len(consolidated)}</code>\n"
+                    f"🎬 Consolidados: <code>{len(consolidated)}</code>\n"
                     f"🏆 Selecionados: <code>{len(top500)}</code>\n\n"
                     "📄 Enviando arquivo...",
                     parse_mode="HTML"
@@ -5762,6 +5754,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
