@@ -2756,535 +2756,8 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================================================
 
 # ==================================================
-# ✅ /DADO — DEFINITIVO (override)
-# - MAIN/SUPPORTING only
-# - Cache por anime (menos API calls)
-# - Anti-repetição (por usuário)
-# - Auto-reroll silencioso
-# - NUNCA MAIS mostra "poucas informações"
-# - Blacklist persistida no Postgres
-# - Foto: GLOBAL(/setfoto) > AniList > fallback
-# - Se AniList cair: usa VAULT local do banco e ainda manda foto
-# - Repetido NÃO vira coin (acumula na coleção)
+# /dado (PV only) — Dado Premium (MiniApp)
 # ==================================================
-
-# ⚠️ Se essas libs já existirem no arquivo, não tem problema repetir import.
-try:
-    from zoneinfo import ZoneInfo
-except Exception:  # pragma: no cover
-    ZoneInfo = None
-
-SP_TZ = ZoneInfo("America/Sao_Paulo") if ZoneInfo else None
-
-# DADOS (saldo normal do /dado)
-DADO_MAX_BALANCE = 18
-DADO_NEW_USER_START = 4
-DADO_EXPIRE_SECONDS = 5 * 60
-
-# GIROS (extra_dado) — recarga automática
-GIRO_MAX_BALANCE = 24  # 3 dias (8 por dia)
-GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # horários SP
-
-CMD_ANTIFLOOD_SECONDS = 3
-BTN_ANTIFLOOD_SECONDS = 2
-
-DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
-DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
-
-_REFRESH_LOCK = asyncio.Lock()
-
-# Locks (processo)
-_dado_roll_locks: Dict[int, asyncio.Lock] = {}
-_user_dado_locks: Dict[int, asyncio.Lock] = {}
-
-def _get_roll_lock(roll_id: int) -> asyncio.Lock:
-    lock = _dado_roll_locks.get(roll_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _dado_roll_locks[roll_id] = lock
-    return lock
-
-def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
-    lock = _user_dado_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _user_dado_locks[user_id] = lock
-    return lock
-
-
-def _format_time_sp() -> str:
-    try:
-        return datetime.now(tz=SP_TZ).strftime("%H:%M")
-    except Exception:
-        return datetime.now().strftime("%H:%M")
-
-
-def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
-    """
-    Slot de 4h baseado em SP:
-    00/04/08/12/16/20.
-    """
-    if ts is None:
-        ts = time.time()
-    if SP_TZ is None:
-        return int(int(ts) // (4 * 3600))
-    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
-    offset = int(now_sp.utcoffset().total_seconds())
-    return int((int(ts) + offset) // (4 * 3600))
-
-
-def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
-    """
-    Slot de GIRO baseado em SP:
-    01/04/07/10/13/16/19/22 (8 slots/dia)
-    Retorna um inteiro crescente (dia*8 + idx).
-    """
-    if ts is None:
-        ts = time.time()
-
-    if SP_TZ is None:
-        day_id = int(datetime.fromtimestamp(ts).date().toordinal())
-        hh = int(datetime.fromtimestamp(ts).hour)
-        idx = 0
-        for i, h in enumerate(GIRO_HOURS):
-            if hh >= h:
-                idx = i
-        return day_id * 8 + idx
-
-    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
-    day_id = now_sp.date().toordinal()
-
-    h = now_sp.hour
-    m = now_sp.minute
-
-    idx = -1
-    for i, hh in enumerate(GIRO_HOURS):
-        if (h > hh) or (h == hh and m >= 0):
-            idx = i
-    if idx < 0:
-        return (day_id - 1) * 8 + 7
-
-    return day_id * 8 + idx
-
-
-def _refresh_user_dado_balance(user_id: int) -> int:
-    """
-    Atualiza saldo normal baseado em slots perdidos (4h), cap 18.
-    """
-    st = get_dado_state(user_id)
-    if not st:
-        return 0
-    balance = int(st["b"])
-    last_slot = int(st["s"])
-
-    cur_slot = _now_slot_sp_4h()
-    if last_slot < 0:
-        set_dado_state(user_id, balance, cur_slot)
-        return balance
-
-    diff = cur_slot - last_slot
-    if diff <= 0:
-        return balance
-
-    new_balance = min(DADO_MAX_BALANCE, balance + diff)
-    set_dado_state(user_id, new_balance, cur_slot)
-    return new_balance
-
-
-def _refresh_user_giros(user_id: int) -> int:
-    """
-    Atualiza GIROS (extra_dado) com slots 01/04/07/10/13/16/19/22, cap 24.
-    """
-    from database import get_extra_state, set_extra_state
-
-    st = get_extra_state(user_id)
-    extra = int(st["x"])
-    last_slot = int(st["s"])
-
-    cur_slot = _now_giro_slot_sp()
-    if last_slot < 0:
-        set_extra_state(user_id, extra, cur_slot)
-        return extra
-
-    diff = cur_slot - last_slot
-    if diff <= 0:
-        return extra
-
-    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
-    set_extra_state(user_id, new_extra, cur_slot)
-    return new_extra
-
-
-def _consume_one_die(user_id: int) -> bool:
-    """
-    Consome 1 dado, priorizando saldo normal, depois GIRO (extra_dado).
-    """
-    st = get_dado_state(user_id)
-    b = int(st["b"] if st else 0)
-    s = int(st["s"] if st else -1)
-
-    if b > 0:
-        set_dado_state(user_id, b - 1, s)
-        return True
-
-    return consume_extra_dado(user_id)
-
-
-def _refund_one_die(user_id: int, prefer_extra: bool = False):
-    """
-    Devolve 1 tentativa:
-    - se prefer_extra=True: devolve 1 GIRO (até cap 24)
-    - senão: devolve 1 no saldo normal (até cap 18)
-    """
-    if prefer_extra:
-        from database import get_extra_state, set_extra_state
-        st = get_extra_state(user_id)
-        x = int(st["x"])
-        s = int(st["s"])
-        set_extra_state(user_id, min(GIRO_MAX_BALANCE, x + 1), s)
-        return
-
-    inc_dado_balance(user_id, 1, max_balance=DADO_MAX_BALANCE)
-
-
-def _nice_group_block_text() -> str:
-    return (
-        "🎲 <b>DADO</b>\n\n"
-        "Esse comando funciona <b>somente no privado</b> do bot.\n"
-        "👉 Abra o bot no PV e use <code>/dado</code> por lá.\n\n"
-        "✨ No PV você escolhe o anime e ganha um personagem!"
-    )
-
-
-def _nice_pick_text(dice_value: int, balance: int, extra: int) -> str:
-    return (
-        "🎲 <b>DADO DA SORTE</b>\n\n"
-        f"🔢 Resultado: <b>{dice_value}</b>\n"
-        "🎴 Agora escolha um <b>anime</b> para sortear um personagem!\n\n"
-        f"🎟️ Dados: <b>{balance}</b> | 🎡 Giros: <b>{extra}</b>\n"
-        "⏳ Você tem <b>5 minutos</b> para escolher."
-    )
-
-
-# ==================================================
-# TOP 500 CACHE (lista de animes)
-# ==================================================
-async def _fetch_top500_anime_from_anilist() -> list[dict]:
-    query = """
-    query ($page: Int) {
-      Page(page: $page, perPage: 50) {
-        media(type: ANIME, sort: POPULARITY_DESC) {
-          id
-          title { romaji }
-        }
-      }
-    }
-    """
-    items: list[dict] = []
-    timeout = aiohttp.ClientTimeout(total=20)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        rank = 1
-        for page in range(1, 11):
-            async with session.post(
-                ANILIST_API,
-                json={"query": query, "variables": {"page": page}},
-            ) as resp:
-                data = await resp.json()
-
-            media = data.get("data", {}).get("Page", {}).get("media", []) or []
-            for m in media:
-                anime_id = m.get("id")
-                title = (m.get("title") or {}).get("romaji") or "Anime"
-                if anime_id is None:
-                    continue
-                items.append({"anime_id": int(anime_id), "title": title, "rank": rank})
-                rank += 1
-
-    return items[:500]
-
-
-async def _ensure_top_cache_fresh():
-    async with _REFRESH_LOCK:
-        last = int(top_cache_last_updated() or 0)
-        now = int(time.time())
-        if now - last < 24 * 3600 and last != 0:
-            return
-
-        items = await _fetch_top500_anime_from_anilist()
-        if items:
-            replace_top_anime_cache(items, updated_at=now)
-
-
-def _pick_random_animes(n: int) -> list[dict]:
-    all_items = get_top_anime_list(500)
-    if not all_items:
-        return []
-    n = max(1, min(n, len(all_items)))
-    chosen = random.sample(all_items, n)
-    return [{"id": int(x["anime_id"]), "title": x["title"]} for x in chosen]
-
-
-def _anime_buttons_for_roll(roll_id: int, options: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
-    for op in options:
-        rows.append([InlineKeyboardButton(op["title"], callback_data=f"dado_pick:{roll_id}:{op['id']}")])
-    return InlineKeyboardMarkup(rows)
-
-
-# ==================================================
-# CACHE DE PERSONAGENS + ANTI REPETIÇÃO
-# ==================================================
-_CHAR_POOL_CACHE: dict[int, dict] = {}  # anime_id -> {exp:int, title:str, cover:str, chars:[{id,name,image}]}
-
-_USER_RECENT_CHARS: dict[int, dict] = {}  # user_id -> {"exp":ts, "ids":[...]}
-RECENT_TTL_SECONDS = 6 * 3600
-RECENT_MAX = 25
-
-MIN_POOL_SIZE = 8
-
-
-def _recent_get(user_id: int) -> list[int]:
-    st = _USER_RECENT_CHARS.get(int(user_id))
-    now = int(time.time())
-    if not st or int(st.get("exp") or 0) < now:
-        _USER_RECENT_CHARS[int(user_id)] = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
-        return []
-    return list(st.get("ids") or [])
-
-
-def _recent_add(user_id: int, char_id: int):
-    user_id = int(user_id)
-    char_id = int(char_id)
-    now = int(time.time())
-    st = _USER_RECENT_CHARS.get(user_id)
-    if not st or int(st.get("exp") or 0) < now:
-        st = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
-        _USER_RECENT_CHARS[user_id] = st
-    ids = list(st.get("ids") or [])
-    if char_id in ids:
-        ids.remove(char_id)
-    ids.append(char_id)
-    if len(ids) > RECENT_MAX:
-        ids = ids[-RECENT_MAX:]
-    st["ids"] = ids
-
-
-def _get_global_photo_for_character(char_id: int) -> Optional[str]:
-    try:
-        import database as db
-        for fn_name in ("get_character_custom_image", "get_global_character_image", "get_character_global_image"):
-            fn = getattr(db, fn_name, None)
-            if callable(fn):
-                img = fn(int(char_id))
-                if img:
-                    return str(img)
-    except Exception:
-        pass
-    return None
-
-
-async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 6) -> Optional[dict]:
-    from database import is_bad_anime, mark_bad_anime
-
-    anime_id = int(anime_id)
-    try:
-        if is_bad_anime(anime_id):
-            return None
-    except Exception:
-        pass
-
-    q = """
-    query ($id: Int, $page: Int) {
-      Media(id: $id, type: ANIME) {
-        title { romaji }
-        coverImage { large }
-        characters(page: $page, perPage: 25) {
-          pageInfo { currentPage lastPage }
-          edges {
-            role
-            node {
-              id
-              name { full }
-              image { large }
-            }
-          }
-        }
-      }
-    }
-    """
-    timeout = aiohttp.ClientTimeout(total=25)
-
-    chars: list[dict] = []
-    anime_title = "Obra"
-    cover = None
-
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": 1}}) as resp:
-            data = await resp.json()
-
-        media = data.get("data", {}).get("Media")
-        if not media:
-            try:
-                mark_bad_anime(anime_id, reason="no_media")
-            except Exception:
-                pass
-            return None
-
-        anime_title = (media.get("title") or {}).get("romaji") or "Obra"
-        cover = (media.get("coverImage") or {}).get("large") or None
-        last_page = int(((media.get("characters") or {}).get("pageInfo") or {}).get("lastPage") or 1)
-
-        pages = {1, last_page}
-        while len(pages) < min(max_pages, last_page):
-            pages.add(random.randint(1, max(1, last_page)))
-
-        for page in pages:
-            async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": int(page)}}) as r2:
-                d2 = await r2.json()
-
-            m2 = d2.get("data", {}).get("Media")
-            if not m2:
-                continue
-
-            edges = (((m2.get("characters") or {}).get("edges")) or [])
-            for e in edges:
-                role = e.get("role")
-                if role not in ("MAIN", "SUPPORTING"):
-                    continue
-                node = (e.get("node") or {})
-                cid = node.get("id")
-                name = ((node.get("name") or {}).get("full")) or None
-                img = ((node.get("image") or {}).get("large")) or None
-                if cid and name:
-                    chars.append({"id": int(cid), "name": name, "image": img})
-
-    seen = set()
-    uniq = []
-    for c in chars:
-        if c["id"] in seen:
-            continue
-        seen.add(c["id"])
-        uniq.append(c)
-
-    if len(uniq) < MIN_POOL_SIZE:
-        try:
-            mark_bad_anime(anime_id, reason=f"small_pool:{len(uniq)}")
-        except Exception:
-            pass
-        return None
-
-    return {"title": anime_title, "cover": cover, "chars": uniq}
-
-
-async def _anilist_random_character_from_anime(anime_id: int, user_id: Optional[int] = None, tries: int = 20) -> Optional[dict]:
-    now = int(time.time())
-    anime_id = int(anime_id)
-
-    cached = _CHAR_POOL_CACHE.get(anime_id)
-    if not cached or int(cached.get("exp") or 0) < now:
-        built = await _build_char_pool_for_anime(anime_id, max_pages=6)
-        if not built:
-            return None
-        cached = {
-            "exp": now + 6 * 3600,
-            "title": built["title"],
-            "cover": built["cover"],
-            "chars": built["chars"],
-        }
-        _CHAR_POOL_CACHE[anime_id] = cached
-
-    chars = list(cached.get("chars") or [])
-    if not chars:
-        return None
-
-    recent = set(_recent_get(int(user_id))) if user_id is not None else set()
-
-    random.shuffle(chars)
-    preferred = [c for c in chars if int(c["id"]) not in recent]
-    fallback = [c for c in chars if int(c["id"]) in recent]
-    pick_order = (preferred + fallback)[:max(1, min(len(preferred + fallback), tries))]
-
-    for c in pick_order:
-        img = c.get("image")
-        if img:
-            return {
-                "id": int(c["id"]),
-                "name": c["name"],
-                "image": img,
-                "anime_title": cached.get("title") or "Obra",
-            }
-
-    cover = cached.get("cover") or DADO_FALLBACK_IMAGE
-    c = pick_order[0]
-    return {
-        "id": int(c["id"]),
-        "name": c["name"],
-        "image": cover,
-        "anime_title": cached.get("title") or "Obra",
-    }
-
-
-async def _auto_reroll_character(options: list[dict], preferred_anime_id: int, user_id: int, max_anime_tries: int = 20) -> Optional[dict]:
-    from database import vault_put_character, vault_random_character
-
-    ids = [int(o["id"]) for o in options if "id" in o]
-    ordered = []
-    if preferred_anime_id:
-        ordered.append(int(preferred_anime_id))
-    ordered += [x for x in ids if x != int(preferred_anime_id)]
-    if ordered:
-        tail = ordered[1:]
-        random.shuffle(tail)
-        ordered = [ordered[0]] + tail
-
-    tried = 0
-
-    for aid in ordered:
-        tried += 1
-        info = await _anilist_random_character_from_anime(aid, user_id=user_id, tries=24)
-        if info:
-            _recent_add(user_id, int(info["id"]))
-            try:
-                vault_put_character(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
-            except Exception:
-                pass
-            return info
-        if tried >= max_anime_tries:
-            break
-
-    try:
-        await _ensure_top_cache_fresh()
-    except Exception:
-        pass
-    fb = _pick_random_animes(18)
-    fb_ids = [int(o["id"]) for o in fb if "id" in o]
-    random.shuffle(fb_ids)
-    for aid in fb_ids:
-        info = await _anilist_random_character_from_anime(aid, user_id=user_id, tries=28)
-        if info:
-            _recent_add(user_id, int(info["id"]))
-            try:
-                vault_put_character(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
-            except Exception:
-                pass
-            return info
-
-    try:
-        v = vault_random_character()
-        if v:
-            _recent_add(user_id, int(v["character_id"]))
-            return {
-                "id": int(v["character_id"]),
-                "name": v["character_name"],
-                "image": v.get("image") or DADO_FALLBACK_IMAGE,
-                "anime_title": v.get("anime_title") or "Obra",
-            }
-    except Exception:
-        pass
-
-    return None
-
-
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
@@ -3300,6 +2773,47 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(_nice_group_block_text())
         return
 
+    # ✅ Dado Premium (MiniApp)
+    webapp_url = os.getenv("WEBAPP_URL", "").strip()
+    if not webapp_url:
+        # Railway: domínio público automático (se WEBAPP_URL não estiver setado)
+        dom = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        if dom:
+            webapp_url = dom if dom.startswith("http") else f"https://{dom}"
+
+    # normaliza: se o user colocou WEBAPP_URL como ".../app", evita "/app/app"
+    if webapp_url.endswith("/app"):
+        webapp_url = webapp_url[:-4]
+
+    if webapp_url:
+        try:
+            from telegram import WebAppInfo
+
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    "🎲 Abrir Dado (MiniApp)",
+                    web_app=WebAppInfo(url=f"{webapp_url.rstrip('/')}/app?tab=dado")
+                )]
+            ])
+
+            await update.message.reply_html(
+                "🎲 <b>DADO PREMIUM</b>\n\n"
+                "Agora o <b>dado é no MiniApp</b>:\n"
+                "✅ dado 3D animado\n"
+                "✅ grid com capa\n"
+                "✅ busca/filtro\n"
+                "✅ lootbox reveal\n\n"
+                "Clique abaixo para abrir:",
+                reply_markup=kb
+            )
+            return
+        except Exception:
+            # se der erro no WebAppInfo, cai no modo clássico
+            pass
+
+    # ==========================
+    # Fallback: modo clássico
+    # ==========================
     ensure_user_row(user_id, update.effective_user.first_name, new_user_dice=DADO_NEW_USER_START)
 
     user_lock = _get_user_dado_lock(user_id)
@@ -3372,124 +2886,6 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception:
         await update.message.reply_html(caption, reply_markup=kb)
-
-
-async def callback_dado_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    if not q:
-        return
-
-    if not callback_dedupe(q.id):
-        try:
-            await q.answer()
-        except Exception:
-            pass
-        return
-
-    user_id = q.from_user.id
-
-    ok = await anti_spam(user_id, key="cb:dado_pick", window=BTN_ANTIFLOOD_SECONDS)
-    if not ok:
-        await q.answer("Calma 🙂", show_alert=False)
-        return
-
-    try:
-        _, rid_s, anime_id_s = q.data.split(":")
-        roll_id = int(rid_s)
-        anime_id = int(anime_id_s)
-    except Exception:
-        await q.answer()
-        return
-
-    roll_lock = _get_roll_lock(roll_id)
-    async with roll_lock:
-        roll = get_dice_roll(roll_id)
-        if not roll:
-            await q.answer("Esse pedido não existe mais.", show_alert=True)
-            return
-
-        if int(roll["user_id"]) != int(user_id):
-            await q.answer("Só quem rolou o dado pode escolher 🙂", show_alert=True)
-            return
-
-        status = str(roll.get("status") or "")
-        created_at = int(roll.get("created_at") or 0)
-
-        if status not in ("pending",):
-            await q.answer("Esse dado já foi usado.", show_alert=True)
-            return
-
-        if int(time.time()) - created_at > DADO_EXPIRE_SECONDS:
-            set_dice_roll_status(roll_id, "expired")
-            _refund_one_die(user_id)
-            try:
-                await q.message.edit_reply_markup(reply_markup=None)
-            except Exception:
-                pass
-            await q.answer("Expirou! Devolvi seu dado ✅", show_alert=True)
-            return
-
-        try:
-            options = json.loads(roll["options_json"])
-        except Exception:
-            options = []
-
-        valid_ids = {int(o["id"]) for o in options if "id" in o}
-        if anime_id not in valid_ids:
-            await q.answer("Opção inválida.", show_alert=True)
-            return
-
-        ok_lock_db = try_set_dice_roll_status(roll_id, expected="pending", new_status="processing")
-        if not ok_lock_db:
-            await q.answer("Esse dado já foi usado.", show_alert=True)
-            return
-
-        try:
-            await q.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-
-    info = await _auto_reroll_character(options, preferred_anime_id=anime_id, user_id=user_id, max_anime_tries=20)
-
-    if not info:
-        _refund_one_die(user_id)
-        try:
-            set_dice_roll_status(roll_id, "failed_soft")
-        except Exception:
-            pass
-        await q.message.reply_photo(
-            photo=DADO_FALLBACK_IMAGE,
-            caption=(
-                "🎁 <b>PRÊMIO ENTREGUE!</b>\n\n"
-                "O sistema de dados está em modo proteção agora.\n"
-                "✅ Seu dado foi devolvido automaticamente."
-            ),
-            parse_mode="HTML"
-        )
-        return
-
-    set_dice_roll_status(roll_id, "resolved")
-
-    char_id = int(info["id"])
-    name = info["name"]
-    anime_title = info.get("anime_title") or "Obra"
-
-    global_img = _get_global_photo_for_character(char_id)
-    image = global_img or (info.get("image") or DADO_FALLBACK_IMAGE)
-
-    add_character_to_collection(user_id, char_id, name, image, anime_title=anime_title)
-
-    await q.message.reply_photo(
-        photo=image,
-        caption=(
-            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-            f"<i>{anime_title}</i>\n\n"
-            "📦 <b>Adicionado à sua coleção!</b>"
-        ),
-        parse_mode="HTML"
-    )
-
 
 # ==================================================
 # /colecao (ESTÉTICO) — capa + paginação + setfoto (custom_image)
@@ -5796,6 +5192,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
