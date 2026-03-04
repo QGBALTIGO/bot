@@ -621,19 +621,6 @@ def _get_custom_global_image_if_any(db, char_id: int) -> str:
     return ""
 
 
-def _choose_rarity(dice_value: int, char_id: int) -> dict:
-    seed = (int(char_id) * 1103515245 + int(dice_value) * 12345) & 0xFFFFFFFF
-    r = seed % 1000
-    if r < 30:
-        stars, tier = 5, "mythic"
-    elif r < 150:
-        stars, tier = 4, "epic"
-    elif r < 450:
-        stars, tier = 3, "rare"
-    else:
-        stars, tier = 2, "common"
-    return {"stars": stars, "tier": tier}
-
 
 # =========================
 # APP
