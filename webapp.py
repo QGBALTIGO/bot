@@ -2245,3 +2245,25 @@ def miniapp_shop():
   }}
 
   .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(12px);position
+:absolute;z-index:2;}
+
+  </style>
+</head>
+
+<body>
+
+<div class="top">
+  <div class="title">
+    <h1>🛒 Loja Baltigo</h1>
+    <div class="sub">Compre giros e dados</div>
+  </div>
+</div>
+
+<div style="margin-top:20px;color:white;font-family:sans-serif">
+<p>Interface da loja carregada.</p>
+</div>
+
+</body>
+</html>
+"""
+    return HTMLResponse(content=html)
