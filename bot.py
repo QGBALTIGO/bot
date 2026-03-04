@@ -2755,6 +2755,173 @@ async def unbanchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 20) /dado + /colecao + /nomecolecao (POSTGRES) — FIX + GIROS SLOT + RETRY + FALLBACK
 # ==================================================
 
+    SP_TZ = ZoneInfo("America/Sao_Paulo")
+
+# DADOS (saldo normal do /dado)
+DADO_MAX_BALANCE = 18
+DADO_NEW_USER_START = 4
+DADO_EXPIRE_SECONDS = 5 * 60
+
+# GIROS (extra_dado) — recarga automática
+GIRO_MAX_BALANCE = 24  # 3 dias (8 por dia)
+GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]  # horários SP
+
+CMD_ANTIFLOOD_SECONDS = 3
+BTN_ANTIFLOOD_SECONDS = 2
+
+DADO_PICK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg"
+DADO_FALLBACK_IMAGE = "https://photo.chelpbot.me/AgACAgEAAxkBZqnFu2mfsGZK0p1QU7Az5i2pp9C07ahKAALQC2sbS__4RF78U7yIQqiiAQADAgADeQADOgQ/photo.jpg"
+
+_REFRESH_LOCK = asyncio.Lock()
+
+# Locks (processo)
+_dado_roll_locks: Dict[int, asyncio.Lock] = {}
+_user_dado_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_roll_lock(roll_id: int) -> asyncio.Lock:
+    lock = _dado_roll_locks.get(roll_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _dado_roll_locks[roll_id] = lock
+    return lock
+
+def _get_user_dado_lock(user_id: int) -> asyncio.Lock:
+    lock = _user_dado_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_dado_locks[user_id] = lock
+    return lock
+
+
+def _format_time_sp() -> str:
+    return datetime.now(tz=SP_TZ).strftime("%H:%M")
+
+
+def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
+    """
+    Slot de 4h baseado em SP:
+    00/04/08/12/16/20.
+    """
+    if ts is None:
+        ts = time.time()
+    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
+    offset = int(now_sp.utcoffset().total_seconds())
+    return int((int(ts) + offset) // (4 * 3600))
+
+
+def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
+    """
+    Slot de GIRO baseado em SP:
+    01/04/07/10/13/16/19/22 (8 slots/dia)
+    Retorna um inteiro crescente (dia*8 + idx).
+    """
+    if ts is None:
+        ts = time.time()
+
+    now_sp = datetime.fromtimestamp(ts, tz=SP_TZ)
+    day_id = now_sp.date().toordinal()
+
+    h = now_sp.hour
+    m = now_sp.minute
+
+    idx = -1
+    for i, hh in enumerate(GIRO_HOURS):
+        if (h > hh) or (h == hh and m >= 0):
+            idx = i
+    if idx < 0:
+        return (day_id - 1) * 8 + 7
+
+    return day_id * 8 + idx
+
+
+def _refresh_user_dado_balance(user_id: int) -> int:
+    """
+    Atualiza saldo normal baseado em slots perdidos (4h), cap 18.
+    """
+    st = get_dado_state(user_id)
+    if not st:
+        return 0
+    balance = int(st["b"])
+    last_slot = int(st["s"])
+
+    cur_slot = _now_slot_sp_4h()
+    if last_slot < 0:
+        set_dado_state(user_id, balance, cur_slot)
+        return balance
+
+    diff = cur_slot - last_slot
+    if diff <= 0:
+        return balance
+
+    new_balance = min(DADO_MAX_BALANCE, balance + diff)
+    set_dado_state(user_id, new_balance, cur_slot)
+    return new_balance
+
+
+def _refresh_user_giros(user_id: int) -> int:
+    """
+    Atualiza GIROS (extra_dado) com slots 01/04/07/10/13/16/19/22, cap 24.
+    """
+    from database import get_extra_state, set_extra_state
+
+    st = get_extra_state(user_id)
+    extra = int(st["x"])
+    last_slot = int(st["s"])
+
+    cur_slot = _now_giro_slot_sp()
+    if last_slot < 0:
+        set_extra_state(user_id, extra, cur_slot)
+        return extra
+
+    diff = cur_slot - last_slot
+    if diff <= 0:
+        return extra
+
+    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
+    set_extra_state(user_id, new_extra, cur_slot)
+    return new_extra
+
+
+def _consume_one_die(user_id: int) -> bool:
+    """
+    Consome 1 dado, priorizando saldo normal, depois GIRO (extra_dado).
+    """
+    st = get_dado_state(user_id)
+    b = int(st["b"] if st else 0)
+    s = int(st["s"] if st else -1)
+
+    if b > 0:
+        set_dado_state(user_id, b - 1, s)
+        return True
+
+    return consume_extra_dado(user_id)
+
+
+def _refund_one_die(user_id: int, prefer_extra: bool = False):
+    """
+    Devolve 1 tentativa:
+    - se prefer_extra=True: devolve 1 GIRO (até cap 24)
+    - senão: devolve 1 no saldo normal (até cap 18)
+    """
+    if prefer_extra:
+        from database import get_extra_state, set_extra_state
+        st = get_extra_state(user_id)
+        x = int(st["x"])
+        s = int(st["s"])
+        set_extra_state(user_id, min(GIRO_MAX_BALANCE, x + 1), s)
+        return
+
+    inc_dado_balance(user_id, 1, max_balance=DADO_MAX_BALANCE)
+
+
+def _nice_group_block_text() -> str:
+    return (
+        "🎲 <b>DADO</b>\n\n"
+        "Esse comando funciona <b>somente no privado</b> do bot.\n"
+        "👉 Abra o bot no PV e use <code>/dado</code> por lá.\n\n"
+        "✨ No PV você escolhe o anime e ganha um personagem!"
+    )
+    
 # ==================================================
 # /dado (PV only) — Dado Premium (MiniApp)
 # ==================================================
@@ -5191,6 +5358,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
