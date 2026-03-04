@@ -157,8 +157,8 @@ def _ensure_achievements_table():
             achievement_key TEXT NOT NULL,
             unlocked_at BIGINT NOT NULL,
             PRIMARY KEY (user_id, achievement_key)
+             """
         );
-        """
     )
     _run("CREATE INDEX IF NOT EXISTS user_achievements_user_idx ON user_achievements (user_id);")
 
