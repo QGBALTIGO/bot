@@ -2935,7 +2935,7 @@ async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = (
         "🎲 <b>DADO DA SORTE</b>\n\n"
-        "Toque no botão abaixo para abrir o dado e testar sua sorte.\n"
+        "Toque no botão abaixo para abrir o dado e testar sua sorte.\n\n"
         "Quem sabe qual personagem o destino vai escolher hoje? ✨"
     )
 
@@ -5337,6 +5337,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
