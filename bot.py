@@ -3496,16 +3496,6 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nxt = _next_slot_dt_sp()
     nxt_txt = nxt.strftime("%H:%M")
 
-    await update.message.reply_html(
-        "💳 <b>SALDO</b>\n\n"
-        f"🪙 <b>Coins:</b> <code>{coins}</code>\n"
-        f"🎟️ <b>Dados:</b> <code>{balance}</code>\n"
-        f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
-        "🕒 Próxima recarga do dado:\n"
-        f"• <b>{nxt_txt}</b> (horário local)"
-        )
-            return
-
         try:
             await _ensure_top_cache_fresh()
         except Exception:
@@ -5975,6 +5965,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
