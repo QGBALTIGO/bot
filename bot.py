@@ -5510,17 +5510,6 @@ def main():
     app.add_handler(CommandHandler("comandos", comandos))
     app.add_handler(CallbackQueryHandler(callback_ajuda, pattern=r"^ajuda:"))
 
-      # ===== NOVOS COMANDOS ENGINE =====
-    app.add_handler(CommandHandler("summon", summon_menu))
-    app.add_handler(CommandHandler("market", market_command))
-    app.add_handler(CommandHandler("evento", evento_command))
-    app.add_handler(CommandHandler("top", top_command))
-    app.add_handler(CommandHandler("stats", stats_command))
-    app.add_handler(CommandHandler("admin", admin_dashboard))
-    app.add_handler(CallbackQueryHandler(callback_summon, pattern="^summon"))
-    app.add_handler(CallbackQueryHandler(callback_market, pattern="^market"))
-    app.add_handler(CallbackQueryHandler(callback_admin, pattern="^admin"))
-
     print("✅ Bot rodando...")
     app.run_polling(
         drop_pending_updates=True,
@@ -5654,5 +5643,6 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
