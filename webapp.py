@@ -493,31 +493,11 @@ async def _ensure_top_cache_fresh(db):
 
 
 def _pick_random_animes(db, n: int) -> List[dict]:
-    """Retorna N opções de anime do characters_pool (TOP500)."""
     try:
-        fn = getattr(db, "pool_random_animes", None)
-        rows = fn(int(n)) if callable(fn) else []
+        fn = getattr(db, "get_top_anime_list", None)
+        all_items = fn(500) if callable(fn) else []
     except Exception:
-        rows = []
-
-    rows = rows or []
-    if not rows:
-        return []
-
-    # Mantém formato esperado pelo front: [{id:int, title:str}]
-    out: List[dict] = []
-    seen: set = set()
-    i = 1
-    for r in rows:
-        title = _safe_str(r.get("anime") if isinstance(r, dict) else "")
-        if not title or title in seen:
-            continue
-        out.append({"id": int(i), "title": title})
-        seen.add(title)
-        i += 1
-        if len(out) >= int(n):
-            break
-    return out
+        all_items = []
 
     all_items = all_items or []
     if not all_items:
@@ -1033,34 +1013,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
 
     # ✅ se der erro inesperado, devolve dado
     try:
-        # ✅ TOP500: valida escolha com base nas opções do próprio roll
-        try:
-            opts = json.loads(str(roll.get("options_json") or "[]"))
-        except Exception:
-            opts = []
-
-        chosen_title = ""
-        for o in (opts or []):
-            try:
-                if int(o.get("id") or 0) == int(anime_id):
-                    chosen_title = _safe_str(o.get("title"))
-                    break
-            except Exception:
-                continue
-
-        if not chosen_title:
-            # escolha inválida (não estava nas opções)
-            try:
-                fn = getattr(db, "set_dice_roll_status", None)
-                if callable(fn):
-                    fn(int(roll_id), "pending")
-            except Exception:
-                pass
-            return JSONResponse({"ok": False, "error": "invalid_choice"}, status_code=200)
-
-        # pega 1 personagem aleatório do pool, filtrando por anime escolhido
-        fn_pool = getattr(db, "pool_random_character", None)
-        info = fn_pool(chosen_title) if callable(fn_pool) else None
+        info = await _try_get_character_from_selected_only(db, int(anime_id))
         if not info:
             # não devolve dado aqui, porque a regra é: "tente outra opção da mesma rolagem"
             try:
@@ -1079,12 +1032,12 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
 
-        char_id = int(info.get("character_id") or 0)
-        name = _safe_str(info.get("name"))
-        anime_title = _safe_str(info.get("anime")) or "Obra"
+        char_id = int(info["id"])
+        name = info["name"]
+        anime_title = info.get("anime_title") or "Obra"
 
         gimg = _get_custom_global_image_if_any(db, char_id)
-        image = gimg or (f"https://img.anili.st/character/{char_id}" if char_id else "") or DADO_FALLBACK_IMAGE
+        image = gimg or (info.get("image") or "") or DADO_FALLBACK_IMAGE
 
         # adiciona na coleção
         try:
