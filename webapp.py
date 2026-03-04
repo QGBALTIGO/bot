@@ -1,16 +1,9 @@
-# webapp.py — MiniApps (Coleção + Loja + Dado separado) — PREMIUM UI + FIXES + SHOP UPGRADES
-# ✅ Objetivos atendidos:
-# 1) Visual premium (estilo “Your Waifu”) com fundo FIXO + símbolos (pattern) nas 3 telas
-# 2) Dado separado em /dado (barra dado) — coleção fica só em /app
-# 3) Rotas /dado/start e /dado/pick (além de /api/dado/*) — evita {"detail":"Not Found"}
-# 4) Nº de opções = valor do dado (1..6)
-# 5) Se der erro hard no fluxo do dado, devolve o dado (refund)
-# 6) Loja:
-#    - Comprar GIRO por 2 coins (config SHOP_GIRO_PRICE default=2)
-#    - Comprar DADO por X coins (SHOP_DADO_PRICE default=1)
-#    - Botão "Comprar máximo possível" (compra todos os dados que der com suas coins)
-# 7) Correção REAL: _pick_random_animes não tem mais código morto / variável inexistente
-# 8) Rate limit leve no WebApp
+# webapp.py — MiniApps (Coleção + Loja + Dado separado)
+# ✅ Fixes pedidos:
+# 1) "{"detail":"Not Found"}" no dado: agora existem rotas /dado/start e /dado/pick (além de /api/dado/*)
+# 2) Dado NÃO fica mais no /app (coleção). Agora é só na rota /dado (barra dado).
+# 3) Quantidade de opções = valor do dado (1..6)
+# 4) Se der erro no fluxo do dado, devolve o dado (refund) de forma segura
 
 import os
 import json
@@ -27,7 +20,6 @@ from urllib.parse import parse_qsl
 from fastapi import FastAPI, Header, HTTPException, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
-
 # =========================
 # CONFIG
 # =========================
@@ -38,8 +30,7 @@ if not BOT_TOKEN:
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 SHOP_SELL_GAIN = int(os.getenv("SHOP_SELL_GAIN", "1"))
-SHOP_GIRO_PRICE = int(os.getenv("SHOP_GIRO_PRICE", "2"))  # ✅ giro = 2 coins por padrão
-SHOP_DADO_PRICE = int(os.getenv("SHOP_DADO_PRICE", "1"))  # ✅ dado = 1 coin por padrão
+SHOP_GIRO_PRICE = int(os.getenv("SHOP_GIRO_PRICE", "2"))
 COLLECTION_LIMIT = int(os.getenv("COLLECTION_LIMIT", "500"))
 
 ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
@@ -61,7 +52,6 @@ _WEB_RATE: Dict[Tuple[int, str], float] = {}
 
 DADO_MAX_BALANCE = int(os.getenv("DADO_MAX_BALANCE", "18"))
 GIRO_MAX_BALANCE = int(os.getenv("GIRO_MAX_BALANCE", "24"))
-
 
 # =========================
 # helpers
@@ -269,41 +259,6 @@ def _buy_giro(db, user_id: int, price: int) -> bool:
     return bool(fn(user_id, price, giros=1))
 
 
-def _spend_coins(db, user_id: int, amount: int) -> bool:
-    """
-    Tenta gastar coins de forma compatível.
-    Preferências:
-      1) db.spend_coins(user_id, amount) -> bool
-      2) db.try_spend_coins(user_id, amount) -> bool
-      3) fallback: checa coins e usa db.add_coin(user_id, -amount) se existir
-    """
-    amount = int(amount)
-    if amount <= 0:
-        return True
-
-    for name in ("spend_coins", "try_spend_coins"):
-        fn = getattr(db, name, None)
-        if callable(fn):
-            try:
-                return bool(fn(int(user_id), amount))
-            except Exception:
-                pass
-
-    cur = _get_coins(db, user_id)
-    if cur < amount:
-        return False
-
-    fn_add = getattr(db, "add_coin", None)
-    if callable(fn_add):
-        try:
-            fn_add(int(user_id), -amount)
-            return True
-        except Exception:
-            return False
-
-    return False
-
-
 # =========================
 # Telegram send (PV)
 # =========================
@@ -374,13 +329,6 @@ def _inc_dado_balance(db, user_id: int, amount: int, max_balance: int):
     fn = getattr(db, "inc_dado_balance", None)
     if callable(fn):
         fn(user_id, int(amount), max_balance=int(max_balance))
-        return
-    # fallback: tenta setar pelo state (se não existir inc)
-    st = _get_dado_state(db, user_id)
-    b = _safe_int(st.get("b"), 0)
-    s = _safe_int(st.get("s"), _now_slot_4h())
-    nb = min(int(max_balance), max(0, b + int(amount)))
-    _set_dado_state(db, user_id, nb, s)
 
 
 def _consume_extra_dado(db, user_id: int) -> bool:
@@ -440,28 +388,6 @@ def _consume_one_die(db, user_id: int) -> bool:
 
 def _refund_one_die(db, user_id: int):
     _inc_dado_balance(db, user_id, 1, max_balance=DADO_MAX_BALANCE)
-
-
-def _buy_dado(db, user_id: int, qty: int, price_each: int) -> Tuple[bool, str]:
-    qty = int(qty)
-    price_each = int(price_each)
-    if qty <= 0:
-        return False, "Quantidade inválida."
-    if price_each <= 0:
-        return False, "Preço inválido."
-
-    total = qty * price_each
-    ok = _spend_coins(db, user_id, total)
-    if not ok:
-        return False, "Você não tem coins suficientes."
-
-    try:
-        _inc_dado_balance(db, user_id, qty, max_balance=DADO_MAX_BALANCE)
-    except Exception:
-        _add_coin(db, user_id, total)
-        return False, "Falha ao adicionar dados. Reembolsado."
-
-    return True, "ok"
 
 
 # -------------------------
@@ -567,14 +493,7 @@ async def _ensure_top_cache_fresh(db):
 
 
 def _pick_random_animes(db, n: int) -> List[dict]:
-    """
-    ✅ CORRIGIDO: sem código morto / sem variáveis inexistentes.
-    Retorna N opções de anime do pool (TOP500) em formato:
-      [{id:int, title:str}]
-    OBS: id aqui é um ID de opção (1..N), porque seu pool_random_character usa título.
-    """
-    n = max(1, min(6, int(n)))
-
+    """Retorna N opções de anime do characters_pool (TOP500)."""
     try:
         fn = getattr(db, "pool_random_animes", None)
         rows = fn(int(n)) if callable(fn) else []
@@ -585,26 +504,28 @@ def _pick_random_animes(db, n: int) -> List[dict]:
     if not rows:
         return []
 
+    # Mantém formato esperado pelo front: [{id:int, title:str}]
     out: List[dict] = []
     seen: set = set()
-    opt_id = 1
-
+    i = 1
     for r in rows:
-        if not isinstance(r, dict):
-            continue
-
-        title = _safe_str(r.get("anime") or r.get("title") or "")
+        title = _safe_str(r.get("anime") if isinstance(r, dict) else "")
         if not title or title in seen:
             continue
-
-        out.append({"id": int(opt_id), "title": title})
+        out.append({"id": int(i), "title": title})
         seen.add(title)
-        opt_id += 1
-
-        if len(out) >= n:
+        i += 1
+        if len(out) >= int(n):
             break
-
     return out
+
+    all_items = all_items or []
+    if not all_items:
+        return []
+
+    n = max(1, min(n, len(all_items)))
+    chosen = random.sample(all_items, n)
+    return [{"id": int(x["anime_id"]), "title": x.get("title") or "Anime"} for x in chosen]
 
 
 async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optional[dict]:
@@ -650,9 +571,7 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
             pages.add(random.randint(1, max(1, last_page)))
 
         for page in pages:
-            async with session.post(
-                ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": int(page)}}
-            ) as r2:
+            async with session.post(ANILIST_API, json={"query": q, "variables": {"id": int(anime_id), "page": int(page)}}) as r2:
                 d2 = await r2.json()
             m2 = d2.get("data", {}).get("Media")
             if not m2:
@@ -874,23 +793,14 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
     coins = _get_coins(db, user_id)
     giros = _get_giros(db, user_id)
 
-    # dado balance (com refresh para refletir recarga automática)
-    dado_balance = _refresh_user_dado_balance(db, user_id)
-    extra = _refresh_user_giros(db, user_id)
-
     return JSONResponse(
         {
             "ok": True,
             "user_id": user_id,
             "coins": coins,
             "giros": giros,
-            "dado_balance": int(dado_balance),
-            "extra": int(extra),
             "sell_gain": SHOP_SELL_GAIN,
             "giro_price": SHOP_GIRO_PRICE,
-            "dado_price": SHOP_DADO_PRICE,
-            "dado_max_balance": DADO_MAX_BALANCE,
-            "giro_max_balance": GIRO_MAX_BALANCE,
         }
     )
 
@@ -970,13 +880,7 @@ def api_sell_confirm(payload_body: dict = Body(default={}), x_telegram_init_data
     sold_name = _safe_str(item.get("character_name") or "Personagem")
 
     return JSONResponse(
-        {
-            "ok": True,
-            "sold": {"character_id": char_id, "character_name": sold_name},
-            "coins": coins,
-            "giros": giros,
-            "sell_gain": SHOP_SELL_GAIN,
-        }
+        {"ok": True, "sold": {"character_id": char_id, "character_name": sold_name}, "coins": coins, "giros": giros, "sell_gain": SHOP_SELL_GAIN}
     )
 
 
@@ -998,81 +902,6 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
     giros = _get_giros(db, user_id)
 
     return JSONResponse({"ok": True, "coins": coins, "giros": giros, "price": SHOP_GIRO_PRICE})
-
-
-@app.post("/api/shop/buy/dado")
-def api_buy_dado(payload_body: dict = Body(default={}), x_telegram_init_data: str = Header(default="")):
-    payload = verify_telegram_init_data(x_telegram_init_data)
-    user = payload["user"]
-    user_id = int(user["id"])
-    first_name = user.get("first_name") or "User"
-
-    import database as db
-    _ensure_user(db, user_id, first_name)
-
-    qty = _safe_int(payload_body.get("qty"), 1)
-    qty = max(1, min(999, qty))
-
-    ok, msg = _buy_dado(db, user_id, qty=qty, price_each=SHOP_DADO_PRICE)
-    if not ok:
-        return JSONResponse({"ok": False, "error": msg}, status_code=200)
-
-    coins = _get_coins(db, user_id)
-    dado_balance = _refresh_user_dado_balance(db, user_id)
-    extra = _refresh_user_giros(db, user_id)
-    giros = _get_giros(db, user_id)
-
-    return JSONResponse(
-        {
-            "ok": True,
-            "coins": coins,
-            "giros": giros,
-            "dado_balance": int(dado_balance),
-            "extra": int(extra),
-            "qty": int(qty),
-            "price_each": int(SHOP_DADO_PRICE),
-        }
-    )
-
-
-@app.post("/api/shop/buy/dado/max")
-def api_buy_dado_max(x_telegram_init_data: str = Header(default="")):
-    payload = verify_telegram_init_data(x_telegram_init_data)
-    user = payload["user"]
-    user_id = int(user["id"])
-    first_name = user.get("first_name") or "User"
-
-    import database as db
-    _ensure_user(db, user_id, first_name)
-
-    coins = _get_coins(db, user_id)
-    if SHOP_DADO_PRICE <= 0:
-        return JSONResponse({"ok": False, "error": "Preço do dado inválido."}, status_code=200)
-
-    max_qty = coins // SHOP_DADO_PRICE
-    if max_qty <= 0:
-        return JSONResponse({"ok": False, "error": "Você não tem coins suficientes."}, status_code=200)
-
-    ok, msg = _buy_dado(db, user_id, qty=max_qty, price_each=SHOP_DADO_PRICE)
-    if not ok:
-        return JSONResponse({"ok": False, "error": msg}, status_code=200)
-
-    coins2 = _get_coins(db, user_id)
-    dado_balance = _refresh_user_dado_balance(db, user_id)
-    extra = _refresh_user_giros(db, user_id)
-    giros = _get_giros(db, user_id)
-
-    return JSONResponse(
-        {
-            "ok": True,
-            "coins": coins2,
-            "giros": giros,
-            "dado_balance": int(dado_balance),
-            "extra": int(extra),
-            "qty": int(max_qty),
-            "price_each": int(SHOP_DADO_PRICE),
-        }
-    )
 
 
 # =========================
@@ -1103,10 +932,12 @@ async def _dado_start_impl(x_telegram_init_data: str):
             status_code=200,
         )
 
+    # Consome 1 dado/extra
     consumed = _consume_one_die(db, user_id)
     if not consumed:
         return JSONResponse({"ok": False, "error": "consume_failed"}, status_code=200)
 
+    # Se qualquer coisa falhar daqui pra frente, devolve o dado
     try:
         try:
             await _ensure_top_cache_fresh(db)
@@ -1147,6 +978,7 @@ async def _dado_start_impl(x_telegram_init_data: str):
             }
         )
     except Exception:
+        # ✅ qualquer erro inesperado = devolve o dado
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "server_error_refunded"}, status_code=200)
 
@@ -1173,9 +1005,11 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
     created_at = int(roll.get("created_at") or 0)
     dice_value = _safe_int(roll.get("dice_value") or 1, 1)
 
+    # ✅ se já foi resolvido, não mexe
     if status == "resolved":
         return JSONResponse({"ok": False, "error": "used"}, status_code=200)
 
+    # ✅ expirou = devolve dado
     if created_at and int(time.time()) - created_at > DADO_WEB_EXPIRE_SECONDS:
         try:
             fn = getattr(db, "set_dice_roll_status", None)
@@ -1186,6 +1020,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "expired_refunded"}, status_code=200)
 
+    # trava o roll para evitar dupla execução
     if status == "pending":
         try:
             fn = getattr(db, "try_set_dice_roll_status", None)
@@ -1196,7 +1031,9 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
 
+    # ✅ se der erro inesperado, devolve dado
     try:
+        # ✅ TOP500: valida escolha com base nas opções do próprio roll
         try:
             opts = json.loads(str(roll.get("options_json") or "[]"))
         except Exception:
@@ -1212,6 +1049,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
                 continue
 
         if not chosen_title:
+            # escolha inválida (não estava nas opções)
             try:
                 fn = getattr(db, "set_dice_roll_status", None)
                 if callable(fn):
@@ -1220,9 +1058,11 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
                 pass
             return JSONResponse({"ok": False, "error": "invalid_choice"}, status_code=200)
 
+        # pega 1 personagem aleatório do pool, filtrando por anime escolhido
         fn_pool = getattr(db, "pool_random_character", None)
         info = fn_pool(chosen_title) if callable(fn_pool) else None
         if not info:
+            # não devolve dado aqui, porque a regra é: "tente outra opção da mesma rolagem"
             try:
                 fn = getattr(db, "set_dice_roll_status", None)
                 if callable(fn):
@@ -1231,6 +1071,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
                 pass
             return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
 
+        # marca como resolvido
         try:
             fn = getattr(db, "set_dice_roll_status", None)
             if callable(fn):
@@ -1245,6 +1086,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         gimg = _get_custom_global_image_if_any(db, char_id)
         image = gimg or (f"https://img.anili.st/character/{char_id}" if char_id else "") or DADO_FALLBACK_IMAGE
 
+        # adiciona na coleção
         try:
             fn_add = getattr(db, "add_character_to_collection", None)
             if callable(fn_add):
@@ -1255,6 +1097,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
 
+        # manda PV
         await _tg_send_photo(
             chat_id=user_id,
             photo=image,
@@ -1273,6 +1116,7 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         )
 
     except Exception:
+        # ✅ falhou hard = devolve dado e invalida esse roll
         try:
             fn = getattr(db, "set_dice_roll_status", None)
             if callable(fn):
@@ -1330,106 +1174,6 @@ async def dado_pick_bar(
 
 
 # =========================
-# UI THEME (shared)
-# =========================
-# SVG pattern com símbolos (fixo), bem leve, sem depender de assets externos
-_BG_SYMBOLS_SVG = """
-<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'>
-  <defs>
-    <filter id='b' x='-20%' y='-20%' width='140%' height='140%'>
-      <feGaussianBlur stdDeviation='0.6'/>
-    </filter>
-  </defs>
-  <g fill='none' stroke='rgba(255,255,255,0.14)' stroke-width='1' filter='url(#b)'>
-    <path d='M30 40 l12 0 l0 12 l-12 0 Z'/>
-    <path d='M160 30 l14 14 l-14 14 l-14-14 Z'/>
-    <circle cx='60' cy='150' r='10'/>
-    <path d='M140 155 l20 0'/>
-    <path d='M140 155 l0 20'/>
-    <path d='M180 165 l10-10 l10 10 l-10 10 Z'/>
-    <path d='M25 185 l16 0'/>
-    <path d='M25 185 l0 16'/>
-  </g>
-  <g fill='rgba(255,255,255,0.10)'>
-    <circle cx='110' cy='110' r='2'/>
-    <circle cx='116' cy='116' r='1.5'/>
-    <circle cx='104' cy='118' r='1.2'/>
-  </g>
-</svg>
-""".strip()
-
-
-def _bg_css_block() -> str:
-    # data uri safe
-    import urllib.parse
-    svg = urllib.parse.quote(_BG_SYMBOLS_SVG)
-    return f"""
-    :root{{
-      --bg0:#06060c;
-      --bg1:#0b0a14;
-      --card:#12111b;
-      --stroke: rgba(255,255,255,.10);
-      --muted: rgba(255,255,255,.72);
-      --muted2: rgba(255,255,255,.50);
-
-      --a1:#ff2b4a;
-      --a2:#b30f22;
-      --a3:#ff6a88;
-      --a4:#b06cff;
-
-      --c-common:#c9c9c9;
-      --c-rare:#4da3ff;
-      --c-epic:#b06cff;
-      --c-mythic:#ffcc33;
-
-      --good: rgba(0,255,140,.18);
-      --bad: rgba(255,60,60,.18);
-    }}
-    *{{box-sizing:border-box}}
-    html,body{{height:100%}}
-    body{{
-      margin:0;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-      color:#fff;
-      padding:14px 14px 90px;
-      overflow-x:hidden;
-      background:
-        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.18), transparent 60%),
-        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.14), transparent 60%),
-        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.10), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg0));
-      background-attachment: fixed;
-      position:relative;
-    }}
-    /* camada símbolos */
-    body::before{{
-      content:"";
-      position:fixed; inset:0;
-      background-image: url("data:image/svg+xml,{svg}");
-      background-repeat: repeat;
-      background-size: 220px 220px;
-      opacity: .20;
-      pointer-events:none;
-      mix-blend-mode: overlay;
-      transform: translateZ(0);
-    }}
-    /* brilho superior */
-    body::after{{
-      content:"";
-      position:fixed; inset:-20% -20% auto -20%;
-      height: 55%;
-      background:
-        radial-gradient(700px 380px at 20% 30%, rgba(255,43,74,.22), transparent 60%),
-        radial-gradient(620px 360px at 70% 10%, rgba(176,108,255,.18), transparent 65%);
-      opacity:.55;
-      pointer-events:none;
-      filter: blur(0px);
-      transform: translateZ(0);
-    }}
-    """
-
-
-# =========================
 # UI: /app — Coleção + Favoritos (SEM DADO)
 # =========================
 @app.get("/app", response_class=HTMLResponse)
@@ -1439,10 +1183,41 @@ def miniapp_collection():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <title>Baltigo • Coleção</title>
+  <title>Baltigo MiniApp</title>
   <style>
-  """ + _bg_css_block() + r"""
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;position:relative;z-index:2;}
+    :root{
+      --bg0:#07070c;
+      --bg1:#0c0b14;
+      --card:#12111b;
+      --stroke: rgba(255,255,255,.10);
+      --muted2: rgba(255,255,255,.50);
+      --a1:#ff2b4a;
+      --a2:#b30f22;
+      --a3:#ff6a88;
+
+      --c-common:#c9c9c9;
+      --c-rare:#4da3ff;
+      --c-epic:#b06cff;
+      --c-mythic:#ffcc33;
+
+      --good: rgba(0,255,140,.18);
+      --bad: rgba(255,60,60,.18);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:#fff;
+      padding:14px 14px 90px;
+      overflow-x:hidden;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
+        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
+        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+    }
+
+    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
     .title{display:flex;flex-direction:column;gap:3px;min-width:0;}
     .title h1{margin:0;font-size:18px;font-weight:1000;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .title .sub{font-size:12px;color:var(--muted2);}
@@ -1451,8 +1226,7 @@ def miniapp_collection():
       display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
       background:rgba(255,255,255,.035);border-radius:999px;white-space:nowrap;flex-shrink:0;
       box-shadow: 0 12px 38px rgba(0,0,0,.35);
-      backdrop-filter: blur(12px);
-      position:relative;z-index:2;
+      backdrop-filter: blur(10px);
     }
     .stat{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}
     .dot{width:1px;height:16px;background:var(--stroke);}
@@ -1461,8 +1235,7 @@ def miniapp_collection():
       display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
       border-radius:999px;background:rgba(255,255,255,.035);
       box-shadow: 0 14px 46px rgba(0,0,0,.35);
-      backdrop-filter: blur(12px);
-      position:relative;z-index:2;
+      backdrop-filter: blur(10px);
     }
     .tab{
       flex:1;text-align:center;padding:10px 12px;border-radius:999px;
@@ -1477,32 +1250,20 @@ def miniapp_collection():
       box-shadow: 0 14px 44px rgba(255,43,74,.10);
     }
 
-    .search{display:flex;gap:10px;align-items:center;margin:6px 0 14px;position:relative;z-index:2;}
+    .search{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}
     .search input{
       width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);
       background:rgba(255,255,255,.035);color:#fff;outline:none;font-size:14px;
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(10px);
     }
     .search input::placeholder{color:rgba(255,255,255,.35)}
 
-    .status{
-      margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.03);color:rgba(255,255,255,.80);
-      font-size:13px;white-space:pre-wrap;backdrop-filter: blur(12px);
-      position:relative;z-index:2;
-    }
+    .status{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:rgba(255,255,255,.80);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(10px);}
     .status.ok{border-color: var(--good);}
     .status.err{border-color: var(--bad);color: rgba(255,120,120,.95);}
 
-    .section{
-      margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.03);backdrop-filter: blur(12px);
-      position:relative;z-index:2;
-    }
-    .section-title{
-      font-weight:950;font-size:14px;color:rgba(255,255,255,.92);
-      margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;
-    }
+    .section{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);backdrop-filter: blur(10px);}
+    .section-title{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
     .section-count{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}
 
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -1512,17 +1273,17 @@ def miniapp_collection():
       box-shadow: 0 18px 56px rgba(0,0,0,.45);
       transform: translateZ(0);
     }
-    .card img{width:100%;height:220px;object-fit:cover;display:block;filter:saturate(1.08) contrast(1.06);}
+    .card img{width:100%;height:220px;object-fit:cover;display:block;filter:saturate(1.06) contrast(1.05);}
     .overlay{
       position:absolute;left:0;right:0;bottom:0;padding:10px;
-      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.86));
+      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.84));
     }
     .name{font-weight:1000;font-size:15px;margin:0;letter-spacing:.1px;}
     .meta{margin-top:3px;font-size:12px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .pill{
-      position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.52);
+      position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);
       border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(8px);
     }
     .shine{
       position:absolute;inset:-40%;
@@ -1537,8 +1298,8 @@ def miniapp_collection():
 
     .rar{
       position:absolute;top:10px;right:10px;padding:6px 10px;border-radius:999px;
-      background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.14);
-      font-weight:1000;font-size:12px;backdrop-filter: blur(10px);
+      background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);
+      font-weight:1000;font-size:12px;backdrop-filter: blur(8px);
       display:flex;align-items:center;gap:6px;
     }
     .rar .dot{width:8px;height:8px;border-radius:99px;background:#fff;opacity:.9}
@@ -1546,12 +1307,6 @@ def miniapp_collection():
     .tier-rare   .rar .dot{background:var(--c-rare)}
     .tier-epic   .rar .dot{background:var(--c-epic)}
     .tier-mythic .rar .dot{background:var(--c-mythic)}
-
-    .emptyHint{
-      color:rgba(255,255,255,.68);
-      font-size:13px;
-      padding:8px 4px;
-    }
   </style>
 </head>
 <body>
@@ -1658,7 +1413,6 @@ def miniapp_collection():
 
     function computeTierHint(c){
       const q = getQty(c);
-      if (q >= 8) return "tier-mythic";
       if (q >= 5) return "tier-epic";
       if (q >= 3) return "tier-rare";
       return "tier-common";
@@ -1674,7 +1428,7 @@ def miniapp_collection():
         const favImg = (favProfile?.fav_image || "").trim();
 
         if (!favName){
-          root.innerHTML = "<div class='emptyHint'>Você ainda não definiu um favorito.</div>";
+          root.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Você ainda não definiu um favorito.</div>";
           return;
         }
 
@@ -1701,7 +1455,7 @@ def miniapp_collection():
               <div class="shine"></div>
               ${img ? `<img src="${escapeHtml(img)}" alt="">`
                    : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}
-              <div class="rar"><span class="dot"></span> FAVORITO</div>
+              <div class="rar"><span class="dot"></span> Favorito</div>
               <div class="overlay">
                 <div class="name">${escapeHtml(name)}</div>
                 <div class="meta">Seu favorito</div>
@@ -1729,7 +1483,7 @@ def miniapp_collection():
       sectionsRoot.innerHTML = "";
 
       if (!filtered.length){
-        sectionsRoot.innerHTML = "<div class='emptyHint'>Nenhum card encontrado.</div>";
+        sectionsRoot.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Nenhum card encontrado.</div>";
         return;
       }
 
@@ -1851,10 +1605,34 @@ def miniapp_dado():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <title>Baltigo • Dado</title>
+  <title>Dado</title>
   <style>
-  """ + _bg_css_block() + r"""
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;position:relative;z-index:2;}
+    :root{
+      --bg0:#07070c;
+      --bg1:#0c0b14;
+      --stroke: rgba(255,255,255,.10);
+      --muted: rgba(255,255,255,.70);
+      --a1:#ff2b4a;
+      --a3:#ff6a88;
+
+      --c-common:#c9c9c9;
+      --c-rare:#4da3ff;
+      --c-epic:#b06cff;
+      --c-mythic:#ffcc33;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:#fff;
+      padding:14px 14px 90px;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
+        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
+        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+    }
+    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
     .title{display:flex;flex-direction:column;gap:3px;min-width:0;}
     .title h1{margin:0;font-size:18px;font-weight:1000;letter-spacing:.2px;}
     .title .sub{font-size:12px;color:rgba(255,255,255,.55);}
@@ -1862,21 +1640,19 @@ def miniapp_dado():
     .pill{
       font-weight:1000;font-size:12px;border:1px solid var(--stroke);
       padding:10px 12px;border-radius:999px;background:rgba(255,255,255,.03);white-space:nowrap;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 12px 38px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
     }
     .panel{
       margin-top:14px;padding:14px;border:1px solid var(--stroke);
       background:rgba(255,255,255,.035);border-radius:18px;
       box-shadow: 0 18px 56px rgba(0,0,0,.45);
-      backdrop-filter: blur(12px);
-      position:relative;z-index:2;
+      backdrop-filter: blur(10px);
     }
     .row{display:flex;gap:12px;align-items:center;margin-top:12px;}
     .dice{
       width:80px;height:80px;border-radius:18px;border:1px solid rgba(255,255,255,.14);
       background:
-        radial-gradient(circle at 20% 20%, rgba(255,43,74,.22), rgba(255,255,255,.02));
+        radial-gradient(circle at 20% 20%, rgba(255,43,74,.20), rgba(255,255,255,.02));
       display:flex;align-items:center;justify-content:center;
       font-size:34px;font-weight:1000;
       box-shadow: 0 18px 56px rgba(0,0,0,.35);
@@ -1903,7 +1679,7 @@ def miniapp_dado():
       text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;
       border-radius:16px;padding:10px;cursor:pointer;transition: transform .12s ease, border-color .12s ease;
       position:relative;overflow:hidden;
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(10px);
     }
     .opt:active{transform:scale(.98)}
     .opt:hover{border-color: rgba(255,43,74,.22)}
@@ -2118,6 +1894,7 @@ def miniapp_dado():
       btn.disabled = true; btn.style.opacity=.7;
       status.textContent = "Processando...";
 
+      // ✅ usa /dado/pick (barra dado)
       const out = await apiPost(`/dado/pick?roll_id=${encodeURIComponent(rollId)}&anime_id=${encodeURIComponent(animeId)}`);
       const data = out.data || {};
 
@@ -2159,6 +1936,7 @@ def miniapp_dado():
       roll.textContent = "ROLANDO...";
       status.textContent = "";
 
+      // ✅ usa /dado/start (barra dado)
       const out = await apiPost("/dado/start", {});
       const data = out.data || {};
 
@@ -2202,59 +1980,347 @@ def miniapp_dado():
 
 
 # =========================
-# UI: /shop — Loja (Vender + Comprar (GIRO + DADO + MAX))
+# UI: /shop — Loja
 # =========================
 @app.get("/shop", response_class=HTMLResponse)
 def miniapp_shop():
-    html = """<!doctype html>
+    html = f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <title>Baltigo • Loja</title>
+  <title>Loja</title>
   <style>
-  {_bg_css_block()}
-  .top{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;position:relative;z-index:2;}}
-  .title{{display:flex;flex-direction:column;gap:3px;min-width:0;}}
-  .title h1{{margin:0;font-size:18px;font-weight:1000;}}
-  .title .sub{{font-size:12px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
-  .stats{{
-    display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
-    background:rgba(255,255,255,.035);border-radius:999px;white-space:nowrap;
-    box-shadow: 0 12px 38px rgba(0,0,0,.35);
-    backdrop-filter: blur(12px);
-  }}
-  .stat{{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}}
-  .dot{{width:1px;height:16px;background:var(--stroke);}}
+    :root{{
+      --bg0:#07070c;
+      --bg1:#0c0b14;
+      --panel: rgba(255,255,255,.045);
+      --card:#12111b;
+      --stroke: rgba(255,255,255,.10);
+      --muted: rgba(255,255,255,.70);
+      --muted2: rgba(255,255,255,.50);
+      --a1:#ff2b4a;
+      --good: rgba(0,255,140,.18);
+      --bad: rgba(255,60,60,.18);
+    }}
+    *{{box-sizing:border-box}}
+    body{{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:#fff;
+      padding:14px 14px 90px;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
+        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
+        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+    }}
+    .top{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}}
+    .title{{display:flex;flex-direction:column;gap:3px;}}
+    .title h1{{margin:0;font-size:18px;font-weight:1000;}}
+    .title .sub{{font-size:12px;color:var(--muted2);}}
+    .stats{{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
+      background:rgba(255,255,255,.035);border-radius:999px;white-space:nowrap;
+      box-shadow: 0 12px 38px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+    }}
+    .stat{{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}}
+    .dot{{width:1px;height:16px;background:var(--stroke);}}
 
-  .tabs{{
-    display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
-    border-radius:999px;background:rgba(255,255,255,.035);
-    box-shadow: 0 14px 46px rgba(0,0,0,.35);
-    backdrop-filter: blur(12px);
-    position:relative;z-index:2;
-  }}
-  .tab{{
-    flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:950;font-size:14px;color:var(--muted);
-    background:transparent;border:0;cursor:pointer;transition: transform .12s ease;
-  }}
-  .tab:active{{transform: scale(.98);}}
-  .tab.active{{
-    color:#fff;background:linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
-    box-shadow:0 14px 44px rgba(255,43,74,.10);
-  }}
+    .tabs{{
+      display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
+      border-radius:999px;background:rgba(255,255,255,.035);
+      box-shadow: 0 14px 46px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+    }}
+    .tab{{
+      flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:950;font-size:14px;color:var(--muted);
+      background:transparent;border:0;cursor:pointer;
+    }}
+    .tab.active{{
+      color:#fff;background:linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
+      box-shadow:0 14px 44px rgba(255,43,74,.10);
+    }}
 
-  .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(12px);position
-:absolute;z-index:2;}
+    .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(10px);}}
+    .status.ok{{border-color: var(--good);}}
+    .status.err{{border-color: var(--bad);color: rgba(255,120,120,.95);}}
+
+    .search{{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}}
+    .search input{{width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);color:#fff;outline:none;font-size:14px;backdrop-filter: blur(10px);}}
+    .search input::placeholder{{color:rgba(255,255,255,.35)}}
+
+    .section{{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);backdrop-filter: blur(10px);}}
+    .section-title{{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}}
+    .section-count{{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}}
+
+    .grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}}
+    .card{{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);background:var(--card);min-height:220px;box-shadow: 0 18px 56px rgba(0,0,0,.45);}}
+    .card img{{width:100%;height:220px;object-fit:cover;display:block;}}
+    .overlay{{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.84));}}
+    .name{{font-weight:1000;font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .meta{{margin-top:3px;font-size:12px;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .pill{{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;backdrop-filter: blur(8px);}}
+    .actions{{display:flex;gap:10px;margin-top:10px;}}
+    .btn{{flex:1;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:1000;font-size:14px;cursor:pointer;backdrop-filter: blur(10px);}}
+    .btn.primary{{background:linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));border:0;}}
+    .btn:disabled{{opacity:.55;cursor:not-allowed;}}
+
+    .buyBox{{margin-top:10px;padding:12px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);backdrop-filter: blur(10px);box-shadow: 0 18px 56px rgba(0,0,0,.45);}}
+    .buyBox h2{{margin:0 0 8px;font-size:16px;font-weight:1000;}}
+    .buyBox p{{margin:0;color:rgba(255,255,255,.75);font-size:13px;line-height:1.35;}}
   </style>
 </head>
 <body>
+  <div class="top">
+    <div class="title">
+      <h1>🛒 Loja</h1>
+      <div class="sub" id="sub">Carregando...</div>
+    </div>
+    <div class="stats">
+      <div class="stat">🪙 <span id="coins">-</span></div>
+      <div class="dot"></div>
+      <div class="stat">🎡 <span id="giros">-</span></div>
+    </div>
+  </div>
 
-<div style="max-width:520px;margin:auto;padding:20px;color:white;font-family:sans-serif">
-<h2>🛒 Loja Baltigo</h2>
-<p>Interface carregada.</p>
-</div>
+  <div class="tabs">
+    <button class="tab active" id="tab_sell">📦 Vender</button>
+    <button class="tab" id="tab_buy">🎡 Comprar</button>
+  </div>
 
+  <div class="status" id="status">Conectando...</div>
+
+  <div id="sellView">
+    <div class="search">
+      <input id="q" placeholder="Buscar personagem ou anime..." />
+    </div>
+    <div id="sellSections"></div>
+  </div>
+
+  <div id="buyView" style="display:none;">
+    <div class="buyBox">
+      <h2>🎡 Comprar GIRO</h2>
+      <p id="buyText">Carregando...</p>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn primary" id="buyBtn">Comprar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {{ tg.ready(); try {{ tg.expand(); }} catch(e) {{}} }}
+    const INIT_DATA = tg?.initData || "";
+
+    const statusEl = document.getElementById("status");
+    function setStatus(text, type){{
+      statusEl.className = "status" + (type ? (" " + type) : "");
+      statusEl.textContent = text;
+    }}
+    function esc(s){{
+      return String(s || "").replace(/[&<>"']/g, m => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[m]));
+    }}
+    function cmpAZ(a,b){{ return String(a).localeCompare(String(b),"pt-BR",{{sensitivity:"base"}}); }}
+
+    async function apiGet(url){{
+      const res = await fetch(url, {{ headers: {{ "X-Telegram-Init-Data": INIT_DATA }} }});
+      const data = await res.json().catch(()=> ({{}}));
+      return {{ ok: res.ok, status: res.status, data }};
+    }}
+    async function apiPost(url, body){{
+      const res = await fetch(url, {{
+        method: "POST",
+        headers: {{ "Content-Type":"application/json", "X-Telegram-Init-Data": INIT_DATA }},
+        body: JSON.stringify(body || {{}})
+      }});
+      const data = await res.json().catch(()=> ({{}}));
+      return {{ ok: res.ok, status: res.status, data }};
+    }}
+
+    let coins=0, giros=0;
+    let sellGain={SHOP_SELL_GAIN};
+    let price={SHOP_GIRO_PRICE};
+    let allItems=[];
+
+    function updateStats(tab){{
+      document.getElementById("coins").textContent = String(coins ?? "-");
+      document.getElementById("giros").textContent = String(giros ?? "-");
+      document.getElementById("sub").textContent = tab==="sell"
+        ? "Venda 1 unidade e ganhe +" + sellGain + " coin"
+        : "Compre GIRO por " + price + " coins";
+    }}
+
+    function buildGroups(list){{
+      const groups = new Map();
+      for(const c of list){{
+        const anime = (c.anime_title || "Sem anime").trim() || "Sem anime";
+        if(!groups.has(anime)) groups.set(anime, []);
+        groups.get(anime).push(c);
+      }}
+      const keys = Array.from(groups.keys()).sort(cmpAZ);
+      const out=[];
+      for(const k of keys){{
+        const arr = groups.get(k) || [];
+        arr.sort((a,b)=>cmpAZ(a.character_name||"", b.character_name||""));
+        out.push({{title:k, items:arr}});
+      }}
+      return out;
+    }}
+
+    function renderSell(){{
+      const q = (document.getElementById("q").value || "").trim().toLowerCase();
+      let filtered = allItems;
+
+      if(q){{
+        filtered = filtered.filter(x => {{
+          const name = String(x.character_name||"").toLowerCase();
+          const anime = String(x.anime_title||"").toLowerCase();
+          const id = String(x.character_id||"");
+          return name.includes(q) || anime.includes(q) || id.includes(q);
+        }});
+      }}
+
+      const root = document.getElementById("sellSections");
+      root.innerHTML = "";
+
+      if(!filtered.length){{
+        root.innerHTML = "<div style='color:rgba(255,255,255,.68)'>Nada para mostrar.</div>";
+        return;
+      }}
+
+      const groups = buildGroups(filtered);
+      for(const g of groups){{
+        const section = document.createElement("div");
+        section.className = "section";
+        section.innerHTML = `<div class="section-title"><div>${{esc(g.title)}}</div><div class="section-count">${{g.items.length}}</div></div>`;
+
+        const grid = document.createElement("div");
+        grid.className = "grid";
+
+        for(const c of g.items){{
+          const img = c.custom_image || c.image || "";
+          const qty = c.quantity || 1;
+
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            ${{img ? `<img src="${{esc(img)}}" alt="">` : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5)">Sem imagem</div>`}}
+            <div class="pill">x${{qty}} • ID ${{c.character_id}}</div>
+            <div class="overlay">
+              <div class="name">${{esc(c.character_name || "Personagem")}}</div>
+              <div class="meta">${{esc(c.anime_title || "")}}</div>
+              <div class="actions">
+                <button class="btn primary" data-sell="${{c.character_id}}">Vender (+${{sellGain}})</button>
+              </div>
+            </div>
+          `;
+          grid.appendChild(card);
+        }}
+
+        section.appendChild(grid);
+        root.appendChild(section);
+      }}
+
+      root.querySelectorAll("button[data-sell]").forEach(btn => {{
+        btn.onclick = async () => {{
+          const id = Number(btn.getAttribute("data-sell"));
+          btn.disabled = true;
+          try{{
+            setStatus("Processando venda...", "");
+            const r = await apiPost("/api/shop/sell/confirm", {{ character_id: id }});
+            if (!r.ok) {{ setStatus("❌ Falha ao vender.", "err"); return; }}
+            if (!r.data.ok) {{ setStatus("⚠️ " + (r.data.error || "Não consegui vender."), "err"); return; }}
+
+            coins = r.data.coins ?? coins;
+            giros = r.data.giros ?? giros;
+            updateStats("sell");
+            setStatus("✅ Venda concluída!", "ok");
+            await loadSell();
+          }} finally {{
+            btn.disabled = false;
+          }}
+        }};
+      }});
+    }}
+
+    async function loadState(){{
+      setStatus("Carregando...", "");
+      const r = await apiGet("/api/shop/state");
+      if(!r.ok){{ setStatus("❌ Falha ao conectar.", "err"); return false; }}
+      coins = r.data.coins ?? 0;
+      giros = r.data.giros ?? 0;
+      sellGain = Number(r.data.sell_gain ?? sellGain);
+      price = Number(r.data.giro_price ?? price);
+      updateStats("sell");
+      return true;
+    }}
+
+    async function loadSell(){{
+      const q = (document.getElementById("q").value || "").trim();
+      const r = await apiGet("/api/shop/sell/all?q=" + encodeURIComponent(q));
+      if(!r.ok){{ setStatus("❌ Falha ao carregar lista.", "err"); return; }}
+      if(!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Erro ao carregar."), "err"); return; }}
+
+      allItems = Array.isArray(r.data.items) ? r.data.items : [];
+      setStatus("✅ Pronto.", "ok");
+      renderSell();
+    }}
+
+    async function loadBuy(){{
+      document.getElementById("buyText").textContent = "Troque " + price + " coins por +1 giro.";
+      updateStats("buy");
+    }}
+
+    document.getElementById("tab_sell").onclick = async () => {{
+      document.getElementById("tab_sell").classList.add("active");
+      document.getElementById("tab_buy").classList.remove("active");
+      document.getElementById("sellView").style.display = "";
+      document.getElementById("buyView").style.display = "none";
+      setStatus("Carregando...", "");
+      await loadSell();
+    }};
+
+    document.getElementById("tab_buy").onclick = async () => {{
+      document.getElementById("tab_buy").classList.add("active");
+      document.getElementById("tab_sell").classList.remove("active");
+      document.getElementById("sellView").style.display = "none";
+      document.getElementById("buyView").style.display = "";
+      await loadBuy();
+      setStatus("✅ Pronto.", "ok");
+    }};
+
+    document.getElementById("q").addEventListener("input", async () => {{
+      await loadSell();
+    }});
+
+    document.getElementById("buyBtn").onclick = async () => {{
+      const btn = document.getElementById("buyBtn");
+      btn.disabled = true;
+      try{{
+        setStatus("Processando compra...", "");
+        const r = await apiPost("/api/shop/buy/giro", {{}});
+        if(!r.ok){{ setStatus("❌ Falha ao comprar.", "err"); return; }}
+        if(!r.data.ok){{ setStatus("⚠️ " + (r.data.error || "Você não tem coins suficientes."), "err"); return; }}
+
+        coins = r.data.coins ?? coins;
+        giros = r.data.giros ?? giros;
+        updateStats("buy");
+        setStatus("✅ GIRO comprado!", "ok");
+      }} finally {{
+        btn.disabled = false;
+      }}
+    }};
+
+    (async () => {{
+      const ok = await loadState();
+      if(!ok) return;
+      await loadSell();
+      await loadBuy();
+    }})();
+  </script>
 </body>
 </html>
 """
