@@ -3912,6 +3912,7 @@ async def callback_colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================================================
 # TROCA (MELHORADO) — bonito + anti-falhas + nomes + ofertas + imagem
+# (FIX: garante users, exige trade_id>0, accept sempre busca pelo ID, logs em erro, callbacks coerentes)
 # ==================================================
 
 TRADE_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
@@ -3996,6 +3997,16 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html("❌ Você não pode trocar com você mesmo.")
         return
 
+    # ✅ garante linha users pros 2 lados (swap usa locks em users)
+    try:
+        ensure_user_row(int(from_user.id), from_user.full_name or from_user.first_name or "User")
+    except Exception:
+        pass
+    try:
+        ensure_user_row(int(to_user.id), to_user.full_name or to_user.first_name or "User")
+    except Exception:
+        pass
+
     from_char = int(context.args[0])
     to_char = int(context.args[1])
 
@@ -4013,28 +4024,29 @@ async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # cria trade e captura trade_id de forma segura
+    # cria trade e captura trade_id de forma segura (✅ exige >0)
     trade_id = None
     try:
-        # IDEAL: create_trade deve retornar o trade_id (RETURNING).
-        # Se ainda não retorna, tentamos um fallback mais seguro.
         maybe_id = create_trade(from_user.id, to_user.id, from_char, to_char)
-        if isinstance(maybe_id, int):
+        if isinstance(maybe_id, int) and maybe_id > 0:
             trade_id = maybe_id
         else:
-            # fallback: pega a última pendente para o to_user, mas valida dados básicos depois no callback
             t = get_latest_pending_trade_for_to_user(to_user.id)
-            if t:
+            if t and int(t[0]) > 0:
                 trade_id = int(t[0])
     except Exception:
+        await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
+        return
+
+    if not trade_id or trade_id <= 0:
         await update.message.reply_html("⚠️ Não consegui criar a troca agora. Tente novamente.")
         return
 
     a_name = await _get_char_label(from_user.id, from_char)
     b_name = await _get_char_label(to_user.id, to_char)
 
-    accept_cb = f"trade_accept:{trade_id}" if trade_id else "trade_accept"
-    reject_cb = f"trade_reject:{trade_id}" if trade_id else "trade_reject"
+    accept_cb = f"trade_accept:{trade_id}"
+    reject_cb = f"trade_reject:{trade_id}"
 
     teclado = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Aceitar", callback_data=accept_cb),
@@ -4094,61 +4106,56 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         trade_id = None
 
-    # trava por usuário (anti spam) e por trade_id (anti corrida)
+    # ✅ sem trade_id válido: para (evita aceitar o "último pendente" errado)
+    if not trade_id or trade_id <= 0:
+        await q.answer("⚠️ Troca inválida.", show_alert=True)
+        return
+
+    # trava por usuário (anti spam)
     user_lock = _get_trade_user_lock(user_id)
     async with user_lock:
+        # ✅ sempre busca o trade pelo ID
         trade = None
-        if trade_id:
-            try:
-                from database import get_trade_by_id
-                trade = get_trade_by_id(trade_id)
-            except Exception:
-                trade = None
+        try:
+            from database import get_trade_by_id
+            trade = get_trade_by_id(trade_id)
+        except Exception:
+            trade = None
 
-        if trade:
-            try:
-                trade_id = int(trade["trade_id"])
-                from_user_id = int(trade["from_user"])
-                to_user_id = int(trade["to_user"])
-                from_char = int(trade["from_character_id"])
-                to_char = int(trade["to_character_id"])
+        if not trade:
+            await q.answer("⚠️ Troca não encontrada.", show_alert=True)
+            return
 
-            except Exception:
-                await q.answer("Erro ao ler a troca.", show_alert=True)
-                return
+        try:
+            trade_id = int(trade["trade_id"])
+            from_user_id = int(trade["from_user"])
+            to_user_id = int(trade["to_user"])
+            from_char = int(trade["from_character_id"])
+            to_char = int(trade["to_character_id"])
+            status = str(trade.get("status") or "")
+        except Exception:
+            await q.answer("Erro ao ler a troca.", show_alert=True)
+            return
 
-            # garante linha users pros 2 lados (swap usa locks em users)
-            try:
-                ensure_user_row(int(from_user_id), "User")
-            except Exception:
-                pass
-            try:
-                ensure_user_row(int(to_user_id), "User")
-            except Exception:
-                pass
+        if status != "pendente":
+            await q.answer("❌ Troca não está mais pendente.", show_alert=True)
+            return
 
-            if int(to_user_id) != int(user_id):
-                await q.answer("Essa troca não é para você.", show_alert=True)
-                return
-        else:
-            # fallback MUITO mais restrito: só se não tiver trade_id ou não conseguir buscar
-            t = get_latest_pending_trade_for_to_user(user_id)
-            if not t:
-                await q.answer("Nenhuma troca pendente.", show_alert=True)
-                return
-            trade_id, from_user_id, from_char, to_char = t
+        if int(to_user_id) != int(user_id):
+            await q.answer("Essa troca não é para você.", show_alert=True)
+            return
 
-            # garante linha users pros 2 lados (swap usa locks em users)
-            try:
-                ensure_user_row(int(from_user_id), "User")
-            except Exception:
-                pass
-            try:
-                ensure_user_row(int(user_id), "User")
-            except Exception:
-                pass
+        # garante linha users pros 2 lados (swap usa locks em users)
+        try:
+            ensure_user_row(int(from_user_id), "User")
+        except Exception:
+            pass
+        try:
+            ensure_user_row(int(to_user_id), "User")
+        except Exception:
+            pass
 
-        trade_lock = _get_trade_lock(int(trade_id)) if trade_id else asyncio.Lock()
+        trade_lock = _get_trade_lock(int(trade_id))
         async with trade_lock:
             # checa posse de novo
             if (not user_has_character(int(from_user_id), int(from_char))) or (not user_has_character(int(user_id), int(to_char))):
@@ -4178,16 +4185,12 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 ok_swap = swap_trade_execute(int(trade_id), int(from_user_id), int(user_id), int(from_char), int(to_char))
                 if not ok_swap:
-                    try:
-                        await q.answer("❌ Troca não está mais pendente.", show_alert=True)
-                    except Exception:
-                        pass
+                    await q.answer("❌ Troca não está mais pendente.", show_alert=True)
                     return
             except Exception:
-                await q.answer(
-                    "⚠️ Não consegui concluir agora. Tente novamente.",
-                    show_alert=True
-                )
+                import traceback
+                print("TRADE_ACCEPT ERROR:", traceback.format_exc())
+                await q.answer("⚠️ Não consegui concluir agora. Tente novamente.", show_alert=True)
                 return
 
     # final
@@ -4208,6 +4211,91 @@ async def callback_trade_accept(update: Update, context: ContextTypes.DEFAULT_TY
         pass
 
     await q.answer()
+
+
+async def callback_trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q:
+        return
+
+    if not callback_dedupe(q.id):
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+
+    user_id = q.from_user.id
+    ok = await anti_spam(user_id, key="cb:trade_reject", window=2)
+    if not ok:
+        await q.answer("Calma 🙂", show_alert=False)
+        return
+
+    trade_id = None
+    try:
+        parts = (q.data or "").split(":")
+        if len(parts) == 2 and parts[1].isdigit():
+            trade_id = int(parts[1])
+    except Exception:
+        trade_id = None
+
+    if not trade_id or trade_id <= 0:
+        await q.answer("⚠️ Troca inválida.", show_alert=True)
+        return
+
+    user_lock = _get_trade_user_lock(user_id)
+    async with user_lock:
+        trade = None
+        try:
+            from database import get_trade_by_id
+            trade = get_trade_by_id(trade_id)
+        except Exception:
+            trade = None
+
+        if not trade:
+            await q.answer("⚠️ Troca não encontrada.", show_alert=True)
+            return
+
+        try:
+            to_user_id = int(trade["to_user"])
+            status = str(trade.get("status") or "")
+        except Exception:
+            await q.answer("Erro ao ler a troca.", show_alert=True)
+            return
+
+        if status != "pendente":
+            await q.answer("❌ Troca não está mais pendente.", show_alert=True)
+            return
+
+        if int(to_user_id) != int(user_id):
+            await q.answer("Essa troca não é para você.", show_alert=True)
+            return
+
+        trade_lock = _get_trade_lock(trade_id)
+        async with trade_lock:
+            try:
+                mark_trade_status(trade_id, "recusada")
+            except Exception:
+                await q.answer("⚠️ Não consegui recusar agora. Tente novamente.", show_alert=True)
+                return
+
+    try:
+        if q.message and q.message.caption:
+            await q.message.edit_caption(
+                caption="❌ <b>Troca recusada.</b>",
+                parse_mode="HTML",
+                reply_markup=None
+            )
+        else:
+            await q.message.edit_text(
+                "❌ <b>Troca recusada.</b>",
+                parse_mode="HTML",
+                reply_markup=None
+            )
+    except Exception:
+        pass
+
+    await q.answer("Recusada.")
 
 # ==================================================
 # LOJA (PV) — VENDER pro BOT (+1 coin) / COMPRAR GIRO (-2 coins -> +1 giro)
@@ -5964,6 +6052,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
