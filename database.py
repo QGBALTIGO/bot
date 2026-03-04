@@ -95,8 +95,8 @@ def _set_local_timeouts(cur, lock_timeout_ms: int = 3000, statement_timeout_ms: 
         cur.execute("SET LOCAL lock_timeout = %s", (f"{int(lock_timeout_ms)}ms",))
         cur.execute("SET LOCAL statement_timeout = %s", (f"{int(statement_timeout_ms)}ms",))
     except Exception:
-        # se o driver/ambiente rejeitar, não quebra
         pass
+
 
 # ================================
 # TOP500 JOBS (seed + progresso + txt)
@@ -119,7 +119,8 @@ _run(
 )
 _run("CREATE INDEX IF NOT EXISTS anilist_top500_jobs_created_at_idx ON anilist_top500_jobs (created_at DESC);")
 _run("CREATE INDEX IF NOT EXISTS anilist_top500_jobs_status_idx ON anilist_top500_jobs (status);")
-        
+
+
 # ================================
 # MIGRAÇÃO / INIT
 # ================================
@@ -155,6 +156,104 @@ def _ensure_columns_users():
         ("ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_slot BIGINT DEFAULT -1;", ()),
     ]
     _run_many(stmts)
+
+
+def _ensure_columns_user_collection():
+    """
+    ✅ FIX: sua tabela user_collection pode ser LEGACY (sem colunas novas).
+    Isso quebrava swap_trade_execute, loja, miniapp etc.
+    """
+    stmts = [
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS character_name TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS image TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS anime_title TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS custom_image TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS quantity INT DEFAULT 1;", ()),
+    ]
+    _run_many(stmts)
+
+
+def _dedupe_user_collection_if_needed():
+    """
+    ✅ FIX: se sua tabela legacy NÃO tinha PK/UNIQUE em (user_id, character_id),
+    pode existir duplicata e o ON CONFLICT quebra.
+    Aqui tentamos criar UNIQUE. Se falhar por duplicatas, deduplica somando quantity.
+    """
+    try:
+        _run(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS user_collection_user_char_unique
+            ON user_collection (user_id, character_id);
+            """
+        )
+        return
+    except Exception as e:
+        print("⚠️ UNIQUE user_collection (user_id, character_id) falhou. Tentando dedupe:", e)
+
+    # dedupe: cria tabela nova agregada, troca
+    # (um pouco pesado, mas roda 1 vez e resolve de vez)
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                _set_local_timeouts(cur, lock_timeout_ms=8000, statement_timeout_ms=30000)
+
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_collection_dedup_tmp (
+                        user_id BIGINT NOT NULL,
+                        character_id INT NOT NULL,
+                        character_name TEXT,
+                        image TEXT,
+                        anime_title TEXT,
+                        custom_image TEXT,
+                        quantity INT DEFAULT 1,
+                        PRIMARY KEY (user_id, character_id)
+                    );
+                    """
+                )
+                cur.execute("TRUNCATE TABLE user_collection_dedup_tmp;")
+
+                # agrega: soma quantity; pega um "snapshot" de nome/imagem/anime/custom (max por texto)
+                cur.execute(
+                    """
+                    INSERT INTO user_collection_dedup_tmp (user_id, character_id, character_name, image, anime_title, custom_image, quantity)
+                    SELECT
+                        user_id,
+                        character_id,
+                        MAX(character_name) AS character_name,
+                        MAX(image) AS image,
+                        MAX(anime_title) AS anime_title,
+                        MAX(custom_image) AS custom_image,
+                        GREATEST(1, COALESCE(SUM(COALESCE(quantity,1)), 1))::int AS quantity
+                    FROM user_collection
+                    GROUP BY user_id, character_id;
+                    """
+                )
+
+                # troca tabelas
+                cur.execute("ALTER TABLE user_collection RENAME TO user_collection_legacy_dup;")
+                cur.execute("ALTER TABLE user_collection_dedup_tmp RENAME TO user_collection;")
+
+                # recria índices úteis (os seus IF NOT EXISTS depois também vão garantir)
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS user_collection_user_idx ON user_collection (user_id);
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS user_collection_char_idx ON user_collection (character_id);
+                    """
+                )
+
+                conn.commit()
+                print("✅ user_collection deduplicada e normalizada.")
+            except Exception as e2:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                print("❌ Falha ao deduplicar user_collection:", e2)
 
 
 def _dedupe_nicks_before_unique_index():
@@ -229,16 +328,13 @@ def _try_create_indexes():
         # trades
         ("trades_to_user_idx", "CREATE INDEX IF NOT EXISTS trades_to_user_idx ON trades (to_user);"),
         ("trades_status_idx", "CREATE INDEX IF NOT EXISTS trades_status_idx ON trades (status);"),
-        # crescimento: buscar pendentes por to_user (e ordenar por id desc)
         ("trades_to_status_id_desc_idx",
          "CREATE INDEX IF NOT EXISTS trades_to_status_id_desc_idx ON trades (to_user, status, trade_id DESC);"),
-        # útil para stats (from_user OR to_user)
         ("trades_from_user_idx", "CREATE INDEX IF NOT EXISTS trades_from_user_idx ON trades (from_user);"),
 
         # dice_rolls
         ("dice_rolls_user_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_user_idx ON dice_rolls (user_id);"),
         ("dice_rolls_status_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_status_idx ON dice_rolls (status);"),
-        # crescimento: histórico por user
         ("dice_rolls_user_created_desc_idx",
          "CREATE INDEX IF NOT EXISTS dice_rolls_user_created_desc_idx ON dice_rolls (user_id, created_at DESC);"),
 
@@ -274,20 +370,6 @@ def _try_create_indexes():
 
 
 def init_db():
-
-    def _ensure_columns_user_collection():
-    stmts = [
-        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS character_name TEXT;", ()),
-        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS image TEXT;", ()),
-        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS anime_title TEXT;", ()),
-        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS custom_image TEXT;", ()),
-        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS quantity INT DEFAULT 1;", ()),
-    ]
-    _run_many(stmts)
-
-    _run("""CREATE TABLE IF NOT EXISTS user_collection (...);""")
-    _ensure_columns_user_collection()
-
     # USERS base + colunas migráveis
     _run(
         """
@@ -298,7 +380,7 @@ def init_db():
     )
     _ensure_columns_users()
 
-    # COLEÇÃO
+    # COLEÇÃO (cria se não existe)
     _run(
         """
         CREATE TABLE IF NOT EXISTS user_collection (
@@ -314,6 +396,17 @@ def init_db():
         """
     )
 
+    # ✅ MIGRAÇÕES IMPORTANTES (LEGACY)
+    try:
+        _ensure_columns_user_collection()
+    except Exception as e:
+        print("⚠️ _ensure_columns_user_collection falhou (ok continuar):", e)
+
+    try:
+        _dedupe_user_collection_if_needed()
+    except Exception as e:
+        print("⚠️ _dedupe_user_collection_if_needed falhou (ok continuar):", e)
+
     # TROCAS
     _run(
         """
@@ -328,9 +421,15 @@ def init_db():
         );
         """
     )
-
     # MIGRAÇÃO: instâncias antigas podem não ter created_at
-    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT);")
+    _run(
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT);"
+    )
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pendente';")
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS from_user BIGINT;")
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS to_user BIGINT;")
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS from_character_id INT;")
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS to_character_id INT;")
 
     # BATALHAS (tava no antigo)
     _run(
@@ -429,7 +528,7 @@ def init_db():
     try:
         create_characters_pool_tables()
     except Exception as e:
-        print('⚠️ create_characters_pool_tables falhou (ok continuar):', e)
+        print("⚠️ create_characters_pool_tables falhou (ok continuar):", e)
 
     _try_create_indexes()
 
@@ -540,7 +639,11 @@ def set_collection_name(user_id: int, name: str):
 
 
 def get_collection_name(user_id: int) -> str:
-    row = _run("SELECT COALESCE(collection_name,'Minha Coleção') AS n FROM users WHERE user_id=%s", (int(user_id),), fetch="one") or {}
+    row = _run(
+        "SELECT COALESCE(collection_name,'Minha Coleção') AS n FROM users WHERE user_id=%s",
+        (int(user_id),),
+        fetch="one",
+    ) or {}
     return str(row.get("n") or "Minha Coleção")
 
 
@@ -609,27 +712,20 @@ def spend_coins_and_add_giro(user_id: int, price: int, giros: int = 1) -> bool:
 # COLEÇÃO (UNIQUE vs TOTAL)
 # ================================
 def count_unique(user_id: int) -> int:
-    """Quantidade de personagens únicos (linhas)."""
     row = _run("SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s", (int(user_id),), fetch="one") or {}
     return int(row.get("c") or 0)
 
 
 def count_total_qty(user_id: int) -> int:
-    """Quantidade total (somatório das quantidades)."""
     row = _run("SELECT COALESCE(SUM(quantity),0)::int AS s FROM user_collection WHERE user_id=%s", (int(user_id),), fetch="one") or {}
     return int(row.get("s") or 0)
 
 
 def count_collection(user_id: int) -> int:
-    """
-    Compatibilidade com bot antigo:
-    count_collection = contagem de itens únicos (COUNT linhas).
-    """
     return count_unique(user_id)
 
 
 def get_collection_page(user_id: int, page: int, per_page: int):
-    """MiniApp/Loja: retorna (itens, total, total_pages)"""
     page = max(1, int(page))
     per_page = max(1, min(50, int(per_page)))
 
@@ -662,7 +758,6 @@ def get_collection_page(user_id: int, page: int, per_page: int):
 
 
 def list_collection_cards(user_id: int, limit: int = 200):
-    """Compatível com versões antigas: devolve 'name' também."""
     rows = _run(
         """
         SELECT character_id, character_name, image, custom_image, COALESCE(anime_title,'') AS anime_title, quantity
@@ -679,8 +774,8 @@ def list_collection_cards(user_id: int, limit: int = 200):
         out.append(
             {
                 "character_id": int(r["character_id"]),
-                "character_name": r["character_name"],
-                "name": r["character_name"],  # compat
+                "character_name": r.get("character_name") or f"#{int(r['character_id'])}",
+                "name": r.get("character_name") or f"#{int(r['character_id'])}",
                 "image": r.get("image"),
                 "custom_image": r.get("custom_image"),
                 "anime_title": r.get("anime_title") or "",
@@ -800,7 +895,6 @@ def add_extra_dado(user_id: int, amount: int):
 
 
 def get_extra_dado(user_id: int) -> int:
-    """Compatibilidade antiga: retorna apenas quantidade de giros."""
     st = get_extra_state(user_id)
     return int(st.get("x") or 0)
 
@@ -923,18 +1017,12 @@ def list_pending_trades_for_user(user_id: int, limit: int = 10):
     ) or []
 
 
-# ✅ FIX CRÍTICO: troca por QUANTIDADE (sem colisão de PK)
+# ✅ FIX CRÍTICO: troca por QUANTIDADE (sem colisão de PK) + NÃO depende de metadata que pode ter sido deletada
 def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: int, to_char: int) -> bool:
     """
-    Troca segura (1 unidade por 1 unidade) SEM mudar user_id da PK.
-    - Debita 1 do from_user/from_char
-    - Debita 1 do to_user/to_char
-    - Credita 1 do from_user/to_char
-    - Credita 1 do to_user/from_char
-
-    Locks:
-      - trava trade
-      - trava user_collection em ordem consistente (evita deadlock)
+    Troca segura (1 unidade por 1 unidade).
+    ✅ FIX: antes você tentava "SELECT metadata" da linha que pode ter sido deletada (q=1).
+            Agora fazemos snapshot ANTES de debitar, então nunca quebra.
     """
     trade_id = int(trade_id)
     from_user = int(from_user)
@@ -942,7 +1030,6 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
     from_char = int(from_char)
     to_char = int(to_char)
 
-    # Ordem consistente de locks por user_id (reduz deadlock)
     u1, u2 = (from_user, to_user) if from_user <= to_user else (to_user, from_user)
 
     with pool.connection() as conn:
@@ -950,38 +1037,44 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
             try:
                 _set_local_timeouts(cur)
 
-                # 1) lock do trade
+                # lock do trade
                 cur.execute("SELECT status FROM trades WHERE trade_id=%s FOR UPDATE", (trade_id,))
                 tr = cur.fetchone()
                 if not tr or tr.get("status") != "pendente":
                     conn.commit()
                     return False
 
-                # 2) lock “barreira” por usuário (ordem fixa)
-                #    trava a linha do users (rápido) pra dar ordem consistente
+                # lock barreira users (ordem fixa)
                 cur.execute("SELECT user_id FROM users WHERE user_id=%s FOR UPDATE", (u1,))
                 cur.execute("SELECT user_id FROM users WHERE user_id=%s FOR UPDATE", (u2,))
 
-                # 3) lock nas duas linhas necessárias na coleção
+                # lock + snapshot A (from_user/from_char)
                 cur.execute(
                     """
-                    SELECT quantity::int AS q
+                    SELECT quantity::int AS q,
+                           COALESCE(character_name, %s) AS character_name,
+                           image,
+                           anime_title
                     FROM user_collection
                     WHERE user_id=%s AND character_id=%s
                     FOR UPDATE
                     """,
-                    (from_user, from_char),
+                    (f"#{from_char}", from_user, from_char),
                 )
                 a = cur.fetchone()
 
+                # lock + snapshot B (to_user/to_char)
                 cur.execute(
                     """
-                    SELECT quantity::int AS q
+                    SELECT quantity::int AS q,
+                           COALESCE(character_name, %s) AS character_name,
+                           image,
+                           anime_title
                     FROM user_collection
                     WHERE user_id=%s AND character_id=%s
                     FOR UPDATE
                     """,
-                    (to_user, to_char),
+                    (f"#{to_char}", to_user, to_char),
                 )
                 b = cur.fetchone()
 
@@ -990,7 +1083,7 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
                     conn.commit()
                     return False
 
-                # --- Debita 1 do from_user/from_char
+                # debit A
                 if int(a["q"]) <= 1:
                     cur.execute("DELETE FROM user_collection WHERE user_id=%s AND character_id=%s", (from_user, from_char))
                 else:
@@ -999,7 +1092,7 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
                         (from_user, from_char),
                     )
 
-                # --- Debita 1 do to_user/to_char
+                # debit B
                 if int(b["q"]) <= 1:
                     cur.execute("DELETE FROM user_collection WHERE user_id=%s AND character_id=%s", (to_user, to_char))
                 else:
@@ -1008,56 +1101,33 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
                         (to_user, to_char),
                     )
 
-                # --- Credita 1 do from_user/to_char (upsert)
-                # pega metadata do item do to_user/to_char (antes de debitar, mas a gente já debitou; ainda podemos usar trades pra ids)
-                # fallback: mantém nome/imagem/anime_title existentes se já tiver.
+                # credit A <- B snapshot
                 cur.execute(
                     """
                     INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
-                    SELECT %s, uc.character_id, uc.character_name, uc.image, uc.anime_title, 1
-                    FROM user_collection uc
-                    WHERE uc.user_id=%s AND uc.character_id=%s
-                    LIMIT 1
+                    VALUES (%s, %s, %s, %s, %s, 1)
                     ON CONFLICT (user_id, character_id) DO UPDATE
-                    SET quantity = user_collection.quantity + 1
+                    SET quantity = user_collection.quantity + 1,
+                        character_name = COALESCE(user_collection.character_name, EXCLUDED.character_name),
+                        image = COALESCE(user_collection.image, EXCLUDED.image),
+                        anime_title = COALESCE(user_collection.anime_title, EXCLUDED.anime_title)
                     """,
-                    (from_user, to_user, to_char),
+                    (from_user, to_char, b.get("character_name") or f"#{to_char}", b.get("image"), b.get("anime_title")),
                 )
-                # Se a linha não existir mais (porque q=1 e deletou), tenta usar trades + snapshot mínimo
-                if cur.rowcount == 0:
-                    cur.execute(
-                        """
-                        INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
-                        VALUES (%s, %s, %s, NULL, NULL, 1)
-                        ON CONFLICT (user_id, character_id) DO UPDATE
-                        SET quantity = user_collection.quantity + 1
-                        """,
-                        (from_user, to_char, f"#{to_char}"),
-                    )
 
-                # --- Credita 1 do to_user/from_char (upsert)
+                # credit B <- A snapshot
                 cur.execute(
                     """
                     INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
-                    SELECT %s, uc.character_id, uc.character_name, uc.image, uc.anime_title, 1
-                    FROM user_collection uc
-                    WHERE uc.user_id=%s AND uc.character_id=%s
-                    LIMIT 1
+                    VALUES (%s, %s, %s, %s, %s, 1)
                     ON CONFLICT (user_id, character_id) DO UPDATE
-                    SET quantity = user_collection.quantity + 1
+                    SET quantity = user_collection.quantity + 1,
+                        character_name = COALESCE(user_collection.character_name, EXCLUDED.character_name),
+                        image = COALESCE(user_collection.image, EXCLUDED.image),
+                        anime_title = COALESCE(user_collection.anime_title, EXCLUDED.anime_title)
                     """,
-                    (to_user, from_user, from_char),
+                    (to_user, from_char, a.get("character_name") or f"#{from_char}", a.get("image"), a.get("anime_title")),
                 )
-                if cur.rowcount == 0:
-                    cur.execute(
-                        """
-                        INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
-                        VALUES (%s, %s, %s, NULL, NULL, 1)
-                        ON CONFLICT (user_id, character_id) DO UPDATE
-                        SET quantity = user_collection.quantity + 1
-                        """,
-                        (to_user, from_char, f"#{from_char}"),
-                    )
 
                 cur.execute("UPDATE trades SET status='aceita' WHERE trade_id=%s", (trade_id,))
                 conn.commit()
@@ -1072,7 +1142,7 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
 
 
 # ================================
-# DAILY (idempotente)
+# DAILY (idempotente) — FIX: garante row do usuário existir
 # ================================
 def claim_daily_reward(
     user_id: int,
@@ -1082,6 +1152,13 @@ def claim_daily_reward(
     giro_chance: float = 0.20,
 ):
     import random
+
+    # ✅ FIX: se o bot chamar daily antes de "ensure_user_row", não falha silencioso
+    try:
+        ensure_user_row(int(user_id), "User")
+    except Exception:
+        pass
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1102,12 +1179,18 @@ def claim_daily_reward(
                     return None
 
                 if random.random() < float(giro_chance):
-                    cur.execute("UPDATE users SET extra_dado = COALESCE(extra_dado,0) + 1 WHERE user_id=%s", (int(user_id),))
+                    cur.execute(
+                        "UPDATE users SET extra_dado = COALESCE(extra_dado,0) + 1 WHERE user_id=%s",
+                        (int(user_id),),
+                    )
                     conn.commit()
                     return {"type": "giro", "amount": 1}
 
                 amt = random.randint(int(coins_min), int(coins_max))
-                cur.execute("UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s", (int(amt), int(user_id)))
+                cur.execute(
+                    "UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s",
+                    (int(amt), int(user_id)),
+                )
                 conn.commit()
                 return {"type": "coins", "amount": int(amt)}
             except Exception:
@@ -1172,10 +1255,6 @@ def top_cache_last_updated() -> int:
 
 
 def replace_top_anime_cache(items: List[Dict[str, Any]], updated_at: int):
-    """
-    Mantém sua abordagem (DELETE + INSERT), mas com transação única.
-    Se quiser evoluir: UPSERT por anime_id (evita escrita total).
-    """
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1205,7 +1284,6 @@ def get_top_anime_list(limit: int = 50):
 
 
 def increment_commands_and_level(user_id: int, nick_fallback: str, comandos_por_nivel: int):
-    """Incrementa commands e atualiza level de forma transacional e concorrente (FOR UPDATE)."""
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1311,7 +1389,6 @@ def get_top_by_coins(limit: int = 10):
 
 
 def get_top_by_collection(limit: int = 10):
-    # ranking por UNIQUE (linhas). Se quiser por total, troque COUNT(*) por SUM(quantity).
     return _run(
         """
         WITH c AS (
@@ -1480,57 +1557,67 @@ def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extr
 # BALTIGO ENGINE V4 TABLES
 # ==========================================================
 def create_engine_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS market_listings (
-        listing_id SERIAL PRIMARY KEY,
-        seller_id BIGINT,
-        character TEXT,
-        price INT,
-        created_at BIGINT
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS market_listings (
+            listing_id SERIAL PRIMARY KEY,
+            seller_id BIGINT,
+            character TEXT,
+            price INT,
+            created_at BIGINT
+        );
+        """
+    )
 
-    _run("""
-    CREATE TABLE IF NOT EXISTS events (
-        event_id SERIAL PRIMARY KEY,
-        event_name TEXT,
-        start_time BIGINT,
-        end_time BIGINT,
-        active BOOLEAN
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            event_id SERIAL PRIMARY KEY,
+            event_name TEXT,
+            start_time BIGINT,
+            end_time BIGINT,
+            active BOOLEAN
+        );
+        """
+    )
 
-    _run("""
-    CREATE TABLE IF NOT EXISTS security_flags (
-        user_id BIGINT PRIMARY KEY,
-        risk_score INT,
-        updated_at BIGINT
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS security_flags (
+            user_id BIGINT PRIMARY KEY,
+            risk_score INT,
+            updated_at BIGINT
+        );
+        """
+    )
 
 
 # ==================================================
 # DADO — Blacklist persistente + Vault (fallback definitivo)
 # ==================================================
 def create_dado_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS bad_anime (
-      anime_id INT PRIMARY KEY,
-      until_ts BIGINT NOT NULL,
-      reason TEXT,
-      updated_at BIGINT NOT NULL
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS bad_anime (
+          anime_id INT PRIMARY KEY,
+          until_ts BIGINT NOT NULL,
+          reason TEXT,
+          updated_at BIGINT NOT NULL
+        );
+        """
+    )
 
-    _run("""
-    CREATE TABLE IF NOT EXISTS character_vault (
-      character_id INT PRIMARY KEY,
-      character_name TEXT NOT NULL,
-      image TEXT,
-      anime_title TEXT,
-      updated_at BIGINT NOT NULL
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS character_vault (
+          character_id INT PRIMARY KEY,
+          character_name TEXT NOT NULL,
+          image TEXT,
+          anime_title TEXT,
+          updated_at BIGINT NOT NULL
+        );
+        """
+    )
 
 
 def is_bad_anime(anime_id: int) -> bool:
@@ -1548,37 +1635,36 @@ def mark_bad_anime(anime_id: int, reason: str = ""):
     now = int(time.time())
     ttl = 7 * 24 * 3600
     until_ts = now + ttl
-    _run("""
-    INSERT INTO bad_anime (anime_id, until_ts, reason, updated_at)
-    VALUES (%s, %s, %s, %s)
-    ON CONFLICT (anime_id) DO UPDATE
-    SET until_ts=EXCLUDED.until_ts,
-        reason=EXCLUDED.reason,
-        updated_at=EXCLUDED.updated_at
-    """, (int(anime_id), int(until_ts), str(reason or ""), int(now)))
+    _run(
+        """
+        INSERT INTO bad_anime (anime_id, until_ts, reason, updated_at)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (anime_id) DO UPDATE
+        SET until_ts=EXCLUDED.until_ts,
+            reason=EXCLUDED.reason,
+            updated_at=EXCLUDED.updated_at
+        """,
+        (int(anime_id), int(until_ts), str(reason or ""), int(now)),
+    )
 
 
 def vault_put_character(character_id: int, character_name: str, image: str = "", anime_title: str = ""):
     now = int(time.time())
-    _run("""
-    INSERT INTO character_vault (character_id, character_name, image, anime_title, updated_at)
-    VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (character_id) DO UPDATE
-    SET character_name=EXCLUDED.character_name,
-        image=COALESCE(NULLIF(EXCLUDED.image,''), character_vault.image),
-        anime_title=COALESCE(NULLIF(EXCLUDED.anime_title,''), character_vault.anime_title),
-        updated_at=EXCLUDED.updated_at
-    """, (int(character_id), str(character_name), str(image or ""), str(anime_title or ""), int(now)))
+    _run(
+        """
+        INSERT INTO character_vault (character_id, character_name, image, anime_title, updated_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (character_id) DO UPDATE
+        SET character_name=EXCLUDED.character_name,
+            image=COALESCE(NULLIF(EXCLUDED.image,''), character_vault.image),
+            anime_title=COALESCE(NULLIF(EXCLUDED.anime_title,''), character_vault.anime_title),
+            updated_at=EXCLUDED.updated_at
+        """,
+        (int(character_id), str(character_name), str(image or ""), str(anime_title or ""), int(now)),
+    )
 
 
-# ✅ sem ORDER BY RANDOM() (melhor escala)
 def vault_random_character():
-    """
-    Estratégia:
-      1) tenta TABLESAMPLE (quase O(1))
-      2) fallback: sorteia offset com COUNT + LIMIT/OFFSET
-    """
-    # 1) TABLESAMPLE (pode retornar 0 linhas em tabelas pequenas)
     row = _run(
         """
         SELECT character_id, character_name, image, anime_title
@@ -1590,7 +1676,6 @@ def vault_random_character():
     if row:
         return row
 
-    # 2) fallback: offset aleatório
     import random
     c = _run("SELECT COUNT(*)::int AS c FROM character_vault", fetch="one") or {}
     total = int(c.get("c") or 0)
@@ -1631,7 +1716,7 @@ def get_collection_for_webapp(user_id: int, limit: int = 500):
         out.append(
             {
                 "character_id": int(r["character_id"]),
-                "character_name": r["character_name"],
+                "character_name": r.get("character_name") or f"#{int(r['character_id'])}",
                 "image": (r.get("custom_image") or r.get("image") or ""),
                 "custom_image": (r.get("custom_image") or ""),
                 "anime_title": r.get("anime_title") or "",
@@ -1649,7 +1734,6 @@ def record_shop_sale(user_id: int, character_id: int, created_at: Optional[int] 
 
 
 def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -> bool:
-    """Venda segura (MiniApp Loja): remove 1 unidade do personagem e credita coins + log."""
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1686,7 +1770,6 @@ def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -
                     (int(coin_gain), int(user_id)),
                 )
 
-                # log de venda
                 cur.execute(
                     "INSERT INTO shop_sales (user_id, character_id, created_at) VALUES (%s,%s,%s)",
                     (int(user_id), int(char_id), int(time.time())),
@@ -1701,15 +1784,14 @@ def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -
                     pass
                 raise
 
+
 # ================================
 # TOP500 JOB API
 # ================================
 import json as _json
 
+
 def top500_job_create(created_by: int, seed_items: int, top_list: list[dict]) -> int:
-    """
-    top_list: [{"id": 123, "title": "..."}, ...] tamanho 500
-    """
     now = int(time.time())
     row = _run(
         """
@@ -1721,6 +1803,7 @@ def top500_job_create(created_by: int, seed_items: int, top_list: list[dict]) ->
         fetch="one",
     ) or {}
     return int(row.get("job_id") or 0)
+
 
 def top500_job_get(job_id: int) -> Optional[dict]:
     return _run(
@@ -1734,6 +1817,7 @@ def top500_job_get(job_id: int) -> Optional[dict]:
         fetch="one",
     )
 
+
 def top500_job_latest() -> Optional[dict]:
     return _run(
         """
@@ -1745,6 +1829,7 @@ def top500_job_latest() -> Optional[dict]:
         fetch="one",
     )
 
+
 def top500_job_set_status(job_id: int, status: str, error_text: Optional[str] = None):
     now = int(time.time())
     _run(
@@ -1752,10 +1837,8 @@ def top500_job_set_status(job_id: int, status: str, error_text: Optional[str] = 
         (str(status), now, error_text, int(job_id)),
     )
 
+
 def top500_job_checkpoint(job_id: int, progress: int, txt_append: str):
-    """
-    Salva progresso + acrescenta txt (append) de forma segura.
-    """
     now = int(time.time())
     _run(
         """
@@ -1768,12 +1851,14 @@ def top500_job_checkpoint(job_id: int, progress: int, txt_append: str):
         (int(progress), str(txt_append), now, int(job_id)),
     )
 
+
 def top500_job_mark_done(job_id: int):
     now = int(time.time())
     _run(
         "UPDATE anilist_top500_jobs SET status='done', updated_at=%s WHERE job_id=%s",
         (now, int(job_id)),
     )
+
 
 def top500_job_read_top_list(job_row: dict) -> list[dict]:
     try:
@@ -1785,19 +1870,6 @@ def top500_job_read_top_list(job_row: dict) -> list[dict]:
 # ================================
 # TOP500 POOL (FONTE ÚNICA)
 # ================================
-# Regras:
-# - Sorteios (dado/cards/drops/loja) DEVEM usar somente characters_pool
-# - AniList fica apenas como fallback de imagem (via id) se não houver setfoto
-#
-# Arquivo de import: top500_anilist_consolidado.txt
-# Formatos aceitos:
-#   "Nome (123)"
-#   "- Nome (123)"
-#   "#123 Anime Title"  (linha de anime, opcional)
-#
-# Observação: mantemos coleções antigas (LEGACY). O pool controla apenas o que é GERADO.
-# ================================
-
 def create_characters_pool_tables():
     _run(
         """
@@ -1815,21 +1887,11 @@ def create_characters_pool_tables():
 
 
 def pool_import_top500_txt(file_path: str = "top500_anilist_consolidado.txt") -> dict:
-    """
-    Importa o pool a partir do TXT consolidado.
-    - sem duplicação (PK + ON CONFLICT DO NOTHING)
-    - idempotente (pode rodar quantas vezes quiser)
-    Retorna: {inserted, skipped, total_lines}
-    """
     inserted = 0
     skipped = 0
     total = 0
     now = int(time.time())
-
-    # Cache simples de último anime encontrado (se o TXT tiver headers de anime)
     current_anime = "TOP500"
-
-    # regex: pega "Nome (123)" mesmo com prefixo "-"
     rx = re.compile(r"^\s*-?\s*(?P<name>.+?)\s*\((?P<id>\d+)\)\s*$")
 
     with open(file_path, "r", encoding="utf-8") as f:
@@ -1839,9 +1901,7 @@ def pool_import_top500_txt(file_path: str = "top500_anilist_consolidado.txt") ->
             if not s:
                 continue
 
-            # header de anime: "#123 Nome do anime"
             if s.startswith("#"):
-                # remove "#<rank>" se houver
                 t = re.sub(r"^#\s*\d+\s*", "", s).strip()
                 if t:
                     current_anime = t
@@ -1899,15 +1959,10 @@ def pool_add_character(character_id: int, name: str, anime: str) -> bool:
 
 
 def pool_delete_character(character_id: int) -> bool:
-    # "deletar" do pool = desativar, para não quebrar referências
     return pool_set_active(int(character_id), False)
 
 
 def pool_random_animes(limit: int) -> List[dict]:
-    """
-    Retorna uma lista de animes aleatórios existentes no pool.
-    Formato: [{anime: str}]
-    """
     limit = max(1, min(int(limit), 6))
     rows = _run(
         """
@@ -1932,11 +1987,6 @@ def pool_random_animes(limit: int) -> List[dict]:
 
 
 def pool_random_character(anime: Optional[str] = None) -> Optional[dict]:
-    """
-    Padrão: SELECT ... ORDER BY RANDOM() LIMIT 1
-    (para pool ~5000 é ok. Se crescer muito, podemos trocar por TABLESAMPLE/OFFSET)
-    Retorna: {character_id, name, anime}
-    """
     if anime:
         row = _run(
             """
@@ -1966,12 +2016,6 @@ def pool_random_character(anime: Optional[str] = None) -> Optional[dict]:
 # ================================
 # APAGAR PERSONAGEM -> +1 COIN
 # ================================
-# IMPORTANTE:
-# - Isso é APENAS para a ação explícita do usuário "apagar".
-# - NÃO usar em trade/swap, dado, loja (vender), etc.
-# - Implementação transacional + idempotência por action_id (anti duplo clique)
-# ================================
-
 _run(
     """
     CREATE TABLE IF NOT EXISTS economy_actions (
@@ -1988,11 +2032,6 @@ _run("CREATE INDEX IF NOT EXISTS economy_actions_user_idx ON economy_actions (us
 
 
 def delete_one_character_for_coin(user_id: int, character_id: int, action_id: str) -> int:
-    """
-    Remove 1 unidade do personagem da coleção e credita +1 coin.
-    Retorna coins creditadas (0 ou 1).
-    Idempotente por (user_id, action_id).
-    """
     if not action_id:
         raise ValueError("action_id obrigatório")
 
@@ -2001,7 +2040,6 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
             try:
                 _set_local_timeouts(cur)
 
-                # idempotência
                 cur.execute(
                     "SELECT amount FROM economy_actions WHERE user_id=%s AND action_id=%s LIMIT 1",
                     (int(user_id), str(action_id)),
@@ -2011,7 +2049,6 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                     conn.commit()
                     return int(seen.get("amount") or 0)
 
-                # trava a linha da coleção
                 cur.execute(
                     """
                     SELECT quantity
@@ -2023,7 +2060,6 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                 )
                 row = cur.fetchone()
                 if not row:
-                    # registra action como 0 para bloquear retry infinito
                     cur.execute(
                         """
                         INSERT INTO economy_actions (user_id, action_id, created_at, amount, reason)
@@ -2046,13 +2082,11 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                         (int(user_id), int(character_id)),
                     )
 
-                # credita coin
                 cur.execute(
                     "UPDATE users SET coins=COALESCE(coins,0)+1 WHERE user_id=%s",
                     (int(user_id),),
                 )
 
-                # log idempotente
                 cur.execute(
                     """
                     INSERT INTO economy_actions (user_id, action_id, created_at, amount, reason)
@@ -2070,4 +2104,3 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                 except Exception:
                     pass
                 raise
-
