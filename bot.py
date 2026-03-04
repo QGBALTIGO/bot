@@ -1,57 +1,3 @@
-
-# ================================
-# TITAN CORE SYSTEMS (AUTO-INJECTED)
-# ================================
-import logging
-from collections import defaultdict, deque
-
-# ---------- GLOBAL LOGGER ----------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-LOGGER = logging.getLogger("BALTIGO_TITAN")
-
-# ---------- RATE LIMITER ----------
-class TitanRateLimiter:
-    def __init__(self, limit=5, window=5):
-        self.limit = limit
-        self.window = window
-        self.data = defaultdict(deque)
-
-    def allow(self, user_id):
-        import time
-        now = time.time()
-        q = self.data[user_id]
-        while q and now - q[0] > self.window:
-            q.popleft()
-        if len(q) >= self.limit:
-            return False
-        q.append(now)
-        return True
-
-RATE_LIMITER = TitanRateLimiter()
-
-# ---------- MEMORY CACHE ----------
-class TitanCache:
-    def __init__(self):
-        self.cache = {}
-
-    def get(self, k):
-        import time
-        v = self.cache.get(k)
-        if not v:
-            return None
-        if time.time() > v["exp"]:
-            self.cache.pop(k, None)
-            return None
-        return v["val"]
-
-    def set(self, k, val, ttl=60):
-        import time
-        self.cache[k] = {"val": val, "exp": time.time()+ttl}
-
-CACHE = TitanCache()
-
-LOGGER.info("Titan systems loaded.")
-
 # ================================
 # bot.py — SOURCE BALTIGO (COMPLETO)
 # ================================
@@ -5576,3 +5522,63 @@ def _start_webapp():
 
 if __name__ == "__main__":
     main()
+
+# ==========================================================
+# BALTIGO ENGINE SYSTEMS
+# ==========================================================
+import random, time
+
+RARITY_TABLE = {
+    "Common": 0.55,
+    "Rare": 0.25,
+    "Epic": 0.12,
+    "Legendary": 0.06,
+    "Mythic": 0.02
+}
+
+def roll_rarity():
+    r = random.random()
+    acc = 0
+    for rarity, chance in RARITY_TABLE.items():
+        acc += chance
+        if r <= acc:
+            return rarity
+    return "Common"
+
+ACTIVE_EVENT = {"name": None, "characters": []}
+
+def set_event(name, chars):
+    ACTIVE_EVENT["name"] = name
+    ACTIVE_EVENT["characters"] = chars
+
+MARKET = []
+
+def add_market_listing(user_id, character_id, price):
+    MARKET.append({
+        "seller": user_id,
+        "character": character_id,
+        "price": price,
+        "created": int(time.time())
+    })
+
+USER_RISK = {}
+
+def risk_add(user_id, score):
+    USER_RISK[user_id] = USER_RISK.get(user_id, 0) + score
+
+def risk_check(user_id):
+    return USER_RISK.get(user_id, 0) > 20
+
+ANIME_CACHE = {}
+
+def cache_get(name):
+    c = ANIME_CACHE.get(name.lower())
+    if not c:
+        return None
+    if time.time() - c["ts"] > 3600:
+        ANIME_CACHE.pop(name.lower(), None)
+        return None
+    return c["data"]
+
+def cache_set(name, data):
+    ANIME_CACHE[name.lower()] = {"data": data, "ts": time.time()}
