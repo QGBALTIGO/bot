@@ -104,6 +104,7 @@ def _safe_str(x) -> str:
 # =========================
 # Telegram WebApp initData verify (correto)
 # =========================
+
 def verify_telegram_init_data(init_data: str) -> dict:
     if not init_data:
         raise HTTPException(status_code=401, detail="initData ausente")
@@ -2112,6 +2113,12 @@ def miniapp_shop():
 
         "<div id='view_buy'>"
         "<div class='shopGrid'>"
+        "<div class='shopCard glass' id='card_giro'><div class='bg'></div><div class='shine'></div>"
+        "<h3>🎡 Giro</h3><p>Compre 1 giro para rodar e ganhar recompensas extras.</p>"
+        "<div class='price'>Preço: <span id='giro_price'>-</span> coins</div>"
+        "<div class='actions' style='margin-top:12px;'><button class='btn' id='buy_giro'>COMPRAR</button></div>"
+        "</div>"
+
         "<div class='shopCard glass' id='card_dado'><div class='bg'></div><div class='shine'></div>"
         "<h3>🎲 Dado</h3><p>Compre dados para rolar no gacha. Quanto mais, melhor.</p>"
         "<div class='price'>Preço: <span id='dado_price'>-</span> coins (cada)</div>"
