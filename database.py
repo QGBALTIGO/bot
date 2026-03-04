@@ -1,4 +1,3 @@
-
 # ================================
 # database.py — Postgres (Railway)
 # (POOL + TRANSACOES SEGURAS + MIGRACAO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
@@ -189,6 +188,8 @@ def _try_create_indexes():
         ("dice_rolls_status_idx", "CREATE INDEX IF NOT EXISTS dice_rolls_status_idx ON dice_rolls (status);"),
         ("top_cache_rank_idx", "CREATE INDEX IF NOT EXISTS top_cache_rank_idx ON top_anime_cache (rank);"),
         ("shop_sales_user_idx", "CREATE INDEX IF NOT EXISTS shop_sales_user_idx ON shop_sales (user_id);"),
+        # ✅ para MiniApp (coleção rápida por quantidade)
+        ("collection_user_qty_idx", "CREATE INDEX IF NOT EXISTS collection_user_qty_idx ON user_collection (user_id, quantity DESC);"),
     ]
     for name, sql in indexes:
         try:
@@ -314,6 +315,16 @@ def init_db():
     _ensure_achievements_table()
     _try_create_indexes()
 
+    # ✅ tabelas extras usadas pelo MiniApp/Dado/Engine
+    try:
+        create_engine_tables()
+    except Exception as e:
+        print("⚠️ create_engine_tables falhou (ok continuar):", e)
+    try:
+        create_dado_tables()
+    except Exception as e:
+        print("⚠️ create_dado_tables falhou (ok continuar):", e)
+
 
 # ================================
 # USERS / PERFIL
@@ -384,6 +395,7 @@ def get_admin_photo_db(user_id: int) -> Optional[str]:
 
 def set_last_pedido(user_id: int, ts: int):
     _run("UPDATE users SET last_pedido=%s WHERE user_id=%s", (int(ts), int(user_id)))
+
 
 def set_collection_name(user_id: int, name: str):
     _run("UPDATE users SET collection_name=%s WHERE user_id=%s", (str(name), int(user_id)))
@@ -461,21 +473,41 @@ def count_collection(user_id: int) -> int:
     return int(row.get("n") or 0)
 
 
-def get_collection_page(user_id: int, limit: int, offset: int):
-    return _run(
+# ✅ Ajuste para MiniApp/Loja: assinatura correta (page, per_page) e retorna (itens, total, total_pages)
+def get_collection_page(user_id: int, page: int, per_page: int):
+    page = max(1, int(page))
+    per_page = max(1, min(50, int(per_page)))
+
+    total_row = _run(
+        "SELECT COUNT(*)::int AS c FROM user_collection WHERE user_id=%s",
+        (int(user_id),),
+        fetch="one",
+    ) or {}
+    total = int(total_row.get("c") or 0)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > total_pages:
+        page = total_pages
+
+    offset = (page - 1) * per_page
+
+    itens = _run(
         """
         SELECT character_id, character_name, image, custom_image, anime_title, quantity
         FROM user_collection
         WHERE user_id=%s
-        ORDER BY character_id ASC
+        ORDER BY quantity DESC, character_id DESC
         LIMIT %s OFFSET %s
         """,
-        (int(user_id), int(limit), int(offset)),
+        (int(user_id), int(per_page), int(offset)),
         fetch="all",
     ) or []
 
+    return itens, total, total_pages
+
 
 def list_collection_cards(user_id: int, limit: int = 200):
+    # ✅ Mantém payload completo (coleção + loja)
     return _run(
         """
         SELECT character_id, character_name, image, custom_image, anime_title, quantity
@@ -941,6 +973,7 @@ def increment_commands_and_level(user_id: int, nick_fallback: str, comandos_por_
                     pass
                 return None
 
+
 def try_set_nick(user_id: int, nick: str) -> bool:
     """Tenta setar nick. Retorna False se violar unique."""
     try:
@@ -950,6 +983,7 @@ def try_set_nick(user_id: int, nick: str) -> bool:
         return False
     except Exception:
         return False
+
 
 def get_collection_quantities(user_id: int, char_ids: List[int]) -> Dict[int, int]:
     if not char_ids:
@@ -965,6 +999,7 @@ def get_collection_quantities(user_id: int, char_ids: List[int]) -> Dict[int, in
     for r in rows:
         out[int(r["character_id"])] = int(r.get("quantity") or 0)
     return out
+
 
 # ================================
 # RANKINGS / STATS / CONQUISTAS
@@ -1148,90 +1183,52 @@ def count_user_achievements(user_id: int) -> int:
 
 
 def grant_achievements_and_reward(user_id: int, new_keys: list[str], reward_extra_dado_per: int = 1) -> int:
+    # ✅ FIX: não existia "db" aqui; agora usa pool + transação
     if not new_keys:
         return 0
 
     now = int(time.time())
     new_keys = [str(k) for k in new_keys if k]
 
-    cur = db.cursor()
-    try:
-        cur.execute("BEGIN")
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                inserted = 0
+                for k in new_keys:
+                    cur.execute(
+                        """
+                        INSERT INTO user_achievements (user_id, achievement_key, unlocked_at)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (user_id, achievement_key) DO NOTHING
+                        """,
+                        (int(user_id), k, now),
+                    )
+                    inserted += int(cur.rowcount or 0)
 
-        inserted = 0
-        for k in new_keys:
-            cur.execute(
-                """
-                INSERT INTO user_achievements (user_id, achievement_key, unlocked_at)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (user_id, achievement_key) DO NOTHING
-                """,
-                (int(user_id), k, now),
-            )
-            inserted += int(cur.rowcount or 0)
+                if inserted > 0 and reward_extra_dado_per > 0:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET extra_dado = COALESCE(extra_dado,0) + %s
+                        WHERE user_id=%s
+                        """,
+                        (int(inserted * reward_extra_dado_per), int(user_id)),
+                    )
 
-        if inserted > 0 and reward_extra_dado_per > 0:
-            cur.execute(
-                """
-                UPDATE users
-                SET extra_dado = COALESCE(extra_dado,0) + %s
-                WHERE user_id=%s
-                """,
-                (int(inserted * reward_extra_dado_per), int(user_id)),
-            )
+                conn.commit()
+                return inserted
 
-        cur.execute("COMMIT")
-        db.commit()
-        return inserted
-
-    except Exception:
-        try:
-            cur.execute("ROLLBACK")
-        except Exception:
-            pass
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-
-# ================================
-# MINIAPP: listar cards
-# ================================
-def list_collection_cards(user_id: int, limit: int = 200):
-    rows = _run(
-        """
-        SELECT character_id, character_name, image, COALESCE(anime_title,'') AS anime_title
-        FROM user_collection
-        WHERE user_id=%s
-        ORDER BY character_id DESC
-        LIMIT %s
-        """,
-        (int(user_id), int(limit)),
-        fetch="all",
-    ) or []
-
-    return [
-        {
-            "character_id": int(r["character_id"]),
-            "name": r["character_name"],
-            "image": r.get("image"),
-            "anime_title": r.get("anime_title") or "",
-        }
-        for r in rows
-    ]
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
 
 # ==========================================================
 # BALTIGO ENGINE V4 TABLES
 # ==========================================================
-
 def create_engine_tables():
     _run("""
     CREATE TABLE IF NOT EXISTS market_listings (
@@ -1261,10 +1258,10 @@ def create_engine_tables():
     );
     """)
 
+
 # ==================================================
 # DADO — Blacklist persistente + Vault (fallback definitivo)
 # ==================================================
-
 def create_dado_tables():
     # blacklist de animes “ruins” (sem MAIN/SUPPORTING suficiente)
     _run("""
@@ -1334,3 +1331,87 @@ def vault_random_character():
     ORDER BY RANDOM()
     LIMIT 1
     """, fetch="one")
+
+
+# ==========================================================
+# MINIAPP (AJUSTE DEFINITIVO): coleção/loja sem conflito
+# ==========================================================
+def get_collection_for_webapp(user_id: int, limit: int = 500):
+    """
+    Retorna lista pronta para o MiniApp (coleção) com:
+    character_id, character_name, image (custom primeiro), anime_title, quantity
+    """
+    rows = _run(
+        """
+        SELECT character_id, character_name, image, custom_image, COALESCE(anime_title,'') AS anime_title, quantity
+        FROM user_collection
+        WHERE user_id=%s
+        ORDER BY quantity DESC, character_id DESC
+        LIMIT %s
+        """,
+        (int(user_id), int(limit)),
+        fetch="all",
+    ) or []
+
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "character_id": int(r["character_id"]),
+                "character_name": r["character_name"],
+                "image": (r.get("custom_image") or r.get("image") or ""),
+                "custom_image": (r.get("custom_image") or ""),
+                "anime_title": r.get("anime_title") or "",
+                "quantity": int(r.get("quantity") or 1),
+            }
+        )
+    return out
+
+
+def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -> bool:
+    """
+    Venda segura (MiniApp Loja):
+    remove 1 unidade do personagem e credita coins.
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT quantity::int AS q
+                    FROM user_collection
+                    WHERE user_id=%s AND character_id=%s
+                    FOR UPDATE
+                    """,
+                    (int(user_id), int(char_id)),
+                )
+                row = cur.fetchone()
+                if not row:
+                    conn.commit()
+                    return False
+
+                q = int(row.get("q") or 0)
+                if q <= 1:
+                    cur.execute(
+                        "DELETE FROM user_collection WHERE user_id=%s AND character_id=%s",
+                        (int(user_id), int(char_id)),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE user_collection SET quantity=quantity-1 WHERE user_id=%s AND character_id=%s",
+                        (int(user_id), int(char_id)),
+                    )
+
+                cur.execute(
+                    "UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s",
+                    (int(coin_gain), int(user_id)),
+                )
+
+                conn.commit()
+                return True
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
