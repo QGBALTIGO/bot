@@ -2925,14 +2925,39 @@ def _nice_group_block_text() -> str:
 # ==================================================
 # /dado (PV only) — Dado Premium (MiniApp)
 # ==================================================
-BASE_URL = os.getenv("BASE_URL", "https://bot-production-1980.up.railway.app").rstrip("/")
-
 async def dado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # exemplo de valores (troque pela função do seu banco)
+    dice_value = "?"
+    balance = 0
+    extra = 0
+
     url = f"{BASE_URL}/dado"
+
+    text = (
+        "🎲 <b>DADO DA SORTE</b>\n\n"
+        "🎴 Agora escolha um <b>anime</b> para sortear um personagem!\n\n"
+        f"🎟️ Dados: <b>{balance}</b> | 🎡 Giros: <b>{extra}</b>\n"
+    )
+
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎲 Abrir Dado", web_app=WebAppInfo(url=url))]
     ])
-    await update.message.reply_text("🎲 Abrindo o Dado no Mini App:", reply_markup=kb)
+
+    try:
+        await update.message.reply_photo(
+            photo=DADO_PICK_IMAGE,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except:
+        await update.message.reply_photo(
+            photo=DADO_FALLBACK_IMAGE,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
 
     # ==========================
     # Fallback: modo clássico
@@ -5314,6 +5339,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
