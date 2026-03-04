@@ -1,21 +1,4 @@
 
-# =========================
-# TITAN WEB SECURITY LAYER
-# =========================
-from collections import defaultdict
-import time
-
-_api_rate = defaultdict(list)
-
-def titan_rate_limit(ip, limit=40, window=10):
-    now = time.time()
-    arr = _api_rate[ip]
-    arr[:] = [t for t in arr if now - t < window]
-    if len(arr) >= limit:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    arr.append(now)
-
-
 # webapp.py — MiniApps (Coleção + Loja) — FastAPI
 # - valida initData (Telegram WebApp) corretamente
 # - /app: coleção (minha ou do dono via link assinado)
@@ -1081,3 +1064,14 @@ def miniapp_shop():
 </html>
 """
     return HTMLResponse(content=html)
+
+# ==========================================================
+# BALTIGO ENGINE WEB EXTENSIONS
+# ==========================================================
+@app.get("/api/engine/stats")
+def api_engine_stats():
+    return {
+        "status": "ok",
+        "engine": "Baltigo",
+        "message": "Engine running"
+    }
