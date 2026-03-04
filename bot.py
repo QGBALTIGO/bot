@@ -4990,7 +4990,6 @@ def main():
     app.add_handler(CommandHandler("infoanime", infoanime))
 
     app.add_handler(CommandHandler("dado", dado_command))
-    app.add_handler(CallbackQueryHandler(callback_dado_pick, pattern=r"^dado_pick:"))
     app.add_handler(CommandHandler("colecao", colecao_command))
     app.add_handler(CallbackQueryHandler(callback_colecao, pattern=r"^colecao:"))
     app.add_handler(CommandHandler("colecaoteste", colecaoteste_command))
@@ -5192,6 +5191,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
