@@ -1,22 +1,22 @@
-# ==========================================
+# ================================
 # webapp.py
-# Source Baltigo — WebApp Server
-# ==========================================
+# Source Baltigo WebApp Server
+# ================================
 
 import os
 import json
 import time
 import hmac
 import hashlib
-
 from urllib.parse import parse_qsl
+
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# ==========================================
+# ================================
 # CONFIG
-# ==========================================
+# ================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
@@ -25,19 +25,31 @@ if not BOT_TOKEN:
 
 MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
-# ==========================================
+# ================================
 # APP
-# ==========================================
+# ================================
 
 app = FastAPI()
 
-# Servir arquivos estáticos
-app.mount("/css", StaticFiles(directory="webapp/css"), name="css")
-app.mount("/js", StaticFiles(directory="webapp/js"), name="js")
+# ================================
+# STATIC FILES
+# ================================
 
-# ==========================================
-# VERIFY TELEGRAM WEBAPP
-# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+WEBAPP_DIR = os.path.join(BASE_DIR, "webapp")
+CSS_DIR = os.path.join(WEBAPP_DIR, "css")
+JS_DIR = os.path.join(WEBAPP_DIR, "js")
+
+if os.path.isdir(CSS_DIR):
+    app.mount("/css", StaticFiles(directory=CSS_DIR), name="css")
+
+if os.path.isdir(JS_DIR):
+    app.mount("/js", StaticFiles(directory=JS_DIR), name="js")
+
+# ================================
+# VERIFY TELEGRAM INIT DATA
+# ================================
 
 def verify_telegram_init_data(init_data: str):
 
@@ -45,6 +57,7 @@ def verify_telegram_init_data(init_data: str):
         raise HTTPException(status_code=401, detail="initData ausente")
 
     data = dict(parse_qsl(init_data, keep_blank_values=True))
+
     received_hash = data.pop("hash", None)
 
     if not received_hash:
@@ -71,58 +84,81 @@ def verify_telegram_init_data(init_data: str):
 
     user = json.loads(user_json) if user_json else None
 
-    if not user:
+    if not user or "id" not in user:
         raise HTTPException(status_code=401, detail="user inválido")
 
     return user
 
 
-# ==========================================
+# ================================
 # ROOT
-# ==========================================
+# ================================
 
 @app.get("/")
 def root():
-
     return {
         "status": "ok",
         "app": "Source Baltigo WebApp"
     }
 
 
-# ==========================================
-# UI — COLEÇÃO
-# ==========================================
+# ================================
+# UI APP
+# ================================
 
-@app.get("/app")
+@app.get("/app", response_class=HTMLResponse)
 def open_collection():
 
-    return FileResponse("webapp/index.html")
+    path = os.path.join(WEBAPP_DIR, "index.html")
+
+    if os.path.isfile(path):
+        return FileResponse(path)
+
+    return HTMLResponse(
+        "index.html não encontrado em webapp/",
+        status_code=500
+    )
 
 
-# ==========================================
-# UI — DADO
-# ==========================================
+# ================================
+# UI DADO
+# ================================
 
-@app.get("/dado")
+@app.get("/dado", response_class=HTMLResponse)
 def open_dado():
 
-    return FileResponse("webapp/dado.html")
+    path = os.path.join(WEBAPP_DIR, "dado.html")
+
+    if os.path.isfile(path):
+        return FileResponse(path)
+
+    return HTMLResponse(
+        "dado.html não encontrado em webapp/",
+        status_code=500
+    )
 
 
-# ==========================================
-# UI — LOJA
-# ==========================================
+# ================================
+# UI SHOP
+# ================================
 
-@app.get("/shop")
+@app.get("/shop", response_class=HTMLResponse)
 def open_shop():
 
-    return FileResponse("webapp/shop.html")
+    path = os.path.join(WEBAPP_DIR, "shop.html")
+
+    if os.path.isfile(path):
+        return FileResponse(path)
+
+    return HTMLResponse(
+        "shop.html não encontrado em webapp/",
+        status_code=500
+    )
 
 
-# ==========================================
-# API — COLLECTION
-# ==========================================
+# ================================
+# API COLLECTION
+# ================================
 
 @app.get("/api/me/collection")
 def api_me_collection(x_telegram_init_data: str = Header(default="")):
@@ -142,18 +178,20 @@ def api_me_collection(x_telegram_init_data: str = Header(default="")):
     cards = db.list_collection_cards(user_id, limit=500)
 
     return JSONResponse({
+
         "ok": True,
         "owner_id": user_id,
         "owner_name": first_name,
         "coins": coins,
         "giros": giros,
         "cards": cards
+
     })
 
 
-# ==========================================
-# API — SHOP STATE
-# ==========================================
+# ================================
+# SHOP STATE
+# ================================
 
 @app.get("/api/shop/state")
 def api_shop_state(x_telegram_init_data: str = Header(default="")):
@@ -176,9 +214,9 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
     })
 
 
-# ==========================================
-# API — SELL CHARACTER
-# ==========================================
+# ================================
+# SELL CHARACTER
+# ================================
 
 @app.post("/api/shop/sell")
 def api_sell(payload: dict, x_telegram_init_data: str = Header(default="")):
@@ -214,9 +252,9 @@ def api_sell(payload: dict, x_telegram_init_data: str = Header(default="")):
     })
 
 
-# ==========================================
-# API — BUY GIRO
-# ==========================================
+# ================================
+# BUY GIRO
+# ================================
 
 @app.post("/api/shop/buy/giro")
 def api_buy_giro(x_telegram_init_data: str = Header(default="")):
@@ -247,9 +285,9 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
     })
 
 
-# ==========================================
-# API — DADO START
-# ==========================================
+# ================================
+# DADO START
+# ================================
 
 @app.post("/api/dado/start")
 def api_dado_start(x_telegram_init_data: str = Header(default="")):
@@ -270,9 +308,9 @@ def api_dado_start(x_telegram_init_data: str = Header(default="")):
     })
 
 
-# ==========================================
-# API — DADO PICK
-# ==========================================
+# ================================
+# DADO PICK
+# ================================
 
 @app.post("/api/dado/pick")
 def api_dado_pick(payload: dict, x_telegram_init_data: str = Header(default="")):
