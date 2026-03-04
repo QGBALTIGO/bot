@@ -118,11 +118,6 @@ from database import (
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
 
-try:
-        create_dado_tables()
-    except Exception as e:
-        print("⚠️ create_dado_tables falhou (ok continuar):", e)
-
 # ==================================================
 # 1) CONFIG (TUDO VIA VARIÁVEIS DO RAILWAY)
 # ==================================================
@@ -5662,6 +5657,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
