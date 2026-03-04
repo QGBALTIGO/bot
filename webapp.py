@@ -11,7 +11,10 @@ import json
 import time
 import hmac
 import hashlib
-from typing import Optional, Tuple, List, Dict, Any
+import random
+import aiohttp
+from typing import Optional, Tuple, List, Dict
+from datetime import datetime, Any
 from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, Header, HTTPException, Query, Body
@@ -478,6 +481,174 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
 # =========================
 # UI: Coleção (/app)
 # =========================
+
+@app.post("/api/dado/start")
+async def api_dado_start(x_telegram_init_data: str = Header(default="")):
+    payload = verify_telegram_init_data(x_telegram_init_data)
+    user = payload["user"]
+    user_id = int(user["id"])
+    first_name = user.get("first_name") or "User"
+
+    import database as db
+    try:
+        try:
+            db.ensure_user_row(user_id, first_name, new_user_dice=DADO_NEW_USER_START)
+        except TypeError:
+            db.ensure_user_row(user_id, first_name)
+    except Exception:
+        pass
+
+    balance = _refresh_user_dado_balance(db, user_id)
+    extra = _refresh_user_giros(db, user_id)
+
+    if balance <= 0 and extra <= 0:
+        return {"ok": False, "error": "no_balance", "msg": "Você está sem dados/giros agora.", "now": _format_time_sp()}
+
+    if not _consume_one_die(db, user_id):
+        return {"ok": False, "error": "consume_failed"}
+
+    # top cache (best-effort)
+    try:
+        last = int(db.top_cache_last_updated() or 0)
+        now = int(time.time())
+        if now - last > 24 * 3600 or last == 0:
+            query = """
+            query ($page: Int) {
+              Page(page: $page, perPage: 50) {
+                media(type: ANIME, sort: POPULARITY_DESC) {
+                  id
+                  title { romaji }
+                }
+              }
+            }
+            """
+            items = []
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                rank = 1
+                for page in range(1, 11):
+                    async with session.post(ANILIST_API, json={"query": query, "variables": {"page": page}}) as resp:
+                        data = await resp.json()
+                    media = data.get("data", {}).get("Page", {}).get("media", []) or []
+                    for m in media:
+                        aid = m.get("id")
+                        title = (m.get("title") or {}).get("romaji") or "Anime"
+                        if aid is None:
+                            continue
+                        items.append({"anime_id": int(aid), "title": title, "rank": rank})
+                        rank += 1
+            if items:
+                db.replace_top_anime_cache(items[:500], updated_at=int(time.time()))
+    except Exception:
+        pass
+
+    dice_value = random.SystemRandom().randint(1, 6)
+
+    all_items = db.get_top_anime_list(500) or []
+    if not all_items:
+        _refund_one_die(db, user_id)
+        return {"ok": False, "error": "no_anime_cache"}
+
+    n = max(1, min(int(dice_value) * 6, DADO_WEB_MAX_OPTIONS))
+    chosen = random.sample(all_items, min(n, len(all_items)))
+    options = [{"id": int(x["anime_id"]), "title": x["title"]} for x in chosen]
+
+    try:
+        roll_id = db.create_dice_roll(user_id, int(dice_value), json.dumps(options, ensure_ascii=False), "pending", int(time.time()))
+    except TypeError:
+        roll_id = db.create_dice_roll(user_id, int(dice_value), json.dumps(options, ensure_ascii=False))
+
+    balance2 = _refresh_user_dado_balance(db, user_id)
+    extra2 = _refresh_user_giros(db, user_id)
+
+    return {"ok": True, "roll_id": int(roll_id), "dice": int(dice_value), "options": options, "balance": int(balance2), "extra": int(extra2)}
+
+
+@app.post("/api/dado/pick")
+async def api_dado_pick(anime_id: int = Query(...), roll_id: int = Query(...), x_telegram_init_data: str = Header(default="")):
+    payload = verify_telegram_init_data(x_telegram_init_data)
+    user = payload["user"]
+    user_id = int(user["id"])
+
+    import database as db
+
+    roll = db.get_dice_roll(int(roll_id))
+    if not roll or int(roll.get("user_id") or 0) != int(user_id):
+        raise HTTPException(status_code=404, detail="roll inválido")
+
+    status = str(roll.get("status") or "")
+    created_at = int(roll.get("created_at") or 0)
+
+    if status not in ("pending", "processing"):
+        return {"ok": False, "error": "used"}
+
+    if created_at and int(time.time()) - created_at > DADO_WEB_EXPIRE_SECONDS:
+        try:
+            db.set_dice_roll_status(int(roll_id), "expired")
+        except Exception:
+            pass
+        _refund_one_die(db, user_id)
+        return {"ok": False, "error": "expired"}
+
+    try:
+        if status == "pending":
+            locked = db.try_set_dice_roll_status(int(roll_id), expected="pending", new_status="processing")
+            if not locked:
+                return {"ok": False, "error": "race"}
+    except Exception:
+        pass
+
+    try:
+        options = json.loads(roll.get("options_json") or "[]")
+    except Exception:
+        options = []
+
+    info = await _auto_reroll_character(db, options, preferred_anime_id=int(anime_id), user_id=user_id)
+    if not info:
+        _refund_one_die(db, user_id)
+        try:
+            db.set_dice_roll_status(int(roll_id), "failed_soft")
+        except Exception:
+            pass
+        return {"ok": False, "error": "no_char"}
+
+    try:
+        db.set_dice_roll_status(int(roll_id), "resolved")
+    except Exception:
+        pass
+
+    char_id = int(info["id"])
+    name = info["name"]
+    anime_title = info.get("anime_title") or "Obra"
+
+    img = ""
+    try:
+        fn = getattr(db, "get_character_custom_image", None)
+        if callable(fn):
+            img = fn(char_id) or ""
+    except Exception:
+        img = ""
+    image = img or (info.get("image") or "") or DADO_FALLBACK_IMAGE
+
+    try:
+        db.add_character_to_collection(user_id, char_id, name, image, anime_title=anime_title)
+    except TypeError:
+        db.add_character_to_collection(user_id, char_id, name, image)
+
+    await _tg_send_photo(
+        chat_id=user_id,
+        photo=image,
+        caption=(
+            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+            f"<i>{anime_title}</i>\n\n"
+            "📦 <b>Adicionado à sua coleção!</b>"
+        )
+    )
+
+    return {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image}}
+
+
 @app.get("/app", response_class=HTMLResponse)
 def miniapp_collection():
     html = r"""<!doctype html>
@@ -539,6 +710,7 @@ def miniapp_collection():
   <div class="tabs">
     <button class="tab active" id="tab_all">📦 Coleção</button>
     <button class="tab" id="tab_fav">⭐ Favoritos</button>
+    <button class="tab" id="tab_dado">🎲 Dado</button>
   </div>
 
   <div class="search">
@@ -546,6 +718,29 @@ def miniapp_collection():
   </div>
 
   <div class="status" id="status">Conectando...</div>
+
+  <div id="dado_view" style="display:none;margin-top:12px;">
+    <div style="padding:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);border-radius:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-weight:900;font-size:16px;">🎲 Dado Premium</div>
+          <div style="color:var(--muted2);font-size:12px;margin-top:2px;">Rola aqui no MiniApp. Mais bonito, mais rápido, sem spam.</div>
+        </div>
+        <div style="font-weight:900;font-size:12px;border:1px solid var(--stroke);padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.03);">Dados: <span id="dado_balance">-</span> | Giros: <span id="dado_extra">-</span></div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;">
+        <div id="dice_box" style="width:74px;height:74px;border-radius:18px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.03));display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:900;user-select:none;">🎲</div>
+        <button id="btn_roll" style="flex:1;border:0;border-radius:16px;padding:14px 14px;font-weight:900;font-size:14px;color:#000;background:linear-gradient(90deg, var(--accent), var(--accent2));">ROLAR AGORA</button>
+      </div>
+
+      <div id="dado_tip" style="margin-top:10px;color:var(--muted);font-size:12px;">Dica: a lista vai aparecer aqui embaixo. Escolha 1 anime e o bot entrega o personagem no PV.</div>
+
+      <div id="anime_grid" style="margin-top:12px;display:grid;grid-template-columns:1fr;gap:10px;"></div>
+      <div id="dado_result" style="margin-top:12px;display:none;border-top:1px solid var(--stroke);padding-top:12px;"></div>
+    </div>
+  </div>
+
   <div id="sections"></div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -740,7 +935,137 @@ def miniapp_collection():
     document.getElementById("q").addEventListener("input", render);
 
     load();
-  </script>
+  
+  // =========================
+  // 🎲 DADO (MiniApp Premium)
+  // =========================
+  const tabDado = document.getElementById('tab_dado');
+  const dadoView = document.getElementById('dado_view');
+  const animeGrid = document.getElementById('anime_grid');
+  const diceBox = document.getElementById('dice_box');
+  const btnRoll = document.getElementById('btn_roll');
+  const dadoBalance = document.getElementById('dado_balance');
+  const dadoExtra = document.getElementById('dado_extra');
+  const dadoResult = document.getElementById('dado_result');
+
+  let currentRollId = null;
+
+  function showView(mode){
+    const grid = document.getElementById('grid');
+    const favGrid = document.getElementById('grid_fav');
+    if(mode === 'dado'){
+      if(grid) grid.style.display = 'none';
+      if(favGrid) favGrid.style.display = 'none';
+      if(dadoView) dadoView.style.display = 'block';
+      document.getElementById('tab_all')?.classList.remove('active');
+      document.getElementById('tab_fav')?.classList.remove('active');
+      tabDado?.classList.add('active');
+    } else if(mode === 'fav'){
+      if(grid) grid.style.display = 'none';
+      if(favGrid) favGrid.style.display = 'grid';
+      if(dadoView) dadoView.style.display = 'none';
+      document.getElementById('tab_all')?.classList.remove('active');
+      tabDado?.classList.remove('active');
+      document.getElementById('tab_fav')?.classList.add('active');
+    } else {
+      if(grid) grid.style.display = 'grid';
+      if(favGrid) favGrid.style.display = 'none';
+      if(dadoView) dadoView.style.display = 'none';
+      document.getElementById('tab_fav')?.classList.remove('active');
+      tabDado?.classList.remove('active');
+      document.getElementById('tab_all')?.classList.add('active');
+    }
+  }
+
+  tabDado?.addEventListener('click', () => showView('dado'));
+
+  async function apiPost(url){
+    const r = await fetch(url, {method:'POST', headers: {'x-telegram-init-data': initData}});
+    return await r.json();
+  }
+
+  function diceAnim(value){
+    if(!diceBox) return;
+    diceBox.style.transform = 'rotate(0deg)';
+    diceBox.style.transition = 'transform 0.6s ease';
+    requestAnimationFrame(()=>{ diceBox.style.transform = 'rotate(720deg)'; });
+    setTimeout(()=>{ diceBox.textContent = String(value); }, 550);
+  }
+
+  function renderOptions(options){
+    if(!animeGrid) return;
+    animeGrid.innerHTML = '';
+    if(dadoResult) dadoResult.style.display = 'none';
+
+    const maxShow = Math.min(options.length, 30);
+    for(let i=0;i<maxShow;i++){
+      const o = options[i];
+      const btn = document.createElement('button');
+      btn.style.cssText = 'text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;border-radius:16px;padding:12px 12px;font-weight:800;';
+      btn.innerHTML = `🎴 ${escapeHtml(o.title)}`;
+      btn.onclick = async () => {
+        if(!currentRollId) return;
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Entregando...';
+        const out = await apiPost(`/api/dado/pick?roll_id=${encodeURIComponent(currentRollId)}&anime_id=${encodeURIComponent(o.id)}`);
+        if(!out.ok){
+          btn.innerHTML = '⚠️ Tenta outra opção';
+          btn.disabled = false;
+          return;
+        }
+        const c = out.character;
+        if(dadoResult){
+          dadoResult.style.display = 'block';
+          dadoResult.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;">
+              <img src="${c.image}" style="width:74px;height:74px;border-radius:16px;object-fit:cover;border:1px solid rgba(255,255,255,.14);"/>
+              <div style="min-width:0;">
+                <div style="font-weight:900;">🎁 Você ganhou!</div>
+                <div style="margin-top:2px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name)}</div>
+                <div style="margin-top:2px;color:rgba(255,255,255,.70);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.anime)}</div>
+                <div style="margin-top:6px;color:rgba(255,255,255,.70);font-size:12px;">✅ Entregue no PV do bot</div>
+              </div>
+            </div>
+          `;
+        }
+      };
+      animeGrid.appendChild(btn);
+    }
+  }
+
+  btnRoll?.addEventListener('click', async () => {
+    btnRoll.disabled = true;
+    btnRoll.textContent = 'ROLANDO...';
+    if(animeGrid) animeGrid.innerHTML = '';
+    const out = await apiPost('/api/dado/start');
+    if(!out.ok){
+      btnRoll.disabled = false;
+      btnRoll.textContent = 'ROLAR AGORA';
+      if(out.error === 'no_balance'){
+        alert(out.msg + '\\nAgora: ' + (out.now || ''));
+      } else {
+        alert('Falha ao rolar agora. Tenta novamente.');
+      }
+      return;
+    }
+    currentRollId = out.roll_id;
+    if(dadoBalance) dadoBalance.textContent = out.balance;
+    if(dadoExtra) dadoExtra.textContent = out.extra;
+    diceAnim(out.dice);
+    renderOptions(out.options || []);
+    btnRoll.disabled = false;
+    btnRoll.textContent = 'ROLAR DE NOVO';
+  });
+
+  // auto abre a aba dado se veio por URL (?tab=dado)
+  try{
+    const url = new URL(location.href);
+    if((url.searchParams.get('tab')||'') === 'dado'){
+      showView('dado');
+    }
+  }catch(e){}
+
+</script>
 </body>
 </html>
 """
@@ -827,6 +1152,29 @@ def miniapp_shop():
   </div>
 
   <div class="status" id="status">Conectando...</div>
+
+  <div id="dado_view" style="display:none;margin-top:12px;">
+    <div style="padding:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);border-radius:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-weight:900;font-size:16px;">🎲 Dado Premium</div>
+          <div style="color:var(--muted2);font-size:12px;margin-top:2px;">Rola aqui no MiniApp. Mais bonito, mais rápido, sem spam.</div>
+        </div>
+        <div style="font-weight:900;font-size:12px;border:1px solid var(--stroke);padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.03);">Dados: <span id="dado_balance">-</span> | Giros: <span id="dado_extra">-</span></div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;">
+        <div id="dice_box" style="width:74px;height:74px;border-radius:18px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.03));display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:900;user-select:none;">🎲</div>
+        <button id="btn_roll" style="flex:1;border:0;border-radius:16px;padding:14px 14px;font-weight:900;font-size:14px;color:#000;background:linear-gradient(90deg, var(--accent), var(--accent2));">ROLAR AGORA</button>
+      </div>
+
+      <div id="dado_tip" style="margin-top:10px;color:var(--muted);font-size:12px;">Dica: a lista vai aparecer aqui embaixo. Escolha 1 anime e o bot entrega o personagem no PV.</div>
+
+      <div id="anime_grid" style="margin-top:12px;display:grid;grid-template-columns:1fr;gap:10px;"></div>
+      <div id="dado_result" style="margin-top:12px;display:none;border-top:1px solid var(--stroke);padding-top:12px;"></div>
+    </div>
+  </div>
+
 
   <div id="sellView">
     <div class="search">
@@ -1067,12 +1415,350 @@ def miniapp_shop():
 
 
 # ==========================================================
-# BALTIGO ENGINE DASHBOARD API
+# BALTIGO ENGINE — ADMIN DASHBOARD API (read-only)
 # ==========================================================
-
 @app.get("/api/admin/stats")
-def admin_stats():
-    return {
-        "engine": "Baltigo V4",
-        "status": "running"
+def api_admin_stats(x_telegram_init_data: str = Header(default="")):
+    verify_telegram_init_data(x_telegram_init_data)
+    import database as db
+    try:
+        fn = getattr(db, "get_global_stats", None)
+        if callable(fn):
+            return {"ok": True, "stats": fn()}
+    except Exception:
+        pass
+    return {"ok": True, "stats": {"users": 0, "coins": 0, "chars": 0, "market": 0}}
+# ==================================================
+# API DADO (MiniApp) — Dado Premium no WebApp
+# ==================================================
+
+DADO_WEB_EXPIRE_SECONDS = 5 * 60
+DADO_WEB_MAX_OPTIONS = 50
+
+DADO_MAX_BALANCE = 18
+DADO_NEW_USER_START = 4
+GIRO_MAX_BALANCE = 24
+GIRO_HOURS = [1, 4, 7, 10, 13, 16, 19, 22]
+
+try:
+    from zoneinfo import ZoneInfo
+    _SP_TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    _SP_TZ = None
+
+def _format_time_sp() -> str:
+    try:
+        if _SP_TZ:
+            return datetime.now(tz=_SP_TZ).strftime("%H:%M")
+    except Exception:
+        pass
+    return datetime.now().strftime("%H:%M")
+
+def _now_slot_sp_4h(ts: Optional[float] = None) -> int:
+    if ts is None:
+        ts = time.time()
+    if not _SP_TZ:
+        return int(int(ts) // (4 * 3600))
+    now_sp = datetime.fromtimestamp(ts, tz=_SP_TZ)
+    offset = int(now_sp.utcoffset().total_seconds())
+    return int((int(ts) + offset) // (4 * 3600))
+
+def _now_giro_slot_sp(ts: Optional[float] = None) -> int:
+    if ts is None:
+        ts = time.time()
+    if not _SP_TZ:
+        day_id = int(datetime.fromtimestamp(ts).date().toordinal())
+        hh = int(datetime.fromtimestamp(ts).hour)
+        idx = 0
+        for i, h in enumerate(GIRO_HOURS):
+            if hh >= h:
+                idx = i
+        return day_id * 8 + idx
+
+    now_sp = datetime.fromtimestamp(ts, tz=_SP_TZ)
+    day_id = now_sp.date().toordinal()
+    h = now_sp.hour
+    m = now_sp.minute
+    idx = -1
+    for i, hh in enumerate(GIRO_HOURS):
+        if (h > hh) or (h == hh and m >= 0):
+            idx = i
+    if idx < 0:
+        return (day_id - 1) * 8 + 7
+    return day_id * 8 + idx
+
+def _refresh_user_dado_balance(db, user_id: int) -> int:
+    st = getattr(db, "get_dado_state", lambda _uid: None)(user_id)
+    if not st:
+        return 0
+    balance = int(st.get("b") or 0)
+    last_slot = int(st.get("s") or -1)
+
+    cur_slot = _now_slot_sp_4h()
+    if last_slot < 0:
+        getattr(db, "set_dado_state")(user_id, balance, cur_slot)
+        return balance
+
+    diff = cur_slot - last_slot
+    if diff <= 0:
+        return balance
+
+    new_balance = min(DADO_MAX_BALANCE, balance + diff)
+    getattr(db, "set_dado_state")(user_id, new_balance, cur_slot)
+    return new_balance
+
+def _refresh_user_giros(db, user_id: int) -> int:
+    st = getattr(db, "get_extra_state")(user_id)
+    extra = int(st.get("x") or 0)
+    last_slot = int(st.get("s") or -1)
+
+    cur_slot = _now_giro_slot_sp()
+    if last_slot < 0:
+        getattr(db, "set_extra_state")(user_id, extra, cur_slot)
+        return extra
+
+    diff = cur_slot - last_slot
+    if diff <= 0:
+        return extra
+
+    new_extra = min(GIRO_MAX_BALANCE, extra + diff)
+    getattr(db, "set_extra_state")(user_id, new_extra, cur_slot)
+    return new_extra
+
+def _consume_one_die(db, user_id: int) -> bool:
+    st = getattr(db, "get_dado_state", lambda _uid: None)(user_id)
+    b = int(st.get("b") or 0) if st else 0
+    s = int(st.get("s") or -1) if st else -1
+
+    if b > 0:
+        getattr(db, "set_dado_state")(user_id, b - 1, s)
+        return True
+
+    fn = getattr(db, "consume_extra_dado", None)
+    if callable(fn):
+        return bool(fn(user_id))
+    return False
+
+def _refund_one_die(db, user_id: int):
+    try:
+        fn = getattr(db, "inc_dado_balance", None)
+        if callable(fn):
+            fn(user_id, 1, max_balance=DADO_MAX_BALANCE)
+    except Exception:
+        pass
+
+async def _tg_send_photo(chat_id: int, photo: str, caption: str):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            await s.post(url, data={
+                "chat_id": str(int(chat_id)),
+                "photo": str(photo),
+                "caption": str(caption),
+                "parse_mode": "HTML",
+                "disable_web_page_preview": "true",
+            })
+    except Exception:
+        return
+
+_CHAR_POOL_CACHE: dict[int, dict] = {}
+_USER_RECENT_CHARS: dict[int, dict] = {}
+RECENT_TTL_SECONDS = 6 * 3600
+RECENT_MAX = 25
+MIN_POOL_SIZE = 8
+
+def _recent_get(user_id: int) -> list[int]:
+    st = _USER_RECENT_CHARS.get(int(user_id))
+    now = int(time.time())
+    if not st or int(st.get("exp") or 0) < now:
+        _USER_RECENT_CHARS[int(user_id)] = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
+        return []
+    return list(st.get("ids") or [])
+
+def _recent_add(user_id: int, char_id: int):
+    user_id = int(user_id)
+    char_id = int(char_id)
+    now = int(time.time())
+    st = _USER_RECENT_CHARS.get(user_id)
+    if not st or int(st.get("exp") or 0) < now:
+        st = {"exp": now + RECENT_TTL_SECONDS, "ids": []}
+        _USER_RECENT_CHARS[user_id] = st
+    ids = list(st.get("ids") or [])
+    if char_id in ids:
+        ids.remove(char_id)
+    ids.append(char_id)
+    if len(ids) > RECENT_MAX:
+        ids = ids[-RECENT_MAX:]
+    st["ids"] = ids
+
+async def _build_char_pool_for_anime(db, anime_id: int, max_pages: int = 6) -> Optional[dict]:
+    anime_id = int(anime_id)
+    try:
+        if getattr(db, "is_bad_anime")(anime_id):
+            return None
+    except Exception:
+        pass
+
+    q = """
+    query ($id: Int, $page: Int) {
+      Media(id: $id, type: ANIME) {
+        title { romaji }
+        coverImage { large }
+        characters(page: $page, perPage: 25) {
+          pageInfo { currentPage lastPage }
+          edges {
+            role
+            node {
+              id
+              name { full }
+              image { large }
+            }
+          }
+        }
+      }
     }
+    """
+    timeout = aiohttp.ClientTimeout(total=25)
+    chars: list[dict] = []
+    anime_title = "Obra"
+    cover = None
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": 1}}) as resp:
+            data = await resp.json()
+
+        media = data.get("data", {}).get("Media")
+        if not media:
+            try:
+                getattr(db, "mark_bad_anime")(anime_id, reason="no_media")
+            except Exception:
+                pass
+            return None
+
+        anime_title = (media.get("title") or {}).get("romaji") or "Obra"
+        cover = (media.get("coverImage") or {}).get("large") or None
+        last_page = int(((media.get("characters") or {}).get("pageInfo") or {}).get("lastPage") or 1)
+
+        pages = {1, last_page}
+        while len(pages) < min(max_pages, last_page):
+            pages.add(random.randint(1, max(1, last_page)))
+
+        for page in pages:
+            async with session.post(ANILIST_API, json={"query": q, "variables": {"id": anime_id, "page": int(page)}}) as r2:
+                d2 = await r2.json()
+
+            m2 = d2.get("data", {}).get("Media")
+            if not m2:
+                continue
+
+            edges = (((m2.get("characters") or {}).get("edges")) or [])
+            for e in edges:
+                if e.get("role") not in ("MAIN", "SUPPORTING"):
+                    continue
+                node = (e.get("node") or {})
+                cid = node.get("id")
+                name = ((node.get("name") or {}).get("full")) or None
+                img = ((node.get("image") or {}).get("large")) or None
+                if cid and name:
+                    chars.append({"id": int(cid), "name": name, "image": img})
+
+    seen = set()
+    uniq = []
+    for c in chars:
+        if c["id"] in seen:
+            continue
+        seen.add(c["id"])
+        uniq.append(c)
+
+    if len(uniq) < MIN_POOL_SIZE:
+        try:
+            getattr(db, "mark_bad_anime")(anime_id, reason=f"small_pool:{len(uniq)}")
+        except Exception:
+            pass
+        return None
+
+    return {"title": anime_title, "cover": cover, "chars": uniq}
+
+async def _anilist_random_character_from_anime(db, anime_id: int, user_id: int, tries: int = 24) -> Optional[dict]:
+    now = int(time.time())
+    anime_id = int(anime_id)
+
+    cached = _CHAR_POOL_CACHE.get(anime_id)
+    if not cached or int(cached.get("exp") or 0) < now:
+        built = await _build_char_pool_for_anime(db, anime_id, max_pages=6)
+        if not built:
+            return None
+        cached = {"exp": now + 6 * 3600, "title": built["title"], "cover": built["cover"], "chars": built["chars"]}
+        _CHAR_POOL_CACHE[anime_id] = cached
+
+    chars = list(cached.get("chars") or [])
+    if not chars:
+        return None
+
+    recent = set(_recent_get(user_id))
+    random.shuffle(chars)
+    preferred = [c for c in chars if int(c["id"]) not in recent]
+    fallback = [c for c in chars if int(c["id"]) in recent]
+    pick_order = (preferred + fallback)[:max(1, min(len(preferred + fallback), tries))]
+
+    for c in pick_order:
+        img = c.get("image")
+        if img:
+            return {"id": int(c["id"]), "name": c["name"], "image": img, "anime_title": cached.get("title") or "Obra"}
+
+    cover = cached.get("cover") or ""
+    c = pick_order[0]
+    return {"id": int(c["id"]), "name": c["name"], "image": cover, "anime_title": cached.get("title") or "Obra"}
+
+async def _auto_reroll_character(db, options: list[dict], preferred_anime_id: int, user_id: int) -> Optional[dict]:
+    ids = [int(o["id"]) for o in options if "id" in o]
+    ordered = []
+    if preferred_anime_id:
+        ordered.append(int(preferred_anime_id))
+    ordered += [x for x in ids if x != int(preferred_anime_id)]
+    if ordered:
+        tail = ordered[1:]
+        random.shuffle(tail)
+        ordered = [ordered[0]] + tail
+
+    for aid in ordered:
+        info = await _anilist_random_character_from_anime(db, aid, user_id=user_id, tries=28)
+        if info:
+            _recent_add(user_id, int(info["id"]))
+            try:
+                getattr(db, "vault_put_character")(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
+            except Exception:
+                pass
+            return info
+
+    try:
+        all_items = getattr(db, "get_top_anime_list")(500) or []
+        if all_items:
+            extra_opts = random.sample(all_items, min(18, len(all_items)))
+            extra_ids = [int(x["anime_id"]) for x in extra_opts if "anime_id" in x]
+            random.shuffle(extra_ids)
+            for aid in extra_ids:
+                info = await _anilist_random_character_from_anime(db, aid, user_id=user_id, tries=32)
+                if info:
+                    _recent_add(user_id, int(info["id"]))
+                    try:
+                        getattr(db, "vault_put_character")(int(info["id"]), info["name"], info.get("image") or "", info.get("anime_title") or "")
+                    except Exception:
+                        pass
+                    return info
+    except Exception:
+        pass
+
+    try:
+        v = getattr(db, "vault_random_character")()
+        if v:
+            _recent_add(user_id, int(v["character_id"]))
+            return {"id": int(v["character_id"]), "name": v["character_name"], "image": v.get("image") or "", "anime_title": v.get("anime_title") or "Obra"}
+    except Exception:
+        pass
+
+    return None
+
+
+
