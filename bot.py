@@ -5523,17 +5523,28 @@ def _start_webapp():
 if __name__ == "__main__":
     main()
 
-# ==========================================================
-# BALTIGO ENGINE SYSTEMS
-# ==========================================================
-import random, time
 
+# ==========================================================
+# BALTIGO ENGINE V4
+# ==========================================================
+import random, time, json
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+# -------------------- RARITY --------------------
 RARITY_TABLE = {
     "Common": 0.55,
     "Rare": 0.25,
     "Epic": 0.12,
     "Legendary": 0.06,
     "Mythic": 0.02
+}
+
+RARITY_VALUE = {
+    "Common": 1,
+    "Rare": 3,
+    "Epic": 7,
+    "Legendary": 15,
+    "Mythic": 40
 }
 
 def roll_rarity():
@@ -5545,22 +5556,57 @@ def roll_rarity():
             return rarity
     return "Common"
 
+# -------------------- DROP SYSTEM --------------------
+CHAR_POOL = {
+    "Common": ["Naruto", "Luffy", "Ichigo"],
+    "Rare": ["Levi", "Gojo", "Zoro"],
+    "Epic": ["Itachi", "Madara"],
+    "Legendary": ["Goku", "Saitama"],
+    "Mythic": ["Zeno"]
+}
+
+def drop_character():
+    rarity = roll_rarity()
+    char = random.choice(CHAR_POOL.get(rarity, ["Naruto"]))
+    return char, rarity
+
+# -------------------- MARKET --------------------
+GLOBAL_MARKET = []
+
+def market_add(user_id, character, price):
+    GLOBAL_MARKET.append({
+        "seller": user_id,
+        "character": character,
+        "price": price,
+        "time": int(time.time())
+    })
+
+def market_list():
+    return GLOBAL_MARKET[:20]
+
+def market_buy(index):
+    if index >= len(GLOBAL_MARKET):
+        return None
+    return GLOBAL_MARKET.pop(index)
+
+# -------------------- ECONOMY --------------------
+ECONOMY = {"coins_total": 0}
+
+def economy_reward(base):
+    inflation = max(1, ECONOMY["coins_total"] / 100000)
+    return int(base / inflation)
+
+# -------------------- EVENTS --------------------
 ACTIVE_EVENT = {"name": None, "characters": []}
 
 def set_event(name, chars):
     ACTIVE_EVENT["name"] = name
     ACTIVE_EVENT["characters"] = chars
 
-MARKET = []
+def get_event():
+    return ACTIVE_EVENT
 
-def add_market_listing(user_id, character_id, price):
-    MARKET.append({
-        "seller": user_id,
-        "character": character_id,
-        "price": price,
-        "created": int(time.time())
-    })
-
+# -------------------- ANTI EXPLOIT --------------------
 USER_RISK = {}
 
 def risk_add(user_id, score):
@@ -5569,16 +5615,32 @@ def risk_add(user_id, score):
 def risk_check(user_id):
     return USER_RISK.get(user_id, 0) > 20
 
-ANIME_CACHE = {}
+# -------------------- REDIS CACHE (OPTIONAL) --------------------
+try:
+    import redis
+    REDIS = redis.Redis(host="localhost", port=6379, decode_responses=True)
+except:
+    REDIS = None
 
-def cache_get(name):
-    c = ANIME_CACHE.get(name.lower())
-    if not c:
+def cache_get(key):
+    if not REDIS:
         return None
-    if time.time() - c["ts"] > 3600:
-        ANIME_CACHE.pop(name.lower(), None)
-        return None
-    return c["data"]
+    val = REDIS.get(key)
+    if val:
+        return json.loads(val)
 
-def cache_set(name, data):
-    ANIME_CACHE[name.lower()] = {"data": data, "ts": time.time()}
+def cache_set(key, data, ttl=3600):
+    if REDIS:
+        REDIS.setex(key, ttl, json.dumps(data))
+
+# -------------------- ADMIN DASHBOARD --------------------
+ENGINE_STATS = {
+    "users": 0,
+    "coins": 0,
+    "characters": 0,
+    "market": 0
+}
+
+def engine_stats():
+    return ENGINE_STATS
+
