@@ -119,7 +119,12 @@ from database import (
     top500_job_set_status,
     top500_job_checkpoint,
     top500_job_mark_done,
-    top500_job_read_top_list,
+    top500_job_read_top_list,    # TOP500 POOL
+    import_top500_to_pool,
+    pool_upsert,
+    pool_set_active,
+    pool_stats,
+
 )
 
 from zoneinfo import ZoneInfo
@@ -5627,6 +5632,112 @@ async def _cards_dot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await cards(update, context)
 
 
+# ==================================================
+# ADMIN: TOP500 POOL (characters_pool)
+# Comandos:
+#   /poolimport [caminho]  -> importa top500_anilist_consolidado.txt para characters_pool
+#   /pooladd <id> | <nome> | <anime>  -> upsert no pool
+#   /pooldel <id>          -> desativa (is_active=false)
+#   /poolon <id>           -> reativa (is_active=true)
+# ==================================================
+
+async def poolimport(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user:
+        return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ Você não tem permissão.")
+        return
+
+    path = "top500_anilist_consolidado.txt"
+    if context.args and context.args[0].strip():
+        path = " ".join(context.args).strip()
+
+    try:
+        res = import_top500_to_pool(path)
+        st = pool_stats()
+        await update.message.reply_html(
+            "✅ <b>POOL IMPORTADO</b>\n\n"
+            f"📥 Inseridos: <b>{int(res.get('inserted') or 0)}</b>\n"
+            f"⏭️ Ignorados: <b>{int(res.get('skipped') or 0)}</b>\n\n"
+            f"📦 Total: <b>{int(st.get('total') or 0)}</b> | ✅ Ativos: <b>{int(st.get('active') or 0)}</b>"
+        )
+    except FileNotFoundError:
+        await update.message.reply_html("❌ Arquivo não encontrado. Coloque <code>top500_anilist_consolidado.txt</code> na raiz ou passe o caminho.")
+    except Exception as e:
+        await update.message.reply_html(f"❌ Falha ao importar: <code>{type(e).__name__}</code>")
+
+async def pooladd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user:
+        return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ Você não tem permissão.")
+        return
+
+    raw = update.message.text or ""
+    # formato: /pooladd id | nome | anime
+    try:
+        payload = raw.split(" ", 1)[1].strip()
+    except Exception:
+        payload = ""
+    if "|" not in payload:
+        await update.message.reply_html("Use: <code>/pooladd ID | NOME | ANIME</code>")
+        return
+    parts = [p.strip() for p in payload.split("|")]
+    if len(parts) < 3:
+        await update.message.reply_html("Use: <code>/pooladd ID | NOME | ANIME</code>")
+        return
+    try:
+        cid = int(parts[0])
+    except Exception:
+        await update.message.reply_html("❌ ID inválido.")
+        return
+
+    name = parts[1]
+    anime = parts[2]
+    if not name or not anime:
+        await update.message.reply_html("❌ Nome/Anime inválidos.")
+        return
+
+    try:
+        pool_upsert(cid, name, anime, active=True)
+        await update.message.reply_html(f"✅ Adicionado/atualizado no pool: <b>{name}</b> (<code>{cid}</code>) — <i>{anime}</i>")
+    except Exception as e:
+        await update.message.reply_html(f"❌ Falha: <code>{type(e).__name__}</code>")
+
+async def pooldel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user:
+        return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ Você não tem permissão.")
+        return
+    if not context.args:
+        await update.message.reply_html("Use: <code>/pooldel ID</code>")
+        return
+    try:
+        cid = int(context.args[0])
+    except Exception:
+        await update.message.reply_html("❌ ID inválido.")
+        return
+    pool_set_active(cid, False)
+    await update.message.reply_html(f"🗑️ Desativado no pool: <code>{cid}</code>")
+
+async def poolon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user:
+        return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_html("⛔ Você não tem permissão.")
+        return
+    if not context.args:
+        await update.message.reply_html("Use: <code>/poolon ID</code>")
+        return
+    try:
+        cid = int(context.args[0])
+    except Exception:
+        await update.message.reply_html("❌ ID inválido.")
+        return
+    pool_set_active(cid, True)
+    await update.message.reply_html(f"✅ Reativado no pool: <code>{cid}</code>")
+
 def main():
 
     app = (
@@ -5720,7 +5831,14 @@ def main():
     app.add_handler(CommandHandler("top500_last", top500_last))
 
     print("✅ Bot rodando...")
-    app.run_polling(
+    
+    # --- ADMIN: TOP500 POOL ---
+    app.add_handler(CommandHandler("poolimport", poolimport))
+    app.add_handler(CommandHandler("pooladd", pooladd))
+    app.add_handler(CommandHandler("pooldel", pooldel))
+    app.add_handler(CommandHandler("poolon", poolon))
+
+app.run_polling(
         drop_pending_updates=True,
         allowed_updates=Update.ALL_TYPES,  # se quiser otimizar mais, trocamos por lista mínima
     )
@@ -5729,8 +5847,6 @@ def main():
 def _start_webapp():
     ...
 
-if __name__ == "__main__":
-    main()
 
 
 # ==========================================================
@@ -5853,21 +5969,5 @@ ENGINE_STATS = {
 def engine_stats():
     return ENGINE_STATS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == "__main__":
+    main()
