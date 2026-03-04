@@ -274,6 +274,20 @@ def _try_create_indexes():
 
 
 def init_db():
+
+    def _ensure_columns_user_collection():
+    stmts = [
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS character_name TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS image TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS anime_title TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS custom_image TEXT;", ()),
+        ("ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS quantity INT DEFAULT 1;", ()),
+    ]
+    _run_many(stmts)
+
+    _run("""CREATE TABLE IF NOT EXISTS user_collection (...);""")
+    _ensure_columns_user_collection()
+
     # USERS base + colunas migráveis
     _run(
         """
