@@ -99,23 +99,27 @@ def _set_local_timeouts(cur, lock_timeout_ms: int = 3000, statement_timeout_ms: 
         pass
 
 # ================================
-# TOP500 (arquivo gerado - salvo no DB)
+# TOP500 JOBS (seed + progresso + txt)
 # ================================
 _run(
     """
-    CREATE TABLE IF NOT EXISTS anilist_top500_files (
-        file_id SERIAL PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS anilist_top500_jobs (
+        job_id SERIAL PRIMARY KEY,
         created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
         created_by BIGINT,
+        status TEXT NOT NULL,             -- 'seed_ready', 'building', 'done', 'error'
         seed_items INT NOT NULL,
-        total_franchises INT NOT NULL,
-        total_selected INT NOT NULL,
-        content_text TEXT NOT NULL
+        top_json TEXT NOT NULL,           -- lista JSON dos 500 (id + title)
+        progress INT NOT NULL DEFAULT 0,  -- quantos dos 500 já processou (chars)
+        txt_text TEXT NOT NULL DEFAULT '',-- txt parcial/final
+        error_text TEXT
     );
     """
 )
-_run("CREATE INDEX IF NOT EXISTS anilist_top500_created_at_idx ON anilist_top500_files (created_at DESC);")
-
+_run("CREATE INDEX IF NOT EXISTS anilist_top500_jobs_created_at_idx ON anilist_top500_jobs (created_at DESC);")
+_run("CREATE INDEX IF NOT EXISTS anilist_top500_jobs_status_idx ON anilist_top500_jobs (status);")
+        
 # ================================
 # MIGRAÇÃO / INIT
 # ================================
@@ -1675,54 +1679,81 @@ def sell_character_from_collection(user_id: int, char_id: int, coin_gain: int) -
                 raise
 
 # ================================
-# TOP500 FILE STORE
+# TOP500 JOB API
 # ================================
-def save_top500_file(
-    created_by: Optional[int],
-    seed_items: int,
-    total_franchises: int,
-    total_selected: int,
-    content_text: str,
-) -> int:
+import json as _json
+
+def top500_job_create(created_by: int, seed_items: int, top_list: list[dict]) -> int:
+    """
+    top_list: [{"id": 123, "title": "..."}, ...] tamanho 500
+    """
+    now = int(time.time())
     row = _run(
         """
-        INSERT INTO anilist_top500_files (created_at, created_by, seed_items, total_franchises, total_selected, content_text)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING file_id
+        INSERT INTO anilist_top500_jobs (created_at, updated_at, created_by, status, seed_items, top_json, progress, txt_text, error_text)
+        VALUES (%s, %s, %s, 'seed_ready', %s, %s, 0, '', NULL)
+        RETURNING job_id
         """,
-        (
-            int(time.time()),
-            int(created_by) if created_by is not None else None,
-            int(seed_items),
-            int(total_franchises),
-            int(total_selected),
-            str(content_text),
-        ),
+        (now, now, int(created_by), int(seed_items), _json.dumps(top_list, ensure_ascii=False)),
         fetch="one",
     ) or {}
-    return int(row.get("file_id") or 0)
+    return int(row.get("job_id") or 0)
 
-
-def get_latest_top500_file() -> Optional[dict]:
+def top500_job_get(job_id: int) -> Optional[dict]:
     return _run(
         """
-        SELECT file_id, created_at, created_by, seed_items, total_franchises, total_selected, content_text
-        FROM anilist_top500_files
+        SELECT job_id, created_at, updated_at, created_by, status, seed_items, top_json, progress, txt_text, error_text
+        FROM anilist_top500_jobs
+        WHERE job_id=%s
+        LIMIT 1
+        """,
+        (int(job_id),),
+        fetch="one",
+    )
+
+def top500_job_latest() -> Optional[dict]:
+    return _run(
+        """
+        SELECT job_id, created_at, updated_at, created_by, status, seed_items, top_json, progress, txt_text, error_text
+        FROM anilist_top500_jobs
         ORDER BY created_at DESC
         LIMIT 1
         """,
         fetch="one",
     )
 
-
-def get_top500_file_by_id(file_id: int) -> Optional[dict]:
-    return _run(
-        """
-        SELECT file_id, created_at, created_by, seed_items, total_franchises, total_selected, content_text
-        FROM anilist_top500_files
-        WHERE file_id=%s
-        LIMIT 1
-        """,
-        (int(file_id),),
-        fetch="one",
+def top500_job_set_status(job_id: int, status: str, error_text: Optional[str] = None):
+    now = int(time.time())
+    _run(
+        "UPDATE anilist_top500_jobs SET status=%s, updated_at=%s, error_text=%s WHERE job_id=%s",
+        (str(status), now, error_text, int(job_id)),
     )
+
+def top500_job_checkpoint(job_id: int, progress: int, txt_append: str):
+    """
+    Salva progresso + acrescenta txt (append) de forma segura.
+    """
+    now = int(time.time())
+    _run(
+        """
+        UPDATE anilist_top500_jobs
+        SET progress=%s,
+            txt_text = COALESCE(txt_text,'') || %s,
+            updated_at=%s
+        WHERE job_id=%s
+        """,
+        (int(progress), str(txt_append), now, int(job_id)),
+    )
+
+def top500_job_mark_done(job_id: int):
+    now = int(time.time())
+    _run(
+        "UPDATE anilist_top500_jobs SET status='done', updated_at=%s WHERE job_id=%s",
+        (now, int(job_id)),
+    )
+
+def top500_job_read_top_list(job_row: dict) -> list[dict]:
+    try:
+        return _json.loads(job_row.get("top_json") or "[]") or []
+    except Exception:
+        return []
