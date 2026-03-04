@@ -1,39 +1,5 @@
 
 # ================================
-# TITAN DATABASE EXTENSIONS
-# ================================
-
-def create_titan_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS coin_transactions (
-        tx_id SERIAL PRIMARY KEY,
-        user_id BIGINT,
-        amount INT,
-        reason TEXT,
-        created_at BIGINT
-    );
-    """)
-
-    _run("""
-    CREATE TABLE IF NOT EXISTS bot_logs (
-        log_id SERIAL PRIMARY KEY,
-        user_id BIGINT,
-        action TEXT,
-        created_at BIGINT
-    );
-    """)
-
-    _run("""
-    CREATE TABLE IF NOT EXISTS metrics_events (
-        event_id SERIAL PRIMARY KEY,
-        event_name TEXT,
-        value INT,
-        created_at BIGINT
-    );
-    """)
-
-
-# ================================
 # database.py — Postgres (Railway)
 # (POOL + TRANSACOES SEGURAS + MIGRACAO + DADO + GIROS SLOT + CACHE + DAILY + CONQUISTAS + RANKINGS + STATS)
 # ================================
@@ -1260,3 +1226,35 @@ def list_collection_cards(user_id: int, limit: int = 200):
         }
         for r in rows
     ]
+
+# ==========================================================
+# BALTIGO ENGINE DATABASE TABLES
+# ==========================================================
+def create_engine_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS market_listings (
+        listing_id SERIAL PRIMARY KEY,
+        seller_id BIGINT,
+        character_id INT,
+        price INT,
+        created_at BIGINT
+    );
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS security_flags (
+        user_id BIGINT PRIMARY KEY,
+        risk_score INT,
+        updated_at BIGINT
+    );
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS events (
+        event_id SERIAL PRIMARY KEY,
+        event_name TEXT,
+        start_time BIGINT,
+        end_time BIGINT,
+        active BOOLEAN
+    );
+    """)
