@@ -1,9 +1,13 @@
-# webapp.py — MiniApps (Coleção + Loja + Dado separado)
-# ✅ Fixes pedidos:
-# 1) "{"detail":"Not Found"}" no dado: agora existem rotas /dado/start e /dado/pick (além de /api/dado/*)
-# 2) Dado NÃO fica mais no /app (coleção). Agora é só na rota /dado (barra dado).
-# 3) Quantidade de opções = valor do dado (1..6)
-# 4) Se der erro no fluxo do dado, devolve o dado (refund) de forma segura
+# webapp.py — MiniApps (Coleção + Dado + Loja) — FastAPI
+# ✅ Ajustes pedidos:
+# - /app: só "Coleção" + "Favoritos" + "Dado" (remove Loja do topo)
+# - Paleta vermelha (degradê vermelho), estilo gacha (Genshin/Honkai vibe)
+# - Favoritos: mostra só o favoritado do usuário (fav_name / fav_image) + (se quiser) também os cards marcados como favorito
+# - Imagens: prioridade SETFOTO (custom_image/global) -> AniList (image) -> fallback
+# - /shop: Vender igual Coleção (separado por anime + A-Z), remove botão voltar
+# - Dado: remove 3D bugado, usa 🎲 animado; máximo 6 animes
+# - Dado: se clicar e falhar, pode escolher outra opção da mesma lista (SEM perder dado)
+# - Anti-falhas: rate-limit simples, rollback em falhas, roll idempotente, expiração devolve dado
 
 import os
 import json
@@ -13,7 +17,7 @@ import hashlib
 import random
 import asyncio
 import aiohttp
-from typing import Optional, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime
 from urllib.parse import parse_qsl
 
@@ -31,12 +35,17 @@ MINIAPP_SIGNING_SECRET = os.getenv("MINIAPP_SIGNING_SECRET", "").strip()
 
 SHOP_SELL_GAIN = int(os.getenv("SHOP_SELL_GAIN", "1"))
 SHOP_GIRO_PRICE = int(os.getenv("SHOP_GIRO_PRICE", "2"))
+SHOP_PER_PAGE = int(os.getenv("SHOP_PER_PAGE", "9999"))  # ✅ não usamos paginação no layout novo, mas mantemos compat
+
 COLLECTION_LIMIT = int(os.getenv("COLLECTION_LIMIT", "500"))
 
 ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
 
 DADO_NEW_USER_START = int(os.getenv("DADO_NEW_USER_START", "4"))
 DADO_WEB_EXPIRE_SECONDS = int(os.getenv("DADO_WEB_EXPIRE_SECONDS", "300"))
+
+# ✅ agora é no máximo 6 opções mesmo
+DADO_WEB_MAX_OPTIONS = int(os.getenv("DADO_WEB_MAX_OPTIONS", "6"))
 
 DADO_PICK_IMAGE = os.getenv(
     "DADO_PICK_IMAGE",
@@ -49,9 +58,6 @@ DADO_FALLBACK_IMAGE = os.getenv(
 
 WEB_RATE_LIMIT_SECONDS = float(os.getenv("WEB_RATE_LIMIT_SECONDS", "0.45"))
 _WEB_RATE: Dict[Tuple[int, str], float] = {}
-
-DADO_MAX_BALANCE = int(os.getenv("DADO_MAX_BALANCE", "18"))
-GIRO_MAX_BALANCE = int(os.getenv("GIRO_MAX_BALANCE", "24"))
 
 # =========================
 # helpers
@@ -283,6 +289,10 @@ async def _tg_send_photo(chat_id: int, photo: str, caption: str):
 # =========================
 # DADO backend
 # =========================
+DADO_MAX_BALANCE = int(os.getenv("DADO_MAX_BALANCE", "18"))
+GIRO_MAX_BALANCE = int(os.getenv("GIRO_MAX_BALANCE", "24"))
+
+
 def _now_slot_4h(ts: Optional[float] = None) -> int:
     if ts is None:
         ts = time.time()
@@ -407,6 +417,7 @@ def _get_pool_lock(anime_id: int) -> asyncio.Lock:
 
 
 def _db_is_anime_blacklisted(db, anime_id: int) -> bool:
+    # compat: se seu DB tem is_bad_anime / mark_bad_anime (como no seu database.py), usa
     fn = getattr(db, "is_bad_anime", None)
     if callable(fn):
         try:
@@ -438,7 +449,7 @@ def _db_blacklist_anime(db, anime_id: int, reason: str = "no_chars"):
             pass
 
 
-async def _fetch_top500_anime_from_anilist() -> List[dict]:
+async def _fetch_top500_anime_from_anilist() -> list[dict]:
     query = """
     query ($page: Int) {
       Page(page: $page, perPage: 50) {
@@ -449,7 +460,7 @@ async def _fetch_top500_anime_from_anilist() -> List[dict]:
       }
     }
     """
-    items: List[dict] = []
+    items: list[dict] = []
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         rank = 1
@@ -492,32 +503,12 @@ async def _ensure_top_cache_fresh(db):
             pass
 
 
-def _pick_random_animes(db, n: int) -> List[dict]:
-    """Retorna N opções de anime do characters_pool (TOP500)."""
+def _pick_random_animes(db, n: int) -> list[dict]:
     try:
-        fn = getattr(db, "pool_random_animes", None)
-        rows = fn(int(n)) if callable(fn) else []
+        fn = getattr(db, "get_top_anime_list", None)
+        all_items = fn(500) if callable(fn) else []
     except Exception:
-        rows = []
-
-    rows = rows or []
-    if not rows:
-        return []
-
-    # Mantém formato esperado pelo front: [{id:int, title:str}]
-    out: List[dict] = []
-    seen: set = set()
-    i = 1
-    for r in rows:
-        title = _safe_str(r.get("anime") if isinstance(r, dict) else "")
-        if not title or title in seen:
-            continue
-        out.append({"id": int(i), "title": title})
-        seen.add(title)
-        i += 1
-        if len(out) >= int(n):
-            break
-    return out
+        all_items = []
 
     all_items = all_items or []
     if not all_items:
@@ -550,7 +541,7 @@ async def _build_char_pool_for_anime(anime_id: int, max_pages: int = 4) -> Optio
     """
     timeout = aiohttp.ClientTimeout(total=20)
 
-    chars: List[dict] = []
+    chars: list[dict] = []
     anime_title = "Obra"
     cover = None
 
@@ -652,10 +643,14 @@ async def _get_random_character_from_anime(db, anime_id: int, tries: int = 14) -
 
 
 async def _try_get_character_from_selected_only(db, anime_id: int) -> Optional[dict]:
+    # ✅ tenta só o anime selecionado (o "falha" aqui permite o usuário escolher outra opção)
     return await _get_random_character_from_anime(db, int(anime_id), tries=14)
 
 
 def _get_custom_global_image_if_any(db, char_id: int) -> str:
+    # compat com seu database.py atual:
+    # - tabela character_images (set_global_character_image / get_global_character_image)
+    # - e/ou custom_image no user_collection (já vem pro miniapp na coleção)
     try:
         fn = getattr(db, "get_global_character_image", None)
         if callable(fn):
@@ -674,16 +669,23 @@ def _get_custom_global_image_if_any(db, char_id: int) -> str:
 
 
 def _choose_rarity(dice_value: int, char_id: int) -> dict:
+    # ✅ "raridade" só pro visual (não mexe na coleção/bot)
+    # determinístico por char_id pra ficar consistente:
     seed = (int(char_id) * 1103515245 + int(dice_value) * 12345) & 0xFFFFFFFF
-    r = seed % 1000
+    r = seed % 1000  # 0..999
+    # pesos: 5★ 3%, 4★ 12%, 3★ 30%, 2★ 55% (ajuste livre)
     if r < 30:
-        stars, tier = 5, "mythic"
+        stars = 5
+        tier = "mythic"
     elif r < 150:
-        stars, tier = 4, "epic"
+        stars = 4
+        tier = "epic"
     elif r < 450:
-        stars, tier = 3, "rare"
+        stars = 3
+        tier = "rare"
     else:
-        stars, tier = 2, "common"
+        stars = 2
+        tier = "common"
     return {"stars": stars, "tier": tier}
 
 
@@ -695,7 +697,7 @@ app = FastAPI()
 
 @app.get("/", response_class=HTMLResponse)
 def root():
-    return HTMLResponse("✅ Web rodando! Use /app (coleção), /shop (loja) ou /dado (gacha).")
+    return HTMLResponse("✅ Web rodando! Use /app (coleção+dado) ou /shop (loja).")
 
 
 # =========================
@@ -760,6 +762,7 @@ def api_owner_collection(
     collection_name = _get_collection_name_safe(db, owner_id)
     cards = _list_collection_cards_safe(db, owner_id, limit=COLLECTION_LIMIT)
     owner_name = _get_owner_display_name_safe(db, owner_id)
+    # não vaza favorito do dono (privacidade) — mas se você quiser, pode retornar também
     fav = {"fav_name": "", "fav_image": ""}
 
     return JSONResponse(
@@ -905,9 +908,10 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
 
 
 # =========================
-# API: DADO (core impl)
+# API: DADO
 # =========================
-async def _dado_start_impl(x_telegram_init_data: str):
+@app.post("/api/dado/start")
+async def api_dado_start(x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
@@ -922,6 +926,7 @@ async def _dado_start_impl(x_telegram_init_data: str):
     balance = _refresh_user_dado_balance(db, user_id)
     extra = _refresh_user_giros(db, user_id)
     if balance <= 0 and extra <= 0:
+        # ✅ mensagem mais explicada
         return JSONResponse(
             {
                 "ok": False,
@@ -932,58 +937,46 @@ async def _dado_start_impl(x_telegram_init_data: str):
             status_code=200,
         )
 
-    # Consome 1 dado/extra
-    consumed = _consume_one_die(db, user_id)
-    if not consumed:
+    if not _consume_one_die(db, user_id):
         return JSONResponse({"ok": False, "error": "consume_failed"}, status_code=200)
 
-    # Se qualquer coisa falhar daqui pra frente, devolve o dado
     try:
-        try:
-            await _ensure_top_cache_fresh(db)
-        except Exception:
-            pass
+        await _ensure_top_cache_fresh(db)
+    except Exception:
+        pass
 
-        dice_value = random.SystemRandom().randint(1, 6)
+    dice_value = random.SystemRandom().randint(1, 6)
 
-        # ✅ N opções = valor do dado
-        n = max(1, min(6, int(dice_value)))
+    # ✅ no máximo 6 opções
+    n = max(6, min(6, DADO_WEB_MAX_OPTIONS))
+    options = _pick_random_animes(db, n)
+    if not options:
+        _refund_one_die(db, user_id)
+        return JSONResponse({"ok": False, "error": "no_anime_cache"}, status_code=200)
 
-        options = _pick_random_animes(db, n)
-        if not options:
-            _refund_one_die(db, user_id)
-            return JSONResponse({"ok": False, "error": "no_anime_cache"}, status_code=200)
-
+    # cria roll (pending)
+    try:
         fn = getattr(db, "create_dice_roll", None)
-        if not callable(fn):
+        if callable(fn):
+            try:
+                roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False), "pending", int(time.time()))
+            except TypeError:
+                roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False))
+        else:
             _refund_one_die(db, user_id)
             return JSONResponse({"ok": False, "error": "db_missing_roll"}, status_code=200)
-
-        try:
-            roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False), "pending", int(time.time()))
-        except TypeError:
-            roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False))
-
-        balance2 = _refresh_user_dado_balance(db, user_id)
-        extra2 = _refresh_user_giros(db, user_id)
-
-        return JSONResponse(
-            {
-                "ok": True,
-                "roll_id": int(roll_id),
-                "dice": int(dice_value),
-                "options": options,
-                "balance": int(balance2),
-                "extra": int(extra2),
-            }
-        )
     except Exception:
-        # ✅ qualquer erro inesperado = devolve o dado
         _refund_one_die(db, user_id)
-        return JSONResponse({"ok": False, "error": "server_error_refunded"}, status_code=200)
+        return JSONResponse({"ok": False, "error": "roll_create_failed"}, status_code=200)
+
+    balance2 = _refresh_user_dado_balance(db, user_id)
+    extra2 = _refresh_user_giros(db, user_id)
+
+    return JSONResponse({"ok": True, "roll_id": int(roll_id), "dice": int(dice_value), "options": options, "balance": int(balance2), "extra": int(extra2)})
 
 
-async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str):
+@app.post("/api/dado/pick")
+async def api_dado_pick(anime_id: int = Query(...), roll_id: int = Query(...), x_telegram_init_data: str = Header(default="")):
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
@@ -1005,22 +998,22 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
     created_at = int(roll.get("created_at") or 0)
     dice_value = _safe_int(roll.get("dice_value") or 1, 1)
 
-    # ✅ se já foi resolvido, não mexe
+    # ✅ se já resolveu, não deixa duplicar
     if status == "resolved":
         return JSONResponse({"ok": False, "error": "used"}, status_code=200)
 
-    # ✅ expirou = devolve dado
+    # ✅ expiração devolve o dado (se ainda não resolveu)
     if created_at and int(time.time()) - created_at > DADO_WEB_EXPIRE_SECONDS:
         try:
             fn = getattr(db, "set_dice_roll_status", None)
             if callable(fn):
-                fn(int(roll_id), "expired_refunded")
+                fn(int(roll_id), "expired")
         except Exception:
             pass
         _refund_one_die(db, user_id)
-        return JSONResponse({"ok": False, "error": "expired_refunded"}, status_code=200)
+        return JSONResponse({"ok": False, "error": "expired"}, status_code=200)
 
-    # trava o roll para evitar dupla execução
+    # lock best-effort (evita duplo clique ao mesmo tempo)
     if status == "pending":
         try:
             fn = getattr(db, "try_set_dice_roll_status", None)
@@ -1031,150 +1024,66 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
 
-    # ✅ se der erro inesperado, devolve dado
+    # tenta somente o anime clicado
+    info = await _try_get_character_from_selected_only(db, int(anime_id))
+    if not info:
+        # ✅ permite escolher OUTRO da mesma lista (sem perder dado)
+        try:
+            fn = getattr(db, "set_dice_roll_status", None)
+            if callable(fn):
+                fn(int(roll_id), "pending")
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
+
+    # resolved
     try:
-        # ✅ TOP500: valida escolha com base nas opções do próprio roll
-        try:
-            opts = json.loads(str(roll.get("options_json") or "[]"))
-        except Exception:
-            opts = []
-
-        chosen_title = ""
-        for o in (opts or []):
-            try:
-                if int(o.get("id") or 0) == int(anime_id):
-                    chosen_title = _safe_str(o.get("title"))
-                    break
-            except Exception:
-                continue
-
-        if not chosen_title:
-            # escolha inválida (não estava nas opções)
-            try:
-                fn = getattr(db, "set_dice_roll_status", None)
-                if callable(fn):
-                    fn(int(roll_id), "pending")
-            except Exception:
-                pass
-            return JSONResponse({"ok": False, "error": "invalid_choice"}, status_code=200)
-
-        # pega 1 personagem aleatório do pool, filtrando por anime escolhido
-        fn_pool = getattr(db, "pool_random_character", None)
-        info = fn_pool(chosen_title) if callable(fn_pool) else None
-        if not info:
-            # não devolve dado aqui, porque a regra é: "tente outra opção da mesma rolagem"
-            try:
-                fn = getattr(db, "set_dice_roll_status", None)
-                if callable(fn):
-                    fn(int(roll_id), "pending")
-            except Exception:
-                pass
-            return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
-
-        # marca como resolvido
-        try:
-            fn = getattr(db, "set_dice_roll_status", None)
-            if callable(fn):
-                fn(int(roll_id), "resolved")
-        except Exception:
-            pass
-
-        char_id = int(info.get("character_id") or 0)
-        name = _safe_str(info.get("name"))
-        anime_title = _safe_str(info.get("anime")) or "Obra"
-
-        gimg = _get_custom_global_image_if_any(db, char_id)
-        image = gimg or (f"https://img.anili.st/character/{char_id}" if char_id else "") or DADO_FALLBACK_IMAGE
-
-        # adiciona na coleção
-        try:
-            fn_add = getattr(db, "add_character_to_collection", None)
-            if callable(fn_add):
-                try:
-                    fn_add(user_id, char_id, name, image, anime_title=anime_title)
-                except TypeError:
-                    fn_add(user_id, char_id, name, image)
-        except Exception:
-            pass
-
-        # manda PV
-        await _tg_send_photo(
-            chat_id=user_id,
-            photo=image,
-            caption=(
-                "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-                f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-                f"<i>{anime_title}</i>\n\n"
-                "📦 <b>Adicionado à sua coleção!</b>"
-            ),
-        )
-
-        rarity = _choose_rarity(dice_value=dice_value, char_id=char_id)
-        return JSONResponse(
-            {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image, "rarity": rarity}},
-            status_code=200,
-        )
-
+        fn = getattr(db, "set_dice_roll_status", None)
+        if callable(fn):
+            fn(int(roll_id), "resolved")
     except Exception:
-        # ✅ falhou hard = devolve dado e invalida esse roll
-        try:
-            fn = getattr(db, "set_dice_roll_status", None)
-            if callable(fn):
-                fn(int(roll_id), "failed_refunded")
-        except Exception:
-            pass
-        _refund_one_die(db, user_id)
-        return JSONResponse({"ok": False, "error": "server_error_refunded"}, status_code=200)
+        pass
+
+    char_id = int(info["id"])
+    name = info["name"]
+    anime_title = info.get("anime_title") or "Obra"
+
+    # ✅ prioridade: setfoto global -> anilist -> fallback
+    gimg = _get_custom_global_image_if_any(db, char_id)
+    image = gimg or (info.get("image") or "") or DADO_FALLBACK_IMAGE
+
+    # adiciona na coleção
+    try:
+        fn_add = getattr(db, "add_character_to_collection", None)
+        if callable(fn_add):
+            try:
+                fn_add(user_id, char_id, name, image, anime_title=anime_title)
+            except TypeError:
+                fn_add(user_id, char_id, name, image)
+    except Exception:
+        pass
+
+    # PV do bot (mantém texto padrão)
+    await _tg_send_photo(
+        chat_id=user_id,
+        photo=image,
+        caption=(
+            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+            f"<i>{anime_title}</i>\n\n"
+            "📦 <b>Adicionado à sua coleção!</b>"
+        ),
+    )
+
+    rarity = _choose_rarity(dice_value=dice_value, char_id=char_id)
+    return JSONResponse(
+        {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image, "rarity": rarity}},
+        status_code=200,
+    )
 
 
 # =========================
-# API: DADO (rotas antigas /api/dado/*)
-# =========================
-@app.post("/api/dado/start")
-@app.post("/api/dado/start/")
-@app.get("/api/dado/start")
-@app.get("/api/dado/start/")
-async def api_dado_start(x_telegram_init_data: str = Header(default="")):
-    return await _dado_start_impl(x_telegram_init_data)
-
-
-@app.post("/api/dado/pick")
-@app.post("/api/dado/pick/")
-@app.get("/api/dado/pick")
-@app.get("/api/dado/pick/")
-async def api_dado_pick(
-    anime_id: int = Query(...),
-    roll_id: int = Query(...),
-    x_telegram_init_data: str = Header(default=""),
-):
-    return await _dado_pick_impl(anime_id, roll_id, x_telegram_init_data)
-
-
-# =========================
-# ✅ API: DADO (rotas novas na "barra dado": /dado/start e /dado/pick)
-# =========================
-@app.post("/dado/start")
-@app.post("/dado/start/")
-@app.get("/dado/start")
-@app.get("/dado/start/")
-async def dado_start_bar(x_telegram_init_data: str = Header(default="")):
-    return await _dado_start_impl(x_telegram_init_data)
-
-
-@app.post("/dado/pick")
-@app.post("/dado/pick/")
-@app.get("/dado/pick")
-@app.get("/dado/pick/")
-async def dado_pick_bar(
-    anime_id: int = Query(...),
-    roll_id: int = Query(...),
-    x_telegram_init_data: str = Header(default=""),
-):
-    return await _dado_pick_impl(anime_id, roll_id, x_telegram_init_data)
-
-
-# =========================
-# UI: /app — Coleção + Favoritos (SEM DADO)
+# UI: /app — Coleção + Favoritos + Dado (Gacha)
 # =========================
 @app.get("/app", response_class=HTMLResponse)
 def miniapp_collection():
@@ -1186,35 +1095,39 @@ def miniapp_collection():
   <title>Baltigo MiniApp</title>
   <style>
     :root{
-      --bg0:#07070c;
-      --bg1:#0c0b14;
-      --card:#12111b;
+      --bg:#07070b;
+      --panel: rgba(255,255,255,.04);
+      --card:#111118;
       --stroke: rgba(255,255,255,.10);
-      --muted2: rgba(255,255,255,.50);
-      --a1:#ff2b4a;
-      --a2:#b30f22;
-      --a3:#ff6a88;
+      --muted: rgba(255,255,255,.68);
+      --muted2: rgba(255,255,255,.48);
 
+      /* ✅ paleta vermelha */
+      --r1:#ff1f1f;
+      --r2:#b30000;
+      --r3:#ff4d4d;
+
+      --good: rgba(0,255,140,.18);
+      --bad: rgba(255,60,60,.18);
+
+      /* raridades (visual) */
       --c-common:#c9c9c9;
       --c-rare:#4da3ff;
       --c-epic:#b06cff;
       --c-mythic:#ffcc33;
-
-      --good: rgba(0,255,140,.18);
-      --bad: rgba(255,60,60,.18);
     }
+
     *{box-sizing:border-box}
     body{
       margin:0;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,31,31,.22), transparent 55%),
+        radial-gradient(900px 600px at 85% 10%, rgba(179,0,0,.18), transparent 55%),
+        var(--bg);
       color:#fff;
       padding:14px 14px 90px;
       overflow-x:hidden;
-      background:
-        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
-        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
-        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg0));
     }
 
     .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
@@ -1224,45 +1137,42 @@ def miniapp_collection():
 
     .stats{
       display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);border-radius:999px;white-space:nowrap;flex-shrink:0;
+      background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;flex-shrink:0;
       box-shadow: 0 12px 38px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
     }
     .stat{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}
     .dot{width:1px;height:16px;background:var(--stroke);}
 
     .tabs{
       display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
-      border-radius:999px;background:rgba(255,255,255,.035);
+      border-radius:999px;background:rgba(255,255,255,.04);
       box-shadow: 0 14px 46px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
     }
     .tab{
       flex:1;text-align:center;padding:10px 12px;border-radius:999px;
-      font-weight:950;font-size:14px;color:rgba(255,255,255,.75);
+      font-weight:950;font-size:14px;color:var(--muted);
       background:transparent;border:0;cursor:pointer;
       transition: transform .12s ease, background .12s ease;
     }
     .tab:active{transform: scale(.98);}
     .tab.active{
       color:#fff;
-      background: linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
-      box-shadow: 0 14px 44px rgba(255,43,74,.10);
+      background: linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));
+      box-shadow: 0 12px 40px rgba(255,31,31,.15);
     }
 
     .search{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}
     .search input{
       width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);color:#fff;outline:none;font-size:14px;
-      backdrop-filter: blur(10px);
+      background:rgba(255,255,255,.04);color:#fff;outline:none;font-size:14px;
     }
     .search input::placeholder{color:rgba(255,255,255,.35)}
 
-    .status{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:rgba(255,255,255,.80);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(10px);}
+    .status{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;}
     .status.ok{border-color: var(--good);}
     .status.err{border-color: var(--bad);color: rgba(255,120,120,.95);}
 
-    .section{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);backdrop-filter: blur(10px);}
+    .section{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}
     .section-title{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
     .section-count{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}
 
@@ -1273,10 +1183,10 @@ def miniapp_collection():
       box-shadow: 0 18px 56px rgba(0,0,0,.45);
       transform: translateZ(0);
     }
-    .card img{width:100%;height:220px;object-fit:cover;display:block;filter:saturate(1.06) contrast(1.05);}
+    .card img{width:100%;height:220px;object-fit:cover;display:block;filter:saturate(1.05) contrast(1.05);}
     .overlay{
       position:absolute;left:0;right:0;bottom:0;padding:10px;
-      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.84));
+      background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.82));
     }
     .name{font-weight:1000;font-size:15px;margin:0;letter-spacing:.1px;}
     .meta{margin-top:3px;font-size:12px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1285,9 +1195,11 @@ def miniapp_collection():
       border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;
       backdrop-filter: blur(8px);
     }
+
+    /* ✅ brilho das cartas */
     .shine{
       position:absolute;inset:-40%;
-      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), transparent 38%);
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 35%);
       transform: rotate(12deg);
       opacity:.0; pointer-events:none;
       transition: opacity .2s ease;
@@ -1296,6 +1208,7 @@ def miniapp_collection():
     .card:hover .shine{opacity:.35}
     .card:active .shine{opacity:.45}
 
+    /* ✅ badge raridade */
     .rar{
       position:absolute;top:10px;right:10px;padding:6px 10px;border-radius:999px;
       background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);
@@ -1307,6 +1220,143 @@ def miniapp_collection():
     .tier-rare   .rar .dot{background:var(--c-rare)}
     .tier-epic   .rar .dot{background:var(--c-epic)}
     .tier-mythic .rar .dot{background:var(--c-mythic)}
+    .tier-common{outline: 0 solid transparent;}
+    .tier-rare  {box-shadow: 0 0 0 1px rgba(77,163,255,.16), 0 24px 70px rgba(77,163,255,.08);}
+    .tier-epic  {box-shadow: 0 0 0 1px rgba(176,108,255,.16), 0 24px 70px rgba(176,108,255,.08);}
+    .tier-mythic{box-shadow: 0 0 0 1px rgba(255,204,51,.18), 0 24px 70px rgba(255,204,51,.09);}
+
+    /* ===== DADO (gacha) ===== */
+    .dado-card{
+      padding:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);
+      border-radius:18px;box-shadow: 0 18px 56px rgba(0,0,0,.45);
+    }
+    .dado-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+    .dado-title{font-weight:1000;font-size:16px;}
+    .dado-sub{color:rgba(255,255,255,.68);font-size:12px;margin-top:4px;line-height:1.35;}
+    .dado-pill{
+      font-weight:1000;font-size:12px;border:1px solid var(--stroke);
+      padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.03);white-space:nowrap;
+    }
+
+    .dado-actions{margin-top:14px;display:flex;gap:12px;align-items:center;}
+    .roll-emoji{
+      width:72px;height:72px;border-radius:18px;border:1px solid rgba(255,255,255,.14);
+      background: radial-gradient(circle at 20% 20%, rgba(255,31,31,.22), rgba(255,255,255,.02));
+      display:flex;align-items:center;justify-content:center;
+      font-size:34px;font-weight:1000;
+      box-shadow: 0 18px 56px rgba(0,0,0,.35);
+      user-select:none;
+    }
+    @keyframes wobble{
+      0%{transform:rotate(0deg) scale(1)}
+      20%{transform:rotate(-10deg) scale(1.02)}
+      45%{transform:rotate(12deg) scale(1.03)}
+      70%{transform:rotate(-8deg) scale(1.02)}
+      100%{transform:rotate(0deg) scale(1)}
+    }
+    .wobble{animation:wobble 650ms cubic-bezier(.2,.85,.2,1) 1;}
+
+    .dado-btn{
+      flex:1;border:0;border-radius:16px;padding:14px 14px;font-weight:1000;font-size:14px;color:#fff;
+      background: linear-gradient(90deg, rgba(255,31,31,.96), rgba(179,0,0,.96));
+      box-shadow: 0 18px 56px rgba(255,31,31,.10);
+      cursor:pointer;
+    }
+    .dado-btn:disabled{opacity:.55;cursor:not-allowed}
+
+    .anime-grid{margin-top:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+    .anime-card{
+      text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;
+      border-radius:16px;padding:10px;cursor:pointer;transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      position:relative;overflow:hidden;
+    }
+    .anime-card:active{transform:scale(.98)}
+    .anime-card:hover{border-color: rgba(255,31,31,.25)}
+    .anime-title{margin-top:2px;font-weight:1000;font-size:12px;line-height:1.25;max-height:2.6em;overflow:hidden;}
+    .anime-sheen{
+      position:absolute;inset:-30%;
+      background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.14) 50%, transparent 65%);
+      transform: translateX(-30%);
+      opacity:.0; pointer-events:none;
+    }
+    .anime-card:hover .anime-sheen{opacity:.25; animation: sweep 900ms ease 1;}
+    @keyframes sweep{0%{transform:translateX(-30%)}100%{transform:translateX(30%)}}
+
+    /* ===== Lootbox (Honkai vibe) ===== */
+    .lootbox{
+      position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(255,31,31,.18), transparent 55%),
+        radial-gradient(circle at 40% 70%, rgba(179,0,0,.18), transparent 55%),
+        rgba(0,0,0,.82);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+    }
+    .lootbox.on{display:flex;}
+    .lootbox-panel{
+      width:min(520px, 100%);
+      border-radius:22px;border:1px solid rgba(255,255,255,.14);
+      background: rgba(10,10,12,.86);
+      box-shadow: 0 30px 120px rgba(0,0,0,.75);
+      overflow:hidden;
+      transform: translateY(10px) scale(.98);
+      opacity: 0;
+      transition: all 420ms cubic-bezier(.2,.85,.2,1);
+      position:relative;
+    }
+    .lootbox.on .lootbox-panel{transform: translateY(0) scale(1);opacity:1;}
+
+    .lootbox-top{
+      padding: 14px 14px 0 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .lootbox-title{font-weight:1000;letter-spacing:.2px}
+    .lootbox-close{
+      border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04);
+      color:#fff; border-radius:14px; padding:10px 12px; font-weight:1000; cursor:pointer;
+    }
+
+    .lootbox-stage{padding:14px;display:flex;gap:12px;align-items:center;position:relative;}
+    .lootbox-img{
+      width:110px;height:110px;border-radius:18px;object-fit:cover;border:1px solid rgba(255,255,255,.14);
+      background: radial-gradient(circle at 20% 20%, rgba(255,31,31,.20), rgba(255,255,255,.02));
+      box-shadow: 0 20px 70px rgba(0,0,0,.55);
+    }
+    .lootbox-info{min-width:0;}
+    .lootbox-name{font-weight:1000;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .lootbox-anime{margin-top:4px;color:rgba(255,255,255,.72);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .lootbox-note{margin-top:10px;color:rgba(255,255,255,.70);font-size:12px;}
+
+    .stars{margin-top:8px;font-size:14px;letter-spacing:1px}
+    .stars.common{color:var(--c-common)}
+    .stars.rare{color:var(--c-rare)}
+    .stars.epic{color:var(--c-epic)}
+    .stars.mythic{color:var(--c-mythic)}
+
+    /* partículas */
+    .spark{
+      position:absolute; inset:0; pointer-events:none;
+      background:
+        radial-gradient(2px 2px at 15% 30%, rgba(255,255,255,.55), transparent 55%),
+        radial-gradient(2px 2px at 35% 65%, rgba(255,255,255,.45), transparent 55%),
+        radial-gradient(2px 2px at 70% 25%, rgba(255,255,255,.50), transparent 55%),
+        radial-gradient(2px 2px at 82% 60%, rgba(255,255,255,.40), transparent 55%),
+        radial-gradient(2px 2px at 55% 40%, rgba(255,255,255,.45), transparent 55%);
+      opacity:.0;
+    }
+    .lootbox.on .spark{opacity:.55; animation: twinkle 1.2s ease infinite;}
+    @keyframes twinkle{0%,100%{opacity:.40}50%{opacity:.70}}
+
+    /* glow raridade */
+    .glow-common{box-shadow: 0 0 0 1px rgba(201,201,201,.14), 0 0 80px rgba(201,201,201,.06) inset;}
+    .glow-rare{box-shadow: 0 0 0 1px rgba(77,163,255,.18), 0 0 90px rgba(77,163,255,.10) inset;}
+    .glow-epic{box-shadow: 0 0 0 1px rgba(176,108,255,.18), 0 0 90px rgba(176,108,255,.10) inset;}
+    .glow-mythic{box-shadow: 0 0 0 1px rgba(255,204,51,.20), 0 0 100px rgba(255,204,51,.12) inset;}
+
+    @keyframes pop{
+      0%{transform: scale(.96);opacity:.0}
+      100%{transform: scale(1);opacity:1}
+    }
+    .pop{animation: pop 260ms ease 1;}
   </style>
 </head>
 <body>
@@ -1325,6 +1375,7 @@ def miniapp_collection():
   <div class="tabs">
     <button class="tab active" id="tab_all">📦 Coleção</button>
     <button class="tab" id="tab_fav">⭐ Favorito</button>
+    <button class="tab" id="tab_dado">🎲 Dado</button>
   </div>
 
   <div class="search" id="search_box">
@@ -1332,6 +1383,50 @@ def miniapp_collection():
   </div>
 
   <div class="status" id="status">Conectando...</div>
+
+  <!-- DADO VIEW -->
+  <div id="dado_view" style="display:none;margin-top:12px;">
+    <div class="dado-card">
+      <div class="dado-header">
+        <div>
+          <div class="dado-title">🎲 Gacha</div>
+          <div class="dado-sub">Role e escolha um anime. Se uma opção falhar, você pode tentar outra da mesma lista sem perder o dado.</div>
+        </div>
+        <div class="dado-pill">Dados: <span id="dado_balance">-</span> | Giros: <span id="dado_extra">-</span></div>
+      </div>
+
+      <div class="dado-actions">
+        <div class="roll-emoji" id="diceEmoji">🎲</div>
+        <button id="btn_roll" class="dado-btn">ROLAR</button>
+      </div>
+
+      <div class="anime-grid" id="anime_grid"></div>
+      <div style="margin-top:10px;color:rgba(255,255,255,.65);font-size:12px;line-height:1.35" id="dado_hint">
+        Dica: escolha uma das 6 opções. Se falhar, tente outra.
+      </div>
+    </div>
+  </div>
+
+  <!-- LOOTBOX -->
+  <div id="lootbox" class="lootbox">
+    <div class="lootbox-panel" id="lootbox_panel">
+      <div class="spark"></div>
+      <div class="lootbox-top">
+        <div class="lootbox-title">✨ REVELAÇÃO</div>
+        <button class="lootbox-close" id="lootbox_close">FECHAR</button>
+      </div>
+      <div class="lootbox-stage pop" id="lootbox_stage">
+        <img class="lootbox-img" id="lootbox_img" src="" alt="character"/>
+        <div class="lootbox-info">
+          <div class="lootbox-name" id="lootbox_name">...</div>
+          <div class="lootbox-anime" id="lootbox_anime">...</div>
+          <div class="stars" id="lootbox_stars">☆☆☆☆☆</div>
+          <div class="lootbox-note">✅ Entregue no PV do bot</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="sections"></div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1343,14 +1438,25 @@ def miniapp_collection():
     function escapeHtml(s){
       return String(s || "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     }
+
     async function apiGet(url){
       const res = await fetch(url, { headers: { "X-Telegram-Init-Data": INIT_DATA } });
       const data = await res.json().catch(()=> ({}));
       return { ok: res.ok, status: res.status, data };
     }
 
+    async function apiPost(url, body){
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "X-Telegram-Init-Data": INIT_DATA },
+        body: JSON.stringify(body || {})
+      });
+      const data = await res.json().catch(()=> ({}));
+      return { ok: res.ok, status: res.status, data };
+    }
+
     let allCards = [];
-    let mode = "all";
+    let mode = "all"; // all | fav | dado
     let favProfile = { fav_name: "", fav_image: "" };
 
     function setStatus(text, type){
@@ -1382,6 +1488,7 @@ def miniapp_collection():
       return pickFirstString(c, ["anime_title","anime","anime_name","obra","title","series","serie"]) || "Sem anime";
     }
     function getImageUrl(c){
+      // ✅ prioridade custom_image -> image
       return pickFirstString(c, ["custom_image","image","img","photo","picture","url"]) || "";
     }
     function getCharId(c){
@@ -1394,6 +1501,7 @@ def miniapp_collection():
     function cmpAZ(a, b){
       return String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
     }
+
     function buildGroups(list){
       const groups = new Map();
       for (const c of list){
@@ -1412,6 +1520,7 @@ def miniapp_collection():
     }
 
     function computeTierHint(c){
+      // visual só: heurística por quantidade (mais qty = mais brilho leve)
       const q = getQty(c);
       if (q >= 5) return "tier-epic";
       if (q >= 3) return "tier-rare";
@@ -1420,8 +1529,11 @@ def miniapp_collection():
 
     function renderCollection(){
       const q = (document.getElementById("q").value || "").trim().toLowerCase();
+      let filtered = allCards;
 
       if (mode === "fav"){
+        // ✅ Favoritos: mostra o personagem favoritado do user (fav_name/fav_image).
+        // Se não tiver, mostra "vazio" amigável.
         const root = document.getElementById("sections");
         root.innerHTML = "";
         const favName = (favProfile?.fav_name || "").trim();
@@ -1470,7 +1582,7 @@ def miniapp_collection():
         return;
       }
 
-      let filtered = allCards;
+      // modo coleção
       filtered = filtered.filter(c => {
         if (!q) return true;
         const name = getCharacterName(c).toLowerCase();
@@ -1574,404 +1686,218 @@ def miniapp_collection():
       }
     }
 
+    // =========================
+    // Tabs / Views
+    // =========================
     const tabAll = document.getElementById("tab_all");
     const tabFav = document.getElementById("tab_fav");
+    const tabDado = document.getElementById("tab_dado");
+
+    const sections = document.getElementById("sections");
+    const searchBox = document.getElementById("search_box");
+    const statusBox = document.getElementById("status");
+    const dadoView = document.getElementById("dado_view");
 
     function setActiveTab(which){
-      [tabAll, tabFav].forEach(t=>t.classList.remove("active"));
+      [tabAll, tabFav, tabDado].forEach(t=>t.classList.remove("active"));
       if(which==="all") tabAll.classList.add("active");
       if(which==="fav") tabFav.classList.add("active");
+      if(which==="dado") tabDado.classList.add("active");
     }
 
-    tabAll.onclick = () => { mode="all"; setActiveTab("all"); renderCollection(); };
-    tabFav.onclick = () => { mode="fav"; setActiveTab("fav"); renderCollection(); };
+    function showView(which){
+      mode = which;
+
+      if(which === "dado"){
+        if(sections) sections.style.display = "none";
+        if(searchBox) searchBox.style.display = "none";
+        if(statusBox) statusBox.style.display = "none";
+        if(dadoView) dadoView.style.display = "block";
+        setActiveTab("dado");
+        return;
+      }
+
+      if(dadoView) dadoView.style.display = "none";
+      if(sections) sections.style.display = "";
+      if(searchBox) searchBox.style.display = "";
+      if(statusBox) statusBox.style.display = "";
+
+      setActiveTab(which);
+      renderCollection();
+    }
+
+    tabAll.onclick = () => showView("all");
+    tabFav.onclick = () => showView("fav");
+    tabDado.onclick = () => showView("dado");
 
     document.getElementById("q").addEventListener("input", renderCollection);
-    loadCollection();
-  </script>
-</body>
-</html>
-"""
-    return HTMLResponse(content=html)
 
+    // =========================
+    // 🎲 DADO (Gacha)
+    // =========================
+    const animeGrid = document.getElementById("anime_grid");
+    const btnRoll = document.getElementById("btn_roll");
+    const dadoBalance = document.getElementById("dado_balance");
+    const dadoExtra = document.getElementById("dado_extra");
+    const diceEmoji = document.getElementById("diceEmoji");
 
-# =========================
-# UI: /dado — Dado separado (barra dado)
-# =========================
-@app.get("/dado", response_class=HTMLResponse)
-def miniapp_dado():
-    html = r"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <title>Dado</title>
-  <style>
-    :root{
-      --bg0:#07070c;
-      --bg1:#0c0b14;
-      --stroke: rgba(255,255,255,.10);
-      --muted: rgba(255,255,255,.70);
-      --a1:#ff2b4a;
-      --a3:#ff6a88;
+    const lootbox = document.getElementById("lootbox");
+    const lootboxClose = document.getElementById("lootbox_close");
+    const lootboxImg = document.getElementById("lootbox_img");
+    const lootboxName = document.getElementById("lootbox_name");
+    const lootboxAnime = document.getElementById("lootbox_anime");
+    const lootboxStars = document.getElementById("lootbox_stars");
+    const lootboxPanel = document.getElementById("lootbox_panel");
 
-      --c-common:#c9c9c9;
-      --c-rare:#4da3ff;
-      --c-epic:#b06cff;
-      --c-mythic:#ffcc33;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-      color:#fff;
-      padding:14px 14px 90px;
-      background:
-        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
-        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
-        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg0));
-    }
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
-    .title{display:flex;flex-direction:column;gap:3px;min-width:0;}
-    .title h1{margin:0;font-size:18px;font-weight:1000;letter-spacing:.2px;}
-    .title .sub{font-size:12px;color:rgba(255,255,255,.55);}
+    let currentRollId = null;
+    let currentOptions = [];
 
-    .pill{
-      font-weight:1000;font-size:12px;border:1px solid var(--stroke);
-      padding:10px 12px;border-radius:999px;background:rgba(255,255,255,.03);white-space:nowrap;
-      backdrop-filter: blur(10px);
-    }
-    .panel{
-      margin-top:14px;padding:14px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);border-radius:18px;
-      box-shadow: 0 18px 56px rgba(0,0,0,.45);
-      backdrop-filter: blur(10px);
-    }
-    .row{display:flex;gap:12px;align-items:center;margin-top:12px;}
-    .dice{
-      width:80px;height:80px;border-radius:18px;border:1px solid rgba(255,255,255,.14);
-      background:
-        radial-gradient(circle at 20% 20%, rgba(255,43,74,.20), rgba(255,255,255,.02));
-      display:flex;align-items:center;justify-content:center;
-      font-size:34px;font-weight:1000;
-      box-shadow: 0 18px 56px rgba(0,0,0,.35);
-      user-select:none;
-    }
-    @keyframes wobble{
-      0%{transform:rotate(0deg) scale(1)}
-      20%{transform:rotate(-10deg) scale(1.02)}
-      45%{transform:rotate(12deg) scale(1.03)}
-      70%{transform:rotate(-8deg) scale(1.02)}
-      100%{transform:rotate(0deg) scale(1)}
-    }
-    .wobble{animation:wobble 650ms cubic-bezier(.2,.85,.2,1) 1;}
-    .btn{
-      flex:1;border:0;border-radius:16px;padding:14px 14px;font-weight:1000;font-size:14px;color:#fff;
-      background: linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
-      box-shadow: 0 18px 56px rgba(255,43,74,.08);
-      cursor:pointer;
-    }
-    .btn:disabled{opacity:.55;cursor:not-allowed}
-
-    .grid{margin-top:14px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
-    .opt{
-      text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;
-      border-radius:16px;padding:10px;cursor:pointer;transition: transform .12s ease, border-color .12s ease;
-      position:relative;overflow:hidden;
-      backdrop-filter: blur(10px);
-    }
-    .opt:active{transform:scale(.98)}
-    .opt:hover{border-color: rgba(255,43,74,.22)}
-    .optTitle{margin-top:2px;font-weight:1000;font-size:12px;line-height:1.25;max-height:2.6em;overflow:hidden;}
-    .status{
-      margin-top:12px;
-      color:rgba(255,255,255,.75);
-      font-size:12px;
-      white-space:pre-wrap;
-    }
-
-    /* Lootbox */
-    .lootbox{
-      position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center;
-      background:
-        radial-gradient(circle at 50% 30%, rgba(255,43,74,.14), transparent 55%),
-        radial-gradient(circle at 60% 80%, rgba(176,108,255,.12), transparent 55%),
-        rgba(0,0,0,.84);
-      backdrop-filter: blur(12px);
-      padding: 18px;
-    }
-    .lootbox.on{display:flex;}
-    .box{
-      width:min(520px, 100%);
-      border-radius:22px;border:1px solid rgba(255,255,255,.14);
-      background: rgba(10,10,14,.88);
-      box-shadow: 0 30px 120px rgba(0,0,0,.75);
-      overflow:hidden;
-      position:relative;
-    }
-    .spark{
-      position:absolute; inset:0; pointer-events:none;
-      background:
-        radial-gradient(2px 2px at 15% 30%, rgba(255,255,255,.45), transparent 55%),
-        radial-gradient(2px 2px at 35% 65%, rgba(255,255,255,.35), transparent 55%),
-        radial-gradient(2px 2px at 70% 25%, rgba(255,255,255,.40), transparent 55%),
-        radial-gradient(2px 2px at 82% 60%, rgba(255,255,255,.30), transparent 55%),
-        radial-gradient(2px 2px at 55% 40%, rgba(255,255,255,.35), transparent 55%);
-      opacity:.55;
-      animation: twinkle 1.2s ease infinite;
-    }
-    @keyframes twinkle{0%,100%{opacity:.38}50%{opacity:.62}}
-
-    .boxTop{padding: 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
-    .boxTitle{font-weight:1000;letter-spacing:.2px}
-    .close{
-      border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04);
-      color:#fff; border-radius:14px; padding:10px 12px; font-weight:1000; cursor:pointer;
-    }
-    .boxBody{padding:14px;display:flex;gap:12px;align-items:center;}
-    .img{
-      width:110px;height:110px;border-radius:18px;object-fit:cover;border:1px solid rgba(255,255,255,.14);
-      box-shadow: 0 20px 70px rgba(0,0,0,.55);
-      background: radial-gradient(circle at 20% 20%, rgba(255,43,74,.18), rgba(255,255,255,.02));
-    }
-    .name{font-weight:1000;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .anime{margin-top:4px;color:rgba(255,255,255,.72);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .stars{margin-top:8px;font-size:14px;letter-spacing:1px}
-    .stars.common{color:var(--c-common)}
-    .stars.rare{color:var(--c-rare)}
-    .stars.epic{color:var(--c-epic)}
-    .stars.mythic{color:var(--c-mythic)}
-    .note{margin-top:10px;color:rgba(255,255,255,.70);font-size:12px;}
-
-    .glow-common{box-shadow: 0 0 0 1px rgba(201,201,201,.14), 0 0 80px rgba(201,201,201,.05) inset;}
-    .glow-rare{box-shadow: 0 0 0 1px rgba(77,163,255,.18), 0 0 90px rgba(77,163,255,.09) inset;}
-    .glow-epic{box-shadow: 0 0 0 1px rgba(176,108,255,.18), 0 0 90px rgba(176,108,255,.09) inset;}
-    .glow-mythic{box-shadow: 0 0 0 1px rgba(255,204,51,.20), 0 0 100px rgba(255,204,51,.11) inset;}
-  </style>
-</head>
-<body>
-  <div class="top">
-    <div class="title">
-      <h1>🎲 Dado</h1>
-      <div class="sub">Role e escolha. Nº de opções = valor do dado.</div>
-    </div>
-    <div class="pill">Dados: <span id="bal">-</span> | Giros: <span id="ext">-</span></div>
-  </div>
-
-  <div class="panel">
-    <div style="font-weight:1000">Gacha</div>
-    <div style="margin-top:6px;color:rgba(255,255,255,.70);font-size:12px;line-height:1.35">
-      Se uma opção falhar, tente outra da mesma rolagem sem perder o dado. Se der erro do servidor, o dado é devolvido.
-    </div>
-
-    <div class="row">
-      <div class="dice" id="dice">🎲</div>
-      <button class="btn" id="roll">ROLAR</button>
-    </div>
-
-    <div class="grid" id="opts"></div>
-    <div class="status" id="status"></div>
-  </div>
-
-  <div class="lootbox" id="loot">
-    <div class="box" id="box">
-      <div class="spark"></div>
-      <div class="boxTop">
-        <div class="boxTitle">✨ REVELAÇÃO</div>
-        <button class="close" id="close">FECHAR</button>
-      </div>
-      <div class="boxBody">
-        <img class="img" id="img" src="" alt="">
-        <div style="min-width:0">
-          <div class="name" id="nm">...</div>
-          <div class="anime" id="an">...</div>
-          <div class="stars common" id="st">☆☆☆☆☆</div>
-          <div class="note">✅ Entregue no PV do bot</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script>
-    const tg = window.Telegram?.WebApp;
-    if (tg) { tg.ready(); try { tg.expand(); } catch(e) {} }
-    const INIT_DATA = tg?.initData || "";
-
-    async function apiPost(url, body){
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type":"application/json", "X-Telegram-Init-Data": INIT_DATA },
-        body: JSON.stringify(body || {})
-      });
-      const data = await res.json().catch(()=> ({}));
-      return { ok: res.ok, status: res.status, data };
-    }
-
-    function esc(s){ return String(s||""); }
-
-    const bal = document.getElementById("bal");
-    const ext = document.getElementById("ext");
-    const dice = document.getElementById("dice");
-    const roll = document.getElementById("roll");
-    const opts = document.getElementById("opts");
-    const status = document.getElementById("status");
-
-    const loot = document.getElementById("loot");
-    const close = document.getElementById("close");
-    const img = document.getElementById("img");
-    const nm = document.getElementById("nm");
-    const an = document.getElementById("an");
-    const st = document.getElementById("st");
-    const box = document.getElementById("box");
-
-    let rollId = null;
-    let options = [];
-
-    close.onclick = () => loot.classList.remove("on");
-    loot.onclick = (e) => { if(e.target === loot) loot.classList.remove("on"); }
+    function closeLootbox(){ lootbox?.classList.remove("on"); }
+    lootboxClose?.addEventListener("click", closeLootbox);
+    lootbox?.addEventListener("click", (e) => { if(e.target === lootbox) closeLootbox(); });
 
     function starsString(n){
       n = Math.max(1, Math.min(5, Number(n||1)));
-      let s="";
-      for(let i=0;i<n;i++) s+="★";
-      for(let i=n;i<5;i++) s+="☆";
+      let s = "";
+      for(let i=0;i<n;i++) s += "★";
+      for(let i=n;i<5;i++) s += "☆";
       return s;
     }
-    function applyGlow(tier){
-      box.classList.remove("glow-common","glow-rare","glow-epic","glow-mythic");
-      st.classList.remove("common","rare","epic","mythic");
-      if(tier==="mythic"){ box.classList.add("glow-mythic"); st.classList.add("mythic"); }
-      else if(tier==="epic"){ box.classList.add("glow-epic"); st.classList.add("epic"); }
-      else if(tier==="rare"){ box.classList.add("glow-rare"); st.classList.add("rare"); }
-      else { box.classList.add("glow-common"); st.classList.add("common"); }
-    }
-    function openLoot(character){
-      img.src = character.image || "";
-      nm.textContent = character.name || "???";
-      an.textContent = character.anime || "Obra";
-      const rar = character.rarity || {stars:2, tier:"common"};
-      st.textContent = starsString(rar.stars || 2);
-      applyGlow(rar.tier || "common");
-      loot.classList.add("on");
+
+    function applyLootboxGlow(tier){
+      lootboxPanel.classList.remove("glow-common","glow-rare","glow-epic","glow-mythic");
+      if(tier==="mythic") lootboxPanel.classList.add("glow-mythic");
+      else if(tier==="epic") lootboxPanel.classList.add("glow-epic");
+      else if(tier==="rare") lootboxPanel.classList.add("glow-rare");
+      else lootboxPanel.classList.add("glow-common");
+
+      lootboxStars.classList.remove("common","rare","epic","mythic");
+      if(tier==="mythic") lootboxStars.classList.add("mythic");
+      else if(tier==="epic") lootboxStars.classList.add("epic");
+      else if(tier==="rare") lootboxStars.classList.add("rare");
+      else lootboxStars.classList.add("common");
     }
 
-    function animateDice(finalValue){
-      const faces = ["🎲","🎯","🎲","🎴","🎲","✨","🎲","🔥","🎲"];
-      let i=0;
-      dice.classList.add("wobble");
-      const t=setInterval(()=>{
-        dice.textContent = faces[i % faces.length];
-        i++;
-      }, 90);
-      setTimeout(()=>{
-        clearInterval(t);
-        dice.textContent = "🎲 " + String(finalValue||"");
-        dice.classList.remove("wobble");
-      }, 720);
+    function openLootbox(character){
+      if(!lootbox) return;
+      lootboxImg.src = character.image || "";
+      lootboxName.textContent = character.name || "???";
+      lootboxAnime.textContent = character.anime || "Obra";
+
+      const rar = character.rarity || {stars:2,tier:"common"};
+      lootboxStars.textContent = starsString(rar.stars || 2);
+      applyLootboxGlow(rar.tier || "common");
+
+      lootbox.classList.add("on");
+      // mini pop
+      const stage = document.getElementById("lootbox_stage");
+      stage.classList.remove("pop");
+      void stage.offsetWidth;
+      stage.classList.add("pop");
     }
 
-    function renderOptions(){
-      opts.innerHTML = "";
-      if(!options.length){
-        opts.innerHTML = `<div style="grid-column:1/-1;color:rgba(255,255,255,.68);font-size:12px;padding:8px;">
-          Role para aparecerem opções.
+    function renderAnimeButtons(){
+      animeGrid.innerHTML = "";
+      if(!currentOptions.length){
+        animeGrid.innerHTML = `<div style="grid-column:1/-1;color:rgba(255,255,255,.68);font-size:12px;padding:8px;">
+          Role para aparecerem 6 opções.
         </div>`;
         return;
       }
-      options.forEach(o=>{
-        const b=document.createElement("button");
-        b.className="opt";
-        b.innerHTML = `<div class="optTitle">🎴 ${esc(o.title || "Anime")}</div>`;
-        b.onclick = () => pick(o.id, b);
-        opts.appendChild(b);
-      });
+      for(const o of currentOptions){
+        const btn = document.createElement("button");
+        btn.className = "anime-card";
+        btn.innerHTML = `
+          <div class="anime-sheen"></div>
+          <div class="anime-title">🎴 ${escapeHtml(o.title || "Anime")}</div>
+        `;
+        btn.onclick = () => pickAnime(o.id, btn);
+        animeGrid.appendChild(btn);
+      }
     }
 
-    async function pick(animeId, btn){
-      if(!rollId) return;
-      btn.disabled = true; btn.style.opacity=.7;
-      status.textContent = "Processando...";
+    async function pickAnime(animeId, btn){
+      if(!currentRollId) return;
+      if(btn){ btn.disabled = true; btn.style.opacity = .7; }
 
-      // ✅ usa /dado/pick (barra dado)
-      const out = await apiPost(`/dado/pick?roll_id=${encodeURIComponent(rollId)}&anime_id=${encodeURIComponent(animeId)}`);
-      const data = out.data || {};
+      const out = await apiPost(`/api/dado/pick?roll_id=${encodeURIComponent(currentRollId)}&anime_id=${encodeURIComponent(animeId)}`);
+      const data = out.data || out;
 
-      if(!data.ok){
-        btn.disabled = false; btn.style.opacity=1;
-
-        if(data.error === "try_other"){
-          status.textContent = "⚠️ Essa opção falhou. Escolha outra da lista.";
-          try{ tg?.showAlert?.("⚠️ Essa opção falhou. Escolha outra da lista."); }catch(e){}
+      if(!(data && data.ok)){
+        if(btn){ btn.disabled = false; btn.style.opacity = 1; }
+        // ✅ se falhar, pode escolher outra
+        if(data && data.error === "try_other"){
+          try{ tg?.showAlert?.("⚠️ Essa opção falhou. Escolha outro anime da lista."); }catch(e){ alert("⚠️ Essa opção falhou. Escolha outro anime da lista."); }
           return;
         }
-        if(data.error === "expired_refunded"){
-          status.textContent = "⏳ Expirou. Seu dado foi devolvido. Role novamente.";
-          try{ tg?.showAlert?.("⏳ Expirou. Seu dado foi devolvido. Role novamente."); }catch(e){}
-          rollId = null; options=[]; renderOptions();
-          return;
-        }
-        if(data.error === "server_error_refunded"){
-          status.textContent = "❌ Erro do servidor. Seu dado foi devolvido. Role novamente.";
-          try{ tg?.showAlert?.("❌ Erro do servidor. Seu dado foi devolvido. Role novamente."); }catch(e){}
-          rollId = null; options=[]; renderOptions();
-          return;
-        }
-
-        status.textContent = "❌ Falha ao entregar. Tente outra opção ou role de novo.";
-        try{ tg?.showAlert?.("❌ Falha ao entregar. Tente outra opção ou role de novo."); }catch(e){}
+        try{ tg?.showAlert?.("⚠️ Falha ao entregar. Tente outra opção."); }catch(e){ alert("⚠️ Falha ao entregar. Tente outra opção."); }
         return;
       }
 
-      status.textContent = "✅ Entregue no PV!";
-      openLoot(data.character || {});
-      rollId = null;
-      options = [];
-      renderOptions();
+      openLootbox(data.character || {});
+      // ✅ trava o roll depois de sucesso
+      currentRollId = null;
+      currentOptions = [];
+      renderAnimeButtons();
     }
 
-    roll.onclick = async () => {
-      roll.disabled = true;
-      roll.textContent = "ROLANDO...";
-      status.textContent = "";
+    function animateDiceOnce(finalValue){
+      const faces = ["🎲","🎯","🎲","🎴","🎲","✨","🎲","🔥","🎲"];
+      let i = 0;
+      diceEmoji.classList.add("wobble");
+      const t = setInterval(() => {
+        diceEmoji.textContent = faces[i % faces.length];
+        i++;
+      }, 90);
 
-      // ✅ usa /dado/start (barra dado)
-      const out = await apiPost("/dado/start", {});
-      const data = out.data || {};
+      setTimeout(() => {
+        clearInterval(t);
+        diceEmoji.textContent = "🎲 " + String(finalValue || "");
+        diceEmoji.classList.remove("wobble");
+      }, 720);
+    }
 
-      if(!data.ok){
-        roll.disabled = false;
-        roll.textContent = "ROLAR";
-        if(data.error === "no_balance"){
-          status.textContent = data.msg || "Sem saldo.";
-          try{ tg?.showAlert?.(data.msg || "Sem saldo."); }catch(e){}
-          return;
+    btnRoll?.addEventListener("click", async () => {
+      btnRoll.disabled = true;
+      btnRoll.textContent = "ROLANDO...";
+      animeGrid.innerHTML = "";
+
+      const out = await apiPost("/api/dado/start");
+      const data = out.data || out;
+
+      if(!(data && data.ok)){
+        btnRoll.disabled = false;
+        btnRoll.textContent = "ROLAR";
+        if(data && data.error === "no_balance"){
+          try{ tg?.showAlert?.(data.msg || "Sem saldo"); }catch(e){ alert(data.msg || "Sem saldo"); }
+        } else {
+          try{ tg?.showAlert?.("Falha ao rolar agora. Tenta novamente."); }catch(e){ alert("Falha ao rolar agora. Tenta novamente."); }
         }
-        if(data.error === "server_error_refunded"){
-          status.textContent = "❌ Erro do servidor. Seu dado foi devolvido. Tente de novo.";
-          try{ tg?.showAlert?.("❌ Erro do servidor. Seu dado foi devolvido. Tente de novo."); }catch(e){}
-          return;
-        }
-        status.textContent = "❌ Falha ao rolar. Tente novamente.";
-        try{ tg?.showAlert?.("❌ Falha ao rolar. Tente novamente."); }catch(e){}
         return;
       }
 
-      rollId = data.roll_id;
-      bal.textContent = String(data.balance ?? "-");
-      ext.textContent = String(data.extra ?? "-");
+      currentRollId = data.roll_id;
+      dadoBalance.textContent = data.balance;
+      dadoExtra.textContent = data.extra;
 
-      animateDice(data.dice);
-      options = Array.isArray(data.options) ? data.options : [];
-      renderOptions();
+      animateDiceOnce(data.dice);
 
-      status.textContent = `🎯 Escolha 1 das ${options.length} opções (dado: ${data.dice}).`;
-      roll.disabled = false;
-      roll.textContent = "ROLAR DE NOVO";
-    };
+      currentOptions = Array.isArray(data.options) ? data.options.slice(0, 6) : [];
+      renderAnimeButtons();
 
-    renderOptions();
+      btnRoll.disabled = false;
+      btnRoll.textContent = "ROLAR DE NOVO";
+    });
+
+    // bootstrap
+    (async () => {
+      await loadCollection();
+      try{
+        const url = new URL(location.href);
+        if((url.searchParams.get("tab")||"") === "dado"){ showView("dado"); }
+      }catch(e){}
+      renderAnimeButtons();
+    })();
   </script>
 </body>
 </html>
@@ -1980,7 +1906,7 @@ def miniapp_dado():
 
 
 # =========================
-# UI: /shop — Loja
+# UI: /shop — Loja (Vender igual Coleção + Comprar)
 # =========================
 @app.get("/shop", response_class=HTMLResponse)
 def miniapp_shop():
@@ -1992,14 +1918,14 @@ def miniapp_shop():
   <title>Loja</title>
   <style>
     :root{{
-      --bg0:#07070c;
-      --bg1:#0c0b14;
-      --panel: rgba(255,255,255,.045);
-      --card:#12111b;
+      --bg:#07070b;
+      --panel: rgba(255,255,255,.04);
+      --card:#111118;
       --stroke: rgba(255,255,255,.10);
-      --muted: rgba(255,255,255,.70);
-      --muted2: rgba(255,255,255,.50);
-      --a1:#ff2b4a;
+      --muted: rgba(255,255,255,.68);
+      --muted2: rgba(255,255,255,.48);
+      --r1:#ff1f1f;
+      --r2:#b30000;
       --good: rgba(0,255,140,.18);
       --bad: rgba(255,60,60,.18);
     }}
@@ -2007,13 +1933,12 @@ def miniapp_shop():
     body{{
       margin:0;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(255,31,31,.22), transparent 55%),
+        radial-gradient(900px 600px at 85% 10%, rgba(179,0,0,.18), transparent 55%),
+        var(--bg);
       color:#fff;
       padding:14px 14px 90px;
-      background:
-        radial-gradient(900px 600px at 15% 0%, rgba(255,43,74,.14), transparent 60%),
-        radial-gradient(900px 600px at 85% 10%, rgba(176,108,255,.10), transparent 60%),
-        radial-gradient(900px 700px at 40% 110%, rgba(77,163,255,.09), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg0));
     }}
     .top{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}}
     .title{{display:flex;flex-direction:column;gap:3px;}}
@@ -2021,53 +1946,49 @@ def miniapp_shop():
     .title .sub{{font-size:12px;color:var(--muted2);}}
     .stats{{
       display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);border-radius:999px;white-space:nowrap;
-      box-shadow: 0 12px 38px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
+      background:rgba(255,255,255,.04);border-radius:999px;white-space:nowrap;
     }}
     .stat{{display:flex;align-items:center;gap:6px;font-weight:950;font-size:13px;}}
     .dot{{width:1px;height:16px;background:var(--stroke);}}
 
     .tabs{{
       display:flex;gap:10px;margin:14px 0 12px;padding:8px;border:1px solid var(--stroke);
-      border-radius:999px;background:rgba(255,255,255,.035);
-      box-shadow: 0 14px 46px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
+      border-radius:999px;background:rgba(255,255,255,.04);
     }}
     .tab{{
       flex:1;text-align:center;padding:10px 12px;border-radius:999px;font-weight:950;font-size:14px;color:var(--muted);
       background:transparent;border:0;cursor:pointer;
     }}
     .tab.active{{
-      color:#fff;background:linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
-      box-shadow:0 14px 44px rgba(255,43,74,.10);
+      color:#fff;background:linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));
+      box-shadow:0 12px 40px rgba(255,31,31,.12);
     }}
 
-    .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;backdrop-filter: blur(10px);}}
+    .status{{margin:10px 0;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;white-space:pre-wrap;}}
     .status.ok{{border-color: var(--good);}}
     .status.err{{border-color: var(--bad);color: rgba(255,120,120,.95);}}
 
     .search{{display:flex;gap:10px;align-items:center;margin:6px 0 14px;}}
-    .search input{{width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);color:#fff;outline:none;font-size:14px;backdrop-filter: blur(10px);}}
+    .search input{{width:100%;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);color:#fff;outline:none;font-size:14px;}}
     .search input::placeholder{{color:rgba(255,255,255,.35)}}
 
-    .section{{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);backdrop-filter: blur(10px);}}
+    .section{{margin-top:12px;padding:10px 10px 6px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
     .section-title{{font-weight:950;font-size:14px;color:rgba(255,255,255,.92);margin:2px 4px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}}
     .section-count{{font-size:12px;color:rgba(255,255,255,.55);font-weight:900;}}
 
     .grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}}
-    .card{{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);background:var(--card);min-height:220px;box-shadow: 0 18px 56px rgba(0,0,0,.45);}}
+    .card{{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--stroke);background:var(--card);min-height:220px;}}
     .card img{{width:100%;height:220px;object-fit:cover;display:block;}}
-    .overlay{{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.84));}}
+    .overlay{{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.82));}}
     .name{{font-weight:1000;font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
     .meta{{margin-top:3px;font-size:12px;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
-    .pill{{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;backdrop-filter: blur(8px);}}
+    .pill{{position:absolute;top:10px;left:10px;padding:6px 10px;background:rgba(0,0,0,.50);border:1px solid rgba(255,255,255,.14);border-radius:999px;font-weight:1000;font-size:12px;}}
     .actions{{display:flex;gap:10px;margin-top:10px;}}
-    .btn{{flex:1;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:1000;font-size:14px;cursor:pointer;backdrop-filter: blur(10px);}}
-    .btn.primary{{background:linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));border:0;}}
+    .btn{{flex:1;padding:12px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:#fff;font-weight:1000;font-size:14px;cursor:pointer;}}
+    .btn.primary{{background:linear-gradient(90deg, rgba(255,31,31,.95), rgba(179,0,0,.95));border:0;}}
     .btn:disabled{{opacity:.55;cursor:not-allowed;}}
 
-    .buyBox{{margin-top:10px;padding:12px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);backdrop-filter: blur(10px);box-shadow: 0 18px 56px rgba(0,0,0,.45);}}
+    .buyBox{{margin-top:10px;padding:12px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);}}
     .buyBox h2{{margin:0 0 8px;font-size:16px;font-weight:1000;}}
     .buyBox p{{margin:0;color:rgba(255,255,255,.75);font-size:13px;line-height:1.35;}}
   </style>
@@ -2325,3 +2246,19 @@ def miniapp_shop():
 </html>
 """
     return HTMLResponse(content=html)
+
+
+# ==========================================================
+# ADMIN DASHBOARD API (read-only)
+# ==========================================================
+@app.get("/api/admin/stats")
+def api_admin_stats(x_telegram_init_data: str = Header(default="")):
+    verify_telegram_init_data(x_telegram_init_data)
+    import database as db
+    try:
+        fn = getattr(db, "get_global_stats", None)
+        if callable(fn):
+            return {"ok": True, "stats": fn()}
+    except Exception:
+        pass
+    return {"ok": True, "stats": {"users": 0, "coins": 0, "chars": 0, "market": 0}}
