@@ -3503,7 +3503,7 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎡 <b>Giros:</b> <code>{giros}</code>\n\n"
         "🕒 Próxima recarga do dado:\n"
         f"• <b>{nxt_txt}</b> (horário local)"
-    )
+        )
             return
 
         try:
@@ -5975,6 +5975,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
