@@ -315,6 +315,9 @@ def init_db():
         """
     )
 
+    # MIGRAÇÃO: instâncias antigas podem não ter created_at
+    _run("ALTER TABLE trades ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT);")
+
     # BATALHAS (tava no antigo)
     _run(
         """
