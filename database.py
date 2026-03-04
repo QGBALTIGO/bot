@@ -163,7 +163,12 @@ def _ensure_achievements_table():
     _run("CREATE INDEX IF NOT EXISTS user_achievements_user_idx ON user_achievements (user_id);")
 
 
-def _try_create_indexes():
+def \1
+    try:
+        create_engine_tables()
+    except Exception as e:
+        print('⚠️ create_engine_tables falhou (ok continuar):', e)
+:
     try:
         _dedupe_nicks_before_unique_index()
     except Exception as e:
@@ -1228,35 +1233,210 @@ def list_collection_cards(user_id: int, limit: int = 200):
     ]
 
 
-# ==========================================================
-# BALTIGO ENGINE V4 TABLES
-# ==========================================================
+# ==================================================
+# BALTIGO ENGINE — MARKET / EVENTS / SECURITY / STATS
+# ==================================================
+def _now_ts() -> int:
+    return int(time.time())
 
 def create_engine_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS market_listings (
-        listing_id SERIAL PRIMARY KEY,
-        seller_id BIGINT,
-        character TEXT,
-        price INT,
-        created_at BIGINT
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS market_listings (
+            listing_id SERIAL PRIMARY KEY,
+            seller_id BIGINT NOT NULL,
+            character_id INT NOT NULL,
+            character_name TEXT NOT NULL,
+            image TEXT,
+            anime_title TEXT,
+            price INT NOT NULL,
+            created_at BIGINT NOT NULL
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS market_listings_price_idx ON market_listings (price);")
+    _run("CREATE INDEX IF NOT EXISTS market_listings_seller_idx ON market_listings (seller_id);")
 
-    _run("""
-    CREATE TABLE IF NOT EXISTS events (
-        event_id SERIAL PRIMARY KEY,
-        event_name TEXT,
-        start_time BIGINT,
-        end_time BIGINT,
-        active BOOLEAN
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            event_id SERIAL PRIMARY KEY,
+            event_name TEXT NOT NULL,
+            start_time BIGINT NOT NULL,
+            end_time BIGINT NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_by BIGINT,
+            created_at BIGINT NOT NULL
+        );
+        """
+    )
+    _run("CREATE INDEX IF NOT EXISTS events_active_idx ON events (active);")
 
-    _run("""
-    CREATE TABLE IF NOT EXISTS security_flags (
-        user_id BIGINT PRIMARY KEY,
-        risk_score INT,
-        updated_at BIGINT
-    );
-    """)
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS security_flags (
+            user_id BIGINT PRIMARY KEY,
+            risk_score INT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0,
+            reason TEXT
+        );
+        """
+    )
+
+def get_global_stats() -> dict:
+    users = _run("SELECT COUNT(*)::int AS c FROM users", fetch="one") or {}
+    coins = _run("SELECT COALESCE(SUM(coins),0)::bigint AS s FROM users", fetch="one") or {}
+    chars = _run("SELECT COALESCE(SUM(quantity),0)::bigint AS s FROM user_collection", fetch="one") or {}
+    market = _run("SELECT COUNT(*)::int AS c FROM market_listings", fetch="one") or {}
+    return {
+        "users": int(users.get("c") or 0),
+        "coins": int(coins.get("s") or 0),
+        "chars": int(chars.get("s") or 0),
+        "market": int(market.get("c") or 0),
+    }
+
+def get_active_event():
+    return _run(
+        """
+        SELECT event_id, event_name, start_time, end_time
+        FROM events
+        WHERE active=TRUE AND start_time <= %s AND end_time >= %s
+        ORDER BY event_id DESC
+        LIMIT 1
+        """,
+        (_now_ts(), _now_ts()),
+        fetch="one",
+    )
+
+def start_event(event_name: str, duration_hours: int, created_by: int = 0):
+    now = _now_ts()
+    end = now + int(duration_hours) * 3600
+    _run(
+        """
+        INSERT INTO events (event_name, start_time, end_time, active, created_by, created_at)
+        VALUES (%s, %s, %s, TRUE, %s, %s)
+        """,
+        (str(event_name), int(now), int(end), int(created_by or 0), int(now)),
+    )
+
+def stop_all_events():
+    _run("UPDATE events SET active=FALSE WHERE active=TRUE")
+
+def market_create_listing(user_id: int, character_id: int, price: int) -> tuple[bool, str]:
+    user_id = int(user_id); character_id = int(character_id); price = int(price)
+    if price <= 0:
+        return False, "preço inválido"
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT character_id, character_name, COALESCE(custom_image,image) AS img, anime_title, quantity
+                    FROM user_collection
+                    WHERE user_id=%s AND character_id=%s
+                    FOR UPDATE
+                    """,
+                    (user_id, character_id),
+                )
+                it = cur.fetchone()
+                if not it:
+                    conn.rollback()
+                    return False, "você não tem esse personagem"
+                qty = int(it.get("quantity") or 0)
+                if qty <= 0:
+                    conn.rollback()
+                    return False, "quantidade inválida"
+                if qty == 1:
+                    cur.execute("DELETE FROM user_collection WHERE user_id=%s AND character_id=%s", (user_id, character_id))
+                else:
+                    cur.execute("UPDATE user_collection SET quantity=quantity-1 WHERE user_id=%s AND character_id=%s", (user_id, character_id))
+
+                cur.execute(
+                    """
+                    INSERT INTO market_listings (seller_id, character_id, character_name, image, anime_title, price, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING listing_id
+                    """,
+                    (user_id, character_id, str(it.get("character_name") or "Personagem"), str(it.get("img") or ""), str(it.get("anime_title") or ""), price, _now_ts()),
+                )
+                lid = cur.fetchone()["listing_id"]
+                conn.commit()
+                return True, f"listing criado (ID {lid})"
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                return False, f"erro: {e}"
+
+def market_list(page: int = 1, per_page: int = 10):
+    page = max(1, int(page)); per_page = max(1, min(20, int(per_page)))
+    off = (page-1)*per_page
+    rows = _run(
+        """
+        SELECT listing_id, seller_id, character_id, character_name, image, anime_title, price, created_at
+        FROM market_listings
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        (per_page, off),
+        fetch="all",
+    ) or []
+    return rows
+
+def market_buy(buyer_id: int, listing_id: int) -> tuple[bool, str]:
+    buyer_id = int(buyer_id); listing_id = int(listing_id)
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT listing_id, seller_id, character_id, character_name, image, anime_title, price
+                    FROM market_listings
+                    WHERE listing_id=%s
+                    FOR UPDATE
+                    """,
+                    (listing_id,),
+                )
+                lst = cur.fetchone()
+                if not lst:
+                    conn.rollback()
+                    return False, "listing não existe"
+                seller_id = int(lst["seller_id"]); price = int(lst["price"])
+                if seller_id == buyer_id:
+                    conn.rollback()
+                    return False, "você não pode comprar sua própria venda"
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET coins = COALESCE(coins,0) - %s
+                    WHERE user_id=%s AND COALESCE(coins,0) >= %s
+                    RETURNING user_id
+                    """,
+                    (price, buyer_id, price),
+                )
+                if cur.fetchone() is None:
+                    conn.rollback()
+                    return False, "coins insuficientes"
+
+                cur.execute("UPDATE users SET coins = COALESCE(coins,0) + %s WHERE user_id=%s", (price, seller_id))
+
+                cur.execute(
+                    """
+                    INSERT INTO user_collection (user_id, character_id, character_name, image, anime_title, quantity)
+                    VALUES (%s, %s, %s, %s, %s, 1)
+                    ON CONFLICT (user_id, character_id) DO UPDATE
+                    SET quantity = user_collection.quantity + 1,
+                        character_name = COALESCE(EXCLUDED.character_name, user_collection.character_name),
+                        image = COALESCE(EXCLUDED.image, user_collection.image),
+                        anime_title = COALESCE(EXCLUDED.anime_title, user_collection.anime_title)
+                    """,
+                    (buyer_id, int(lst["character_id"]), str(lst["character_name"]), str(lst.get("image") or ""), str(lst.get("anime_title") or "")),
+                )
+
+                cur.execute("DELETE FROM market_listings WHERE listing_id=%s", (listing_id,))
+                conn.commit()
+                return True, "compra concluída"
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                return False, f"erro: {e}"
