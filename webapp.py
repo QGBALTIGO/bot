@@ -5,6 +5,22 @@
 # 3) Quantidade de opções = valor do dado (1..6)
 # 4) Se der erro no fluxo do dado, devolve o dado (refund) de forma segura
 
+
+# =========================
+# TITAN DEV MAPA (ONDE MEXER)
+# =========================
+# ✅ Visual (cores/gradiente): procure por UI_CONFIG
+# ✅ Dado: _dado_start_impl / _dado_pick_impl
+# ✅ Garantia TOP500: database.characters_pool + pool_random_* (somente pool)
+# ✅ Rate limit: _rate_limit
+# =========================
+
+UI_CONFIG = {
+    "GRADIENT": "linear-gradient(135deg, #0f172a 0%, #111827 40%, #0b1220 100%)",
+    "ACCENT": "#7c3aed",
+    "CARD_BG": "rgba(255,255,255,0.06)",
+}
+
 import os
 import json
 import time
@@ -493,31 +509,11 @@ async def _ensure_top_cache_fresh(db):
 
 
 def _pick_random_animes(db, n: int) -> List[dict]:
-    """Retorna N opções de anime do characters_pool (TOP500)."""
     try:
-        fn = getattr(db, "pool_random_animes", None)
-        rows = fn(int(n)) if callable(fn) else []
+        fn = getattr(db, "get_top_anime_list", None)
+        all_items = fn(500) if callable(fn) else []
     except Exception:
-        rows = []
-
-    rows = rows or []
-    if not rows:
-        return []
-
-    # Mantém formato esperado pelo front: [{id:int, title:str}]
-    out: List[dict] = []
-    seen: set = set()
-    i = 1
-    for r in rows:
-        title = _safe_str(r.get("anime") if isinstance(r, dict) else "")
-        if not title or title in seen:
-            continue
-        out.append({"id": int(i), "title": title})
-        seen.add(title)
-        i += 1
-        if len(out) >= int(n):
-            break
-    return out
+        all_items = []
 
     all_items = all_items or []
     if not all_items:
@@ -907,7 +903,14 @@ def api_buy_giro(x_telegram_init_data: str = Header(default="")):
 # =========================
 # API: DADO (core impl)
 # =========================
+
 async def _dado_start_impl(x_telegram_init_data: str):
+    """TITAN DADO START
+    - Consome 1 dado/extra
+    - Rola 1..6
+    - Gera N opções (N = dado) de ANIMES vindos EXCLUSIVAMENTE do characters_pool (TOP500)
+    - Guarda as opções no roll (JSON)
+    """
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
@@ -932,37 +935,38 @@ async def _dado_start_impl(x_telegram_init_data: str):
             status_code=200,
         )
 
-    # Consome 1 dado/extra
     consumed = _consume_one_die(db, user_id)
     if not consumed:
         return JSONResponse({"ok": False, "error": "consume_failed"}, status_code=200)
 
-    # Se qualquer coisa falhar daqui pra frente, devolve o dado
+    # Se falhar daqui pra frente, devolve o dado
     try:
-        try:
-            await _ensure_top_cache_fresh(db)
-        except Exception:
-            pass
-
         dice_value = random.SystemRandom().randint(1, 6)
-
-        # ✅ N opções = valor do dado
         n = max(1, min(6, int(dice_value)))
 
-        options = _pick_random_animes(db, n)
-        if not options:
+        # ✅ opções vêm do POOL TOP500 (animes distintos)
+        try:
+            options_names = db.pool_random_animes(n)
+        except Exception:
+            options_names = []
+
+        if not options_names:
             _refund_one_die(db, user_id)
-            return JSONResponse({"ok": False, "error": "no_anime_cache"}, status_code=200)
+            return JSONResponse({"ok": False, "error": "pool_empty"}, status_code=200)
+
+        # Formato de opção: {id: idx, title: anime}
+        options = [{"id": i, "title": t} for i, t in enumerate(options_names)]
 
         fn = getattr(db, "create_dice_roll", None)
         if not callable(fn):
             _refund_one_die(db, user_id)
             return JSONResponse({"ok": False, "error": "db_missing_roll"}, status_code=200)
 
+        payload_json = json.dumps(options, ensure_ascii=False)
         try:
-            roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False), "pending", int(time.time()))
+            roll_id = fn(user_id, int(dice_value), payload_json, "pending", int(time.time()))
         except TypeError:
-            roll_id = fn(user_id, int(dice_value), json.dumps(options, ensure_ascii=False))
+            roll_id = fn(user_id, int(dice_value), payload_json)
 
         balance2 = _refresh_user_dado_balance(db, user_id)
         extra2 = _refresh_user_giros(db, user_id)
@@ -978,12 +982,16 @@ async def _dado_start_impl(x_telegram_init_data: str):
             }
         )
     except Exception:
-        # ✅ qualquer erro inesperado = devolve o dado
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "server_error_refunded"}, status_code=200)
 
-
+async def _dado_pick_impl
 async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str):
+    """TITAN DADO PICK
+    - anime_id aqui é o INDEX da opção (0..N-1)
+    - Sorteia personagem SOMENTE do TOP500 (characters_pool), filtrando pelo anime escolhido
+    - Se falhar, não consome novamente (o dado já foi consumido no start); apenas permite tentar outra opção.
+    """
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
     user_id = int(user["id"])
@@ -1005,11 +1013,9 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
     created_at = int(roll.get("created_at") or 0)
     dice_value = _safe_int(roll.get("dice_value") or 1, 1)
 
-    # ✅ se já foi resolvido, não mexe
     if status == "resolved":
         return JSONResponse({"ok": False, "error": "used"}, status_code=200)
 
-    # ✅ expirou = devolve dado
     if created_at and int(time.time()) - created_at > DADO_WEB_EXPIRE_SECONDS:
         try:
             fn = getattr(db, "set_dice_roll_status", None)
@@ -1020,7 +1026,6 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         _refund_one_die(db, user_id)
         return JSONResponse({"ok": False, "error": "expired_refunded"}, status_code=200)
 
-    # trava o roll para evitar dupla execução
     if status == "pending":
         try:
             fn = getattr(db, "try_set_dice_roll_status", None)
@@ -1031,92 +1036,15 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
 
-    # ✅ se der erro inesperado, devolve dado
+    # opções gravadas no roll
+    options_json = roll.get("options_json") or roll.get("options") or roll.get("choices_json") or ""
     try:
-        # ✅ TOP500: valida escolha com base nas opções do próprio roll
-        try:
-            opts = json.loads(str(roll.get("options_json") or "[]"))
-        except Exception:
-            opts = []
-
-        chosen_title = ""
-        for o in (opts or []):
-            try:
-                if int(o.get("id") or 0) == int(anime_id):
-                    chosen_title = _safe_str(o.get("title"))
-                    break
-            except Exception:
-                continue
-
-        if not chosen_title:
-            # escolha inválida (não estava nas opções)
-            try:
-                fn = getattr(db, "set_dice_roll_status", None)
-                if callable(fn):
-                    fn(int(roll_id), "pending")
-            except Exception:
-                pass
-            return JSONResponse({"ok": False, "error": "invalid_choice"}, status_code=200)
-
-        # pega 1 personagem aleatório do pool, filtrando por anime escolhido
-        fn_pool = getattr(db, "pool_random_character", None)
-        info = fn_pool(chosen_title) if callable(fn_pool) else None
-        if not info:
-            # não devolve dado aqui, porque a regra é: "tente outra opção da mesma rolagem"
-            try:
-                fn = getattr(db, "set_dice_roll_status", None)
-                if callable(fn):
-                    fn(int(roll_id), "pending")
-            except Exception:
-                pass
-            return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
-
-        # marca como resolvido
-        try:
-            fn = getattr(db, "set_dice_roll_status", None)
-            if callable(fn):
-                fn(int(roll_id), "resolved")
-        except Exception:
-            pass
-
-        char_id = int(info.get("character_id") or 0)
-        name = _safe_str(info.get("name"))
-        anime_title = _safe_str(info.get("anime")) or "Obra"
-
-        gimg = _get_custom_global_image_if_any(db, char_id)
-        image = gimg or (f"https://img.anili.st/character/{char_id}" if char_id else "") or DADO_FALLBACK_IMAGE
-
-        # adiciona na coleção
-        try:
-            fn_add = getattr(db, "add_character_to_collection", None)
-            if callable(fn_add):
-                try:
-                    fn_add(user_id, char_id, name, image, anime_title=anime_title)
-                except TypeError:
-                    fn_add(user_id, char_id, name, image)
-        except Exception:
-            pass
-
-        # manda PV
-        await _tg_send_photo(
-            chat_id=user_id,
-            photo=image,
-            caption=(
-                "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-                f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-                f"<i>{anime_title}</i>\n\n"
-                "📦 <b>Adicionado à sua coleção!</b>"
-            ),
-        )
-
-        rarity = _choose_rarity(dice_value=dice_value, char_id=char_id)
-        return JSONResponse(
-            {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image, "rarity": rarity}},
-            status_code=200,
-        )
-
+        options = json.loads(options_json) if options_json else []
     except Exception:
-        # ✅ falhou hard = devolve dado e invalida esse roll
+        options = []
+
+    if not isinstance(options, list) or not options:
+        # inválido -> devolve dado e encerra
         try:
             fn = getattr(db, "set_dice_roll_status", None)
             if callable(fn):
@@ -1124,8 +1052,88 @@ async def _dado_pick_impl(anime_id: int, roll_id: int, x_telegram_init_data: str
         except Exception:
             pass
         _refund_one_die(db, user_id)
-        return JSONResponse({"ok": False, "error": "server_error_refunded"}, status_code=200)
+        return JSONResponse({"ok": False, "error": "bad_roll_refunded"}, status_code=200)
 
+    try:
+        idx = int(anime_id)
+    except Exception:
+        idx = -1
+
+    if idx < 0 or idx >= len(options):
+        # permite tentar outra opção
+        try:
+            fn = getattr(db, "set_dice_roll_status", None)
+            if callable(fn):
+                fn(int(roll_id), "pending")
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "error": "bad_option"}, status_code=200)
+
+    chosen = options[idx] or {}
+    anime_title = (chosen.get("title") if isinstance(chosen, dict) else str(chosen)) or ""
+
+    try:
+        info = db.pool_random_character(anime=anime_title)
+    except Exception:
+        info = None
+
+    if not info:
+        # deixa tentar outra opção
+        try:
+            fn = getattr(db, "set_dice_roll_status", None)
+            if callable(fn):
+                fn(int(roll_id), "pending")
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "error": "try_other"}, status_code=200)
+
+    # resolve imagem (setfoto > fallback)
+    char_id = int(info["id"])
+    name = info["name"]
+    try:
+        image = db.resolve_character_image(char_id)
+    except Exception:
+        image = DADO_FALLBACK_IMAGE
+
+    # adiciona na coleção (garantia TOP500: somente ids do pool)
+    try:
+        fn_add = getattr(db, "add_character_to_collection", None)
+        if callable(fn_add):
+            try:
+                fn_add(user_id, char_id, name, image, anime_title=anime_title)
+            except TypeError:
+                fn_add(user_id, char_id, name, image)
+    except Exception:
+        pass
+
+    # marca como resolvido
+    try:
+        fn = getattr(db, "set_dice_roll_status", None)
+        if callable(fn):
+            fn(int(roll_id), "resolved")
+    except Exception:
+        pass
+
+    # manda PV
+    await _tg_send_photo(
+        chat_id=user_id,
+        photo=image,
+        caption=(
+            "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+            f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+            f"<i>{anime_title}</i>\n\n"
+            "📦 <b>Adicionado à sua coleção!</b>"
+        ),
+    )
+
+    rarity = _choose_rarity(dice_value=dice_value, char_id=char_id)
+    return JSONResponse(
+        {"ok": True, "character": {"id": char_id, "name": name, "anime": anime_title, "image": image, "rarity": rarity}},
+        status_code=200,
+    )
+
+# =========================
+# API: DADO (rotas antigas /api/dado/*)
 
 # =========================
 # API: DADO (rotas antigas /api/dado/*)
