@@ -129,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📢 <b>Canal oficial obrigatório</b>\n\n"
                 "Para usar o <b>Source Baltigo</b>, você precisa entrar no nosso canal oficial.\n"
                 "Isso ajuda a manter a tripulação informada e o acesso organizado.\n\n"
-                "✅ <b>Entre no canal</b> e depois volte aqui e envie <b>/start</b> novamente."
+                "✅ <b>Entre no canal</b> e depois volte aqui novamente."
             )
 
             kb = InlineKeyboardMarkup([
