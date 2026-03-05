@@ -5,9 +5,9 @@ from database import create_or_get_user
 
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
 
-BASE_URL = os.getenv("URL_BASE", "").rstrip("/")
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
-    raise RuntimeError("URL_BASE não configurado no Railway.")
+    raise RuntimeError("BASE_URL não configurado no Railway.")
 
 def _map_tg_lang(tg_lang: str | None) -> str:
     tg_lang = (tg_lang or "").lower()
@@ -34,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ Ao continuar, você confirma que concorda com essas regras."
     )
 
-    terms_url = f"{URL_BASE}/terms?uid={user_id}&lang={tg_lang}"
+    terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
 
     keyboard = [
         [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))],
