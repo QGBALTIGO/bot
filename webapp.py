@@ -1741,6 +1741,108 @@ def main():
     print("Removidos (lixo):", removed)
     print("Sem match AniList:", not_found)
 
+# ===============================
+# MINIAPP - CATÁLOGO DE MANGÁS
+# ===============================
+
+from fastapi.responses import HTMLResponse
+import json
+import os
+
+MANGA_PATH = "data/catalogo_mangas_enriquecido.json"
+
+def _load_mangas():
+    if not os.path.exists(MANGA_PATH):
+        print("[mangas] arquivo não encontrado:", MANGA_PATH)
+        return []
+
+    with open(MANGA_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data.get("records", [])
+
+
+@app.get("/mangas", response_class=HTMLResponse)
+def mangas_page():
+
+    mangas = _load_mangas()
+
+    cards = ""
+
+    for m in mangas:
+
+        titulo = m.get("title_raw", "Mangá")
+        capa = ""
+        link = m.get("post_url", "#")
+
+        if m.get("anilist"):
+            capa = m["anilist"].get("cover", "")
+
+        cards += f"""
+        <a class="card" href="{link}" target="_blank">
+            <img src="{capa}" />
+            <div class="title">{titulo}</div>
+        </a>
+        """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>Catálogo de Mangás</title>
+
+        <style>
+
+        body {{
+            background:#0b1220;
+            font-family:Arial;
+            color:white;
+            margin:0;
+            padding:20px;
+        }}
+
+        h1 {{
+            text-align:center;
+        }}
+
+        .grid {{
+            display:grid;
+            grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+            gap:20px;
+        }}
+
+        .card {{
+            text-decoration:none;
+            color:white;
+        }}
+
+        .card img {{
+            width:100%;
+            border-radius:12px;
+        }}
+
+        .title {{
+            font-size:14px;
+            margin-top:6px;
+        }}
+
+        </style>
+    </head>
+
+    <body>
+
+    <h1>📚 Catálogo de Mangás</h1>
+
+    <div class="grid">
+    {cards}
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(html)
 
 if __name__ == "__main__":
     from datetime import timezone  # usado no final
