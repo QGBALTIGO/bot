@@ -32,30 +32,6 @@ def pick_lang(lang: str | None) -> str:
     if lang.startswith("en"):
         return "en"
     return "en"
-
-        def _send_telegram_message(user_id: int, text: str) -> bool:
-    """
-    Envia mensagem via Bot API.
-    Retorna True se deu OK, False se falhou.
-    """
-    if not BOT_TOKEN:
-        return False
-
-    try:
-        import httpx
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": user_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        with httpx.Client(timeout=8.0) as client:
-            r = client.post(url, json=payload)
-            data = r.json()
-        return bool(data.get("ok"))
-    except Exception:
-        return False
         
 TEXTS = {
     "pt": {
