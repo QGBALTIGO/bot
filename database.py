@@ -1332,7 +1332,7 @@ def get_user_stats(user_id: int) -> dict:
         "collection_total_qty": int(count_total_qty(user_id)),
         "dice": get_dice_roll_counts(user_id),
         "trades": get_trade_counts(user_id),
-    )
+    }
 
 
 # ================================
