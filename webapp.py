@@ -1431,3 +1431,317 @@ def catalogo_page():
         .replace("__CSUB__", CATALOG_SUBTITLE)
     )
     return HTMLResponse(html)
+
+
+# =========================
+# CONFIG
+# =========================
+
+INOUT_PATH = os.getenv("JSON_PATH", "data/catalogo_mangas_enriquecido.json").strip()
+
+ANILIST_URL = "https://graphql.anilist.co"
+
+# concorrência baixa pra não tomar rate limit
+CONCURRENCY = int(os.getenv("CONCURRENCY", "2"))
+MIN_DELAY_MS = int(os.getenv("MIN_DELAY_MS", "250"))
+
+# tentativas por item (ex: título limpo + título bruto)
+MAX_ATTEMPTS_PER_ITEM = 3
+
+# critérios de limpeza do catálogo
+BLACKLIST_TITLE = [
+    "promo", "parceria", "aviso", "comunicado", "regras", "pix", "doação", "doacao", "sorteio",
+    "link", "grupo", "canal", "atualização", "atualizacao", "tutorial", "como usar",
+    "fix", "bug", "moderação", "moderacao", "support", "suporte", "vote", "enquete",
+    "boas-vindas", "bem-vindo", "bem vindo", "admin"
+]
+
+BLACKLIST_TEXT = [
+    "regras do canal", "comunicado", "aviso", "parceria", "promoção", "promoçao",
+    "sorteio", "doação", "doacao", "pix", "apoie", "patreon", "vaquinha",
+    "tutorial", "como baixar", "como ler", "atualização do canal", "atualizacao do canal",
+    "novo canal", "migração", "migracao", "grupo oficial", "nosso grupo", "contato"
+]
+
+POSITIVE_HINTS = [
+    "gênero", "genero", "capítulo", "capitulo", "vol.", "volume", "sinopse", "💬",
+    "#", "mangá", "manga", "manhwa", "manhua", "novel", "one-shot", "oneshot", "formato:"
+]
+
+
+ANILIST_QUERY = """
+query ($search: String) {
+  Media(search: $search, type: MANGA) {
+    id
+    siteUrl
+    title { romaji english native }
+    format
+    status
+    chapters
+    volumes
+    averageScore
+    popularity
+    trending
+    genres
+    seasonYear
+    startDate { year month day }
+    countryOfOrigin
+    coverImage { large extraLarge color }
+    bannerImage
+    description(asHtml: false)
+  }
+}
+"""
+
+
+# =========================
+# HELPERS
+# =========================
+
+def norm(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def normalize_search_title(title: str) -> str:
+    t = (title or "").strip()
+    # remove brackets
+    t = re.sub(r"\[[^\]]*\]", "", t).strip()
+    t = re.sub(r"\([^)]*\)", "", t).strip()
+    # pega antes de separadores comuns
+    t = re.split(r"\s+\|\s+|\s+-\s+| — ", t)[0].strip()
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    if len(t) > 120:
+        t = t[:120].strip()
+    return t
+
+def extract_format_from_raw(raw_text: str) -> Optional[str]:
+    t = raw_text or ""
+    m = re.search(r"Formato\s*:\s*([^\n]+)", t, flags=re.I)
+    if not m:
+        return None
+    v = norm(m.group(1))
+    v = v.replace(".", "").strip()
+    return v or None
+
+def classify_kind(country: Optional[str], raw_format: Optional[str]) -> str:
+    # Prioriza o texto do post, porque no seu canal isso vem bem definido
+    if raw_format:
+        rf = raw_format.lower()
+        if "manhwa" in rf:
+            return "manhwa"
+        if "manhua" in rf:
+            return "manhua"
+        if "novel" in rf:
+            return "novel"
+        if "mang" in rf:
+            return "manga"
+
+    # fallback: país de origem AniList
+    if country == "KR":
+        return "manhwa"
+    if country == "CN":
+        return "manhua"
+    return "manga"
+
+def looks_like_non_work(title: str, raw_text: str, button_links: List[Dict[str, Any]]) -> bool:
+    tl = (title or "").lower()
+    tx = (raw_text or "").lower()
+
+    for w in BLACKLIST_TITLE:
+        if w in tl:
+            return True
+
+    for w in BLACKLIST_TEXT:
+        if w in tx:
+            return True
+
+    hints = sum(1 for h in POSITIVE_HINTS if h in tx)
+    # se não tem botões e não tem pistas, é suspeito
+    if not button_links and hints == 0:
+        return True
+
+    return False
+
+
+# =========================
+# ANILIST CLIENT
+# =========================
+
+class AniList:
+    def __init__(self):
+        self.client = httpx.Client(timeout=25)
+        self.last_call = 0.0
+        self.cache: Dict[str, Optional[Dict[str, Any]]] = {}
+
+    def close(self):
+        self.client.close()
+
+    def _throttle(self):
+        now = time.time()
+        elapsed_ms = (now - self.last_call) * 1000
+        if elapsed_ms < MIN_DELAY_MS:
+            time.sleep((MIN_DELAY_MS - elapsed_ms) / 1000)
+        self.last_call = time.time()
+
+    def search_manga(self, title: str) -> Optional[Dict[str, Any]]:
+        key = title.lower().strip()
+        if key in self.cache:
+            return self.cache[key]
+
+        self._throttle()
+        try:
+            r = self.client.post(
+                ANILIST_URL,
+                json={"query": ANILIST_QUERY, "variables": {"search": title}},
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+            )
+            if r.status_code != 200:
+                self.cache[key] = None
+                return None
+
+            payload = r.json()
+            media = (payload or {}).get("data", {}).get("Media")
+            if not media:
+                self.cache[key] = None
+                return None
+
+            title_obj = media.get("title") or {}
+            title_display = title_obj.get("romaji") or title_obj.get("english") or title_obj.get("native") or title
+
+            cover_obj = media.get("coverImage") or {}
+            cover = cover_obj.get("extraLarge") or cover_obj.get("large")
+
+            out = {
+                "id": media.get("id"),
+                "siteUrl": media.get("siteUrl"),
+                "title_display": title_display,
+                "format": media.get("format"),
+                "status": media.get("status"),
+                "chapters": media.get("chapters"),
+                "volumes": media.get("volumes"),
+                "averageScore": media.get("averageScore"),
+                "popularity": media.get("popularity"),
+                "trending": media.get("trending"),
+                "genres": media.get("genres") or [],
+                "seasonYear": media.get("seasonYear") or (media.get("startDate") or {}).get("year"),
+                "countryOfOrigin": media.get("countryOfOrigin"),
+                "cover": cover,
+                "banner": media.get("bannerImage"),
+                "description": media.get("description"),
+            }
+
+            self.cache[key] = out
+            return out
+        except Exception:
+            self.cache[key] = None
+            return None
+
+
+# =========================
+# MAIN
+# =========================
+
+def main():
+    if not os.path.exists(INOUT_PATH):
+        raise FileNotFoundError(f"Arquivo não encontrado: {INOUT_PATH}")
+
+    with open(INOUT_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    records = data.get("records") or []
+    if not isinstance(records, list):
+        raise RuntimeError("JSON inválido: 'records' não é lista")
+
+    al = AniList()
+
+    kept: List[Dict[str, Any]] = []
+    total = len(records)
+    enriched = 0
+    removed = 0
+    already = 0
+    not_found = 0
+
+    for idx, r in enumerate(records, start=1):
+        if not isinstance(r, dict):
+            removed += 1
+            continue
+
+        title = (r.get("title_raw") or "").strip()
+        raw_text = r.get("raw_text") or ""
+        buttons = r.get("button_links") or []
+        if not isinstance(buttons, list):
+            buttons = []
+
+        if not title or looks_like_non_work(title, raw_text, buttons):
+            removed += 1
+            continue
+
+        # se já tem anilist preenchido, mantém (mas garante "kind" atualizado)
+        current_anilist = r.get("anilist")
+        raw_format = extract_format_from_raw(raw_text)
+
+        if isinstance(current_anilist, dict) and current_anilist.get("cover"):
+            # garante kind
+            country = current_anilist.get("countryOfOrigin")
+            current_anilist["kind"] = classify_kind(country, raw_format)
+            r["anilist"] = current_anilist
+            kept.append(r)
+            already += 1
+            continue
+
+        # tentar achar no AniList
+        attempts = []
+        t1 = normalize_search_title(title)
+        if t1:
+            attempts.append(t1)
+        if title and title != t1:
+            attempts.append(title[:120])
+        # tentativa extra: pegar só primeira parte antes de "|" e "-"
+        t3 = re.split(r"\||-|\u2014", title)[0].strip()
+        t3 = normalize_search_title(t3)
+        if t3 and t3 not in attempts:
+            attempts.append(t3)
+
+        found = None
+        for a in attempts[:MAX_ATTEMPTS_PER_ITEM]:
+            found = al.search_manga(a)
+            if found:
+                break
+
+        if not found:
+            r["anilist"] = None
+            kept.append(r)
+            not_found += 1
+        else:
+            found["kind"] = classify_kind(found.get("countryOfOrigin"), raw_format)
+            r["anilist"] = found
+            kept.append(r)
+            enriched += 1
+
+        if idx % 25 == 0:
+            print(f"[{idx}/{total}] kept={len(kept)} enriched={enriched} already={already} removed={removed} not_found={not_found}")
+
+    # sobrescreve records limpos
+    data["records"] = kept
+    data["count"] = len(kept)
+    data["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+    with open(INOUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    al.close()
+
+    print("\n✅ FINALIZADO")
+    print("Arquivo:", INOUT_PATH)
+    print("Total antes:", total)
+    print("Total depois:", len(kept))
+    print("Enriquecidos:", enriched)
+    print("Já tinham AniList:", already)
+    print("Removidos (lixo):", removed)
+    print("Sem match AniList:", not_found)
+
+
+if __name__ == "__main__":
+    from datetime import timezone  # usado no final
+    main()
