@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigoBot")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot")
 
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado.")
