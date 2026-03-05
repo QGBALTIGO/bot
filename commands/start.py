@@ -1,12 +1,30 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
 from database import create_or_get_user
 
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
 
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+if not BASE_URL:
+    # No Railway, coloque BASE_URL com a URL pública do serviço
+    # Ex: https://seu-app.up.railway.app
+    BASE_URL = ""
+
+def _map_tg_lang(tg_lang: str | None) -> str:
+    tg_lang = (tg_lang or "").lower()
+    if tg_lang.startswith("pt"):
+        return "pt"
+    if tg_lang.startswith("es"):
+        return "es"
+    if tg_lang.startswith("en"):
+        return "en"
+    return "en"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     name = update.effective_user.first_name or "Colecionador"
+    tg_lang = _map_tg_lang(update.effective_user.language_code)
 
     create_or_get_user(user_id)
 
@@ -18,28 +36,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ Ao continuar, você confirma que concorda com essas regras."
     )
 
+    # Link do WebApp (inclui uid e lang)
+    if not BASE_URL:
+        terms_url = "https://example.com"  # placeholder se BASE_URL não configurado
+    else:
+        terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
+
     keyboard = [
-        [InlineKeyboardButton("📜 Ler e aceitar termos", callback_data="open_terms")],
+        [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))],
         [InlineKeyboardButton("🌐 Idioma", callback_data="change_language")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # /start normalmente vem por mensagem
-    if update.message:
-        await update.message.reply_photo(
-            photo=BANNER_URL,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=reply_markup,
-        )
-        return
-
-    # fallback (caso raro: start vindo de outro tipo de update)
-    if update.effective_chat:
-        await context.bot.send_photo(
-            chat_id=update.effective_chat.id,
-            photo=BANNER_URL,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=reply_markup,
-        )
+    await update.message.reply_photo(
+        photo=BANNER_URL,
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
