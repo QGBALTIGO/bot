@@ -1,22 +1,3 @@
-{
-  "channel": "MangasBrasil",
-  "generated_at": "2026-03-05T18:51:47.665646+00:00",
-  "count": 291,
-  "records": [
-    {
-      "message_id": 14903,
-      "date": "2023-11-05T20:20:25+00:00",
-      "title_raw": "Estamos empenhados em elevar sua experiência de leitura de mangás e manhwas com acesso contínuo, um ambiente premium sem anúncios e um catál",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "𝐄𝐌 𝐀𝐍𝐃𝐀𝐌𝐄𝐍𝐓𝐎 - Um canal dedicado a mantê-lo atualizado com todos os novos lançamentos. 𝐂𝐄𝐍𝐓𝐑𝐀𝐋 𝐃𝐄 𝐀𝐍𝐈𝐌𝐄𝐒 - Um canal dedicado a fornecer a você todos os seus animes favoritos legendados e dublados. 𝐅𝐈𝐋𝐌𝐄𝐒 𝐃𝐄 𝐀𝐍𝐈𝐌𝐄 - Um canal dedicado a fornecer a você todos os seus filmes de animes favoritos legendados e dublados. 𝐃𝐈𝐒𝐂𝐔𝐒𝐒Ã𝐎 - Um bate-papo em grupo SFW com tema de anime para criar amizade online com pessoas de interesses comuns.",
-      "post_url": "https://t.me/MangasBrasil/14903",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "■ Estamos empenhados em elevar sua experiência de leitura de mangás e manhwas com acesso contínuo, um ambiente premium sem anúncios e um catálogo abrangente. Isso inclui clássicos concluídos e lançamentos antecipados, todos apresentados com ótima qualidade visual.\n\n𝐄𝐌 𝐀𝐍𝐃𝐀𝐌𝐄𝐍𝐓𝐎 - Um canal dedicado a mantê-lo atualizado com todos os novos lançamentos.\n\n𝐂𝐄𝐍𝐓𝐑𝐀𝐋 𝐃𝐄 𝐀𝐍𝐈𝐌𝐄𝐒 - Um canal dedicado a fornecer a você todos os seus animes favoritos legendados e dublados.\n\n𝐅𝐈𝐋𝐌𝐄𝐒 𝐃𝐄 𝐀𝐍𝐈𝐌𝐄 - Um canal dedicado a fornecer a você todos os seus filmes de animes favoritos legendados e dublados.\n\n𝐃𝐈𝐒𝐂𝐔𝐒𝐒Ã𝐎 - Um bate-papo em grupo SFW com tema de anime para criar amizade online com pessoas de interesses comuns.",
-      "anilist": null
-    },
     {
       "message_id": 14906,
       "date": "2023-11-05T20:22:51+00:00",
@@ -3550,29 +3531,6 @@
           "text": "Mangá",
           "url": "https://t.me/+nXAq4CHBaMM1OGQx"
         },
-        {
-          "text": "Anime",
-          "url": "https://t.me/Centraldeanimes_Baltigo/108"
-        }
-      ],
-      "raw_text": "Título: Neon Genesis evangelion \n\nStatus: Finalizado\nGênero: #Ação, #Drama, #Mecha, #Mistério, #ficção\nFormato: Mangá \nAutor: Yoshiyuki sadamoto\n\n💬 Neon Genesis Evangelion é uma série de ação de mecha apocalíptica que gira em torno de uma organização paramilitar chamada NERV, criada para combater seres monstruosos chamados Anjos, utilizando mechas gigantes chamados Unidades Evangelion (ou EVAs). Estes mechas são pilotados por adolescentes, que por um mero acaso nasceram no ano do Segundo Impacto, sendo um deles o personagem principal, Shinji Ikari.",
-      "anilist": {
-        "provider": "anilist",
-        "provider_note": "ANIME_PAGE",
-        "type_used": "ANIME",
-        "anilist_id": 578,
-        "title_display": "Hotaru no Haka",
-        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx578-vU6XcOlb1XFU.jpg",
-        "banner": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/578.jpg",
-        "averageScore": 83,
-        "seasonYear": 1988,
-        "format": "MOVIE",
-        "genres": [
-          "Drama"
-        ],
-        "format_detected": "MANGA"
-      }
-    },
     {
       "message_id": 15247,
       "date": "2024-12-03T06:22:01+00:00",
@@ -4961,22 +4919,6 @@
       }
     },
     {
-      "message_id": 15376,
-      "date": "2025-01-29T16:05:21+00:00",
-      "title_raw": "Chamada para Pedidos de Mangás! 🔹",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [
-        "Pedido"
-      ],
-      "synopsis_post": "Estamos abertos a sugestões! Quais mangás que ainda não estão no canal você gostaria que adicionássemos? Regras: • Cada pessoa pode fazer um pedido de cada vez. • Use o formato abaixo para garantir que seu pedido não se perca: #Pedido [Nome do mangá] Deixe seu pedido nos comentários! Estamos animados para saber suas sugestões!",
-      "post_url": "https://t.me/MangasBrasil/15376",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "🔹 Chamada para Pedidos de Mangás! 🔹\n\nEstamos abertos a sugestões! Quais mangás que ainda não estão no canal você gostaria que adicionássemos?  \n\nRegras:  \n\n• Cada pessoa pode fazer um pedido de cada vez.  \n\n• Use o formato abaixo para garantir que seu pedido não se perca:  \n\n#Pedido\n[Nome do mangá]\n\nDeixe seu pedido nos comentários! Estamos animados para saber suas sugestões!",
-      "anilist": null
-    },
-    {
       "message_id": 15381,
       "date": "2025-01-30T10:32:22+00:00",
       "title_raw": "Golden Kamuy",
@@ -5462,20 +5404,6 @@
       }
     },
     {
-      "message_id": 15413,
-      "date": "2025-02-05T16:11:36+00:00",
-      "title_raw": "Também estão com dificuldades em achar bons sites pra ler mangás e manhwas?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "",
-      "post_url": "https://t.me/MangasBrasil/15413",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Também estão com dificuldades em achar bons sites pra ler mangás e manhwas?",
-      "anilist": null
-    },
-    {
       "message_id": 15416,
       "date": "2025-02-05T20:37:31+00:00",
       "title_raw": "Blue Box",
@@ -5523,20 +5451,6 @@
         }
       ],
       "raw_text": "Rooster Fighter | Niwatori Faita\n\nStatus: Em andamento\nGênero: #Ação, #Aventura, #Comédia, #Sobrenatural\nFormato: Mangá\nAutor: Sakuratani Shuu\n\n💬 Em um mundo onde monstros horrendos começou a surgir do nada, a humanidade está fadada ao fim, mas para a surpresa de todos, um galo apareceu pronto para arriscar sua vida e derrotar os inimigos. Essa é a história de um galo errante, que vai de lugar em lugar, buscando derrotar as forças do mal.",
-      "anilist": null
-    },
-    {
-      "message_id": 15429,
-      "date": "2025-02-06T22:33:27+00:00",
-      "title_raw": "Iríamos começar do completo 0, para uma equipe seria necessário pessoas que possam exercer essas funções:",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "1. Equipe • Raw Provider: Obtém os capítulos originais (raws) de fontes japonesas, coreanas ou chinesas. • Tradutor: Converte o texto do mangá para o português. • Revisor: Garante que a tradução está correta e fluida. • Cleaner: Remove os textos originais e melhora a qualidade das imagens. • Typesetter: Insere a tradução no mangá, ajustando fontes e efeitos. • Quality Checker (QC): Faz a revisão final para garantir que tudo esteja correto antes da publicação.",
-      "post_url": "https://t.me/MangasBrasil/15429",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Iríamos começar do completo 0, para uma equipe seria necessário pessoas que possam exercer essas funções:\n\n1. Equipe\n\n • Raw Provider: Obtém os capítulos originais (raws) de fontes japonesas, coreanas ou chinesas. \n\n • Tradutor: Converte o texto do mangá para o português.\n\n • Revisor: Garante que a tradução está correta e fluida.\n\n • Cleaner: Remove os textos originais e melhora a qualidade das imagens.\n\n • Typesetter: Insere a tradução no mangá, ajustando fontes e efeitos.\n\n • Quality Checker (QC): Faz a revisão final para garantir que tudo esteja correto antes da publicação.",
       "anilist": null
     },
     {
@@ -7389,20 +7303,6 @@
       }
     },
     {
-      "message_id": 15589,
-      "date": "2025-03-06T14:52:13+00:00",
-      "title_raw": "Gokurakugai",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "📚 Capítulo 24: Por que?. Tradução: Trino e Baltigo Scans. @MangasBrasil Fala aí, pessoal; traduzimos o capítulo 24 de Gokurakugai se vocês gostarem, vamos começar a traduzir daqui para frente. Façam uma leitura e deixem um feedback nos comentários para a gente. Para fazer a leitura dos outros capítulos, acesse 👉 Gokurakugai👈",
-      "post_url": "https://t.me/MangasBrasil/15589",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "⚔️ Gokurakugai\n📚 Capítulo 24: Por que?.\n\nTradução: Trino e Baltigo Scans.\n\n@MangasBrasil\n\nFala aí, pessoal; traduzimos o capítulo 24 de Gokurakugai se vocês gostarem, vamos começar a traduzir daqui para frente. Façam uma leitura e deixem um feedback nos comentários para a gente.\nPara fazer a leitura dos outros capítulos, acesse 👉 Gokurakugai👈",
-      "anilist": null
-    },
-    {
       "message_id": 15609,
       "date": "2025-03-17T22:01:38+00:00",
       "title_raw": "Kage no Jitsuryokusha ni Naritakute! | The Eminence in Shadow",
@@ -7445,34 +7345,6 @@
         ],
         "format_detected": "MANGA"
       }
-    },
-    {
-      "message_id": 15611,
-      "date": "2025-03-18T18:56:49+00:00",
-      "title_raw": "Aoba, pessoal! Como vocês estão?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Seguinte, como mencionamos há alguns dias, estamos criando nossa própria scan de mangás e manhwas, com foco em obras “abandonadas” que merecem uma continuação. E queremos vocês com a gente! Seja recomendando títulos ou fazendo parte da equipe, toda ajuda é bem-vinda. Bora construir isso juntos? 👉 Entra aí: @BaltigoScan",
-      "post_url": "https://t.me/MangasBrasil/15611",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Aoba, pessoal! Como vocês estão?\n\nSeguinte, como mencionamos há alguns dias, estamos criando nossa própria scan de mangás e manhwas, com foco em obras “abandonadas” que merecem uma continuação. E queremos vocês com a gente!\n\nSeja recomendando títulos ou fazendo parte da equipe, toda ajuda é bem-vinda. Bora construir isso juntos?\n\n👉 Entra aí: @BaltigoScan",
-      "anilist": null
-    },
-    {
-      "message_id": 15618,
-      "date": "2025-03-22T02:21:53+00:00",
-      "title_raw": "CHEGOU A HORA DE FAZER HISTÓRIA! 🚀",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Já imaginou ter seu nome marcado na scan e fazer parte de algo épico? Então essa é sua chance! A QG_BALTIGO está recrutando os melhores para montar um time de elite. Se você manja de revisão, tradução, redraw ou QC, chegou o momento de mostrar seu talento e entrar para a equipe que vai revolucionar o mundo das scans! 💥 Sabemos como é difícil encontrar a continuação daquele mangá ou manhwa favorito… E é por isso que a QG_BALTIGO está chegando com TUDO para fazer a diferença! Vamos trazer conteúdo de qualidade, e você pode ser parte disso! 🔥 Se você quer fazer história, essa é a sua chance! Não perca tempo—chama a gente no suporte agora mesmo: @QGSuporteBot e venha fazer parte dessa revolução!",
-      "post_url": "https://t.me/MangasBrasil/15618",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "🚀 CHEGOU A HORA DE FAZER HISTÓRIA! 🚀\n\nJá imaginou ter seu nome marcado na scan e fazer parte de algo épico? Então essa é sua chance! A QG_BALTIGO está recrutando os melhores para montar um time de elite. Se você manja de revisão, tradução, redraw ou QC, chegou o momento de mostrar seu talento e entrar para a equipe que vai revolucionar o mundo das scans!\n\n💥 Sabemos como é difícil encontrar a continuação daquele mangá ou manhwa favorito… E é por isso que a QG_BALTIGO está chegando com TUDO para fazer a diferença! Vamos trazer conteúdo de qualidade, e você pode ser parte disso!\n\n🔥 Se você quer fazer história, essa é a sua chance! Não perca tempo—chama a gente no suporte agora mesmo: @QGSuporteBot e venha fazer parte dessa revolução!",
-      "anilist": null
     },
     {
       "message_id": 15620,
@@ -7719,43 +7591,6 @@
       }
     },
     {
-      "message_id": 15650,
-      "date": "2025-04-08T19:30:51+00:00",
-      "title_raw": "Cansado dos preços absurdos dos streamings?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Netflix, Disney+, Prime, HBO… Quando você soma tudo, dá quase R$200 por mês! E ainda tem que ficar pulando de um app para outro pra achar o que quer assistir. 😩 Mas calma, tem solução! 🎬🔥 Com BaltigoFlix, você tem todos os streamings em um só lugar, além de TV ao vivo, filmes e séries ilimitados… por um preço muito menor! 💰 Pague menos e tenha tudo! 🎥 Filmes, séries e TV ao vivo em um só lugar! Não jogue dinheiro fora! Clique no link e assine agora mesmo! 🚀📲",
-      "post_url": "https://t.me/MangasBrasil/15650",
-      "main_button_url": "https://qgbaltigo.github.io/BaltigoFlix-1",
-      "button_links": [
-        {
-          "text": "Clique e Descubra",
-          "url": "https://qgbaltigo.github.io/BaltigoFlix-1"
-        }
-      ],
-      "raw_text": "📢 Cansado dos preços absurdos dos streamings? \n\nNetflix, Disney+, Prime, HBO… Quando você soma tudo, dá quase R$200 por mês! E ainda tem que ficar pulando de um app para outro pra achar o que quer assistir. 😩 \n\nMas calma, tem solução! 🎬🔥 \n\nCom BaltigoFlix, você tem todos os streamings em um só lugar, além de TV ao vivo, filmes e séries ilimitados… por um preço muito menor! \n\n💰 Pague menos e tenha tudo! \n🎥 Filmes, séries e TV ao vivo em um só lugar! \n\nNão jogue dinheiro fora! Clique no link e assine agora mesmo! 🚀📲",
-      "anilist": {
-        "provider": "anilist",
-        "provider_note": "MANGA_PAGE",
-        "type_used": "MANGA",
-        "anilist_id": 127217,
-        "title_display": "Yoake no Uta",
-        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx127217-ffOAIQkMNmvD.png",
-        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/127217-D5njM4bnBBoX.jpg",
-        "averageScore": 82,
-        "seasonYear": null,
-        "format": "MANGA",
-        "genres": [
-          "Drama",
-          "Fantasy",
-          "Romance",
-          "Supernatural"
-        ],
-        "format_detected": "MANGA"
-      }
-    },
-    {
       "message_id": 15657,
       "date": "2025-04-09T23:13:22+00:00",
       "title_raw": "Swordmaster’s Youngest Son | O Caçula do Mestre Espadachim",
@@ -7922,25 +7757,6 @@
         ],
         "format_detected": "MANGA"
       }
-    },
-    {
-      "message_id": 15679,
-      "date": "2025-04-25T20:58:18+00:00",
-      "title_raw": "STREAMINGS CADA VEZ MAIS CAROS?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Netflix, Prime, Disney+... 💸 Somando tudo, já passou de R$200 por mês? --- VOCÊ NÃO PRECISA MAIS DISSO. Com a BaltigoFlix, você tem: 🔥 Todos os streamings em um só lugar 📺 Filmes, séries e TV ao vivo em Full HD e 4K 💰 Tudo isso por um preço que cabe no seu bolso --- COMPRE SUA TV E TENHA A MELHOR EXPERIÊNCIA COM A BALTIGOFLIX! ✅ Compatível com TV Box, celular, tablet e mais ✅ Sem travamentos. Sem complicação. 👉 ASSISTA DE TUDO. PAGUE MUITO MENOS.",
-      "post_url": "https://t.me/MangasBrasil/15679",
-      "main_button_url": "https://qgbaltigo.github.io/BaltigoFlix-1/",
-      "button_links": [
-        {
-          "text": "Clique e saiba mais!",
-          "url": "https://qgbaltigo.github.io/BaltigoFlix-1/"
-        }
-      ],
-      "raw_text": "📺 STREAMINGS CADA VEZ MAIS CAROS?\n\nNetflix, Prime, Disney+... \n💸 Somando tudo, já passou de R$200 por mês?\n\n---\n\nVOCÊ NÃO PRECISA MAIS DISSO.\n\nCom a BaltigoFlix, você tem:\n\n🔥 Todos os streamings em um só lugar \n📺 Filmes, séries e TV ao vivo em Full HD e 4K \n💰 Tudo isso por um preço que cabe no seu bolso\n\n---\n\nCOMPRE SUA TV E TENHA A MELHOR EXPERIÊNCIA COM A BALTIGOFLIX!\n\n✅ Compatível com TV Box, celular, tablet e mais \n✅ Sem travamentos. Sem complicação. \n\n 👉 ASSISTA DE TUDO. PAGUE MUITO MENOS.",
-      "anilist": null
     },
     {
       "message_id": 15685,
@@ -8121,20 +7937,6 @@
       "anilist": null
     },
     {
-      "message_id": 15695,
-      "date": "2025-04-27T01:23:35+00:00",
-      "title_raw": "Para ler nossos mangás e manhwas, é necessário um leitor de arquivos CBZ!",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Esse formato garante alta qualidade e leitura fluida, mas precisa de um app específico para abrir. Baixe um dos leitores recomendados: Android: • ReadEra • ComicScreen • CDisplayEx iOS: • Manga Viewer PC (Windows): • Comic Book Reader Instale, abra o arquivo e boa leitura!",
-      "post_url": "https://t.me/MangasBrasil/15695",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Para ler nossos mangás e manhwas, é necessário um leitor de arquivos CBZ!\n\nEsse formato garante alta qualidade e leitura fluida, mas precisa de um app específico para abrir.\n\nBaixe um dos leitores recomendados:\n\nAndroid:\n • ReadEra\n • ComicScreen\n • CDisplayEx\n\niOS:\n • Manga Viewer\n\nPC (Windows):\n • Comic Book Reader\n\nInstale, abra o arquivo e boa leitura!",
-      "anilist": null
-    },
-    {
       "message_id": 15698,
       "date": "2025-04-27T19:05:01+00:00",
       "title_raw": "Blade of the Immortal | Blade - A lâmina do Imortal",
@@ -8259,34 +8061,6 @@
         ],
         "format_detected": "MANGA"
       }
-    },
-    {
-      "message_id": 15704,
-      "date": "2025-04-27T22:03:22+00:00",
-      "title_raw": "Não encontrou o mangá que queria?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Peça no nosso Chat oficial da Baltigo de animes e mangás! Clique aqui e faça seu pedido!",
-      "post_url": "https://t.me/MangasBrasil/15704",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Não encontrou o mangá que queria?\nPeça no nosso Chat oficial da Baltigo de animes e mangás!\n\nClique aqui e faça seu pedido!",
-      "anilist": null
-    },
-    {
-      "message_id": 15708,
-      "date": "2025-04-28T12:30:16+00:00",
-      "title_raw": "𝗜𝗡𝗙𝗢 | Pausa nos capítulos esta semana devido à Golden Week! 🇯🇵🎏",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "A Golden Week é uma das épocas mais importantes no Japão, reunindo vários feriados entre o final de abril e o começo de maio. Aproveitem para colocar as leituras em dia — e fiquem de olho nos lançamentos das obras que não seguem o cronograma semanal!",
-      "post_url": "https://t.me/MangasBrasil/15708",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "𝗜𝗡𝗙𝗢 | Pausa nos capítulos esta semana devido à Golden Week! 🇯🇵🎏\n\nA Golden Week é uma das épocas mais importantes no Japão, reunindo vários feriados entre o final de abril e o começo de maio. \n\nAproveitem para colocar as leituras em dia — e fiquem de olho nos lançamentos das obras que não seguem o cronograma semanal!",
-      "anilist": null
     },
     {
       "message_id": 15710,
@@ -9654,20 +9428,6 @@
         ],
         "format_detected": "MANGA"
       }
-    },
-    {
-      "message_id": 15844,
-      "date": "2025-07-15T13:06:03+00:00",
-      "title_raw": "Para ler nossos mangás e manhwas, é necessário um leitor de arquivos CBZ!",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Esse formato garante alta qualidade e leitura fluida, mas precisa de um app específico para abrir. Baixe um dos leitores recomendados: Android: • ReadEra • ComicScreen • CDisplayEx iOS: • Manga Viewer PC (Windows): • Comic Book Reader Instale, abra o arquivo e boa leitura!",
-      "post_url": "https://t.me/MangasBrasil/15844",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "Para ler nossos mangás e manhwas, é necessário um leitor de arquivos CBZ!\n\nEsse formato garante alta qualidade e leitura fluida, mas precisa de um app específico para abrir.\n\nBaixe um dos leitores recomendados:\n\nAndroid:\n • ReadEra\n • ComicScreen\n • CDisplayEx\n\niOS:\n • Manga Viewer\n\nPC (Windows):\n • Comic Book Reader\n\nInstale, abra o arquivo e boa leitura!",
-      "anilist": null
     },
     {
       "message_id": 15847,
@@ -11283,44 +11043,6 @@
       }
     },
     {
-      "message_id": 16139,
-      "date": "2026-02-02T11:11:46+00:00",
-      "title_raw": "LABORATÓRIO DO CHEF OTAKU",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Canal para quem ama animes, games, filmes e cultura geek… e também não brinca quando o assunto é comer bem 🔥 ——— 🍜 ——— Tudo explicado de forma simples, divertida e com aquele toque geek que deixa a experiência nível lendário",
-      "post_url": "https://t.me/MangasBrasil/16139",
-      "main_button_url": "https://t.me/receitas_geek",
-      "button_links": [
-        {
-          "text": "Laboratório do Chef",
-          "url": "https://t.me/receitas_geek"
-        }
-      ],
-      "raw_text": "⁣👨‍🍳 LABORATÓRIO DO CHEF OTAKU \n\nCanal para quem ama animes, games, filmes e cultura geek…\ne também não brinca quando o assunto é comer bem 🔥\n\n——— 🍜 ———\n\nTudo explicado de forma simples, divertida e com aquele toque geek que deixa a experiência nível lendário",
-      "anilist": null
-    },
-    {
-      "message_id": 16143,
-      "date": "2026-02-04T13:36:33+00:00",
-      "title_raw": "TOCA AQUI AGORA",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Esse link cria uma PASTA AUTOMÁTICA no seu Telegram com os principais canais da Baltigo já organizados. Você aperta… e já aparece tudo pronto. 📂🔥 Sem procurar. Sem perder tempo.",
-      "post_url": "https://t.me/MangasBrasil/16143",
-      "main_button_url": "https://t.me/addlist/xR-5tokPFAVkZDNh",
-      "button_links": [
-        {
-          "text": "CONHEÇA MAIS DA BALTIGO",
-          "url": "https://t.me/addlist/xR-5tokPFAVkZDNh"
-        }
-      ],
-      "raw_text": "🚨 TOCA AQUI AGORA\n\nEsse link cria uma PASTA AUTOMÁTICA no seu Telegram com os principais canais da Baltigo já organizados.\n\nVocê aperta…\ne já aparece tudo pronto. 📂🔥\n\nSem procurar. Sem perder tempo.",
-      "anilist": null
-    },
-    {
       "message_id": 16148,
       "date": "2026-02-06T04:20:22+00:00",
       "title_raw": "Mairimashita! Iruma-kun",
@@ -11472,25 +11194,6 @@
       "anilist": null
     },
     {
-      "message_id": 16197,
-      "date": "2026-02-23T19:54:33+00:00",
-      "title_raw": "Source Baltigo chegou para mudar o jogo.",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Não é só um bot. É uma central completa de animes e mangás dentro do Telegram. Pesquise obras em segundos, veja informações detalhadas, descubra o que está em alta, receba recomendações e crie seu próprio perfil com personagem favorito. E não achou o que queria? Faça seu pedido direto pelo bot. Organizado. Rápido. Totalmente gratuito. Source Baltigo — sua fonte oficial no mundo dos animes. 🔎",
-      "post_url": "https://t.me/MangasBrasil/16197",
-      "main_button_url": "http://t.me/SourceBaltigo_Bot",
-      "button_links": [
-        {
-          "text": "Acesse aqui",
-          "url": "http://t.me/SourceBaltigo_Bot"
-        }
-      ],
-      "raw_text": "🚀 Source Baltigo chegou para mudar o jogo.\n\nNão é só um bot.\nÉ uma central completa de animes e mangás dentro do Telegram.\n\nPesquise obras em segundos, veja informações detalhadas, descubra o que está em alta, receba recomendações e crie seu próprio perfil com personagem favorito.\n\nE não achou o que queria?\nFaça seu pedido direto pelo bot.\n\nOrganizado. Rápido. Totalmente gratuito.\n\nSource Baltigo — sua fonte oficial no mundo dos animes. 🔎",
-      "anilist": null
-    },
-    {
       "message_id": 16204,
       "date": "2026-02-25T02:17:26+00:00",
       "title_raw": "The Return of the 8th Class Mage | Return of the 8th Class Magician",
@@ -11532,20 +11235,6 @@
         "description": "As a powerful 8th class mage, Ian Paige took countless innocent lives under the orders of Emperor Ragnar, a close friend and ruler of the Greenriver Empire. Yet despite their closeness, Ragnar views Ian as a threat and subsequently poisons him. Using time magic, Ian saves himself and returns 30 years to the past. Now a young boy, Ian joins an elite order of mages to hone his abilities once again. This time, he’ll get revenge on the emperor who betrayed him and reclaim glory as an 8th class mage!<br>\n<br>\n(Source: Tapas)",
         "kind": "manhwa"
       }
-    },
-    {
-      "message_id": 16212,
-      "date": "2026-02-26T13:56:24+00:00",
-      "title_raw": "Quer ver um mangá novo por aqui?",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Faça seu pedido diretamente no nosso bot oficial: 🤖 @SourceBaltigo_Bot Use o comando /pedido.",
-      "post_url": "https://t.me/MangasBrasil/16212",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "📚✨ Quer ver um mangá novo por aqui?\nFaça seu pedido diretamente no nosso bot oficial:\n🤖 @SourceBaltigo_Bot\n\nUse o comando /pedido.",
-      "anilist": null
     },
     {
       "message_id": 16223,
@@ -11619,20 +11308,6 @@
         }
       ],
       "raw_text": "🌷 ELA NÃO PRECISA DE PERMISSÃO.\nELA ESCOLHE O QUE ASSISTIR.\n\nDia das Mulheres não é sobre dar algo comum.\nÉ sobre reconhecer quem decide, trabalha, conquista e ainda encontra tempo pra maratonar.\n\nEla gosta de novela?\nTem.\n\nPrefere dorama?\nTem.\n\nAma séries viciantes?\nTem também.\n\n🎬 Filmes\n📺 Novelas\n🇰🇷 Doramas\n📺 Séries\n🎌 Animes\n👶 Infantil\n📡 Canais organizados\n\nTudo em um único lugar.\n\nSem depender de login dos outros.\nSem ficar trocando de aplicativo.\nSem limite pra gostar do que quiser.\n\n💥 Especial Dia das Mulheres – BaltigoFlix\n\n👥 5 acessos no plano mensal\n👥 8 acessos no trimestral e semestral\n👥 10 acessos no anual\n\nMais acessos.\nMais liberdade.\nMais controle.\n\nPorque independência também é escolher o próprio entretenimento.\n\n🌷 Não é só streaming.\nÉ autonomia.\n\n🔥 DIA DAS MULHERES É SOBRE ESCOLHA.\n🔥 ESCOLHA É BALTIGOFLIX.",
-      "anilist": null
-    },
-    {
-      "message_id": 16230,
-      "date": "2026-03-04T12:06:29+00:00",
-      "title_raw": "ATENÇÃO, PESSOAL!",
-      "year_post": null,
-      "status_post": null,
-      "genres_post": [],
-      "synopsis_post": "Já é a terceira vez que precisamos reforçar isso: O canal Mangas Brasil é totalmente PÚBLICO e GRATUITO. Link oficial: https://t.me/MangasBrasil ⚠️ Qualquer pessoa pode entrar sem pagar absolutamente nada. Estamos recebendo denúncias de golpistas vendendo “acesso” ao canal. Isso não existe. É golpe. Se você vir alguém cobrando para entrar no canal, denuncie imediatamente. 📌 Reforçando: Nosso único produto oficial é a @BaltigoFlix. Todo o restante é 100% gratuito para todos. Não caiam em golpes.",
-      "post_url": "https://t.me/MangasBrasil/16230",
-      "main_button_url": null,
-      "button_links": [],
-      "raw_text": "🚨 ATENÇÃO, PESSOAL!\n\nJá é a terceira vez que precisamos reforçar isso:\n\nO canal Mangas Brasil é totalmente PÚBLICO e GRATUITO.\nLink oficial: https://t.me/MangasBrasil\n\n⚠️ Qualquer pessoa pode entrar sem pagar absolutamente nada.\n\nEstamos recebendo denúncias de golpistas vendendo “acesso” ao canal.\nIsso não existe. É golpe.\n\nSe você vir alguém cobrando para entrar no canal, denuncie imediatamente.\n\n📌 Reforçando:\nNosso único produto oficial é a @BaltigoFlix.\nTodo o restante é 100% gratuito para todos.\n\nNão caiam em golpes.",
       "anilist": null
     },
     {
