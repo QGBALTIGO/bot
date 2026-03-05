@@ -1579,3 +1579,53 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                 except Exception:
                     pass
                 raise
+# ==================================================
+# GLOBAL BOT LOCK (Postgres advisory lock)
+# Evita duas instâncias com polling ao mesmo tempo (getUpdates 409)
+# Mantém uma conexão dedicada aberta segurando o lock.
+# ==================================================
+_BOT_LOCK_CONN = None
+
+def acquire_bot_global_lock(lock_key: int = 918273645) -> bool:
+    """Tenta adquirir um advisory lock global no Postgres.
+    Retorna True se pegou, False se outra instância já está com o lock.
+    """
+    global _BOT_LOCK_CONN
+    if _BOT_LOCK_CONN is not None:
+        return True
+    try:
+        import psycopg
+        _BOT_LOCK_CONN = psycopg.connect(DATABASE_URL)
+        with _BOT_LOCK_CONN.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s);", (int(lock_key),))
+            ok = bool(cur.fetchone()[0])
+        if not ok:
+            try:
+                _BOT_LOCK_CONN.close()
+            except Exception:
+                pass
+            _BOT_LOCK_CONN = None
+            return False
+        return True
+    except Exception:
+        try:
+            if _BOT_LOCK_CONN is not None:
+                _BOT_LOCK_CONN.close()
+        except Exception:
+            pass
+        _BOT_LOCK_CONN = None
+        return False
+
+def release_bot_global_lock() -> None:
+    global _BOT_LOCK_CONN
+    try:
+        if _BOT_LOCK_CONN is None:
+            return
+        with _BOT_LOCK_CONN.cursor() as cur:
+            cur.execute("SELECT pg_advisory_unlock(%s);", (918273645,))
+        _BOT_LOCK_CONN.close()
+    except Exception:
+        pass
+    finally:
+        _BOT_LOCK_CONN = None
+
