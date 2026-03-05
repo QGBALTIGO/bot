@@ -90,3 +90,25 @@ def has_accepted_terms(user_id: int, version: str) -> bool:
         return False
     accepted, v = row
     return bool(accepted) and (v == version)
+
+Vdef get_user_status(user_id: int):
+    row = _run(
+        "SELECT lang, terms_accepted, terms_version, welcome_sent FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+    if not row:
+        return None
+    lang, terms_accepted, terms_version, welcome_sent = row
+    return {
+        "lang": lang,
+        "terms_accepted": bool(terms_accepted),
+        "terms_version": terms_version,
+        "welcome_sent": bool(welcome_sent),
+    }
+
+def mark_welcome_sent(user_id: int):
+    _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (user_id,))
+
+def reset_welcome_sent(user_id: int):
+    _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (user_id,))
