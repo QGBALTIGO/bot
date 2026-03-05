@@ -1,13 +1,24 @@
 import os
-from fastapi import FastAPI, Query
+import traceback
+from fastapi import FastAPI, Query, Body, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from database import create_or_get_user, accept_terms, set_language
 
 TERMS_VERSION = (os.getenv("TERMS_VERSION", "v1").strip() or "v1")
 
+# Canal obrigatório (defaults para o seu)
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
+
+# Para checar membership via Bot API
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+
 app = FastAPI()
 
+# =========================
+# Textos por idioma
+# =========================
 TEXTS = {
     "pt": {
         "title": "Termos de Uso e Privacidade",
@@ -18,11 +29,19 @@ TEXTS = {
         "accept": "ACEITAR E CONTINUAR",
         "decline": "Não aceito",
         "done": "✅ Aceito com sucesso. Volte ao Telegram.",
-        "no": "❌ Você não aceitou. Sem aceite, o bot não libera acesso.",
+        "no": "❌ Sem aceitar os Termos, você não consegue usar a Source Baltigo. Se mudar de ideia, volte e aceite para continuar sua jornada.",
         "error": "Erro. Tente novamente.",
         "need_checks": "⚠️ Marque as duas opções para continuar.",
+        "join_needed": "📢 Antes de continuar, entre no canal e clique em “Verificar inscrição”.",
         "saving": "⏳ Salvando...",
         "processing": "⏳ Processando...",
+
+        "join_title": "CANAL OBRIGATÓRIO",
+        "join_text": "Para continuar, é obrigatório entrar no nosso canal oficial.",
+        "join_button": "📢 ENTRAR NO CANAL",
+        "verify_button": "✅ VERIFICAR INSCRIÇÃO",
+        "verify_ok": "✅ Inscrição confirmada. Você já pode continuar.",
+        "verify_fail": "❌ Ainda não foi possível confirmar. Entre no canal e verifique novamente.",
     },
     "en": {
         "title": "Terms of Use & Privacy",
@@ -33,11 +52,19 @@ TEXTS = {
         "accept": "ACCEPT & CONTINUE",
         "decline": "I do not accept",
         "done": "✅ Accepted successfully. Go back to Telegram.",
-        "no": "❌ You did not accept. Without acceptance, access is not granted.",
+        "no": "❌ Without accepting the Terms, you cannot use Source Baltigo. If you change your mind, come back and accept to continue.",
         "error": "Error. Please try again.",
         "need_checks": "⚠️ Check both boxes to continue.",
+        "join_needed": "📢 Before continuing, join the channel and tap “Verify membership”.",
         "saving": "⏳ Saving...",
         "processing": "⏳ Processing...",
+
+        "join_title": "REQUIRED CHANNEL",
+        "join_text": "To continue, you must join our official channel.",
+        "join_button": "📢 JOIN CHANNEL",
+        "verify_button": "✅ VERIFY MEMBERSHIP",
+        "verify_ok": "✅ Membership confirmed. You can continue.",
+        "verify_fail": "❌ Couldn't confirm yet. Join the channel and try again.",
     },
     "es": {
         "title": "Términos de Uso y Privacidad",
@@ -48,14 +75,26 @@ TEXTS = {
         "accept": "ACEPTAR Y CONTINUAR",
         "decline": "No acepto",
         "done": "✅ Aceptado con éxito. Vuelve a Telegram.",
-        "no": "❌ No aceptaste. Sin aceptación, no se concede acceso.",
+        "no": "❌ Sin aceptar los Términos, no puedes usar Source Baltigo. Si cambias de idea, vuelve y acepta para continuar.",
         "error": "Error. Inténtalo de nuevo.",
         "need_checks": "⚠️ Marca ambas casillas para continuar.",
+        "join_needed": "📢 Antes de continuar, entra al canal y toca “Verificar suscripción”.",
         "saving": "⏳ Guardando...",
         "processing": "⏳ Procesando...",
+
+        "join_title": "CANAL OBLIGATORIO",
+        "join_text": "Para continuar, es obligatorio unirte a nuestro canal oficial.",
+        "join_button": "📢 UNIRME AL CANAL",
+        "verify_button": "✅ VERIFICAR SUSCRIPCIÓN",
+        "verify_ok": "✅ Suscripción confirmada. Ya puedes continuar.",
+        "verify_fail": "❌ Aún no se pudo confirmar. Entra al canal y vuelve a verificar.",
     },
 }
 
+# =========================
+# Termos (texto longo) por idioma
+# Inclui regra do canal obrigatório e que sair depois pode bloquear.
+# =========================
 TERMS_LONG = {
     "pt": """
 <div class="section">
@@ -64,6 +103,14 @@ TERMS_LONG = {
     Coletamos apenas o seu ID numérico do Telegram e dados necessários para o funcionamento do bot
     (ex.: idioma, registro de aceite e informações relacionadas ao uso dentro do bot).
     Não temos acesso às suas conversas privadas fora do bot.
+  </div>
+</div>
+
+<div class="section">
+  <div class="sectionTitle">CANAL OFICIAL (OBRIGATÓRIO)</div>
+  <div class="sectionText">
+    Para usar o bot, é obrigatório entrar e permanecer no nosso canal oficial.
+    Caso você saia do canal, o acesso aos comandos pode ser bloqueado até regularizar.
   </div>
 </div>
 
@@ -95,6 +142,14 @@ TERMS_LONG = {
 </div>
 
 <div class="section">
+  <div class="sectionTitle">OFFICIAL CHANNEL (REQUIRED)</div>
+  <div class="sectionText">
+    To use the bot, you must join and remain in our official channel.
+    If you leave the channel, access to commands may be blocked until you rejoin.
+  </div>
+</div>
+
+<div class="section">
   <div class="sectionTitle">FAIR USE & SECURITY</div>
   <div class="sectionText">
     Spam, automation, exploit attempts, reward duplication, abusive button/callback usage, or any behavior
@@ -117,6 +172,14 @@ TERMS_LONG = {
     Solo recopilamos tu ID numérico de Telegram y lo necesario para operar el bot
     (por ejemplo: idioma, registro de aceptación y datos de uso dentro del bot).
     No accedemos a tus chats privados fuera del bot.
+  </div>
+</div>
+
+<div class="section">
+  <div class="sectionTitle">CANAL OFICIAL (OBLIGATORIO)</div>
+  <div class="sectionText">
+    Para usar el bot, es obligatorio unirte y permanecer en nuestro canal oficial.
+    Si sales del canal, el acceso a los comandos puede bloquearse hasta que vuelvas a unirte.
   </div>
 </div>
 
@@ -197,6 +260,51 @@ HTML_TEMPLATE = """<!doctype html>
   .decline { background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--stroke2); }
   .footer { margin-top:14px; text-align:center; font-size:12px; color:rgba(231,234,243,0.50); letter-spacing:2px; }
   .msg { margin-top:10px; font-size:14px; color:rgba(231,234,243,0.90); min-height:18px; }
+
+  /* bloco canal */
+  .colBlock {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 14px;
+    margin: 12px 0;
+  }
+  .colTitle {
+    font-weight: 900;
+    letter-spacing: .5px;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  .colText {
+    color: rgba(231,234,243,0.85);
+    line-height: 1.45;
+    font-size: 13.5px;
+    margin-bottom: 12px;
+  }
+  .rowBtns {
+    display:flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .smallBtn {
+    border: 0;
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-weight: 900;
+    cursor: pointer;
+    letter-spacing: .4px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.14);
+    text-decoration: none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .smallBtnPrimary {
+    background: rgba(74,222,128,0.18);
+    border: 1px solid rgba(74,222,128,0.35);
+  }
 </style>
 </head>
 <body>
@@ -227,6 +335,8 @@ HTML_TEMPLATE = """<!doctype html>
 
     __BODY__
 
+    __JOINBLOCK__
+
     <div class="divider"></div>
 
     <label>
@@ -252,6 +362,7 @@ HTML_TEMPLATE = """<!doctype html>
 <script>
   const uid = __UID__;
   let lang = "__LANG__";
+  let channel_ok = false;
 
   const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
   if (tg) { try { tg.ready(); } catch (e) {} }
@@ -280,8 +391,9 @@ HTML_TEMPLATE = """<!doctype html>
   const msg = document.getElementById("msg");
 
   function setMsg(text) { msg.textContent = text || ""; }
+
   function updateAcceptButton() {
-    const ok = c1.checked && c2.checked;
+    const ok = c1.checked && c2.checked && channel_ok;
     acceptBtn.style.opacity = ok ? "1" : "0.45";
     acceptBtn.style.cursor = ok ? "pointer" : "not-allowed";
   }
@@ -304,8 +416,33 @@ HTML_TEMPLATE = """<!doctype html>
     return data || {};
   }
 
+  const checkChannelBtn = document.getElementById("checkChannelBtn");
+  if (checkChannelBtn) {
+    checkChannelBtn.addEventListener("click", async () => {
+      setMsg("__PROCESSING__");
+      try {
+        const data = await postJson("/api/channel/check", { uid });
+        if (data && data.ok) {
+          channel_ok = true;
+          updateAcceptButton();
+          setMsg("__VERIFYOK__");
+        } else {
+          channel_ok = false;
+          updateAcceptButton();
+          setMsg("__VERIFYFAIL__");
+        }
+      } catch (e) {
+        channel_ok = false;
+        updateAcceptButton();
+        setMsg("❌ " + (e.message || "__VERIFYFAIL__"));
+      }
+    });
+  }
+
   acceptBtn.addEventListener("click", async () => {
     if (!(c1.checked && c2.checked)) { setMsg("__NEEDCHECKS__"); return; }
+    if (!channel_ok) { setMsg("__JOINNEEDED__"); return; }
+
     setMsg("__SAVING__");
     acceptBtn.disabled = true; declineBtn.disabled = true;
     try {
@@ -342,6 +479,17 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
     t = TEXTS[L]
     body = TERMS_LONG[L]
 
+    joinblock = f"""
+    <div class="colBlock">
+      <div class="colTitle">{t["join_title"]}</div>
+      <div class="colText">{t["join_text"]}</div>
+      <div class="rowBtns">
+        <a class="smallBtn" href="{REQUIRED_CHANNEL_URL}" target="_blank" rel="noopener noreferrer">{t["join_button"]}</a>
+        <button type="button" class="smallBtn smallBtnPrimary" id="checkChannelBtn">{t["verify_button"]}</button>
+      </div>
+    </div>
+    """
+
     html = (HTML_TEMPLATE
         .replace("__UID__", str(uid))
         .replace("__LANG__", L)
@@ -357,31 +505,31 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
         .replace("__NO__", t["no"])
         .replace("__ERROR__", t["error"])
         .replace("__NEEDCHECKS__", t["need_checks"])
+        .replace("__JOINNEEDED__", t["join_needed"])
         .replace("__SAVING__", t["saving"])
         .replace("__PROCESSING__", t["processing"])
+        .replace("__VERIFYOK__", t["verify_ok"])
+        .replace("__VERIFYFAIL__", t["verify_fail"])
         .replace("__TVERSION__", TERMS_VERSION.upper())
         .replace("__BODY__", body)
+        .replace("__JOINBLOCK__", joinblock)
     )
     return HTMLResponse(html)
 
-# COLE ISTO NO FINAL DO webapp.py (substituindo os endpoints antigos)
-
-import traceback
-from fastapi import Request
-
+# =========================
+# APIs
+# =========================
 @app.post("/api/terms/accept")
 def api_accept(payload: dict, request: Request):
     try:
         uid = int(payload.get("uid") or 0)
         lang = pick_lang(payload.get("lang"))
-
         if uid <= 0:
             return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
         create_or_get_user(uid)
         set_language(uid, lang)
         accept_terms(uid, TERMS_VERSION)
-
         return {"ok": True, "message": TEXTS[lang]["done"]}
 
     except Exception as e:
@@ -392,19 +540,16 @@ def api_accept(payload: dict, request: Request):
             status_code=500
         )
 
-
 @app.post("/api/terms/decline")
 def api_decline(payload: dict, request: Request):
     try:
         uid = int(payload.get("uid") or 0)
         lang = pick_lang(payload.get("lang"))
-
         if uid <= 0:
             return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
         create_or_get_user(uid)
         set_language(uid, lang)
-
         return {"ok": True, "message": TEXTS[lang]["no"]}
 
     except Exception as e:
@@ -414,3 +559,34 @@ def api_decline(payload: dict, request: Request):
             {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
             status_code=500
         )
+
+@app.post("/api/channel/check")
+def api_channel_check(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    # Se não tem canal configurado, libera
+    if not REQUIRED_CHANNEL:
+        return {"ok": True}
+
+    if not BOT_TOKEN:
+        return JSONResponse({"ok": False, "message": "BOT_TOKEN ausente para verificação."}, status_code=500)
+
+    try:
+        import requests
+        r = requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember",
+            params={"chat_id": REQUIRED_CHANNEL, "user_id": uid},
+            timeout=8,
+        )
+        data = r.json()
+        if not data.get("ok"):
+            return {"ok": False}
+
+        status = (data.get("result") or {}).get("status", "")
+        ok = status in ("creator", "administrator", "member")
+        return {"ok": ok}
+
+    except Exception:
+        return {"ok": False}
