@@ -107,7 +107,6 @@ from database import (
     is_banned_character,
 
     # rankings / stats / conquistas
-    get_top_by_level,
     get_top_by_coins,
     get_top_by_collection,
     get_user_stats,
@@ -5792,6 +5791,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
