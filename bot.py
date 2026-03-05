@@ -4404,7 +4404,7 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     coins = get_user_coins(user_id)
     giros = get_extra_dado(user_id)
-
+    
     nxt = _next_slot_dt_sp()
     nxt_txt = nxt.strftime("%H:%M")
 
@@ -4441,15 +4441,7 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
             coins_max=DAILY_COINS_MAX,
             giro_chance=DAILY_GIRO_CHANCE,
         )
-    except Exception as e:
-        print("DAILY ERROR:", e)
-        if is_admin(user_id):
-            await update.message.reply_html(f"⚠️ Daily falhou:
-<code>{str(e)[:900]}</code>")
-        else:
-            await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
-        return
-
+   
     if not reward:
         await update.message.reply_html(
             "📦 <b>DAILY</b>\n\n"
@@ -6041,6 +6033,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
