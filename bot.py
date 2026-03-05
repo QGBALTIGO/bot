@@ -136,8 +136,6 @@ from datetime import datetime, timedelta
 
 from database import pool_import_top500_txt
 
-pool_import_top500_txt("top500_anilist_consolidado.txt")
-
 # ==================================================
 # GLOBALS (TZ + SAFE HELPERS)
 # ==================================================
@@ -386,6 +384,7 @@ import io
 import math
 import re
 
+        
 TOP500_SEED_ITEMS_DEFAULT = int(os.getenv("TOP500_SEED_ITEMS", "2500"))
 TOP500_SEED_PER_PAGE = 50
 TOP500_SLEEP = float(os.getenv("TOP500_SLEEP", "2.5"))  # aumente pra 3.5 se precisar
@@ -393,6 +392,8 @@ TOP500_ADMIN_ONLY = True
 
 _top500_seed_lock = asyncio.Lock()
 _top500_chars_lock = asyncio.Lock()
+
+pool_import_top500_txt("top500_anilist_consolidado.txt")
 
 def _best_title(media: dict) -> str:
     t = media.get("title") or {}
@@ -5796,6 +5797,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
