@@ -7,9 +7,7 @@ BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
-    # No Railway, coloque BASE_URL com a URL pública do serviço
-    # Ex: https://seu-app.up.railway.app
-    BASE_URL = ""
+    raise RuntimeError("BASE_URL não configurado no Railway.")
 
 def _map_tg_lang(tg_lang: str | None) -> str:
     tg_lang = (tg_lang or "").lower()
@@ -36,11 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ Ao continuar, você confirma que concorda com essas regras."
     )
 
-    # Link do WebApp (inclui uid e lang)
-    if not BASE_URL:
-        terms_url = "https://example.com"  # placeholder se BASE_URL não configurado
-    else:
-        terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
+    terms_url = f"{URL_BASE}/terms?uid={user_id}&lang={tg_lang}"
 
     keyboard = [
         [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))],
