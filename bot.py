@@ -29,12 +29,10 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
 
-    # idioma submenu
-    app.add_handler(CallbackQueryHandler(open_language_menu, pattern="change_language"))
-    app.add_handler(CallbackQueryHandler(set_lang, pattern="lang_"))
 
     print("Bot + WebApp iniciado")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
