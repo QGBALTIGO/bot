@@ -5,9 +5,9 @@ from database import create_or_get_user
 
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = os.getenv("URL_BASE", "").rstrip("/")
 if not BASE_URL:
-    raise RuntimeError("BASE_URL não configurado no Railway.")
+    raise RuntimeError("URL_BASE não configurado no Railway.")
 
 def _map_tg_lang(tg_lang: str | None) -> str:
     tg_lang = (tg_lang or "").lower()
