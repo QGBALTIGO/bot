@@ -91,7 +91,7 @@ def has_accepted_terms(user_id: int, version: str) -> bool:
     accepted, v = row
     return bool(accepted) and (v == version)
 
-Vdef get_user_status(user_id: int):
+def get_user_status(user_id: int):
     row = _run(
         "SELECT lang, terms_accepted, terms_version, welcome_sent FROM users WHERE user_id = %s",
         (user_id,),
