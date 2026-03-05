@@ -1653,8 +1653,10 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    texto_pedido = " ".join(context.args)
     user = update.effective_user
+    user_id = user.id 
+    
+    texto_pedido = " ".join(context.args)
 
     mensagem_canal = (
         "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
@@ -1672,8 +1674,8 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-    ensure_user_row(user_id, user.first_name)
-    set_last_pedido(user_id, int(time.time()))
+    ensure_user_row(user_id, user.first_name)        
+    set_last_pedido(user_id, int(time.time())) 
 
     await update.message.reply_html(
         f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
@@ -6029,6 +6031,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
