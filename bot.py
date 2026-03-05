@@ -1,23 +1,22 @@
 import os
-import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("bot")
+from commands.start import start
+from database import create_tables
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot online. (/start funcionando)")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 def main():
+
+    create_tables()
+
     app = Application.builder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    log.info("Bot iniciado.")
-    app.run_polling(drop_pending_updates=True)
+
+    print("Bot iniciado")
+
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
