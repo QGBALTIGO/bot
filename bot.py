@@ -5,7 +5,6 @@ import uvicorn
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 from commands.start import start
-from commands.language import open_language_menu, set_lang
 from database import create_tables
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -35,4 +34,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
