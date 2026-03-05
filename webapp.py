@@ -288,12 +288,23 @@ HTML_TEMPLATE = """<!doctype html>
 
   .banner {
     width:100%;
-    height:140px;
+    height:180px;
+
     background:
-      linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.62)),
-      url("__TOPBANNER__") center/cover no-repeat;
-    position:relative;
-  }
+      linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.0) 0%,
+        rgba(0,0,0,0.45) 60%,
+        rgba(0,0,0,0.85) 100%
+      ),
+      url("__TOPBANNER__");
+
+    background-position:center;
+    background-repeat:no-repeat;
+    background-size:contain;
+
+    background-color:#050712;
+}
   .banner:after{
     content:"";
     position:absolute; inset:0;
