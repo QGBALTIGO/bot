@@ -162,7 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = (
             f"⚓ <b>Bem-vindo de volta, {name}!</b>\n\n"
             "<b>Source Baltigo</b>\n"
-            "Sua jornada continua — escolha o próximo destino e siga explorando. ⚔️✨\n\n"
+            "Sua jornada continua, escolha o próximo destino e siga explorando. ⚔️✨\n\n"
             "Se precisar, você pode abrir os <b>termos</b> novamente pelo botão abaixo."
         )
 
