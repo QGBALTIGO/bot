@@ -10,25 +10,20 @@ if not DATABASE_URL:
 _conn: Optional[psycopg.Connection] = None
 
 def _get_conn() -> psycopg.Connection:
-    """
-    Conecta sob demanda e reutiliza a conexão.
-    Se cair, reconecta.
-    """
     global _conn
     if _conn is not None and not _conn.closed:
         return _conn
 
-    # retry leve (ajuda quando Postgres está subindo)
     last_err = None
-    for _ in range(6):  # ~6 tentativas
+    for _ in range(8):  # tenta por alguns segundos
         try:
             _conn = psycopg.connect(DATABASE_URL)
             return _conn
         except Exception as e:
             last_err = e
-            time.sleep(1.5)
+            time.sleep(1.2)
 
-    raise last_err  # se não conectou, explode aqui
+    raise last_err
 
 def create_tables():
     conn = _get_conn()
@@ -76,16 +71,3 @@ def accept_terms(user_id: int, version: str):
             (version, user_id)
         )
         conn.commit()
-
-def has_accepted_terms(user_id: int, version: str) -> bool:
-    conn = _get_conn()
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
-            (user_id,)
-        )
-        row = cur.fetchone()
-        if not row:
-            return False
-        accepted, v = row
-        return bool(accepted) and (v == version)
