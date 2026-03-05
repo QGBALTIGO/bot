@@ -30,7 +30,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ <b>Catálogo disponível apenas no privado</b>\n\n"
             "O <b>Source Baltigo</b> utiliza um <b>Mini App interativo</b> para "
             "explorar o catálogo completo de animes.\n\n"
-            "📚 Para acessar a biblioteca, abra o bot no <b>chat privado</b>.\n\n"
+            "📺 Para acessar a biblioteca, abra o bot no <b>chat privado</b>.\n\n"
             "🎴 <i>Lá você poderá navegar pelos títulos, descobrir novos animes "
             "e abrir diretamente os episódios disponíveis.</i>"
         )
@@ -38,7 +38,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         teclado = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "📚 Abrir Catálogo no privado",
+                    "📺 Abrir Catálogo no privado",
                     url=f"https://t.me/{BOT_USERNAME}"
                 )
             ]
@@ -68,14 +68,14 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     teclado = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "📚 Abrir Catálogo de Animes",
+                "📺 Abrir Catálogo de Animes",
                 web_app=WebAppInfo(url=url)
             )
         ]
     ])
 
     texto = (
-        "📚 <b>Catálogo de Animes</b>\n\n"
+        "📺 <b>Catálogo de Animes</b>\n\n"
         "A biblioteca do <b>Source Baltigo</b> está pronta para você explorar.\n\n"
         "🎴 Descubra títulos, encontre seus favoritos e navegue pelo catálogo completo.\n\n"
         "✨ Toque no botão abaixo para abrir o catálogo."
