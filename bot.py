@@ -171,10 +171,6 @@ async def safe_delete(msg):
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "").strip()
-from database import init_db
-
-init_db()
-
 BOT_BUILD = "2026-03-03-1"
 
 CANAL_ANIME = os.getenv("CANAL_ANIME", "").strip().lstrip("@")
@@ -3992,12 +3988,8 @@ async def _get_char_label(user_id: int, char_id: int) -> str:
 
 
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
-        return
     if not update.effective_user or not update.message:
         return
-
-    await registrar_comando(update)
 
     # antiflood por comando
     ok = await anti_spam(update.effective_user.id, key="cmd:/trocar", window=3)
@@ -4404,7 +4396,7 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     coins = get_user_coins(user_id)
     giros = get_extra_dado(user_id)
-    
+
     nxt = _next_slot_dt_sp()
     nxt_txt = nxt.strftime("%H:%M")
 
@@ -4416,6 +4408,55 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🕒 Próxima recarga do dado:\n"
         f"<b>{nxt_txt}</b> (Brasil)"
     )
+
+
+async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
+    await registrar_comando(update)
+
+    user_id = update.effective_user.id
+
+    if not _cmd_flood_ok(_DAILY_FLOOD, user_id, 2.0):
+        await update.message.reply_html("Calma 🙂")
+        return
+
+    ensure_user_row(user_id, update.effective_user.first_name)
+
+    day_start_ts = _daily_day_start_ts_sp()
+
+    try:
+        reward = claim_daily_reward(
+            user_id,
+            day_start_ts,
+            coins_min=DAILY_COINS_MIN,
+            coins_max=DAILY_COINS_MAX,
+            giro_chance=DAILY_GIRO_CHANCE,
+        )
+    except Exception as e:
+        print("DAILY ERROR:", e)
+        await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
+        return
+
+    if not reward:
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            "Você já resgatou hoje.\n"
+            "Volte amanhã 🙂"
+        )
+        return
+
+    if reward["type"] == "giro":
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            "✅ Você recebeu: <b>+1 giro</b> 🎡"
+        )
+    else:
+        await update.message.reply_html(
+            "📦 <b>DAILY</b>\n\n"
+            f"✅ Você recebeu: <b>+{int(reward['amount'])} coins</b> 🪙"
+        )
+
 
 def _trade_kb(trade_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
@@ -5988,8 +6029,6 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
-
-
 
 
 
