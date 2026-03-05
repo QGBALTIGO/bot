@@ -86,20 +86,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Caso 3: tudo ok -> mensagem de boas-vindas (1x) ou de volta
     welcome_sent = bool(st.get("welcome_sent"))
 
-    if not welcome_sent:
-        msg = (
-            f"🏴‍☠️ <b>Bem-vindo, {name}!</b>\n\n"
-            "<b>Source Baltigo</b>\n"
-            "O seu portal para o mundo dos animes.\n\n"
-            "Aqui você pode descobrir personagens, explorar histórias e encontrar novos animes para assistir.\n\n"
-            "Entre para a tripulação e comece sua jornada. ⚔️✨"
-        )
-        mark_welcome_sent(user_id)
-    else:
-        msg = (
-            f"⚓ <b>Bem-vindo de volta, {name}!</b>\n\n"
-            "<b>Source Baltigo</b>\n"
-            "Sua jornada continua — escolha o próximo destino e siga explorando. ⚔️✨"
-        )
+    nome = update.effective_user.first_name if update.effective_user else ""
 
-    await update.message.reply_html(msg)
+    texto = (
+        f"🏴‍☠️ <b>Bem-vindo, {nome}!</b>\n\n"
+
+        "<b>Source Baltigo</b>\n"
+        "<i>O seu portal para o mundo dos animes.</i>\n\n"
+
+        "Aqui você pode descobrir personagens, explorar histórias "
+        "e encontrar novos animes para assistir.\n\n"
+
+        "Entre para a tripulação e comece sua jornada. ⚔️✨"
+    )
+
+    teclado = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "➕ Adicionar ao grupo",
+                url="https://t.me/SourceBaltigo_bot?startgroup=true"
+            )
+        ],
+        [
+            InlineKeyboardButton("🏴‍☠️ QG Baltigo", url="https://t.me/QG_BALTIGO")
+        ]
+    ])
+
+    if update.message:
+        await update.message.reply_photo(
+            photo="https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg",
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=teclado
+        )
