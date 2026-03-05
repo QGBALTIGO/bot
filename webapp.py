@@ -56,6 +56,12 @@ GIRO_MAX_BALANCE = int(os.getenv("GIRO_MAX_BALANCE", "24"))
 # =========================
 def _rate_limit(user_id: int, key: str) -> bool:
     now = time.time()
+    # limpeza simples pra evitar crescimento infinito em produção
+    if len(_WEB_RATE) > 20000:
+        cutoff = now - 120
+        for kk, ts in list(_WEB_RATE.items()):
+            if ts < cutoff:
+                _WEB_RATE.pop(kk, None)
     k = (int(user_id), str(key))
     last = _WEB_RATE.get(k, 0.0)
     if now - last < WEB_RATE_LIMIT_SECONDS:
