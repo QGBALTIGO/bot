@@ -97,6 +97,11 @@ def _run(sql: str, params: Tuple = (), fetch: str = "none"):
                 except Exception:
                     pass
                 raise
+                with pool.connection() as conn:
+    with conn.cursor() as cur:
+        cur.execute(...)
+        # deu erro
+        # e não rollback
 
 
 def _run_many(statements: List[Tuple[str, Tuple]]) -> None:
