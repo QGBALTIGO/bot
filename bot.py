@@ -53,7 +53,7 @@ from database import (
     # coins
     add_coin,
     get_user_coins,
-    get_top_by_level
+    get_top_by_level,
     try_spend_coins,
     spend_coins_and_add_giro,
 
@@ -5792,6 +5792,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
