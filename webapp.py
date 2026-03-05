@@ -1784,7 +1784,7 @@ def miniapp_dado():
 /* banner */
 .banner{
   width:100%;
-  margin:4px 0 14px 0;
+  margin:6px 0 14px 0;
   border-radius:18px;
   overflow:hidden;
   border:1px solid rgba(255,255,255,.14);
@@ -1792,12 +1792,11 @@ def miniapp_dado():
 }
 .banner img{
   width:100%;
-  height:140px;
-  object-fit:cover;
+  height:auto;
   display:block;
 }
 
-/* centralização */
+/* centralizar dado */
 .row{
   display:flex;
   gap:12px;
@@ -1930,6 +1929,7 @@ def miniapp_dado():
         "<div class='dice' id='dice'>🎲</div>"
         "<button class='btn' id='roll'>ROLAR</button>"
         "</div>"
+
         "<div class='optGrid' id='opts'></div>"
         "<div class='statusLine' id='status'></div>"
         "</div>"
