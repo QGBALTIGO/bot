@@ -1434,416 +1434,691 @@ def catalogo_page():
 
 
 # =========================
-# CONFIG
+# CONFIG — CATÁLOGO (MANGÁS)
 # =========================
 
-INOUT_PATH = os.getenv("JSON_PATH", "data/catalogo_mangas_enriquecido.json").strip()
+MANGA_CATALOG_PATH = os.getenv("MANGA_CATALOG_PATH", "data/catalogo_mangas_enriquecido.json").strip()
 
-ANILIST_URL = "https://graphql.anilist.co"
+MANGA_CATALOG_BANNER_URL = os.getenv(
+    "MANGA_CATALOG_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZzguBWmp1rAsEzc6la-5rpAwuyD7vdm0AAL8C2sb1ZFIRYepX3uNQGYyAQADAgADeQADOgQ/photo.jpg",
+).strip()
 
-# concorrência baixa pra não tomar rate limit
-CONCURRENCY = int(os.getenv("CONCURRENCY", "2"))
-MIN_DELAY_MS = int(os.getenv("MIN_DELAY_MS", "250"))
+MANGA_BACKGROUND_PATTERN_URL = os.getenv("MANGA_BACKGROUND_PATTERN_URL", "").strip()
+MANGA_CATALOG_TITLE = os.getenv("MANGA_CATALOG_TITLE", "CATÁLOGO MANGÁS").strip()
+MANGA_CATALOG_SUBTITLE = os.getenv("MANGA_CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
 
-# tentativas por item (ex: título limpo + título bruto)
-MAX_ATTEMPTS_PER_ITEM = 3
-
-# critérios de limpeza do catálogo
-BLACKLIST_TITLE = [
-    "promo", "parceria", "aviso", "comunicado", "regras", "pix", "doação", "doacao", "sorteio",
-    "link", "grupo", "canal", "atualização", "atualizacao", "tutorial", "como usar",
-    "fix", "bug", "moderação", "moderacao", "support", "suporte", "vote", "enquete",
-    "boas-vindas", "bem-vindo", "bem vindo", "admin"
-]
-
-BLACKLIST_TEXT = [
-    "regras do canal", "comunicado", "aviso", "parceria", "promoção", "promoçao",
-    "sorteio", "doação", "doacao", "pix", "apoie", "patreon", "vaquinha",
-    "tutorial", "como baixar", "como ler", "atualização do canal", "atualizacao do canal",
-    "novo canal", "migração", "migracao", "grupo oficial", "nosso grupo", "contato"
-]
-
-POSITIVE_HINTS = [
-    "gênero", "genero", "capítulo", "capitulo", "vol.", "volume", "sinopse", "💬",
-    "#", "mangá", "manga", "manhwa", "manhua", "novel", "one-shot", "oneshot", "formato:"
-]
+_MANGA_CATALOG: List[Dict[str, Any]] = []
+_MANGA_LETTER_COUNTS: Dict[str, int] = {}
+_MANGA_TOTAL: int = 0
 
 
-ANILIST_QUERY = """
-query ($search: String) {
-  Media(search: $search, type: MANGA) {
-    id
-    siteUrl
-    title { romaji english native }
-    format
-    status
-    chapters
-    volumes
-    averageScore
-    popularity
-    trending
-    genres
-    seasonYear
-    startDate { year month day }
-    countryOfOrigin
-    coverImage { large extraLarge color }
-    bannerImage
-    description(asHtml: false)
-  }
-}
-"""
+def _detect_manga_badge(it: Dict[str, Any], anilist: Optional[Dict[str, Any]]) -> str:
+    """
+    Decide o badge do card:
+    - se vier format do AniList (MANGA/NOVEL/ONE_SHOT etc), usa isso
+    - tenta detectar pelo raw_text: "Formato: Manhwa/Manhua/Mangá"
+    - fallback: MANGA
+    """
+    if anilist and isinstance(anilist, dict):
+        fmt = str(anilist.get("format") or "").strip()
+        if fmt:
+            # aniList costuma ser MANGA / NOVEL / ONE_SHOT
+            if fmt.upper() == "MANGA":
+                return "MANGA"
+            if fmt.upper() == "NOVEL":
+                return "NOVEL"
+            if fmt.upper() == "ONE_SHOT":
+                return "ONE-SHOT"
+            return fmt.upper()
+
+    raw = str(it.get("raw_text") or "").lower()
+
+    # procura por "formato:"
+    if "formato" in raw:
+        # heurística simples
+        if "manhwa" in raw:
+            return "MANHWA"
+        if "manhua" in raw:
+            return "MANHUA"
+        if "mangá" in raw or "manga" in raw:
+            return "MANGA"
+
+    # fallback
+    return "MANGA"
 
 
-# =========================
-# HELPERS
-# =========================
+def _coerce_manga_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
+    post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
 
-def norm(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
+    if not title_raw:
+        raw_text = str(it.get("raw_text") or "").strip()
+        if raw_text:
+            title_raw = _normalize_title(raw_text.splitlines()[0])
 
-def normalize_search_title(title: str) -> str:
-    t = (title or "").strip()
-    # remove brackets
-    t = re.sub(r"\[[^\]]*\]", "", t).strip()
-    t = re.sub(r"\([^)]*\)", "", t).strip()
-    # pega antes de separadores comuns
-    t = re.split(r"\s+\|\s+|\s+-\s+| — ", t)[0].strip()
-    t = re.sub(r"\s{2,}", " ", t).strip()
-    if len(t) > 120:
-        t = t[:120].strip()
-    return t
-
-def extract_format_from_raw(raw_text: str) -> Optional[str]:
-    t = raw_text or ""
-    m = re.search(r"Formato\s*:\s*([^\n]+)", t, flags=re.I)
-    if not m:
+    if not title_raw or not post_url:
         return None
-    v = norm(m.group(1))
-    v = v.replace(".", "").strip()
-    return v or None
 
-def classify_kind(country: Optional[str], raw_format: Optional[str]) -> str:
-    # Prioriza o texto do post, porque no seu canal isso vem bem definido
-    if raw_format:
-        rf = raw_format.lower()
-        if "manhwa" in rf:
-            return "manhwa"
-        if "manhua" in rf:
-            return "manhua"
-        if "novel" in rf:
-            return "novel"
-        if "mang" in rf:
-            return "manga"
+    anilist = it.get("anilist")
+    if not isinstance(anilist, dict):
+        anilist = None
 
-    # fallback: país de origem AniList
-    if country == "KR":
-        return "manhwa"
-    if country == "CN":
-        return "manhua"
-    return "manga"
+    title_display = title_raw
+    cover = ""
+    fmt = ""
+    score = None
+    year = None
 
-def looks_like_non_work(title: str, raw_text: str, button_links: List[Dict[str, Any]]) -> bool:
-    tl = (title or "").lower()
-    tx = (raw_text or "").lower()
+    if anilist:
+        if anilist.get("title_display"):
+            title_display = str(anilist.get("title_display")).strip() or title_display
+        cover = str(anilist.get("cover") or "").strip()
+        fmt = str(anilist.get("format") or "").strip()
+        score = anilist.get("averageScore")
+        year = anilist.get("seasonYear")
 
-    for w in BLACKLIST_TITLE:
-        if w in tl:
-            return True
+    if year is None:
+        year = it.get("year_post")
 
-    for w in BLACKLIST_TEXT:
-        if w in tx:
-            return True
+    badge = _detect_manga_badge(it, anilist)
 
-    hints = sum(1 for h in POSITIVE_HINTS if h in tx)
-    # se não tem botões e não tem pistas, é suspeito
-    if not button_links and hints == 0:
-        return True
+    status_post = str(it.get("status_post") or "").strip()
+    if status_post.lower() == "restrito":
+        return None
 
-    return False
+    return {
+        "message_id": _safe_int(it.get("message_id")),
+        "titulo": _normalize_title(title_display),
+        "letter": _first_letter(title_display),
+        "link_post": post_url,         # abre o post do canal
+        "cover_url": cover,
+        "format": fmt,
+        "badge": badge,
+        "score": score,
+        "year": year,
+    }
 
 
-# =========================
-# ANILIST CLIENT
-# =========================
+def _load_manga_catalog() -> Tuple[int, str]:
+    global _MANGA_CATALOG, _MANGA_LETTER_COUNTS, _MANGA_TOTAL
 
-class AniList:
-    def __init__(self):
-        self.client = httpx.Client(timeout=25)
-        self.last_call = 0.0
-        self.cache: Dict[str, Optional[Dict[str, Any]]] = {}
+    _MANGA_CATALOG = []
+    _MANGA_LETTER_COUNTS = {}
+    _MANGA_TOTAL = 0
 
-    def close(self):
-        self.client.close()
+    path = MANGA_CATALOG_PATH
+    if not path:
+        print("[mangas] MANGA_CATALOG_PATH vazio. Catálogo ficará vazio.", flush=True)
+        return 0, "MANGA_CATALOG_PATH vazio"
 
-    def _throttle(self):
-        now = time.time()
-        elapsed_ms = (now - self.last_call) * 1000
-        if elapsed_ms < MIN_DELAY_MS:
-            time.sleep((MIN_DELAY_MS - elapsed_ms) / 1000)
-        self.last_call = time.time()
+    candidates = [path]
+    if not os.path.isabs(path):
+        candidates.append(os.path.join(os.getcwd(), path))
+        candidates.append(os.path.join("/app", path))
 
-    def search_manga(self, title: str) -> Optional[Dict[str, Any]]:
-        key = title.lower().strip()
-        if key in self.cache:
-            return self.cache[key]
+    real_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            real_path = c
+            break
 
-        self._throttle()
-        try:
-            r = self.client.post(
-                ANILIST_URL,
-                json={"query": ANILIST_QUERY, "variables": {"search": title}},
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-            )
-            if r.status_code != 200:
-                self.cache[key] = None
-                return None
+    if not real_path:
+        print(f"[mangas] Arquivo não encontrado: {path} (testados: {candidates})", flush=True)
+        return 0, "arquivo não encontrado"
 
-            payload = r.json()
-            media = (payload or {}).get("data", {}).get("Media")
-            if not media:
-                self.cache[key] = None
-                return None
+    try:
+        with open(real_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-            title_obj = media.get("title") or {}
-            title_display = title_obj.get("romaji") or title_obj.get("english") or title_obj.get("native") or title
+        records = _unwrap_records(data)
+        if not records:
+            print(f"[mangas] Nenhum registro encontrado. Tipo JSON: {type(data).__name__}", flush=True)
+            return 0, "sem registros"
 
-            cover_obj = media.get("coverImage") or {}
-            cover = cover_obj.get("extraLarge") or cover_obj.get("large")
+        items: List[Dict[str, Any]] = []
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            coerced = _coerce_manga_item(rec)
+            if coerced:
+                items.append(coerced)
 
-            out = {
-                "id": media.get("id"),
-                "siteUrl": media.get("siteUrl"),
-                "title_display": title_display,
-                "format": media.get("format"),
-                "status": media.get("status"),
-                "chapters": media.get("chapters"),
-                "volumes": media.get("volumes"),
-                "averageScore": media.get("averageScore"),
-                "popularity": media.get("popularity"),
-                "trending": media.get("trending"),
-                "genres": media.get("genres") or [],
-                "seasonYear": media.get("seasonYear") or (media.get("startDate") or {}).get("year"),
-                "countryOfOrigin": media.get("countryOfOrigin"),
-                "cover": cover,
-                "banner": media.get("bannerImage"),
-                "description": media.get("description"),
-            }
+        items.sort(key=lambda x: x["titulo"].lower())
 
-            self.cache[key] = out
-            return out
-        except Exception:
-            self.cache[key] = None
-            return None
+        counts: Dict[str, int] = {}
+        for x in items:
+            counts[x["letter"]] = counts.get(x["letter"], 0) + 1
+
+        _MANGA_CATALOG = items
+        _MANGA_LETTER_COUNTS = counts
+        _MANGA_TOTAL = len(items)
+
+        print(f"[mangas] Carregado OK: {_MANGA_TOTAL} itens (de {real_path})", flush=True)
+        return _MANGA_TOTAL, "ok"
+
+    except Exception as e:
+        print(f"[mangas] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
+        traceback.print_exc()
+        return 0, f"erro: {type(e).__name__}"
 
 
-# =========================
-# MAIN
-# =========================
+def _filter_manga_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
+    q = (q or "").strip().lower()
+    letter = (letter or "").strip().upper()
 
-def main():
-    if not os.path.exists(INOUT_PATH):
-        raise FileNotFoundError(f"Arquivo não encontrado: {INOUT_PATH}")
+    data = _MANGA_CATALOG
 
-    with open(INOUT_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    if letter and letter != "ALL":
+        data = [x for x in data if x["letter"] == letter]
 
-    records = data.get("records") or []
-    if not isinstance(records, list):
-        raise RuntimeError("JSON inválido: 'records' não é lista")
+    if q:
+        data = [x for x in data if q in x["titulo"].lower()]
 
-    al = AniList()
+    total = len(data)
 
-    kept: List[Dict[str, Any]] = []
-    total = len(records)
-    enriched = 0
-    removed = 0
-    already = 0
-    not_found = 0
+    if offset < 0:
+        offset = 0
+    if limit < 1:
+        limit = 1
+    if limit > 200:
+        limit = 200
 
-    for idx, r in enumerate(records, start=1):
-        if not isinstance(r, dict):
-            removed += 1
-            continue
+    return data[offset : offset + limit], total
 
-        title = (r.get("title_raw") or "").strip()
-        raw_text = r.get("raw_text") or ""
-        buttons = r.get("button_links") or []
-        if not isinstance(buttons, list):
-            buttons = []
 
-        if not title or looks_like_non_work(title, raw_text, buttons):
-            removed += 1
-            continue
+# carrega no boot (sem crash)
+try:
+    _load_manga_catalog()
+except Exception as e:
+    print("[mangas] ERRO inesperado no startup:", repr(e), flush=True)
 
-        # se já tem anilist preenchido, mantém (mas garante "kind" atualizado)
-        current_anilist = r.get("anilist")
-        raw_format = extract_format_from_raw(raw_text)
 
-        if isinstance(current_anilist, dict) and current_anilist.get("cover"):
-            # garante kind
-            country = current_anilist.get("countryOfOrigin")
-            current_anilist["kind"] = classify_kind(country, raw_format)
-            r["anilist"] = current_anilist
-            kept.append(r)
-            already += 1
-            continue
+@app.get("/api/mangas/letters")
+def api_mangas_letters():
+    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+    payload = {
+        "total": _MANGA_TOTAL,
+        "counts": {k: _MANGA_LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
+        "all_count": _MANGA_TOTAL,
+    }
+    return JSONResponse(payload)
 
-        # tentar achar no AniList
-        attempts = []
-        t1 = normalize_search_title(title)
-        if t1:
-            attempts.append(t1)
-        if title and title != t1:
-            attempts.append(title[:120])
-        # tentativa extra: pegar só primeira parte antes de "|" e "-"
-        t3 = re.split(r"\||-|\u2014", title)[0].strip()
-        t3 = normalize_search_title(t3)
-        if t3 and t3 not in attempts:
-            attempts.append(t3)
 
-        found = None
-        for a in attempts[:MAX_ATTEMPTS_PER_ITEM]:
-            found = al.search_manga(a)
-            if found:
-                break
-
-        if not found:
-            r["anilist"] = None
-            kept.append(r)
-            not_found += 1
-        else:
-            found["kind"] = classify_kind(found.get("countryOfOrigin"), raw_format)
-            r["anilist"] = found
-            kept.append(r)
-            enriched += 1
-
-        if idx % 25 == 0:
-            print(f"[{idx}/{total}] kept={len(kept)} enriched={enriched} already={already} removed={removed} not_found={not_found}")
-
-    # sobrescreve records limpos
-    data["records"] = kept
-    data["count"] = len(kept)
-    data["generated_at"] = datetime.now(timezone.utc).isoformat()
-
-    with open(INOUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    al.close()
-
-    print("\n✅ FINALIZADO")
-    print("Arquivo:", INOUT_PATH)
-    print("Total antes:", total)
-    print("Total depois:", len(kept))
-    print("Enriquecidos:", enriched)
-    print("Já tinham AniList:", already)
-    print("Removidos (lixo):", removed)
-    print("Sem match AniList:", not_found)
-
-# ===============================
-# MINIAPP - CATÁLOGO DE MANGÁS
-# ===============================
-
-from fastapi.responses import HTMLResponse
-import json
-import os
-
-MANGA_PATH = "data/catalogo_mangas_enriquecido.json"
-
-def _load_mangas():
-    if not os.path.exists(MANGA_PATH):
-        print("[mangas] arquivo não encontrado:", MANGA_PATH)
-        return []
-
-    with open(MANGA_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    return data.get("records", [])
+@app.get("/api/mangas/catalogo")
+def api_mangas_catalogo(
+    q: str = Query(default="", max_length=80),
+    letter: str = Query(default="ALL", max_length=3),
+    limit: int = Query(default=60, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    items, total = _filter_manga_catalog(q=q, letter=letter, limit=limit, offset=offset)
+    return JSONResponse({"total": total, "items": items})
 
 
 @app.get("/mangas", response_class=HTMLResponse)
 def mangas_page():
+    html = """<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>__CTITLE__ — Source Baltigo</title>
 
-    mangas = _load_mangas()
+  <style>
+    :root {
+      --bg0: #070b12;
+      --bg1: #0a1220;
+      --stroke: rgba(255,255,255,0.10);
+      --stroke2: rgba(255,255,255,0.16);
+      --txt: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.58);
+      --shadow: 0 14px 30px rgba(0,0,0,0.55);
+    }
 
-    cards = ""
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--txt);
+      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
+                  linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x: hidden;
+    }
 
-    for m in mangas:
+    .bg-pattern {
+      position: fixed;
+      inset: 0;
+      background-image: url("__BPATTERN__");
+      background-size: 520px;
+      background-repeat: repeat;
+      opacity: 0.10;
+      filter: grayscale(1) contrast(1.1);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-        titulo = m.get("title_raw", "Mangá")
-        capa = ""
-        link = m.get("post_url", "#")
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 18px 14px 40px;
+    }
 
-        if m.get("anilist"):
-            capa = m["anilist"].get("cover", "")
+    .top-banner {
+      width: 100%;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      position: relative;
+      background: #000;
+    }
+    .top-banner img {
+      width: 100%;
+      height: 190px;
+      object-fit: cover;
+      object-position: center;
+      display: block;
+    }
+    .top-banner::after{
+      content:"";
+      position:absolute; inset:0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
+      pointer-events:none;
+    }
 
-        cards += f"""
-        <a class="card" href="{link}" target="_blank">
-            <img src="{capa}" />
-            <div class="title">{titulo}</div>
-        </a>
-        """
+    .head {
+      padding: 16px 10px 8px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8"/>
-        <title>Catálogo de Mangás</title>
+    .title {
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
 
-        <style>
+    .search {
+      flex: 1;
+      min-width: 220px;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--stroke);
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
+    }
+    .search input {
+      width: 100%;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--txt);
+      font-size: 14px;
+    }
+    .search input::placeholder{
+      color: rgba(255,255,255,0.35);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
 
-        body {{
-            background:#0b1220;
-            font-family:Arial;
-            color:white;
-            margin:0;
-            padding:20px;
-        }}
+    .letters {
+      margin-top: 14px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid var(--stroke);
+      border-radius: 26px;
+      padding: 14px;
+      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
+    }
+    .letters-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+    @media (min-width: 720px){
+      .letters-grid { grid-template-columns: repeat(10, 1fr); }
+      .top-banner img { height: 220px; }
+    }
 
-        h1 {{
-            text-align:center;
-        }}
+    .letter {
+      user-select: none;
+      cursor: pointer;
+      border-radius: 16px;
+      padding: 12px 10px;
+      text-align: center;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.03);
+      transition: transform .08s ease, border-color .12s ease, background .12s ease;
+    }
+    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
+    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
+    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
+    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
 
-        .grid {{
-            display:grid;
-            grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
-            gap:20px;
-        }}
+    .cards {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    @media (min-width: 720px){
+      .cards { grid-template-columns: repeat(3, 1fr); }
+    }
 
-        .card {{
-            text-decoration:none;
-            color:white;
-        }}
+    .card {
+      cursor: pointer;
+      border-radius: 26px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.03);
+      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
+      transition: transform .10s ease, border-color .12s ease;
+      position: relative;
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
 
-        .card img {{
-            width:100%;
-            border-radius:12px;
-        }}
+    .cover {
+      width: 100%;
+      height: 220px;
+      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
+      position: relative;
+    }
+    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-        .title {{
-            font-size:14px;
-            margin-top:6px;
-        }}
+    .badge {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      background: rgba(90,168,255,0.24);
+      border: 1px solid rgba(90,168,255,0.40);
+      color: rgba(255,255,255,0.90);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      font-size: 11px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      text-transform: uppercase;
+    }
 
-        </style>
-    </head>
+    .meta { padding: 12px 14px 14px; }
+    .meta .name {
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      font-size: 14px;
+      text-transform: uppercase;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .meta .sub {
+      margin-top: 8px;
+      color: rgba(255,255,255,0.50);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      font-size: 11px;
+      text-transform: uppercase;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .pill {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
 
-    <body>
+    .footer {
+      margin-top: 14px;
+      color: rgba(255,255,255,0.40);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-align: center;
+    }
 
-    <h1>📚 Catálogo de Mangás</h1>
+    .loadmore {
+      margin: 14px auto 0;
+      width: 100%;
+      max-width: 320px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.86);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-weight: 900;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
+    }
+    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
 
-    <div class="grid">
-    {cards}
+<body>
+  <div class="bg-pattern"></div>
+
+  <div class="wrap">
+    <div class="top-banner">
+      <img src="__CBANNER__" alt="Banner"/>
     </div>
 
-    </body>
-    </html>
-    """
+    <div class="head">
+      <div>
+        <div class="title">__CTITLE__</div>
+        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
+      </div>
 
+      <div class="search" title="Buscar mangá">
+        <span style="opacity:.6;font-weight:900;">🔎</span>
+        <input id="q" type="text" placeholder="BUSCAR MANGÁ..." />
+      </div>
+    </div>
+
+    <div class="letters">
+      <div class="letters-grid" id="lettersGrid"></div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
+
+    <div class="footer">Source Baltigo • Catálogo do canal</div>
+  </div>
+
+  <script>
+    const apiLetters = "/api/mangas/letters";
+    const apiCatalogo = "/api/mangas/catalogo";
+
+    let state = {
+      letter: "ALL",
+      q: "",
+      limit: 60,
+      offset: 0,
+      total: 0,
+      loading: false,
+    };
+
+    function esc(s) {
+      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+    }
+
+    function openLink(link) {
+      try {
+        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
+          Telegram.WebApp.openTelegramLink(link);
+          return;
+        }
+      } catch (e) {}
+      window.open(link, "_blank");
+    }
+
+    function makeLetterButton(key, count) {
+      const el = document.createElement("div");
+      el.className = "letter" + (state.letter === key ? " active" : "");
+      el.innerHTML = `
+        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
+        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
+      `;
+      el.onclick = () => {
+        state.letter = key;
+        state.offset = 0;
+        document.getElementById("cards").innerHTML = "";
+        renderLetters();
+        loadCatalog(true);
+      };
+      return el;
+    }
+
+    async function renderLetters() {
+      const grid = document.getElementById("lettersGrid");
+      grid.innerHTML = "";
+
+      const res = await fetch(apiLetters + "?_ts=" + Date.now());
+      const data = await res.json();
+
+      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
+
+      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
+      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
+
+      for (let c = 65; c <= 90; c++) {
+        const k = String.fromCharCode(c);
+        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
+        grid.appendChild(makeLetterButton(k, n));
+      }
+    }
+
+    function badgeText(item) {
+      const b = (item.badge || item.format || "").toString().trim();
+      return b ? b.toUpperCase() : "MANGA";
+    }
+
+    function pillLine(item) {
+      let parts = [];
+      if (item.year) parts.push(String(item.year));
+      if (item.score) parts.push("★ " + String(item.score));
+      if (item.format) parts.push(String(item.format).toUpperCase());
+      return parts;
+    }
+
+    function makeCard(item) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const hasCover = item.cover_url && item.cover_url.length > 5;
+      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
+      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
+
+      card.innerHTML = `
+        <div class="cover">
+          ${coverHtml}
+          <div class="badge">${esc(badgeText(item))}</div>
+        </div>
+        <div class="meta">
+          <p class="name">${esc(item.titulo)}</p>
+          <div class="sub">
+            <span class="pill">CANAL</span>
+            ${pills}
+          </div>
+        </div>
+      `;
+
+      card.onclick = () => openLink(item.link_post);
+      return card;
+    }
+
+    async function loadCatalog(reset=false) {
+      if (state.loading) return;
+      state.loading = true;
+
+      const btn = document.getElementById("btnMore");
+      btn.disabled = true;
+      btn.textContent = "CARREGANDO...";
+
+      const params = new URLSearchParams();
+      params.set("letter", state.letter);
+      params.set("q", state.q);
+      params.set("limit", state.limit);
+      params.set("offset", state.offset);
+      params.set("_ts", String(Date.now()));
+
+      const res = await fetch(apiCatalogo + "?" + params.toString());
+      const data = await res.json();
+
+      state.total = data.total || 0;
+
+      const cards = document.getElementById("cards");
+      for (const it of (data.items || [])) {
+        cards.appendChild(makeCard(it));
+      }
+
+      state.offset += (data.items || []).length;
+
+      if (state.offset >= state.total) {
+        btn.disabled = true;
+        btn.textContent = "FIM DA LISTA";
+      } else {
+        btn.disabled = false;
+        btn.textContent = "CARREGAR MAIS";
+      }
+
+      state.loading = false;
+    }
+
+    function debounce(fn, ms) {
+      let t = null;
+      return (...args) => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    const onSearch = debounce(() => {
+      state.q = (document.getElementById("q").value || "").trim();
+      state.offset = 0;
+      document.getElementById("cards").innerHTML = "";
+      loadCatalog(true);
+    }, 250);
+
+    document.getElementById("q").addEventListener("input", onSearch);
+    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
+
+    (async () => {
+      await renderLetters();
+      await loadCatalog(true);
+    })();
+  </script>
+</body>
+</html>
+"""
+
+    pattern = MANGA_BACKGROUND_PATTERN_URL if MANGA_BACKGROUND_PATTERN_URL else ""
+    html = (html
+        .replace("__CBANNER__", MANGA_CATALOG_BANNER_URL)
+        .replace("__BPATTERN__", pattern)
+        .replace("__CTITLE__", MANGA_CATALOG_TITLE)
+        .replace("__CSUB__", MANGA_CATALOG_SUBTITLE)
+    )
     return HTMLResponse(html)
-
-if __name__ == "__main__":
-    from datetime import timezone  # usado no final
-    main()
