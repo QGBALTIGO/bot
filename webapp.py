@@ -425,8 +425,8 @@ def terms_page(
     </label>
 
     <div class="actions">
-      <button class="accept" id="acceptBtn">{t["accept"]}</button>
-      <button class="decline" id="declineBtn">{t["decline"]}</button>
+      <button type="button" class="accept" id="acceptBtn">...</button>
+      <button type="button" class="decline" id="declineBtn">...</button>
     </div>
 
     <div class="msg" id="msg"></div>
