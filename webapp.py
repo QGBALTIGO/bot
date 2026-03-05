@@ -1,15 +1,53 @@
+# webapp.py — (SUBSTITUIR TUDO)
+# MiniApp Termos (PT/EN/ES) + verificação de canal (sem requests)
+# + MiniApp Catálogo do canal (cards A–Z) baseado em catalogo_enriquecido.json
+#
+# Requisitos: fastapi, uvicorn, httpx
+#
+# ENV:
+#   TERMS_VERSION="v1"
+#   BOT_TOKEN="xxxxx"                      (obrigatório p/ verificar canal)
+#   REQUIRED_CHANNEL="@SourcerBaltigo"     (ou -100xxxxxxxxxx)
+#   REQUIRED_CHANNEL_URL="https://t.me/SourcerBaltigo"
+#   TOP_BANNER_URL="https://..."           (banner do termos)
+#   BACKGROUND_URL="https://..."           (fundo do termos)
+#
+#   CATALOG_PATH="catalogo_enriquecido.json"
+#   CATALOG_BANNER_URL="https://..."       (banner do catálogo)
+#   BACKGROUND_PATTERN_URL="https://..."   (pattern do catálogo)
+#   CATALOG_TITLE="CATÁLOGO"
+#   CATALOG_SUBTITLE="TOTAL"
+#
+# Rotas:
+#   GET  /                  -> health
+#   GET  /terms             -> MiniApp (Termos)
+#   POST /api/channel/check -> verifica inscrição no canal
+#   POST /api/terms/accept  -> aceita termos
+#   POST /api/terms/decline -> recusa termos
+#
+#   GET  /catalogo          -> MiniApp (Catálogo)
+#   GET  /api/letters       -> contagem por letra
+#   GET  /api/catalogo      -> lista filtrada (q, letter, limit, offset)
+
 import os
+import json
+import re
 import traceback
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 from fastapi import FastAPI, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from database import create_or_get_user, accept_terms, set_language
 
+
 app = FastAPI()
 
-# ===== CONFIG =====
+# =========================
+# CONFIG — TERMOS
+# =========================
 TERMS_VERSION = (os.getenv("TERMS_VERSION", "v1").strip() or "v1")
-
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
@@ -17,13 +55,13 @@ REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBa
 
 TOP_BANNER_URL = os.getenv(
     "TOP_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg"
+    "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # precisa ser URL pública
+BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # URL pública (pode ficar vazio)
 
 
-def pick_lang(lang: str | None) -> str:
+def pick_lang(lang: Optional[str]) -> str:
     lang = (lang or "").lower().strip()
     if lang.startswith("pt"):
         return "pt"
@@ -212,7 +250,7 @@ TERMS_LONG = {
 """,
 }
 
-HTML_TEMPLATE = """<!doctype html>
+TERMS_HTML = """<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -233,7 +271,6 @@ HTML_TEMPLATE = """<!doctype html>
     margin:0;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
     color:var(--text);
-
     background:
       linear-gradient(180deg, rgba(0,0,0,0.62), rgba(0,0,0,0.78)),
       url("__BGURL__") center/cover no-repeat fixed,
@@ -265,7 +302,7 @@ HTML_TEMPLATE = """<!doctype html>
 
   .banner {
     width:100%;
-    height:140px;
+    height:160px;
     background:
       linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.62)),
       url("__TOPBANNER__") center/cover no-repeat;
@@ -476,13 +513,14 @@ HTML_TEMPLATE = """<!doctype html>
 
   async function postJson(url, payload) {
     const u = new URL(url, window.location.origin);
-    u.searchParams.set("_ts", String(Date.now()));
+    u.searchParams.set("_ts", String(Date.now())); // cache-buster forte
 
     const res = await fetch(u.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+
     let data = null;
     try { data = await res.json(); } catch (e) {}
     if (!res.ok) {
@@ -554,9 +592,11 @@ HTML_TEMPLATE = """<!doctype html>
 </html>
 """
 
+
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return HTMLResponse("OK - WebApp online. Use /terms?uid=123&lang=pt")
+    return HTMLResponse("OK - WebApp online. Use /terms e /catalogo")
+
 
 @app.get("/terms", response_class=HTMLResponse)
 def terms_page(uid: int = Query(...), lang: str = Query("en")):
@@ -576,8 +616,7 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
     """
 
     bg = BACKGROUND_URL if BACKGROUND_URL else ""
-
-    html = (HTML_TEMPLATE
+    html = (TERMS_HTML
         .replace("__UID__", str(uid))
         .replace("__LANG__", L)
         .replace("__LANGCODE__", L.upper())
@@ -606,6 +645,7 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
     )
     return HTMLResponse(html)
 
+
 @app.post("/api/terms/accept")
 def api_accept(payload: dict = Body(...)):
     try:
@@ -620,12 +660,13 @@ def api_accept(payload: dict = Body(...)):
         return {"ok": True, "message": TEXTS[lang]["done"]}
 
     except Exception as e:
-        print("❌ ERROR /api/terms/accept:", repr(e))
+        print("❌ ERROR /api/terms/accept:", repr(e), flush=True)
         traceback.print_exc()
         return JSONResponse(
             {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
             status_code=500
         )
+
 
 @app.post("/api/terms/decline")
 def api_decline(payload: dict = Body(...)):
@@ -640,12 +681,13 @@ def api_decline(payload: dict = Body(...)):
         return {"ok": True, "message": TEXTS[lang]["no"]}
 
     except Exception as e:
-        print("❌ ERROR /api/terms/decline:", repr(e))
+        print("❌ ERROR /api/terms/decline:", repr(e), flush=True)
         traceback.print_exc()
         return JSONResponse(
             {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
             status_code=500
         )
+
 
 @app.post("/api/channel/check")
 def api_channel_check(payload: dict = Body(...)):
@@ -659,57 +701,31 @@ def api_channel_check(payload: dict = Body(...)):
     if not BOT_TOKEN:
         return JSONResponse({"ok": False, "message": "BOT_TOKEN ausente para verificação."}, status_code=500)
 
+    # Verificação via Telegram Bot API (sem requests)
     try:
-        import requests
-        r = requests.get(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember",
-            params={"chat_id": REQUIRED_CHANNEL, "user_id": uid},
-            timeout=8,
-        )
-        data = r.json()
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+        params = {"chat_id": REQUIRED_CHANNEL, "user_id": uid}
+
+        with httpx.Client(timeout=8.0) as client:
+            r = client.get(url, params=params)
+            data = r.json()
+
         if not data.get("ok"):
             return {"ok": False}
 
         result = data.get("result") or {}
         status = (result.get("status") or "").lower()
         is_member = bool(result.get("is_member", False))
-
         ok = (status in ("creator", "administrator", "member")) or (status == "restricted" and is_member)
         return {"ok": ok}
 
-    except Exception:
+    except Exception as e:
+        print("❌ ERROR /api/channel/check:", repr(e), flush=True)
         return {"ok": False}
 
-# webapp.py (SUBSTITUIR TUDO)
-# MiniApp Catálogo (A–Z + cards) baseado em catalogo_enriquecido.json (formato: {"records":[...]})
-# Clique no card abre o post do canal (post_url).
-# Sem CSS/JS externos (tudo inline).
-#
-# ENV opcionais:
-#   CATALOG_PATH="catalogo_enriquecido.json"  (padrão: catalogo_enriquecido.json)
-#   CATALOG_BANNER_URL="https://..."
-#   BACKGROUND_PATTERN_URL="https://..."
-#   CATALOG_TITLE="CATÁLOGO GERAL"
-#   CATALOG_SUBTITLE="TOTAL NA SEÇÃO"
-#
-# Rotas:
-#   GET  /                 -> health
-#   GET  /catalogo         -> MiniApp
-#   GET  /api/letters      -> contagem por letra
-#   GET  /api/catalogo     -> lista filtrada (q, letter, limit, offset)
-
-import os
-import json
-import re
-from typing import Any, Dict, List, Optional, Tuple
-
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse
-
-app = FastAPI()
 
 # =========================
-# CONFIG
+# CONFIG — CATÁLOGO
 # =========================
 CATALOG_PATH = os.getenv("CATALOG_PATH", "catalogo_enriquecido.json").strip()
 
@@ -718,26 +734,15 @@ CATALOG_BANNER_URL = os.getenv(
     "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-# Você pediu “fundão” tipo pattern — coloque aqui a URL real do seu fundo quando tiver.
-BACKGROUND_PATTERN_URL = os.getenv(
-    "BACKGROUND_PATTERN_URL",
-    "https://i.imgur.com/0Z8FQ0y.png",
-).strip()
-
+BACKGROUND_PATTERN_URL = os.getenv("BACKGROUND_PATTERN_URL", "").strip()
 CATALOG_TITLE = os.getenv("CATALOG_TITLE", "CATÁLOGO GERAL").strip()
 CATALOG_SUBTITLE = os.getenv("CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
 
-# =========================
-# CACHE EM MEMÓRIA
-# =========================
 _CATALOG: List[Dict[str, Any]] = []
 _LETTER_COUNTS: Dict[str, int] = {}
 _TOTAL: int = 0
 
 
-# =========================
-# HELPERS
-# =========================
 def _normalize_title(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
@@ -782,7 +787,6 @@ def _unwrap_records(data: Any) -> List[Dict[str, Any]]:
             v = data.get(key)
             if isinstance(v, list):
                 return [d for d in v if isinstance(d, dict)]
-        # fallback: primeira lista dentro do dict
         for v in data.values():
             if isinstance(v, list):
                 return [d for d in v if isinstance(d, dict)]
@@ -791,11 +795,6 @@ def _unwrap_records(data: Any) -> List[Dict[str, Any]]:
 
 
 def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Converte um record do seu JSON para o formato da UI.
-    Seu JSON tem campos tipo:
-      title_raw, post_url, main_button_url, message_id, status_post, year_post, anilist (pode ser null)
-    """
     title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
     post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
 
@@ -807,7 +806,6 @@ def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not title_raw or not post_url:
         return None
 
-    # anilist pode ser dict ou null
     anilist = it.get("anilist")
     if not isinstance(anilist, dict):
         anilist = None
@@ -829,15 +827,8 @@ def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if year is None:
         year = it.get("year_post")
 
-    # badge (TV/MOVIE/OVA etc) — se não tiver, cai pra ANIME
     badge = fmt.upper() if fmt else "ANIME"
 
-    # opcional: se quiser abrir o link do botão do post em vez do post_url,
-    # você pode trocar aqui no futuro.
-    main_button_url = str(it.get("main_button_url") or "").strip()
-
-    # opcional: filtrar “não anime” (se você quiser)
-    # exemplo: se tiver status_post "Restrito" não mostra
     status_post = str(it.get("status_post") or "").strip()
     if status_post.lower() == "restrito":
         return None
@@ -846,8 +837,7 @@ def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "message_id": _safe_int(it.get("message_id")),
         "titulo": _normalize_title(title_display),
         "letter": _first_letter(title_display),
-        "link_post": post_url,              # clique vai pra mensagem do canal
-        "main_button_url": main_button_url, # disponível se quiser usar depois
+        "link_post": post_url,
         "cover_url": cover,
         "format": fmt,
         "badge": badge,
@@ -857,9 +847,6 @@ def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _load_catalog() -> Tuple[int, str]:
-    """
-    Carrega o catálogo sem derrubar o webapp.
-    """
     global _CATALOG, _LETTER_COUNTS, _TOTAL
 
     _CATALOG = []
@@ -903,7 +890,6 @@ def _load_catalog() -> Tuple[int, str]:
             if coerced:
                 items.append(coerced)
 
-        # ordena A-Z
         items.sort(key=lambda x: x["titulo"].lower())
 
         counts: Dict[str, int] = {}
@@ -919,6 +905,7 @@ def _load_catalog() -> Tuple[int, str]:
 
     except Exception as e:
         print(f"[catalog] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
+        traceback.print_exc()
         return 0, f"erro: {type(e).__name__}"
 
 
@@ -953,14 +940,6 @@ except Exception as e:
     print("[catalog] ERRO inesperado no startup:", repr(e), flush=True)
 
 
-# =========================
-# ROUTES
-# =========================
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return HTMLResponse("OK - WebApp online. Use /catalogo")
-
-
 @app.get("/api/letters")
 def api_letters():
     letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
@@ -985,61 +964,58 @@ def api_catalogo(
 
 @app.get("/catalogo", response_class=HTMLResponse)
 def catalogo_page():
-    html = f"""
-<!doctype html>
+    # IMPORTANTE: aqui NÃO usa f-string com ${} do JS.
+    # A gente usa placeholders e replace, pra nunca mais quebrar.
+    html = """<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>{CATALOG_TITLE} — Source Baltigo</title>
+  <title>__CTITLE__ — Source Baltigo</title>
 
   <style>
-    :root {{
+    :root {
       --bg0: #070b12;
       --bg1: #0a1220;
-      --card: rgba(255,255,255,0.04);
       --stroke: rgba(255,255,255,0.10);
       --stroke2: rgba(255,255,255,0.16);
       --txt: rgba(255,255,255,0.92);
       --muted: rgba(255,255,255,0.58);
-      --brand: #5aa8ff;
-      --brand2: rgba(90,168,255,0.20);
       --shadow: 0 14px 30px rgba(0,0,0,0.55);
-      --r: 22px;
-    }}
+    }
 
-    * {{ box-sizing: border-box; }}
-    html, body {{ height: 100%; }}
-    body {{
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
       margin: 0;
       font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       color: var(--txt);
       background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
                   linear-gradient(180deg, var(--bg0), var(--bg1));
       overflow-x: hidden;
-    }}
+    }
 
-    .bg-pattern {{
+    .bg-pattern {
       position: fixed;
       inset: 0;
-      background-image: url("{BACKGROUND_PATTERN_URL}");
+      background-image: url("__BPATTERN__");
       background-size: 520px;
       background-repeat: repeat;
       opacity: 0.10;
       filter: grayscale(1) contrast(1.1);
       pointer-events: none;
       z-index: 0;
-    }}
+    }
 
-    .wrap {{
+    .wrap {
       position: relative;
       z-index: 1;
       max-width: 980px;
       margin: 0 auto;
       padding: 18px 14px 40px;
-    }}
+    }
 
-    .top-banner {{
+    .top-banner {
       width: 100%;
       border-radius: 24px;
       overflow: hidden;
@@ -1047,47 +1023,47 @@ def catalogo_page():
       box-shadow: var(--shadow);
       position: relative;
       background: #000;
-    }}
-    .top-banner img {{
+    }
+    .top-banner img {
       width: 100%;
-      height: 170px;
+      height: 190px;
       object-fit: cover;
+      object-position: center;
       display: block;
-    }}
-    .top-banner::after {{
-      content: "";
-      position: absolute;
-      inset: 0;
+    }
+    .top-banner::after{
+      content:"";
+      position:absolute; inset:0;
       background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events: none;
-    }}
+      pointer-events:none;
+    }
 
-    .head {{
+    .head {
       padding: 16px 10px 8px;
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
-    }}
+    }
 
-    .title {{
+    .title {
       font-weight: 900;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       font-size: 22px;
       line-height: 1.15;
-    }}
-    .subtitle {{
+    }
+    .subtitle {
       margin-top: 6px;
       color: var(--muted);
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       font-size: 12px;
-    }}
+    }
 
-    .search {{
+    .search {
       flex: 1;
       min-width: 220px;
       max-width: 420px;
@@ -1099,42 +1075,40 @@ def catalogo_page():
       border-radius: 18px;
       padding: 12px 14px;
       box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }}
-    .search input {{
+    }
+    .search input {
       width: 100%;
       border: 0;
       outline: none;
       background: transparent;
       color: var(--txt);
       font-size: 14px;
-    }}
-    .search input::placeholder {{
+    }
+    .search input::placeholder{
       color: rgba(255,255,255,0.35);
       font-weight: 700;
       letter-spacing: 0.06em;
-    }}
+    }
 
-    .letters {{
+    .letters {
       margin-top: 14px;
       background: rgba(255,255,255,0.035);
       border: 1px solid var(--stroke);
       border-radius: 26px;
       padding: 14px;
       box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }}
-
-    .letters-grid {{
+    }
+    .letters-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       gap: 10px;
-    }}
+    }
+    @media (min-width: 720px){
+      .letters-grid { grid-template-columns: repeat(10, 1fr); }
+      .top-banner img { height: 220px; }
+    }
 
-    @media (min-width: 720px) {{
-      .letters-grid {{ grid-template-columns: repeat(10, 1fr); }}
-      .top-banner img {{ height: 200px; }}
-    }}
-
-    .letter {{
+    .letter {
       user-select: none;
       cursor: pointer;
       border-radius: 16px;
@@ -1143,40 +1117,23 @@ def catalogo_page():
       border: 1px solid var(--stroke);
       background: rgba(255,255,255,0.03);
       transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }}
-    .letter:hover {{
-      transform: translateY(-1px);
-      border-color: var(--stroke2);
-    }}
-    .letter .k {{
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      font-size: 13px;
-      text-transform: uppercase;
-    }}
-    .letter .n {{
-      margin-top: 6px;
-      font-size: 12px;
-      color: rgba(255,255,255,0.55);
-      font-weight: 800;
-      letter-spacing: 0.08em;
-    }}
-    .letter.active {{
-      background: rgba(90,168,255,0.18);
-      border-color: rgba(90,168,255,0.42);
-    }}
+    }
+    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
+    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
+    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
+    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
 
-    .cards {{
+    .cards {
       margin-top: 16px;
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 12px;
-    }}
-    @media (min-width: 720px) {{
-      .cards {{ grid-template-columns: repeat(3, 1fr); }}
-    }}
+    }
+    @media (min-width: 720px){
+      .cards { grid-template-columns: repeat(3, 1fr); }
+    }
 
-    .card {{
+    .card {
       cursor: pointer;
       border-radius: 26px;
       overflow: hidden;
@@ -1185,26 +1142,18 @@ def catalogo_page():
       box-shadow: 0 18px 30px rgba(0,0,0,0.44);
       transition: transform .10s ease, border-color .12s ease;
       position: relative;
-    }}
-    .card:hover {{
-      transform: translateY(-2px);
-      border-color: var(--stroke2);
-    }}
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
 
-    .cover {{
+    .cover {
       width: 100%;
       height: 220px;
       background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
       position: relative;
-    }}
-    .cover img {{
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }}
+    }
+    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-    .badge {{
+    .badge {
       position: absolute;
       left: 12px;
       bottom: 12px;
@@ -1218,20 +1167,18 @@ def catalogo_page():
       border-radius: 14px;
       backdrop-filter: blur(10px);
       text-transform: uppercase;
-    }}
+    }
 
-    .meta {{
-      padding: 12px 14px 14px;
-    }}
-    .meta .name {{
+    .meta { padding: 12px 14px 14px; }
+    .meta .name {
       font-weight: 900;
       letter-spacing: 0.04em;
       font-size: 14px;
       text-transform: uppercase;
       line-height: 1.2;
       margin: 0;
-    }}
-    .meta .sub {{
+    }
+    .meta .sub {
       margin-top: 8px;
       color: rgba(255,255,255,0.50);
       font-weight: 800;
@@ -1242,24 +1189,24 @@ def catalogo_page():
       gap: 10px;
       align-items: center;
       flex-wrap: wrap;
-    }}
-    .pill {{
+    }
+    .pill {
       border: 1px solid rgba(255,255,255,0.12);
       background: rgba(255,255,255,0.04);
       padding: 6px 10px;
       border-radius: 999px;
-    }}
+    }
 
-    .footer {{
+    .footer {
       margin-top: 14px;
       color: rgba(255,255,255,0.40);
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-align: center;
-    }}
+    }
 
-    .loadmore {{
+    .loadmore {
       margin: 14px auto 0;
       width: 100%;
       max-width: 320px;
@@ -1273,11 +1220,8 @@ def catalogo_page():
       text-transform: uppercase;
       cursor: pointer;
       box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }}
-    .loadmore:disabled {{
-      opacity: 0.5;
-      cursor: not-allowed;
-    }}
+    }
+    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 
@@ -1286,13 +1230,13 @@ def catalogo_page():
 
   <div class="wrap">
     <div class="top-banner">
-      <img src="{CATALOG_BANNER_URL}" alt="Banner"/>
+      <img src="__CBANNER__" alt="Banner"/>
     </div>
 
     <div class="head">
       <div>
-        <div class="title">{CATALOG_TITLE}</div>
-        <div class="subtitle"><span id="totalTxt">{CATALOG_SUBTITLE}: ...</span></div>
+        <div class="title">__CTITLE__</div>
+        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
       </div>
 
       <div class="search" title="Buscar anime">
@@ -1315,97 +1259,93 @@ def catalogo_page():
     const apiLetters = "/api/letters";
     const apiCatalogo = "/api/catalogo";
 
-    let state = {{
+    let state = {
       letter: "ALL",
       q: "",
       limit: 60,
       offset: 0,
       total: 0,
       loading: false,
-    }};
+    };
 
-    function esc(s) {{
-      return (s || "").replace(/[&<>"']/g, (m) => ({{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}}[m]));
-    }}
+    function esc(s) {
+      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+    }
 
-    function openLink(link) {{
-      try {{
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {{
+    function openLink(link) {
+      try {
+        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
           Telegram.WebApp.openTelegramLink(link);
           return;
-        }}
-      }} catch (e) {{}}
+        }
+      } catch (e) {}
       window.open(link, "_blank");
-    }}
+    }
 
-    function makeLetterButton(key, count) {{
+    function makeLetterButton(key, count) {
       const el = document.createElement("div");
       el.className = "letter" + (state.letter === key ? " active" : "");
       el.innerHTML = `
-        <div class="k">${{esc(key === "ALL" ? "TODOS" : key)}}</div>
-        <div class="n">${{key === "ALL" ? (count > 999 ? "999+" : count) : count}}</div>
+        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
+        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
       `;
-      el.onclick = () => {{
+      el.onclick = () => {
         state.letter = key;
         state.offset = 0;
         document.getElementById("cards").innerHTML = "";
         renderLetters();
         loadCatalog(true);
-      }};
+      };
       return el;
-    }}
+    }
 
-    async function renderLetters() {{
+    async function renderLetters() {
       const grid = document.getElementById("lettersGrid");
       grid.innerHTML = "";
 
-      const res = await fetch(apiLetters);
+      const res = await fetch(apiLetters + "?_ts=" + Date.now());
       const data = await res.json();
 
-      document.getElementById("totalTxt").textContent = "{CATALOG_SUBTITLE}: " + (data.total ?? 0);
+      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
 
-      // Ordem: TODOS, #, A..Z
       grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
       grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
 
-      for (let c = 65; c <= 90; c++) {{
+      for (let c = 65; c <= 90; c++) {
         const k = String.fromCharCode(c);
         const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
         grid.appendChild(makeLetterButton(k, n));
-      }}
-    }}
+      }
+    }
 
-    function badgeText(item) {{
+    function badgeText(item) {
       const b = (item.badge || item.format || "").toString().trim();
       return b ? b.toUpperCase() : "ANIME";
-    }}
+    }
 
-    function pillLine(item) {{
+    function pillLine(item) {
       let parts = [];
       if (item.year) parts.push(String(item.year));
       if (item.score) parts.push("★ " + String(item.score));
       if (item.format) parts.push(String(item.format).toUpperCase());
       return parts;
-    }}
+    }
 
-    function makeCard(item) {{
+    function makeCard(item) {
       const card = document.createElement("div");
       card.className = "card";
 
       const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover
-        ? `<img src="${{esc(item.cover_url)}}" alt="${{esc(item.titulo)}}"/>`
-        : ``;
-
-      const pills = pillLine(item).map(p => `<span class="pill">${{esc(p)}}</span>`).join("");
+      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
+      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
 
       card.innerHTML = `
         <div class="cover">
           ${coverHtml}
-          <div class="badge">${{esc(badgeText(item))}}</div>
+          <div class="badge">${esc(badgeText(item))}</div>
         </div>
         <div class="meta">
-          <p class="name">${{esc(item.titulo)}}</p>
+          <p class="name">${esc(item.titulo)}</p>
           <div class="sub">
             <span class="pill">CANAL</span>
             ${pills}
@@ -1413,13 +1353,11 @@ def catalogo_page():
         </div>
       `;
 
-      // Clique -> abre post do canal
       card.onclick = () => openLink(item.link_post);
-
       return card;
-    }}
+    }
 
-    async function loadCatalog(reset=false) {{
+    async function loadCatalog(reset=false) {
       if (state.loading) return;
       state.loading = true;
 
@@ -1432,6 +1370,7 @@ def catalogo_page():
       params.set("q", state.q);
       params.set("limit", state.limit);
       params.set("offset", state.offset);
+      params.set("_ts", String(Date.now()));
 
       const res = await fetch(apiCatalogo + "?" + params.toString());
       const data = await res.json();
@@ -1439,51 +1378,56 @@ def catalogo_page():
       state.total = data.total || 0;
 
       const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {{
+      for (const it of (data.items || [])) {
         cards.appendChild(makeCard(it));
-      }}
+      }
 
       state.offset += (data.items || []).length;
 
-      if (state.offset >= state.total) {{
+      if (state.offset >= state.total) {
         btn.disabled = true;
         btn.textContent = "FIM DA LISTA";
-      }} else {{
+      } else {
         btn.disabled = false;
         btn.textContent = "CARREGAR MAIS";
-      }}
+      }
 
       state.loading = false;
-    }}
+    }
 
-    function debounce(fn, ms) {{
+    function debounce(fn, ms) {
       let t = null;
-      return (...args) => {{
+      return (...args) => {
         if (t) clearTimeout(t);
         t = setTimeout(() => fn(...args), ms);
-      }};
-    }}
+      };
+    }
 
-    const onSearch = debounce(() => {{
+    const onSearch = debounce(() => {
       state.q = (document.getElementById("q").value || "").trim();
       state.offset = 0;
       document.getElementById("cards").innerHTML = "";
       loadCatalog(true);
-    }}, 250);
+    }, 250);
 
     document.getElementById("q").addEventListener("input", onSearch);
+    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
 
-    document.getElementById("btnMore").addEventListener("click", () => {{
-      loadCatalog(false);
-    }});
-
-    (async () => {{
+    (async () => {
       await renderLetters();
       await loadCatalog(true);
-    }})();
+    })();
   </script>
 </body>
 </html>
-    """.strip()
+"""
 
+    # Placeholders
+    pattern = BACKGROUND_PATTERN_URL if BACKGROUND_PATTERN_URL else ""
+    html = (html
+        .replace("__CBANNER__", CATALOG_BANNER_URL)
+        .replace("__BPATTERN__", pattern)
+        .replace("__CTITLE__", CATALOG_TITLE)
+        .replace("__CSUB__", CATALOG_SUBTITLE)
+    )
     return HTMLResponse(html)
