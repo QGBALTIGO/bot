@@ -134,6 +134,10 @@ from database import (
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
 
+from database import pool_import_top500_txt
+
+pool_import_top500_txt("top500_anilist_consolidado.txt")
+
 # ==================================================
 # GLOBALS (TZ + SAFE HELPERS)
 # ==================================================
@@ -5792,6 +5796,7 @@ ENGINE_STATS = {
 
 def engine_stats():
     return ENGINE_STATS
+
 
 
 
