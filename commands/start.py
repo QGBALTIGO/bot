@@ -19,7 +19,7 @@ REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
 
 # Link do bot (pra abrir privado quando o comando vier de grupo)
-BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigoBot").strip()  # coloque o user correto
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip()  # coloque o user correto
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 
 # Botão adicionar ao grupo
