@@ -1,9 +1,7 @@
 import os
 import psycopg
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 conn = psycopg.connect(DATABASE_URL)
 
@@ -13,14 +11,14 @@ def create_tables():
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
             lang TEXT,
-            terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
+            terms_accepted BOOLEAN DEFAULT FALSE,
             terms_version TEXT,
-            accepted_at TIMESTAMPTZ
-        );
+            accepted_at TIMESTAMP
+        )
         """)
         conn.commit()
 
-def create_or_get_user(user_id: int):
+def create_or_get_user(user_id):
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
@@ -28,11 +26,24 @@ def create_or_get_user(user_id: int):
         )
         conn.commit()
 
-def get_user_lang(user_id: int):
+def set_language(user_id, lang):
     with conn.cursor() as cur:
-        cur.execute("SELECT lang FROM users WHERE user_id = %s", (user_id,))
-        row = cur.fetchone()
-        return (row[0] if row else None)
+        cur.execute(
+            "UPDATE users SET lang = %s WHERE user_id = %s",
+            (lang, user_id)
+        )
+        conn.commit()
 
-def set_language(user_id: int, lang: str):
-    with conn.cursor
+def accept_terms(user_id, version):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE users
+            SET terms_accepted = TRUE,
+                terms_version = %s,
+                accepted_at = NOW()
+            WHERE user_id = %s
+            """,
+            (version, user_id)
+        )
+        conn.commit()
