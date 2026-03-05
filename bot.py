@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from commands.start import start
 from database import create_tables
 from handlers.global_block import global_block
+from webapp import app
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
@@ -37,3 +38,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
