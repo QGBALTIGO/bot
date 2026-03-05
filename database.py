@@ -537,6 +537,8 @@ def spend_coins_and_add_giro(user_id: int, price: int, giros: int = 1) -> bool:
 
 # LEVEL / COMMANDS
 def increment_commands_and_level(user_id: int, nick_fallback: str, comandos_por_nivel: int):
+    # garante usuário (evita None em DB antigo)
+    _run("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (int(user_id),))
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1014,6 +1016,18 @@ def consume_extra_dado(user_id: int) -> bool:
 
 # DAILY
 def claim_daily_reward(user_id: int, day_start_ts: int, coins_min: int = 1, coins_max: int = 3, giro_chance: float = 0.20):
+    """
+    Daily atômico:
+    - Garante linha do usuário (caso exista DB antigo/bug)
+    - Usa UPDATE condicional em last_daily (1 vez por dia)
+    - Dá coins OU +1 giro
+    """
+    user_id = int(user_id)
+    day_start_ts = int(day_start_ts)
+
+    # garante que o usuário existe (não depende do bot ter chamado ensure_user_row antes)
+    _run("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -1025,7 +1039,7 @@ def claim_daily_reward(user_id: int, day_start_ts: int, coins_min: int = 1, coin
                     WHERE user_id=%s AND COALESCE(last_daily,0) < %s
                     RETURNING user_id
                     """,
-                    (int(day_start_ts), int(user_id), int(day_start_ts)),
+                    (day_start_ts, user_id, day_start_ts),
                 )
                 ok = cur.fetchone() is not None
                 if not ok:
@@ -1033,14 +1047,21 @@ def claim_daily_reward(user_id: int, day_start_ts: int, coins_min: int = 1, coin
                     return None
 
                 if random.random() < float(giro_chance):
-                    cur.execute("UPDATE users SET extra_dado=COALESCE(extra_dado,0)+1 WHERE user_id=%s", (int(user_id),))
+                    cur.execute(
+                        "UPDATE users SET extra_dado=COALESCE(extra_dado,0)+1 WHERE user_id=%s",
+                        (user_id,)
+                    )
                     conn.commit()
                     return {"type": "giro", "amount": 1}
 
                 amt = random.randint(int(coins_min), int(coins_max))
-                cur.execute("UPDATE users SET coins=COALESCE(coins,0)+%s WHERE user_id=%s", (int(amt), int(user_id)))
+                cur.execute(
+                    "UPDATE users SET coins=COALESCE(coins,0)+%s WHERE user_id=%s",
+                    (int(amt), user_id)
+                )
                 conn.commit()
                 return {"type": "coins", "amount": int(amt)}
+
             except Exception:
                 try:
                     conn.rollback()
@@ -1418,6 +1439,20 @@ def create_characters_pool_tables():
         );
         """
     )
+
+    # migração segura (se a tabela já existia sem as colunas novas)
+    try:
+        _run(\"ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS role TEXT;\")
+    except Exception:
+        pass
+    try:
+        _run(\"ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS anime TEXT;\")
+    except Exception:
+        pass
+    try:
+        _run(\"ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;\")
+    except Exception:
+        pass
 
     # ✅ migração pra quem já tinha tabela antiga sem a coluna role
     try:
