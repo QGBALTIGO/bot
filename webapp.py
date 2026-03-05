@@ -1,3 +1,5 @@
+app = FastAPI()
+
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
