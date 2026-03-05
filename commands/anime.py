@@ -1,23 +1,17 @@
-import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
+import os
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado.")
 
-CATALOGO_URL = f"{BASE_URL}/catalogo"
-
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-
+    # abre o miniapp do catálogo (por enquanto)
+    url = f"{BASE_URL}/catalogo"
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📚 Abrir Catálogo", web_app=WebAppInfo(url=CATALOGO_URL))]
+        [InlineKeyboardButton("📚 Abrir Catálogo de Animes", web_app=WebAppInfo(url=url))]
     ])
 
-    await update.message.reply_text(
-        "📚 <b>Catálogo de Animes</b>\n\nToque no botão abaixo para abrir o MiniApp.",
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    if update.message:
+        await update.message.reply_text("📚 Abrindo o catálogo de animes…", reply_markup=kb)
