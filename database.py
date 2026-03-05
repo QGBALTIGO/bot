@@ -1,5 +1,3 @@
-SUBSTITUA SEU database.py INTEIRO POR ESTE (TXT)
-
 import os
 import psycopg
 from psycopg_pool import ConnectionPool
