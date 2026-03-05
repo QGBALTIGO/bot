@@ -11,7 +11,7 @@ BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
-BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigoBot").strip().lstrip("@")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 
 MANGA_BANNER_URL = os.getenv(
