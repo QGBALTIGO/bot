@@ -1442,10 +1442,7 @@ def create_characters_pool_tables():
 
     # migração segura (se a tabela já existia sem as colunas novas)
     try:
-        _run(\"ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS role TEXT;\")
-    except Exception:
-        pass
-    try:
+   
         _run(\"ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS anime TEXT;\")
     except Exception:
         pass
