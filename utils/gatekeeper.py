@@ -53,7 +53,5 @@ async def gatekeeper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tupl
     # 3) canal obrigatório
     ok = await _is_in_required_channel(update, context, user_id)
     if not ok:
-        # você pode colocar o link do canal aqui
-        return False, "📢 Para usar o bot, você precisa entrar no nosso canal oficial. Depois volte e envie /start."
 
     return True, ""
