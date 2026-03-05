@@ -1,5 +1,3 @@
-ARQUIVO: database.py (SUBSTITUIR TUDO)
-
 import os
 import time
 import psycopg
@@ -12,10 +10,6 @@ if not DATABASE_URL:
 _conn: Optional[psycopg.Connection] = None
 
 def _get_conn() -> psycopg.Connection:
-    """
-    Conecta sob demanda e reconecta se cair.
-    Evita derrubar o app se o Postgres oscilar.
-    """
     global _conn
     if _conn is not None and not _conn.closed:
         return _conn
@@ -88,5 +82,6 @@ def has_accepted_terms(user_id: int, version: str) -> bool:
         row = cur.fetchone()
         if not row:
             return False
+
         accepted, v = row
         return bool(accepted) and (v == version)
