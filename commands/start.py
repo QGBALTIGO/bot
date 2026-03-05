@@ -33,7 +33,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # /start em grupo
     if _is_group(update):
-        await update.message.reply_text("⚠️ Para usar o bot, me chame no privado. Envie /start no privado.")
+        await update.message.reply_text("⚠️ <b>Acesso indisponível neste chat</b>\n\n"
+    "O <b>Source Baltigo</b> opera exclusivamente no <b>chat privado</b>, "
+    "onde seu <b>perfil, coleção de cards e progresso</b> podem ser registrados com segurança.\n\n"
+    "🎴 <b>Abra o privado para acessar o sistema:</b>"
+)
+
+keyboard = [
+    [InlineKeyboardButton("🎴 Abrir Source Baltigo", url="https://t.me/SourceBaltigoBot")]
+]
+
+reply_markup = InlineKeyboardMarkup(keyboard)
+
+await update.message.reply_text(
+    texto,
+    parse_mode="HTML",
+    reply_markup=reply_markup
+)")
         return
 
     create_or_get_user(user_id)
