@@ -435,33 +435,38 @@ def terms_page(
 </div>
 
 <script>
-  const uid = {uid};
-  let lang = "{L}";
+  const uid = {{UID_AQUI}};   // <- no seu template já está {uid}
+  let lang = "{{LANG_AQUI}}"; // <- no seu template já está "{L}"
+
+  // Telegram WebApp (se existir)
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  if (tg) {
+    try { tg.ready(); } catch (e) {}
+  }
 
   const langPill = document.getElementById("langPill");
   const langMenu = document.getElementById("langMenu");
 
-  // abre/fecha menu de idioma (igual print)
-  langPill.addEventListener("click", (e) => {{
+  langPill.addEventListener("click", (e) => {
     e.stopPropagation();
     langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
-    if (langMenu.style.display === "flex") {{
+    if (langMenu.style.display === "flex") {
       langMenu.style.justifyContent = "flex-end";
-    }}
-  }});
+    }
+  });
 
-  document.addEventListener("click", () => {{
+  document.addEventListener("click", () => {
     langMenu.style.display = "none";
-  }});
+  });
 
-  document.querySelectorAll(".langBtn").forEach(btn => {{
-    btn.addEventListener("click", () => {{
+  document.querySelectorAll(".langBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
       const newLang = btn.getAttribute("data-lang");
       const url = new URL(window.location.href);
       url.searchParams.set("lang", newLang);
       window.location.href = url.toString();
-    }});
-  }});
+    });
+  });
 
   const c1 = document.getElementById("c1");
   const c2 = document.getElementById("c2");
@@ -469,43 +474,86 @@ def terms_page(
   const declineBtn = document.getElementById("declineBtn");
   const msg = document.getElementById("msg");
 
-  function updateAcceptButton() {{
+  function setMsg(text) {
+    msg.textContent = text || "";
+  }
+
+  function updateAcceptButton() {
     const ok = c1.checked && c2.checked;
     acceptBtn.style.opacity = ok ? "1" : "0.45";
     acceptBtn.style.cursor = ok ? "pointer" : "not-allowed";
-  }}
+  }
+
   c1.addEventListener("change", updateAcceptButton);
   c2.addEventListener("change", updateAcceptButton);
   updateAcceptButton();
 
-  acceptBtn.addEventListener("click", async () => {{
-    if (!(c1.checked && c2.checked)) return;
-    try {{
-      const res = await fetch("/api/terms/accept", {{
-        method: "POST",
-        headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ uid, lang }})
-      }});
-      const data = await res.json();
-      msg.textContent = (data && data.message) ? data.message : "{t["done"]}";
-    }} catch (e) {{
-      msg.textContent = "{t["error"]}";
-    }}
-  }});
+  async function postJson(url, payload) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
 
-  declineBtn.addEventListener("click", async () => {{
-    try {{
-      const res = await fetch("/api/terms/decline", {{
-        method: "POST",
-        headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ uid, lang }})
-      }});
-      const data = await res.json();
-      msg.textContent = (data && data.message) ? data.message : "{t["no"]}";
-    }} catch (e) {{
-      msg.textContent = "{t["error"]}";
-    }}
-  }});
+    // Mesmo se vier erro, tenta ler corpo para mostrar mensagem
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+
+    if (!res.ok) {
+      const m = (data && data.message) ? data.message : ("Erro HTTP " + res.status);
+      throw new Error(m);
+    }
+    return data || {};
+  }
+
+  acceptBtn.addEventListener("click", async () => {
+    // Se não marcou as duas, agora mostra aviso (antes ficava “silencioso”)
+    if (!(c1.checked && c2.checked)) {
+      setMsg("⚠️ Marque as duas opções para continuar.");
+      return;
+    }
+
+    // feedback imediato
+    setMsg("⏳ Salvando...");
+
+    // trava clique duplo
+    acceptBtn.disabled = true;
+    declineBtn.disabled = true;
+
+    try {
+      const data = await postJson("/api/terms/accept", { uid, lang });
+      setMsg(data.message || "✅ Aceito com sucesso. Volte ao Telegram.");
+
+      // Fecha o WebApp e volta pro Telegram (quando disponível)
+      if (tg) {
+        try { tg.close(); } catch (e) {}
+      }
+    } catch (e) {
+      setMsg("❌ " + (e.message || "Erro. Tente novamente."));
+      acceptBtn.disabled = false;
+      declineBtn.disabled = false;
+    }
+  });
+
+  declineBtn.addEventListener("click", async () => {
+    setMsg("⏳ Processando...");
+
+    acceptBtn.disabled = true;
+    declineBtn.disabled = true;
+
+    try {
+      const data = await postJson("/api/terms/decline", { uid, lang });
+      setMsg(data.message || "❌ Você não aceitou. Sem aceite, o bot não libera acesso.");
+
+      if (tg) {
+        try { tg.close(); } catch (e) {}
+      }
+    } catch (e) {
+      setMsg("❌ " + (e.message || "Erro. Tente novamente."));
+      acceptBtn.disabled = false;
+      declineBtn.disabled = false;
+    }
+  });
 </script>
 
 </body>
