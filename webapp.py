@@ -731,7 +731,7 @@ CATALOG_PATH = os.getenv("CATALOG_PATH", "catalogo_enriquecido.json").strip()
 
 CATALOG_BANNER_URL = os.getenv(
     "CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
 BACKGROUND_PATTERN_URL = os.getenv("BACKGROUND_PATTERN_URL", "").strip()
