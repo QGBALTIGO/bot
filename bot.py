@@ -3992,8 +3992,12 @@ async def _get_char_label(user_id: int, char_id: int) -> str:
 
 
 async def trocar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await checar_canal(update, context):
+        return
     if not update.effective_user or not update.message:
         return
+
+    await registrar_comando(update)
 
     # antiflood por comando
     ok = await anti_spam(update.effective_user.id, key="cmd:/trocar", window=3)
@@ -4439,7 +4443,11 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print("DAILY ERROR:", e)
-        await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
+        if is_admin(user_id):
+            await update.message.reply_html(f"⚠️ Daily falhou:
+<code>{str(e)[:900]}</code>")
+        else:
+            await update.message.reply_html("⚠️ Não consegui resgatar agora. Tente novamente.")
         return
 
     if not reward:
