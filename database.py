@@ -25,3 +25,11 @@ def create_or_get_user(user_id):
             (user_id,)
         )
         conn.commit()
+        
+        def set_language(user_id, lang):
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET lang = %s WHERE user_id = %s",
+            (lang, user_id)
+        )
+        conn.commit()
