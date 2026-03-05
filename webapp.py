@@ -611,12 +611,37 @@ def api_accept(payload: dict = Body(...)):
     try:
         uid = int(payload.get("uid") or 0)
         lang = pick_lang(payload.get("lang"))
+
         if uid <= 0:
             return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
+        # 1) garante usuário e salva idioma + aceite
         create_or_get_user(uid)
         set_language(uid, lang)
         accept_terms(uid, TERMS_VERSION)
+
+        # 2) mensagem de confirmação no Telegram (no idioma escolhido)
+        confirm_text = {
+            "pt": (
+                "✅ <b>Tudo certo!</b>\n\n"
+                "Você aceitou os <b>Termos de Uso</b> e a <b>Política de Privacidade</b>.\n"
+                "Agora você já pode usar a <b>Source Baltigo</b> normalmente. 🎴✨"
+            ),
+            "en": (
+                "✅ <b>All set!</b>\n\n"
+                "You accepted the <b>Terms of Use</b> and the <b>Privacy Policy</b>.\n"
+                "Now you can use <b>Source Baltigo</b> normally. 🎴✨"
+            ),
+            "es": (
+                "✅ <b>¡Listo!</b>\n\n"
+                "Aceptaste los <b>Términos de Uso</b> y la <b>Política de Privacidad</b>.\n"
+                "Ahora ya puedes usar <b>Source Baltigo</b> normalmente. 🎴✨"
+            ),
+        }.get(lang, "✅ OK")
+
+        _send_telegram_message(uid, confirm_text)
+
+        # 3) resposta do WebApp (mantém)
         return {"ok": True, "message": TEXTS[lang]["done"]}
 
     except Exception as e:
@@ -679,3 +704,27 @@ def api_channel_check(payload: dict = Body(...)):
 
     except Exception:
         return {"ok": False}
+
+        def _send_telegram_message(user_id: int, text: str) -> bool:
+    """
+    Envia mensagem via Bot API.
+    Retorna True se deu OK, False se falhou.
+    """
+    if not BOT_TOKEN:
+        return False
+
+    try:
+        import httpx
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": user_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        with httpx.Client(timeout=8.0) as client:
+            r = client.post(url, json=payload)
+            data = r.json()
+        return bool(data.get("ok"))
+    except Exception:
+        return False
