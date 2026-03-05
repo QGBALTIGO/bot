@@ -680,631 +680,198 @@ def api_channel_check(payload: dict = Body(...)):
     except Exception:
         return {"ok": False}
 
-        import os
+# =========================
+# Catálogo (loader robusto)
+# =========================
+
+import os
 import json
 import re
-from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+CATALOG_PATH = os.getenv("CATALOG_PATH", "catalogo_enriquecido.json").strip()
 
-app = FastAPI()
+CATALOG: List[Dict[str, Any]] = []
+CATALOG_BY_ID: Dict[int, Dict[str, Any]] = {}
 
-# ========= CONFIG VISUAL =========
-CATALOG_BANNER_URL = os.getenv(
-    "CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg",
-).strip()
+def _log(msg: str):
+    print(f"[catalog] {msg}", flush=True)
 
-BACKGROUND_PATTERN_URL = os.getenv(
-    "BACKGROUND_PATTERN_URL",
-    # sua imagem de fundo "fundão" (pattern)
-    "https://i.imgur.com/0Z8FQ0y.png",
-).strip()
+def _normalize_title(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
 
-# ========= DADOS =========
-DATA_DIR = Path(__file__).resolve().parent / "data"
-CATALOG_PATH = DATA_DIR / "catalogo_animes.json"
+def _safe_int(v: Any) -> Optional[int]:
+    try:
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return None
+        return int(v)
+    except Exception:
+        return None
 
-# cache em memória (rápido)
-_CATALOG: List[Dict[str, Any]] = []
-_LETTER_COUNTS: Dict[str, int] = {}
-_TOTAL: int = 0
+def _ensure_dict(x: Any) -> Optional[Dict[str, Any]]:
+    return x if isinstance(x, dict) else None
 
+def _unwrap_records(data: Any) -> List[Dict[str, Any]]:
+    """
+    Aceita:
+      - list[dict]
+      - {"records": list[dict], ...}
+      - {"data": list[dict]} (casos alternativos)
+    """
+    if isinstance(data, list):
+        return [d for d in data if isinstance(d, dict)]
 
-def _normalize_title(t: str) -> str:
-    t = (t or "").strip()
-    t = re.sub(r"\s+", " ", t)
-    return t
+    if isinstance(data, dict):
+        recs = data.get("records")
+        if isinstance(recs, list):
+            return [d for d in recs if isinstance(d, dict)]
+        recs = data.get("data")
+        if isinstance(recs, list):
+            return [d for d in recs if isinstance(d, dict)]
 
+    return []
 
-def _first_letter(title: str) -> str:
-    if not title:
-        return "#"
-    ch = title.strip()[0].upper()
-    if "A" <= ch <= "Z":
-        return ch
-    if ch.isdigit():
-        return "#"
-    return "#"
+def _coerce_item(it: Dict[str, Any]) -> Dict[str, Any]:
+    # Campos esperados do seu JSON: title_raw, post_url, anilist{...}, message_id etc.
+    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
+    post_url = str(it.get("post_url") or it.get("url") or "").strip()
 
+    # fallback de título: tentar puxar do raw_text se vier vazio
+    if not title_raw:
+        raw_text = str(it.get("raw_text") or "").strip()
+        if raw_text:
+            title_raw = _normalize_title(raw_text.splitlines()[0])
 
-def _load_catalog() -> None:
-    global _CATALOG, _LETTER_COUNTS, _TOTAL
+    # anilist pode ser dict ou null
+    anilist = it.get("anilist")
+    if not isinstance(anilist, dict):
+        anilist = None
 
-    if not CATALOG_PATH.exists():
-        _CATALOG = []
-        _LETTER_COUNTS = {}
-        _TOTAL = 0
-        return
+    # “cover” preferencial: AniList cover, senão nada
+    cover = None
+    if anilist:
+        cover = anilist.get("cover") or None
 
-    raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    # formato / nota / ano: prioriza AniList quando tiver, senão usa year_post/status_post etc
+    fmt = None
+    score = None
+    year = None
 
-    # Esperado:
-    # [{"titulo": "...", "mensagem_id": 123, "link_post": "https://t.me/..."}, ...]
-    items: List[Dict[str, Any]] = []
-    for it in raw:
-        title = _normalize_title(it.get("titulo") or it.get("title") or "")
-        link = (it.get("link_post") or it.get("link") or "").strip()
-        mid = it.get("mensagem_id") or it.get("message_id")
+    if anilist:
+        fmt = anilist.get("format")
+        score = anilist.get("averageScore")
+        year = anilist.get("seasonYear")
 
-        if not title or not link:
-            continue
+    if year is None:
+        year = it.get("year_post")
 
-        letter = _first_letter(title)
+    message_id = _safe_int(it.get("message_id"))
 
-        items.append(
-            {
-                "titulo": title,
-                "letter": letter,
-                "link_post": link,
-                "mensagem_id": mid,
-                # futuro: "cover_url", "year", "genres", "score", etc.
-                "cover_url": it.get("cover_url") or "",
-                "year": it.get("year"),
-                "score": it.get("score"),
-                "format": it.get("format"),
-            }
-        )
+    # “title_display”: AniList title_display se existir, senão title_raw
+    title_display = title_raw
+    if anilist and anilist.get("title_display"):
+        title_display = str(anilist.get("title_display"))
 
-    # ordenação base A-Z
-    items.sort(key=lambda x: x["titulo"].lower())
+    # gêneros: preferir AniList genres (em inglês), senão genres_post (pt)
+    genres = []
+    if anilist and isinstance(anilist.get("genres"), list):
+        genres = [str(g).strip() for g in anilist.get("genres") if str(g).strip()]
+    else:
+        gp = it.get("genres_post")
+        if isinstance(gp, list):
+            genres = [str(g).strip() for g in gp if str(g).strip()]
 
-    counts: Dict[str, int] = {}
-    for x in items:
-        counts[x["letter"]] = counts.get(x["letter"], 0) + 1
+    synopsis = str(it.get("synopsis_post") or "").strip()
+    if not synopsis and anilist and anilist.get("description"):
+        synopsis = str(anilist.get("description")).strip()
 
-    _CATALOG = items
-    _LETTER_COUNTS = counts
-    _TOTAL = len(items)
+    status = str(it.get("status_post") or "").strip()
+    if anilist and anilist.get("status"):
+        status = str(anilist.get("status")).strip()
 
-
-# carrega ao subir
-_load_catalog()
-
-
-def _filter_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
-    q = (q or "").strip().lower()
-    letter = (letter or "").strip().upper()
-
-    data = _CATALOG
-
-    if letter and letter != "ALL":
-        if letter == "#":
-            data = [x for x in data if x["letter"] == "#"]
-        else:
-            data = [x for x in data if x["letter"] == letter]
-
-    if q:
-        data = [x for x in data if q in x["titulo"].lower()]
-
-    total = len(data)
-
-    # paginação
-    if offset < 0:
-        offset = 0
-    if limit < 1:
-        limit = 1
-    if limit > 200:
-        limit = 200
-
-    return data[offset : offset + limit], total
-
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return HTMLResponse("OK - WebApp online. Use /catalogo")
-
-
-@app.get("/api/letters")
-def api_letters():
-    # sempre incluir A-Z e #
-    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
-    payload = {
-        "total": _TOTAL,
-        "counts": {k: _LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
-        "all_count": _TOTAL,
+    return {
+        "message_id": message_id,
+        "title_raw": title_raw,
+        "title_display": title_display,
+        "post_url": post_url,
+        "cover": cover,
+        "format": fmt,
+        "score": score,
+        "year": year,
+        "genres": genres,
+        "status": status,
+        "synopsis": synopsis,
+        "anilist": anilist,
+        "raw": it,  # mantém original se precisar
     }
-    return JSONResponse(payload)
 
+def _load_catalog() -> Tuple[int, str]:
+    """
+    Carrega o catálogo sem derrubar o webapp.
+    Retorna: (quantidade, status_msg)
+    """
+    global CATALOG, CATALOG_BY_ID
 
-@app.get("/api/catalogo")
-def api_catalogo(
-    q: str = Query(default="", max_length=80),
-    letter: str = Query(default="ALL", max_length=3),
-    limit: int = Query(default=60, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    items, total = _filter_catalog(q=q, letter=letter, limit=limit, offset=offset)
-    return JSONResponse({"total": total, "items": items})
+    CATALOG = []
+    CATALOG_BY_ID = {}
 
+    path = CATALOG_PATH
+    if not path:
+        _log("CATALOG_PATH vazio. Catálogo ficará vazio.")
+        return 0, "CATALOG_PATH vazio"
 
-@app.get("/catalogo", response_class=HTMLResponse)
-def catalogo_page():
-    # HTML + CSS + JS inline (sem arquivos externos)
-    html = f"""
-<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Catálogo — Source Baltigo</title>
+    # tenta caminhos comuns
+    candidates = [path]
+    if not os.path.isabs(path):
+        candidates.append(os.path.join(os.getcwd(), path))
+        candidates.append(os.path.join("/app", path))
 
-  <style>
-    :root {{
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --card: rgba(255,255,255,0.04);
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.14);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --brand: #5aa8ff;
-      --brand2: rgba(90,168,255,0.20);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-      --r: 22px;
-    }}
+    real_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            real_path = c
+            break
 
-    * {{ box-sizing: border-box; }}
-    html, body {{ height: 100%; }}
-    body {{
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-                  linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }}
+    if not real_path:
+        _log(f"Arquivo não encontrado: {path} (testados: {candidates})")
+        return 0, "arquivo não encontrado"
 
-    /* fundo "pattern" */
-    .bg-pattern {{
-      position: fixed;
-      inset: 0;
-      background-image: url("{BACKGROUND_PATTERN_URL}");
-      background-size: 520px;
-      background-repeat: repeat;
-      opacity: 0.10;
-      filter: grayscale(1) contrast(1.1);
-      pointer-events: none;
-      z-index: 0;
-    }}
+    try:
+        with open(real_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    .wrap {{
-      position: relative;
-      z-index: 1;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 18px 14px 40px;
-    }}
+        items = _unwrap_records(data)
 
-    .top-banner {{
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }}
-    .top-banner img {{
-      width: 100%;
-      height: 160px;
-      object-fit: cover;
-      display: block;
-    }}
-    .top-banner::after {{
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.65));
-      pointer-events: none;
-    }}
+        if not items:
+            # se veio algo estranho, loga tipo
+            _log(f"Nenhum registro encontrado. Tipo do JSON: {type(data).__name__}")
+            return 0, "sem registros"
 
-    .head {{
-      padding: 16px 10px 8px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-    }}
+        for it in items:
+            d = _ensure_dict(it)
+            if not d:
+                continue
 
-    .title {{
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }}
-    .subtitle {{
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }}
+            coerced = _coerce_item(d)
 
-    .search {{
-      flex: 1;
-      max-width: 380px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--stroke);
-      border-radius: 18px;
-      padding: 12px 14px;
-      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }}
-    .search input {{
-      width: 100%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: var(--txt);
-      font-size: 14px;
-    }}
-    .search input::placeholder {{ color: rgba(255,255,255,0.35); font-weight: 600; letter-spacing: 0.06em; }}
+            # valida mínimos
+            if not coerced["title_raw"] or not coerced["post_url"]:
+                continue
 
-    .letters {{
-      margin-top: 14px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid var(--stroke);
-      border-radius: 26px;
-      padding: 14px;
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }}
+            CATALOG.append(coerced)
 
-    .letters-grid {{
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-    }}
+            mid = coerced.get("message_id")
+            if isinstance(mid, int):
+                CATALOG_BY_ID[mid] = coerced
 
-    @media (min-width: 720px) {{
-      .letters-grid {{ grid-template-columns: repeat(10, 1fr); }}
-      .top-banner img {{ height: 190px; }}
-    }}
+        _log(f"Carregado OK: {len(CATALOG)} itens (de {real_path})")
+        return len(CATALOG), "ok"
 
-    .letter {{
-      user-select: none;
-      cursor: pointer;
-      border-radius: 16px;
-      padding: 12px 10px;
-      text-align: center;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }}
-    .letter:hover {{
-      transform: translateY(-1px);
-      border-color: var(--stroke2);
-    }}
-    .letter .k {{
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      font-size: 13px;
-    }}
-    .letter .n {{
-      margin-top: 6px;
-      font-size: 12px;
-      color: rgba(255,255,255,0.55);
-      font-weight: 800;
-      letter-spacing: 0.08em;
-    }}
-    .letter.active {{
-      background: rgba(90,168,255,0.18);
-      border-color: rgba(90,168,255,0.42);
-    }}
-
-    .cards {{
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }}
-    @media (min-width: 720px) {{
-      .cards {{ grid-template-columns: repeat(3, 1fr); }}
-    }}
-
-    .card {{
-      cursor: pointer;
-      border-radius: 26px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
-      transition: transform .10s ease, border-color .12s ease;
-      position: relative;
-    }}
-    .card:hover {{ transform: translateY(-2px); border-color: var(--stroke2); }}
-
-    .cover {{
-      width: 100%;
-      height: 210px;
-      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
-      position: relative;
-    }}
-    .cover img {{
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }}
-
-    .badge {{
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(90,168,255,0.24);
-      border: 1px solid rgba(90,168,255,0.40);
-      color: rgba(255,255,255,0.90);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-    }}
-
-    .meta {{
-      padding: 12px 14px 14px;
-    }}
-    .meta .name {{
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      font-size: 14px;
-      text-transform: uppercase;
-      line-height: 1.2;
-      margin: 0;
-    }}
-    .meta .sub {{
-      margin-top: 8px;
-      color: rgba(255,255,255,0.50);
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      text-transform: uppercase;
-    }}
-
-    .footer {{
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }}
-
-    .loadmore {{
-      margin: 14px auto 0;
-      width: 100%;
-      max-width: 320px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.86);
-      border-radius: 16px;
-      padding: 12px 14px;
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }}
-    .loadmore:disabled {{
-      opacity: 0.5;
-      cursor: not-allowed;
-    }}
-  </style>
-</head>
-
-<body>
-  <div class="bg-pattern"></div>
-
-  <div class="wrap">
-    <div class="top-banner">
-      <img src="{CATALOG_BANNER_URL}" alt="Banner"/>
-    </div>
-
-    <div class="head">
-      <div>
-        <div class="title">CATÁLOGO GERAL</div>
-        <div class="subtitle"><span id="totalTxt">TOTAL NA SEÇÃO: ...</span></div>
-      </div>
-
-      <div class="search" title="Buscar anime">
-        <span style="opacity:.6;font-weight:900;">🔎</span>
-        <input id="q" type="text" placeholder="BUSCAR ANIME..." />
-      </div>
-    </div>
-
-    <div class="letters">
-      <div class="letters-grid" id="lettersGrid"></div>
-    </div>
-
-    <div class="cards" id="cards"></div>
-    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
-
-    <div class="footer">Source Baltigo • Catálogo do canal</div>
-  </div>
-
-  <script>
-    const apiLetters = "/api/letters";
-    const apiCatalogo = "/api/catalogo";
-
-    let state = {{
-      letter: "ALL",
-      q: "",
-      limit: 60,
-      offset: 0,
-      total: 0,
-      loading: false,
-    }};
-
-    function esc(s) {{
-      return (s || "").replace(/[&<>"']/g, (m) => ({{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}}[m]));
-    }}
-
-    function openLink(link) {{
-      // Em WebApp do Telegram, o ideal é abrir via API do Telegram se existir
-      try {{
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {{
-          Telegram.WebApp.openTelegramLink(link);
-          return;
-        }}
-      }} catch (e) {{}}
-      window.open(link, "_blank");
-    }}
-
-    function makeLetterButton(key, count) {{
-      const el = document.createElement("div");
-      el.className = "letter" + (state.letter === key ? " active" : "");
-      el.innerHTML = `
-        <div class="k">${{esc(key === "ALL" ? "TODOS" : key)}}</div>
-        <div class="n">${{key === "ALL" ? (count > 999 ? "999+" : count) : count}}</div>
-      `;
-      el.onclick = () => {{
-        state.letter = key;
-        state.offset = 0;
-        document.getElementById("cards").innerHTML = "";
-        renderLetters(); // re-render active
-        loadCatalog(true);
-      }};
-      return el;
-    }}
-
-    async function renderLetters() {{
-      const grid = document.getElementById("lettersGrid");
-      grid.innerHTML = "";
-
-      const res = await fetch(apiLetters);
-      const data = await res.json();
-
-      document.getElementById("totalTxt").textContent = "TOTAL NA SEÇÃO: " + data.total;
-
-      // Ordem igual print: TODOS, #, A..Z
-      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
-      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
-
-      for (let c = 65; c <= 90; c++) {{
-        const k = String.fromCharCode(c);
-        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
-        grid.appendChild(makeLetterButton(k, n));
-      }}
-    }}
-
-    function makeCard(item) {{
-      const card = document.createElement("div");
-      card.className = "card";
-
-      const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover
-        ? `<img src="${{esc(item.cover_url)}}" alt="${{esc(item.titulo)}}"/>`
-        : ``;
-
-      card.innerHTML = `
-        <div class="cover">
-          ${coverHtml}
-          <div class="badge">TV</div>
-        </div>
-        <div class="meta">
-          <p class="name">${{esc(item.titulo)}}</p>
-          <div class="sub">ANIME</div>
-        </div>
-      `;
-
-      card.onclick = () => openLink(item.link_post);
-
-      return card;
-    }}
-
-    async function loadCatalog(reset=false) {{
-      if (state.loading) return;
-      state.loading = true;
-
-      const btn = document.getElementById("btnMore");
-      btn.disabled = true;
-      btn.textContent = "CARREGANDO...";
-
-      const params = new URLSearchParams();
-      params.set("letter", state.letter);
-      params.set("q", state.q);
-      params.set("limit", state.limit);
-      params.set("offset", state.offset);
-
-      const res = await fetch(apiCatalogo + "?" + params.toString());
-      const data = await res.json();
-
-      state.total = data.total || 0;
-
-      const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {{
-        cards.appendChild(makeCard(it));
-      }}
-
-      state.offset += (data.items || []).length;
-
-      // se acabou, desabilita
-      if (state.offset >= state.total) {{
-        btn.disabled = true;
-        btn.textContent = "FIM DA LISTA";
-      }} else {{
-        btn.disabled = false;
-        btn.textContent = "CARREGAR MAIS";
-      }}
-
-      state.loading = false;
-    }}
-
-    function debounce(fn, ms) {{
-      let t = null;
-      return (...args) => {{
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      }};
-    }}
-
-    const onSearch = debounce(() => {{
-      state.q = (document.getElementById("q").value || "").trim();
-      state.offset = 0;
-      document.getElementById("cards").innerHTML = "";
-      loadCatalog(true);
-    }}, 250);
-
-    document.getElementById("q").addEventListener("input", onSearch);
-
-    document.getElementById("btnMore").addEventListener("click", () => {{
-      loadCatalog(false);
-    }});
-
-    (async () => {{
-      await renderLetters();
-      await loadCatalog(true);
-    }})();
-  </script>
-</body>
-</html>
-    """.strip()
-
+    except Exception as e:
+        _log(f"Falha ao carregar catálogo ({real_path}): {repr(e)}")
+        return 0, f"erro: {type(e).__name__}"
     return HTMLResponse(html)
