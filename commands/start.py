@@ -44,7 +44,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))],
-        [InlineKeyboardButton("🌐 Idioma", callback_data="change_language")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
