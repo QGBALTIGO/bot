@@ -5,6 +5,7 @@ import uvicorn
 from telegram.ext import Application, CommandHandler
 
 from commands.start import start
+from commands.anime import anime
 # from commands.anime import anime  # quando você criar
 
 from database import create_tables
@@ -35,3 +36,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
