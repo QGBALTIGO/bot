@@ -80,6 +80,7 @@ def _run(sql: str, params: Tuple = (), fetch: str = "none"):
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
+                _set_local_timeouts(cur)
                 cur.execute(sql, params)
                 if fetch == "one":
                     row = cur.fetchone()
@@ -97,6 +98,7 @@ def _run(sql: str, params: Tuple = (), fetch: str = "none"):
                 except Exception:
                     pass
                 raise
+
 
 def _run_many(statements: List[Tuple[str, Tuple]]) -> None:
     """Executa vários comandos em sequência (mesma conexão)."""
