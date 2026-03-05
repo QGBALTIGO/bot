@@ -8,7 +8,7 @@ from utils.gatekeeper import TERMS_VERSION
 # ====== CONFIG ======
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
 
-WELCOME_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg"
+WELCOME_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg"
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
