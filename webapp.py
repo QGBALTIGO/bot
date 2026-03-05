@@ -1,4 +1,5 @@
-app = FastAPI()
+from fastapi import FastAPI
+
 
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -6,6 +7,8 @@ from telegram.ext import ContextTypes
 
 from database import create_or_get_user, get_user_status, mark_welcome_sent, reset_welcome_sent
 from utils.gatekeeper import TERMS_VERSION
+
+app = FastAPI()
 
 # ====== CONFIG ======
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
