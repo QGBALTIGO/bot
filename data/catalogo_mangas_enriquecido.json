@@ -1,8 +1,4 @@
-{
-  "channel": "MangasBrasil",
-  "generated_at": "2026-03-05T20:52:11Z",
-  "count": 291,
-  "records": [
+
     {
       "message_id": 14906,
       "date": "2023-11-05T20:22:51+00:00",
@@ -9416,17 +9412,3 @@
         "kind": "manhwa"
       }
     }
-  ],
-  "notes": {
-    "source": "Telethon + AniList",
-    "kind_rule": "NOVEL => novel; KR => manhwa; CN => manhua; else => manga"
-  },
-  "cover_enrichment": {
-    "strategy": "anilist->kitsu->jikan",
-    "changed": 268,
-    "ok_anilist": 113,
-    "ok_kitsu": 155,
-    "ok_jikan": 0,
-    "no_match": 1
-  }
-}
