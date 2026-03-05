@@ -46,11 +46,15 @@ def create_tables():
     );
     """)
 
-    # 2) migra colunas (seguro, não quebra)
+    # 2) migra colunas (seguro)
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
+
+    # NOVO: obrigatoriedade do canal + controle de mensagens
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
 
 def create_or_get_user(user_id: int):
     _run(
