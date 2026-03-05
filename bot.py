@@ -5,7 +5,6 @@
 # ==================================================
 # 0) IMPORTS
 # ==================================================
-import os
 import re
 import time
 import json
@@ -133,6 +132,53 @@ from database import (
 
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
+
+import logging
+import atexit
+
+log = logging.getLogger("baltigo")
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+# ==================================================
+# SINGLE INSTANCE GUARD (evita getUpdates conflitante no Railway)
+# - Ative com SINGLE_INSTANCE=1
+# - Se seu deploy escala múltiplas instâncias, a 2ª cai fora imediatamente.
+# ==================================================
+_SINGLE_INSTANCE = os.getenv("SINGLE_INSTANCE", "0").strip() == "1"
+_LOCK_FILE = os.getenv("SINGLE_INSTANCE_LOCKFILE", "/tmp/baltigo_bot.lock").strip() or "/tmp/baltigo_bot.lock"
+_lock_fd = None
+
+def _acquire_single_instance_lock():
+    global _lock_fd
+    if not _SINGLE_INSTANCE:
+        return
+    try:
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        _lock_fd = os.open(_LOCK_FILE, flags, 0o644)
+        os.write(_lock_fd, str(os.getpid()).encode("utf-8"))
+        log.info("Single-instance lock adquirido: %s", _LOCK_FILE)
+    except FileExistsError:
+        log.error("Conflito: outra instância já está rodando (lock=%s). Encerrando.", _LOCK_FILE)
+        raise SystemExit(2)
+    except Exception as e:
+        log.warning("Falha ao criar lock file (seguindo sem lock): %s", e)
+
+def _release_single_instance_lock():
+    global _lock_fd
+    try:
+        if _lock_fd is not None:
+            os.close(_lock_fd)
+            _lock_fd = None
+        if _SINGLE_INSTANCE and os.path.exists(_LOCK_FILE):
+            os.unlink(_LOCK_FILE)
+    except Exception:
+        pass
+
+atexit.register(_release_single_instance_lock)
+
 
 # ==================================================
 # GLOBALS (TZ + SAFE HELPERS)
@@ -302,6 +348,21 @@ def callback_dedupe(callback_query_id: int) -> bool:
         return False
     _seen_callback_ids[callback_query_id] = now
     return True
+
+# ==================================================
+# 4.B) LOCKS POR AÇÃO (estado de usuário)
+# Protege sequências críticas (dado, trade, daily, etc.) contra corrida no MESMO usuário.
+# ==================================================
+_user_action_locks: Dict[Tuple[int, str], asyncio.Lock] = {}
+
+def _get_action_lock(user_id: int, action: str) -> asyncio.Lock:
+    k = (int(user_id), str(action))
+    lk = _user_action_locks.get(k)
+    if lk is None:
+        lk = asyncio.Lock()
+        _user_action_locks[k] = lk
+    return lk
+
 
 # ==================================================
 # 5) ADMINS
@@ -1653,10 +1714,8 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    user = update.effective_user
-    user_id = user.id 
-    
     texto_pedido = " ".join(context.args)
+    user = update.effective_user
 
     mensagem_canal = (
         "📥 <b>NOVO PEDIDO REGISTRADO</b>\n\n"
@@ -1674,8 +1733,8 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-    ensure_user_row(user_id, user.first_name)        
-    set_last_pedido(user_id, int(time.time())) 
+    ensure_user_row(user_id, user.first_name)
+    set_last_pedido(user_id, int(time.time()))
 
     await update.message.reply_html(
         f"✅ <b>{user.first_name}</b> [<code>{user.id}</code>]\n\n"
@@ -6047,4 +6106,20 @@ def engine_stats():
 
 
 
+# ==================================================
+# ERROR HANDLER GLOBAL (PTB) — evita "bot morreu" sem log útil
+# ==================================================
+async def _ptb_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        log.exception("Erro no handler: %s", context.error)
+    except Exception:
+        pass
+    try:
+        if isinstance(update, Update) and update.effective_chat:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Ocorreu um erro inesperado. Tente novamente em instantes.",
+            )
+    except Exception:
+        pass
 
