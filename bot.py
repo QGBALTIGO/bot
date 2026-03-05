@@ -28,7 +28,7 @@ def main():
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
     tg_app.add_handler(CommandHandler("start", start))
-    # tg_app.add_handler(CommandHandler("anime", anime))  # só quando existir
+    tg_app.add_handler(CommandHandler("anime", anime))  
 
     print("Bot + WebApp iniciado")
     tg_app.run_polling(drop_pending_updates=True)
