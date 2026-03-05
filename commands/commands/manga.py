@@ -1,14 +1,17 @@
+# commands/manga.py
+
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
 
+
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
-BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip()
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigoBot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 
 MANGA_BANNER_URL = os.getenv(
@@ -18,10 +21,13 @@ MANGA_BANNER_URL = os.getenv(
 
 
 def _is_group(update: Update) -> bool:
-    return bool(update.effective_chat and update.effective_chat.type in ("group", "supergroup"))
+    chat = update.effective_chat
+    return bool(chat and chat.type in ("group", "supergroup"))
 
 
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message  # funciona mesmo se update.message for None
+
     # =========================
     # /manga em grupo -> mandar pro privado
     # =========================
@@ -35,18 +41,18 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("📩 Abrir no privado", url=BOT_PRIVATE_URL)]
         ])
-        if update.message:
-            await update.message.reply_html(texto, reply_markup=kb)
+        if msg:
+            await msg.reply_html(texto, reply_markup=kb)
         return
 
     # =========================
     # Gatekeeper (termos + canal)
     # =========================
-    ok, msg = await gatekeeper(update, context)
+    ok, bloqueio = await gatekeeper(update, context)
     if not ok:
-        # gatekeeper já devolve mensagem pronta (e NÃO deve responder em /start)
-        if update.message and msg:
-            await update.message.reply_html(msg)
+        # (gatekeeper NÃO deve responder em /start; aqui é /manga, então pode)
+        if msg and bloqueio:
+            await msg.reply_html(bloqueio)
         return
 
     # =========================
@@ -65,10 +71,10 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📚 Abrir Catálogo de Mangás", web_app=WebAppInfo(url=url))]
     ])
 
-    if update.message:
-        await update.message.reply_photo(
+    if msg:
+        await msg.reply_photo(
             photo=MANGA_BANNER_URL,
             caption=texto,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
