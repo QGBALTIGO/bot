@@ -1412,13 +1412,22 @@ def create_characters_pool_tables():
             character_id BIGINT PRIMARY KEY,
             name TEXT NOT NULL,
             anime TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'UNKNOWN',
+            role TEXT DEFAULT NULL,              -- ✅ NOVO (MAIN / SUPPORTING)
             is_active BOOLEAN DEFAULT TRUE,
             created_at BIGINT DEFAULT 0
         );
         """
     )
 
+    # ✅ migração pra quem já tinha tabela antiga sem a coluna role
+    try:
+        _run("ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS role TEXT;")
+    except Exception:
+        pass
+
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_anime_idx ON characters_pool (anime);")
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_active_idx ON characters_pool (is_active);")
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_role_idx ON characters_pool (role);")
 
 def pool_set_active(character_id: int, active: bool) -> bool:
     row = _run("UPDATE characters_pool SET is_active=%s WHERE character_id=%s RETURNING character_id", (bool(active), int(character_id)), fetch="one")
