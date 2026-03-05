@@ -364,25 +364,53 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
     )
     return HTMLResponse(html)
 
-@app.post("/api/terms/accept")
-def api_accept(payload: dict):
-    uid = int(payload.get("uid") or 0)
-    lang = pick_lang(payload.get("lang"))
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+# COLE ISTO NO FINAL DO webapp.py (substituindo os endpoints antigos)
 
-    create_or_get_user(uid)
-    set_language(uid, lang)
-    accept_terms(uid, TERMS_VERSION)
-    return {"ok": True, "message": TEXTS[lang]["done"]}
+import traceback
+from fastapi import Request
+
+@app.post("/api/terms/accept")
+def api_accept(payload: dict, request: Request):
+    try:
+        uid = int(payload.get("uid") or 0)
+        lang = pick_lang(payload.get("lang"))
+
+        if uid <= 0:
+            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+        create_or_get_user(uid)
+        set_language(uid, lang)
+        accept_terms(uid, TERMS_VERSION)
+
+        return {"ok": True, "message": TEXTS[lang]["done"]}
+
+    except Exception as e:
+        print("❌ ERROR /api/terms/accept:", repr(e))
+        traceback.print_exc()
+        return JSONResponse(
+            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
+            status_code=500
+        )
+
 
 @app.post("/api/terms/decline")
-def api_decline(payload: dict):
-    uid = int(payload.get("uid") or 0)
-    lang = pick_lang(payload.get("lang"))
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+def api_decline(payload: dict, request: Request):
+    try:
+        uid = int(payload.get("uid") or 0)
+        lang = pick_lang(payload.get("lang"))
 
-    create_or_get_user(uid)
-    set_language(uid, lang)
-    return {"ok": True, "message": TEXTS[lang]["no"]}
+        if uid <= 0:
+            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+        create_or_get_user(uid)
+        set_language(uid, lang)
+
+        return {"ok": True, "message": TEXTS[lang]["no"]}
+
+    except Exception as e:
+        print("❌ ERROR /api/terms/decline:", repr(e))
+        traceback.print_exc()
+        return JSONResponse(
+            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
+            status_code=500
+        )
