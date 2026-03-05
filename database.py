@@ -1569,8 +1569,3 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                 except Exception:
                     pass
                 raise
-
-path = Path("/mnt/data/database.py")
-path.write_text(db_code, encoding="utf-8")
-print("lines:", len(db_code.splitlines()))
-print("saved:", path)
