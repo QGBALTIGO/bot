@@ -32,7 +32,8 @@ def pick_lang(lang: str | None) -> str:
     if lang.startswith("en"):
         return "en"
     return "en"
-        
+
+
 TEXTS = {
     "pt": {
         "title": "Termos de Uso e Privacidade",
@@ -264,23 +265,12 @@ HTML_TEMPLATE = """<!doctype html>
 
   .banner {
     width:100%;
-    height:180px;
-
+    height:140px;
     background:
-      linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.0) 0%,
-        rgba(0,0,0,0.45) 60%,
-        rgba(0,0,0,0.85) 100%
-      ),
-      url("__TOPBANNER__");
-
-    background-position:center;
-    background-repeat:no-repeat;
-    background-size:contain;
-
-    background-color:#050712;
-}
+      linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.62)),
+      url("__TOPBANNER__") center/cover no-repeat;
+    position:relative;
+  }
   .banner:after{
     content:"";
     position:absolute; inset:0;
@@ -621,37 +611,12 @@ def api_accept(payload: dict = Body(...)):
     try:
         uid = int(payload.get("uid") or 0)
         lang = pick_lang(payload.get("lang"))
-
         if uid <= 0:
             return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
-        # 1) garante usuário e salva idioma + aceite
         create_or_get_user(uid)
         set_language(uid, lang)
         accept_terms(uid, TERMS_VERSION)
-
-        # 2) mensagem de confirmação no Telegram (no idioma escolhido)
-        confirm_text = {
-            "pt": (
-                "✅ <b>Tudo certo!</b>\n\n"
-                "Você aceitou os <b>Termos de Uso</b> e a <b>Política de Privacidade</b>.\n"
-                "Agora você já pode usar a <b>Source Baltigo</b> normalmente. 🎴✨"
-            ),
-            "en": (
-                "✅ <b>All set!</b>\n\n"
-                "You accepted the <b>Terms of Use</b> and the <b>Privacy Policy</b>.\n"
-                "Now you can use <b>Source Baltigo</b> normally. 🎴✨"
-            ),
-            "es": (
-                "✅ <b>¡Listo!</b>\n\n"
-                "Aceptaste los <b>Términos de Uso</b> y la <b>Política de Privacidad</b>.\n"
-                "Ahora ya puedes usar <b>Source Baltigo</b> normalmente. 🎴✨"
-            ),
-        }.get(lang, "✅ OK")
-
-        _send_telegram_message(uid, confirm_text)
-
-        # 3) resposta do WebApp (mantém)
         return {"ok": True, "message": TEXTS[lang]["done"]}
 
     except Exception as e:
@@ -714,4 +679,3 @@ def api_channel_check(payload: dict = Body(...)):
 
     except Exception:
         return {"ok": False}
-
