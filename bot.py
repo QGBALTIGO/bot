@@ -36,6 +36,11 @@ def main():
     print(f"Bot + WebApp iniciado (PORT={PORT})")
     app.run_polling(drop_pending_updates=True)
 
+from commands.anime import anime
+# ...
+app.add_handler(CommandHandler("anime", anime))
+
 if __name__ == "__main__":
     main()
+
 
