@@ -910,7 +910,7 @@ async def _dado_start_impl(x_telegram_init_data: str):
             {
                 "ok": False,
                 "error": "no_balance",
-                "msg": "Você está sem dados/giros agora.\n\nEles recarregam automaticamente com o tempo.\nVolte mais tarde e tente de novo.",
+                "msg": "Você está sem dados/giros agora.\n\nEles recarregam automaticamente com o tempo.\n As 01h, 04h, 07h, 10h, 13h, 16h, 19h, 22h",
                 "now": datetime.utcnow().strftime("%H:%M"),
             },
             status_code=200,
