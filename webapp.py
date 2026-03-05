@@ -15,6 +15,10 @@ BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5
 
 WELCOME_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZpDL8mmeFx3it__n9zwKhDWr-EiaijwiAAIdDGsbjP7wRDMvEtZUPvYtAQADAgADeQADOgQ/photo.jpg"
 
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return HTMLResponse("OK - WebApp online. Use /terms?uid=123&lang=pt")
+    
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
