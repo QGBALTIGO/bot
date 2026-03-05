@@ -39,7 +39,22 @@
         }
       ],
       "raw_text": "One Piece\n\nStatus: Em lançamento \nGênero: #Ação, #Aventura, #Comédia, #Fantasia \nFormato: Mangá\nAutor: Eiichiro Oda\n\n💬 Gold Roger era conhecido como o Rei Pirata, o ser mais forte e infame a ter navegado na Grand Line. A captura e morte de Roger pelo Governo Mundial trouxeram uma mudança em todo o mundo. Suas últimas palavras antes de sua morte revelaram a localização do maior tesouro do mundo, One Piece.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "ONE PIECE",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30013-BeslEMqiPhlk.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30013-hbbRZqC5MjYh.jpg",
+        "averageScore": 91,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Comedy",
+          "Fantasy"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14908,
@@ -67,7 +82,21 @@
         }
       ],
       "raw_text": "Bleach | BLEACH\n\nStatus: Finalizado\nGênero: #Ação, #Aventura, #Sobrenatural, #ArtesMarciais\nFormato: Mangá\nAutor: Tite Kubo\n\n💬 Ichigo Kurosaki ganha poderes de Shinigami e é encarregado de proteger os vivos e guiar as almas perdidas.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "BLEACH",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30012-1epmVfTSv2rr.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30012-RpbdVc2yNxhw.jpg",
+        "averageScore": 79,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14910,
@@ -94,7 +123,21 @@
         }
       ],
       "raw_text": "Jujutsu Kaisen | Sorcery Fight\n\nStatus: Finalizado\nGênero: #Ação #Aventura #Sobrenatural\nFormato: Mangá\nAutor: Gege Akutami\n\n💬 Itadori Yuji, um jovem com uma força sobre-humana, acaba envolvido em um mundo sombrio de maldições após consumir um dedo amaldiçoado para salvar seus amigos. Agora, ele carrega dentro de si uma poderosa maldição chamada Ryomen Sukuna e precisa lutar ao lado de feiticeiros jujutsu para proteger o mundo de perigos sobrenaturais.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Jujutsu Kaisen",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx101517-H3TdM3g5ZUe9.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/101517-FrJtb3Th3HtF.jpg",
+        "averageScore": 80,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14912,
@@ -117,7 +160,21 @@
         }
       ],
       "raw_text": "Kagurabachi | Kagura Bowl\n\nStatus: Em publicação\nGênero: #Ação, #Aventura, #Sobrenatural\nFormato: Mangá\nAutor: Takeru Hokazono\n\n💬 Chihiro, jovem e habilidoso aprendiz de espadachim, treinava ao lado de seu pai, um renomado ferreiro, em busca de um futuro pacífico. Contudo, uma tragédia brutal interrompe esses planos e deixa Chihiro movido apenas pelo desejo de vingança. Com sua espada, ele enfrenta desafios sombrios em uma jornada repleta de ação e combates intensos.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Kagurabachi",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx169355-5pqzh1Wb4NOQ.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/169355-MzURKZ3veXa7.jpg",
+        "averageScore": 78,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Fantasy"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14914,
@@ -144,7 +201,20 @@
         }
       ],
       "raw_text": "Black Clover\n\nStatus: Em andamento\nGênero: #Ação, #Aventura, #Fantasia\nFormato: Mangá\nAutor: Yūki Tabata\n\n💬 Asta, um jovem sem nenhum poder mágico em um mundo onde a magia é tudo, sonha em se tornar o Rei Mago. Junto de seu amigo de infância, Yuno, que é incrivelmente talentoso, Asta embarca em uma jornada cheia de desafios, batalhas e mistérios, tudo para conquistar seu sonho, enquanto enfrenta poderosos inimigos e descobre os segredos do reino mágico.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Black Clover",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx114652-b4VxxYpvU8id.png",
+        "banner": null,
+        "averageScore": 68,
+        "seasonYear": null,
+        "format": "ONE_SHOT",
+        "genres": [
+          "Action",
+          "Comedy"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14916,
@@ -171,7 +241,22 @@
         }
       ],
       "raw_text": "HUNTER x HUNTER | Hunter Hunter\n\nStatus: Em Hiato\nGênero: #Ação, #Aventura, #Fantasia\nFormato: Mangá\nAutor: Yoshihiro Togashi\n\n💬 Gon Freecss, um jovem garoto, decide seguir os passos de seu pai e tornar-se um Hunter, uma elite de pessoas com habilidades excepcionais. Durante o rigoroso exame de Hunter, ele faz amigos como Leorio, Kurapika e Killua, enquanto enfrenta diversos desafios. Com a esperança de encontrar seu pai, Gon embarca em uma jornada cheia de mistérios e perigos.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "HUNTER×HUNTER",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30026-uCvXMudMzmwI.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30026-JXfraiazLTQe.jpg",
+        "averageScore": 88,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Comedy",
+          "Fantasy"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14921,
@@ -198,7 +283,21 @@
         }
       ],
       "raw_text": "Boruto: Naruto Next Generations\n\nStatus: Em andamento\nGênero: #Ação, #Aventura, #Fantasia\nFormato: Mangá\nAutor: Masashi Kishimoto (história), Mikio Ikemoto (arte)\n\n💬 Boruto Uzumaki, filho do famoso Naruto, agora Hokage, tenta encontrar seu próprio caminho como ninja. Com amigos como Sarada Uchiha e Mitsuki, ele enfrenta desafios enquanto lida com o peso da herança de seu pai e os mistérios de uma nova geração de ninjas. A história explora suas aventuras e conflitos internos enquanto busca superar suas próprias expectativas e as do mundo ao seu redor.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "BORUTO: NARUTO NEXT GENERATIONS",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx87178-CPMk8QdPo7c8.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/87178-BXmEG9Q4KK2T.jpg",
+        "averageScore": 66,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14923,
@@ -225,7 +324,24 @@
         }
       ],
       "raw_text": "Berserk\n\nStatus: Em andamento (em Hiato)\nGênero: #Ação, #Fantasia, #Drama\nFormato: Mangá\nAutor: Kentaro Miura\n\n💬 Guts, um mercenário marcado pela tragédia, luta em um mundo sombrio e brutal cheio de demônios, magia e batalhas épicas. Após ser traído por seu melhor amigo, Griffith, que se torna o líder de uma organização demoníaca, Guts busca vingança enquanto lida com sua própria humanidade e os horrores ao seu redor.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Berserk",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30002-Cul4OeN7bYtn.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30002-3TuoSMl20fUX.jpg",
+        "averageScore": 93,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Drama",
+          "Fantasy",
+          "Horror",
+          "Psychological"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14926,
@@ -247,7 +363,20 @@
         }
       ],
       "raw_text": "Rekkyou Sensen | 列強戦線\n\nStatus: Em andamento\nGênero: #Ação, #Sci-Fi\nFormato: Mangá\nAutor: Uruma, Natsuko\n\n💬 A obra mistura ação e ficção científica, com um tema de sobrevivência no cenário pós-apocalíptico. A trama é publicada na Comic Zenon e está sendo bem recebida por fãs de mangás mais pesados e temáticos",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Rekkyou Sensen",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx174266-85TWEFCM8igW.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/174266-RLulQB6o1BhB.jpg",
+        "averageScore": 55,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Sci-Fi"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14934,
@@ -276,7 +405,21 @@
         }
       ],
       "raw_text": "VINLAND SAGA | VINLAND SAGA\n\nStatus: Finalizado\nGênero: #Ação, #Aventura, #Drama, #Histórico, #Seinen\nFormato: Mangá\nAutor: Yukimura Makoto\n\n💬 A história acompanha Thorfinn, um jovem viking em busca de vingança contra Askeladd, o homem responsável pela morte de seu pai. Com o tempo, ele se vê envolvido em eventos históricos, lutando em batalhas, mas também refletindo sobre seu próprio caminho e a busca por paz.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Vinland Saga",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30642-0mjRDkf4THpo.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30642-MeizzL2WDv6C.jpg",
+        "averageScore": 90,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Drama"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14960,
@@ -304,7 +447,22 @@
         }
       ],
       "raw_text": "Record of Ragnarok | 神々の宴 (神々の戯れ)\n\nStatus: Em andamento\nGênero: #Ação, #Fantasia, #Luta, #Seinen\nFormato: Mangá\nAutor: Fukui Shinya, Takumi Fukui\n\n💬 Quando os deuses decidem destruir a humanidade, o ser humano tem uma última chance: batalhas épicas entre deuses e heróis históricos para garantir a sobrevivência. Cada luta traz heróis da história, como Lu Bu, Adam, e outros, enfrentando deuses mitológicos como Zeus e Shiva.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Shuumatsu no Valkyrie",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/nx107098-zjO64Bc3Nrm5.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/107098-kLSvW0gFkMok.jpg",
+        "averageScore": 77,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Fantasy",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14962,
@@ -327,7 +485,23 @@
         }
       ],
       "raw_text": "20th Century Boys | 20thセンチュリーボーイズ\n\nStatus: Finalizado\nGênero: #Mistério, #Suspense, #Psicológico\nFormato: Mangá\nAutor: Naoki Urasawa\n\n💬 20th Century Boys é uma obra de Naoki Urasawa que explora o impacto de um livro misterioso, que prevê uma série de eventos catastróficos, e como um grupo de amigos da infância se vê envolvido em uma luta épica para impedir o fim do mundo.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "20 Seiki Shounen",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30003-E84fwIh22LAQ.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30003-MBm3u1K1uHsi.jpg",
+        "averageScore": 88,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Drama",
+          "Mystery",
+          "Psychological",
+          "Sci-Fi",
+          "Thriller"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14966,
@@ -354,7 +528,19 @@
         }
       ],
       "raw_text": "Monster | モンスター\n\nStatus: Finalizado\nGênero: #Mistério, #Psicológico, #Thriller\nFormato: Mangá\nAutor: Naoki Urasawa\n\n💬 Monster segue o brilhante neurocirurgião Dr. Kenzo Tenma, que, após salvar a vida de um menino, Johan Liebert, descobre que ele se torna um dos maiores assassinos em série da história. A trama se desenrola com Tenma perseguindo Johan por toda a Europa, tentando impedir os planos malignos dele, enquanto desvela uma rede de conspirações e mistérios.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Monster",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx193438-ZGtyQfuZE8gW.png",
+        "banner": null,
+        "averageScore": null,
+        "seasonYear": null,
+        "format": "ONE_SHOT",
+        "genres": [
+          "Hentai"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14974,
@@ -382,7 +568,21 @@
         }
       ],
       "raw_text": "Na Honjaman Level-Up | Solo Leveling\n\nStatus: Finalizado\nGênero: #Ação, #Aventura, #Fantasia, #Sobrenatural\nFormato: Manhwa\nAutor: Chugong\n\n💬 Em um mundo onde seres despertos chamados “Hunters” lutam contra monstros mortais para proteger a humanidade, Sung Jinwoo, o caçador mais fraco de todos, encontra-se em constante luta pela sobrevivência.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Na Honjaman Level Up",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673Vt5ZSuz3.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/105398-4UrEhdqZukrg.jpg",
+        "averageScore": 84,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Fantasy"
+        ],
+        "format_detected": "MANHWA"
+      }
     },
     {
       "message_id": 14984,
@@ -412,7 +612,20 @@
         }
       ],
       "raw_text": "Kaiju No. 8 | Monster #8\n\nStatus: Finalizado \nGênero: #Ação, #Comédia, #Drama #Horror, #FicçãoCientífica\nFormato: Mangá\nAutor: Matsumoto Naoya\n\n💬 Um homem, descontente com o trabalho que teve na vida, está envolvido em um evento inesperado...! Ele se torna um Kaijuu, uma criatura monstruosa, dando-lhe uma nova chance de alcançar o que ele sempre sonhou!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Kaijuu 8-gou",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx120760-MtXvMgujLBpe.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/120760-f81MiocMQK03.jpg",
+        "averageScore": 75,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Sci-Fi"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14986,
@@ -439,7 +652,21 @@
         }
       ],
       "raw_text": "Blue Lock | Bluelock\n\nStatus: Em andamento\nGênero: #Ação, #Drama, #Esportes\nFormato: Mangá\nAutor: Kaneshiro Muneyuki, Nomura Yuusuke\n\n💬 Isagi Yoichi e outros 299 jogadores competem entre si com o objetivo de se tornar o maior jogador do mundo, Enfrentando desafios físicos e mentais, Isagi tenta encontrar seu próprio estilo de jogo, superar inseguranças e se destacar em partidas emocionantes, enquanto busca excelência no esporte.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Blue Lock",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx106130-yPNeuSu75ey1.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/106130-4UbnMTU80zur.jpg",
+        "averageScore": 82,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Sports"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14990,
@@ -462,7 +689,22 @@
         }
       ],
       "raw_text": "Undead Unluck\n\nStatus: Finalizado\nGênero: #Ação, #Comédia, #Sobrenatural\nFormato: Mangá\nAutor: Yoshifumi Tozuka\n\n💬 Enquanto uma garota AZARADA se prepara para encarar sua morte, um MORTO-VIVO que quer desesperadamente morrer aparece diante dela! Cruel, violento e completamente nu! Um herói picaresco sem precedentes aparece em Shonen Jump!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Undead Unluck",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx114791-Rj07uWUnsgLY.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/114791-NPjwp1AgS0d3.jpg",
+        "averageScore": 77,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Comedy",
+          "Sci-Fi",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 14993,
@@ -4913,7 +5155,21 @@
         }
       ],
       "raw_text": "Go-Tōbun no Hanayome | The Quintessential Quintuplets\n\nStatus: Completo \nGênero(s): #Drama, #Harém, #comédia, #Romance, #Escolar\nFormato: Manga\nAutor(es): Negi Haruba\n\nSinopse: Uesugi Fuutarou, um estudante do segundo ano do colegial que vem de uma família pobre, recebe uma irrecusável proposta para trabalhar como tutor... e descobre que suas pupilas são suas colegas de classe! E pra piorar, são gêmeas quíntuplas... Todas lindíssimas, mas com péssimas notas e um ódio mortal pelos estudos!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Go-toubun no Hanayome",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/nx100230-TA0RQ9d7RVas.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/100230-aiEuOcHPAC9l.jpg",
+        "averageScore": 77,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Comedy",
+          "Drama",
+          "Romance"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15640,
@@ -4935,7 +5191,21 @@
         }
       ],
       "raw_text": "Goodnight Punpun\n\nStatus: Finalizado \nGênero(s): #SliceOfLife, #Drama\nFormato: Mangá \nAutor(es): Inio Asano\n\n💬 Temas abordados mostram o início da vida de um adolescente nos aspectos psicológicos, físicos e sociais. Por ser denso e tratar de temas atuais como depressão, autoestima e discussões da vida moderna",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Oyasumi Punpun",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx34632-5xMDkx3pXsEh.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/34632-JULTgA6q6jAH.jpg",
+        "averageScore": 88,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Drama",
+          "Psychological",
+          "Slice of Life"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15643,
@@ -4962,7 +5232,22 @@
         }
       ],
       "raw_text": "Junji Ito Collection\n\nStatus: Em andamento \nGêneros: #Drama, #Terror, #Suspense\nFormato: Manga\nAutor(es): Junji Ito\n\nSinopse: contos do grande mestre do terror japonês, Junji Ito. Uma mistura de vários contos e histórias que envolvem todos os tipos de mistérios sobrenaturais e criaturas nunca vistas antes.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Itou Junji Kessakushuu",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx145268-AMaV3LpD2o9S.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/145268-TXUUBtCX9EQW.jpg",
+        "averageScore": 80,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Drama",
+          "Horror",
+          "Psychological",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15650,
@@ -5004,7 +5289,21 @@
         }
       ],
       "raw_text": "Swordmaster’s Youngest Son | O Caçula do Mestre Espadachim\n\nStatus: Em andamento\nGêneros: #Ação, #Fantasia, #Aventura\nFormato: Manhwa\nAutor: Emperor Penguin \n\n💬 Após ser traído por aqueles em quem mais confiava, Jin Runcandel, o mais fraco herdeiro da lendária família de espadachins, ganha uma segunda chance ao voltar no tempo para sua infância.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Geomsulmyeongga Mangnaeadeul",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx149332-adkSyOFY3c5U.jpg",
+        "banner": null,
+        "averageScore": 79,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Fantasy"
+        ],
+        "format_detected": "MANHWA"
+      }
     },
     {
       "message_id": 15661,
@@ -5027,7 +5326,21 @@
         }
       ],
       "raw_text": "Marry my husband\n\nStatus: Finalizado \nGêneros: #Drama, #Suspense, #Romance\nFormato: Manhwa\nAutor: Sung Sojak\n\n💬 A série acompanha a história de uma mulher casada chamada Kang Ji Won, de 37 anos, que está passando por momentos difíceis tanto na vida pessoal quanto profissional.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Nae Nampyeongwa Gyeolhonhaejwo",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx145551-enTAK5JQfcCr.jpg",
+        "banner": null,
+        "averageScore": 75,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Drama",
+          "Fantasy",
+          "Romance"
+        ],
+        "format_detected": "MANHWA"
+      }
     },
     {
       "message_id": 15667,
@@ -5052,7 +5365,23 @@
         }
       ],
       "raw_text": "Lord of the Mysteries (remake) \n \nStatus: Em andamento\nGêneros: #Fantasia, #Misterio, #Historia, #Ação, #Suspense\nFormato: Manhwa\nAutor: Cuttlefish That Loves Diving\n\n💬 Com a crescente onda de máquinas e energia a vapor, quem pode chegar perto de ser um Beyonder? Envolto na névoa da história e das trevas, quem ou o que é o mal à espreita que murmura em nossos ouvidos?",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Guimi Zhi Zhu",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/b125291-5UbQcPd0JwiV.png",
+        "banner": null,
+        "averageScore": 74,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Fantasy",
+          "Mystery",
+          "Thriller"
+        ],
+        "format_detected": "MANHWA"
+      }
     },
     {
       "message_id": 15677,
@@ -5077,7 +5406,22 @@
         }
       ],
       "raw_text": "Bungou Stray Dogs | Bungo Stray Dogs\n\nStatus: em andamento\nGeneros: #Ação, #Ficção, #Seinen, #Mistério, #Sobrenatural\nFormato: mangá\n\n💬Nakajima Atsushi foi expulso de seu orfanato, e agora ele não tem nenhum lugar para ir e sem comida. Enquanto ele está de pé perto de um rio, à beira de morrer de fome, ele resgata um homem que por capricho tentava o suicídio. Esse homem é Dazai Osamu, e ele e seu parceiro Kunikida são membros de uma agência de detetives muito especial.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Bungou Stray Dogs",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx85307-23PaGq5FakEV.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/85307-HPlNkWrkD0nk.jpg",
+        "averageScore": 83,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Mystery",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15679,
@@ -5120,7 +5464,22 @@
         }
       ],
       "raw_text": "Honey & Clover\n\nStatus: Finalizado \nGeneros: #Josei, #Drama, #Romance, #Comédia\nFormato: mangá\n\n💬 Honey & Clover é uma série de mangá josei criada por Chica Umino e vencedora do 27º Prêmio de Mangá Kodansha. Com equilíbrio entre a comédia e o drama, o mangá conta a história de cinco amigos que estudam em uma escola de artes, retratando temas cotidianos como a amizade, a escolha de uma profissão, o amor não correspondido e o amadurecimento.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Hachimitsu to Clover",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx31009-cPLchnB2J5Qp.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/31009-58pGVKAlk2ae.jpg",
+        "averageScore": 79,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Comedy",
+          "Drama",
+          "Romance",
+          "Slice of Life"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15687,
@@ -5146,7 +5505,21 @@
         }
       ],
       "raw_text": "Mushishi\n\nStatus: Finalizado \nGeneros: #Aventura, #SliceOfLife, #Mistério, #Sobrenatural, #Fantasia, #Seinen\nFormato: mangá\n\n💬 gira em torno de Ginko, um Mushi-shi que viaja pelo Japão feudal investigando criaturas sobrenaturais chamadas Mushi. Ginko utiliza seu conhecimento dos Mushi para ajudar pessoas que sofrem com os problemas causados por eles, buscando soluções e trazendo alívio.",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Bio Luminescence",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx96036-ZdS5djDezOrv.jpg",
+        "banner": null,
+        "averageScore": 58,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Drama",
+          "Slice of Life",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15689,
@@ -5171,7 +5544,19 @@
         }
       ],
       "raw_text": "Toriko\n\nStatus: Finalizado \nGeneros: #Ação, #Aventura, #Comédia, #Fantasia, #Shounen\nFormato: mangá\n\n💬 Conheçam Toriko, o renomado Caçador Gourmet que leva à mesa, ou direto à barriga, as mais fantásticas e desafiadoras iguarias! Com seu apetite avassalador, e na companhia do franzino chef Komatsu, ele viajará o mundo em busca de ingredientes que farão parte do seu Menu Perfeito!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Suitei Chijo",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/b121318-mzi1aFcrGst6.jpg",
+        "banner": null,
+        "averageScore": null,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Hentai"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15691,
@@ -5196,7 +5581,24 @@
         }
       ],
       "raw_text": "Fire Punch \n\nStatus: Finalizado \nGeneros: #Ação ,#Psicológico, #Ficção_científica, #Shounen, #Sobrenatural\nFormato: mangá\n\n💬 Por causa da “Bruxa de Gelo”, o mundo ficou coberto pela neve, a fome e a loucura, e o povo que perecia pelo frio clamava pela chama… Neste mundo apocalíptico, o jovem Agni e sua irmã Luna foram abençoados com o poder de regeneração. Qual será o destino cruel que aguarda esses irmãos órfãos que não podem contar com ajuda de ninguém…?! Este é o início desta chocante distopia dark fantasy!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Fire Punch",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx87170-nyuwcN7rU4pc.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/87170-gsBzHdIHoyEk.jpg",
+        "averageScore": 79,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Drama",
+          "Mystery",
+          "Psychological",
+          "Supernatural",
+          "Thriller"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15693,
@@ -5219,7 +5621,22 @@
         }
       ],
       "raw_text": "Terra Formars \n\nStatus: Em andamento \nGeneros: #Ação, #Horror, #Ficção_Científica\nFormato: mangá\n\n💬 Ano de 2599. O planeta Marte se encontra em pleno processo de terraformação. Toda a superfície foi coberta por uma espécie de alga e… outra forma de vida. Quinze jovens sem nada a perder são enviados para lá, na nave tripulada BUGS-2. Afinal, que organismos são esses que sofreram uma surpreendente e inesperada evolução naquele, até então, inóspito planeta…?!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Terra Formars",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx67563-AJqT7kcdBZqT.png",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/67563-p1fypTLI8bQH.jpg",
+        "averageScore": 69,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Horror",
+          "Sci-Fi"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15695,
@@ -5257,7 +5674,21 @@
         }
       ],
       "raw_text": "Blade of the Immortal | Blade - A lâmina do Imortal\n\nStatus: Finalizado \nGeneros: #Fantasia_sombria, #Ficção, #histórico, #Drama\nFormato: mangá\n\n💬 Após ser encontrado quase morto, Manji é salvo por uma monja que acaba lhe dando vida eterna. Querendo sua mortalidade de volta, o samurai faz um acordo com ela: matar um determinado número de criminosos, e só então ela cumprirá sua parte no acordo. A morte e a espada andam lado a lado. Mas como um samurai imortal irá expiar os pecados cometidos pela sua espada? Lavando sua espada em sangue derramado de forma justa!!",
-      "anilist": null
+      "anilist": {
+        "provider": "anilist",
+        "title_display": "Mugen no Juunin",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/b30658-4KzCEiCDN7Yq.jpg",
+        "banner": "https://s4.anilist.co/file/anilistcdn/media/manga/banner/30658-2Rf4tvAxAwGj.jpg",
+        "averageScore": 83,
+        "seasonYear": null,
+        "format": "MANGA",
+        "genres": [
+          "Action",
+          "Adventure",
+          "Supernatural"
+        ],
+        "format_detected": "MANGA"
+      }
     },
     {
       "message_id": 15700,
