@@ -78,9 +78,13 @@ def _run(sql: str, params: Tuple = (), fetch: str = "none"):
       - "all"  -> list[dict]
     """
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
-                _set_local_timeouts(cur)
                 cur.execute(sql, params)
                 if fetch == "one":
                     row = cur.fetchone()
@@ -103,6 +107,11 @@ def _run(sql: str, params: Tuple = (), fetch: str = "none"):
 def _run_many(statements: List[Tuple[str, Tuple]]) -> None:
     """Executa vários comandos em sequência (mesma conexão)."""
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 for sql, params in statements:
@@ -506,6 +515,11 @@ def try_spend_coins(user_id: int, amount: int) -> bool:
 
 def spend_coins_and_add_giro(user_id: int, price: int, giros: int = 1) -> bool:
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -539,6 +553,11 @@ def spend_coins_and_add_giro(user_id: int, price: int, giros: int = 1) -> bool:
 # LEVEL / COMMANDS
 def increment_commands_and_level(user_id: int, nick_fallback: str, comandos_por_nivel: int):
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -810,6 +829,11 @@ def swap_trade_execute(trade_id: int, from_user: int, to_user: int, from_char: i
     u1, u2 = (from_user, to_user) if from_user <= to_user else (to_user, from_user)
 
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -909,6 +933,11 @@ def top_cache_last_updated() -> int:
 
 def replace_top_anime_cache(items: List[Dict[str, Any]], updated_at: int):
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur, lock_timeout_ms=5000, statement_timeout_ms=15000)
@@ -1016,6 +1045,11 @@ def consume_extra_dado(user_id: int) -> bool:
 # DAILY
 def claim_daily_reward(user_id: int, day_start_ts: int, coins_min: int = 1, coins_max: int = 3, giro_chance: float = 0.20):
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -1205,6 +1239,11 @@ def grant_achievements_and_reward(user_id: int, new_keys: List[str], reward_extr
     now = int(time.time())
     new_keys = [str(k) for k in new_keys if k]
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -1534,6 +1573,11 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
         raise ValueError("action_id obrigatório")
 
     with pool.connection() as conn:
+        # garante que a conexão não volte do pool em estado abortado
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         with conn.cursor() as cur:
             try:
                 _set_local_timeouts(cur)
@@ -1579,53 +1623,3 @@ def delete_one_character_for_coin(user_id: int, character_id: int, action_id: st
                 except Exception:
                     pass
                 raise
-# ==================================================
-# GLOBAL BOT LOCK (Postgres advisory lock)
-# Evita duas instâncias com polling ao mesmo tempo (getUpdates 409)
-# Mantém uma conexão dedicada aberta segurando o lock.
-# ==================================================
-_BOT_LOCK_CONN = None
-
-def acquire_bot_global_lock(lock_key: int = 918273645) -> bool:
-    """Tenta adquirir um advisory lock global no Postgres.
-    Retorna True se pegou, False se outra instância já está com o lock.
-    """
-    global _BOT_LOCK_CONN
-    if _BOT_LOCK_CONN is not None:
-        return True
-    try:
-        import psycopg
-        _BOT_LOCK_CONN = psycopg.connect(DATABASE_URL)
-        with _BOT_LOCK_CONN.cursor() as cur:
-            cur.execute("SELECT pg_try_advisory_lock(%s);", (int(lock_key),))
-            ok = bool(cur.fetchone()[0])
-        if not ok:
-            try:
-                _BOT_LOCK_CONN.close()
-            except Exception:
-                pass
-            _BOT_LOCK_CONN = None
-            return False
-        return True
-    except Exception:
-        try:
-            if _BOT_LOCK_CONN is not None:
-                _BOT_LOCK_CONN.close()
-        except Exception:
-            pass
-        _BOT_LOCK_CONN = None
-        return False
-
-def release_bot_global_lock() -> None:
-    global _BOT_LOCK_CONN
-    try:
-        if _BOT_LOCK_CONN is None:
-            return
-        with _BOT_LOCK_CONN.cursor() as cur:
-            cur.execute("SELECT pg_advisory_unlock(%s);", (918273645,))
-        _BOT_LOCK_CONN.close()
-    except Exception:
-        pass
-    finally:
-        _BOT_LOCK_CONN = None
-
