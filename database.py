@@ -637,38 +637,66 @@ def claim_daily_reward(
                 raise
 
 # ================================
-# COMPATIBILIDADE (exports antigos)
+# COMPAT: increment_commands_and_level
 # ================================
-# Seu bot.py antigo importa funções que podem ter sumido em refactors.
-# Mantemos wrappers simples para não quebrar imports.
-
-def set_last_pedido(user_id: int, ts: int):
+def increment_commands_and_level(user_id: int, nick_fallback: str = "User", comandos_por_nivel: int = 20):
     """
-    Compat: atualiza users.last_pedido
+    Compat do bot.py:
+    - incrementa users.commands em +1
+    - recalcula users.level usando comandos_por_nivel
+    - retorna um dict com old_level, nick_safe, commands, level
+
+    OBS: usa FOR UPDATE para concorrência (evita double increment errado).
     """
-    _run("UPDATE users SET last_pedido=%s WHERE user_id=%s", (int(ts), int(user_id)))
+    user_id = int(user_id)
+    comandos_por_nivel = max(1, int(comandos_por_nivel))
 
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                _set_local_timeouts(cur)
 
-def set_last_dado(user_id: int, ts: int):
-    """
-    Compat: atualiza users.last_dado (se você ainda usa em algum comando)
-    """
-    _run("UPDATE users SET last_dado=%s WHERE user_id=%s", (int(ts), int(user_id)))
+                # garante linha do usuário (caso chamem sem ensure_user_row antes)
+                cur.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
 
+                cur.execute(
+                    """
+                    WITH old AS (
+                        SELECT
+                            COALESCE(commands, 0) AS old_commands,
+                            COALESCE(level, 1)    AS old_level,
+                            COALESCE(nick, %s)    AS nick_safe
+                        FROM users
+                        WHERE user_id = %s
+                        FOR UPDATE
+                    ),
+                    upd AS (
+                        UPDATE users
+                        SET
+                            commands = (SELECT old_commands FROM old) + 1,
+                            level = GREATEST(
+                                (SELECT old_level FROM old),
+                                (((SELECT old_commands FROM old) + 1) / %s) + 1
+                            )
+                        WHERE user_id = %s
+                        RETURNING commands, level
+                    )
+                    SELECT
+                        (SELECT old_level FROM old)    AS old_level,
+                        (SELECT nick_safe FROM old)    AS nick_safe,
+                        (SELECT commands FROM upd)     AS commands,
+                        (SELECT level FROM upd)        AS level
+                    ;
+                    """,
+                    (str(nick_fallback), user_id, comandos_por_nivel, user_id),
+                )
 
-def get_last_pedido(user_id: int) -> int:
-    r = _run(
-        "SELECT COALESCE(last_pedido,0)::bigint AS t FROM users WHERE user_id=%s",
-        (int(user_id),),
-        fetch="one",
-    ) or {}
-    return int(r.get("t") or 0)
-
-
-def get_last_dado(user_id: int) -> int:
-    r = _run(
-        "SELECT COALESCE(last_dado,0)::bigint AS t FROM users WHERE user_id=%s",
-        (int(user_id),),
-        fetch="one",
-    ) or {}
-    return int(r.get("t") or 0)
+                data = cur.fetchone()
+                conn.commit()
+                return data
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
