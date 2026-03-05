@@ -1406,22 +1406,28 @@ def top500_job_read_top_list(job_row: dict) -> List[dict]:
 
 # POOL
 def create_characters_pool_tables():
-
-    _run("""
-    CREATE TABLE IF NOT EXISTS characters_pool (
-        character_id INT PRIMARY KEY,
-        name TEXT NOT NULL,
-        anime TEXT,
-        role TEXT,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
+    _run(
+        """
+        CREATE TABLE IF NOT EXISTS characters_pool (
+            character_id BIGINT PRIMARY KEY,
+            name TEXT NOT NULL,
+            anime TEXT NOT NULL,
+            role TEXT DEFAULT NULL,              -- ✅ NOVO (MAIN / SUPPORTING)
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at BIGINT DEFAULT 0
+        );
+        """
     )
-    """)
 
-    # garante coluna caso tabela antiga exista
-    _run("ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS role TEXT")
-    _run("ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS anime TEXT")
-    _run("ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+    # ✅ migração pra quem já tinha tabela antiga sem a coluna role
+    try:
+        _run("ALTER TABLE characters_pool ADD COLUMN IF NOT EXISTS role TEXT;")
+    except Exception:
+        pass
+
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_anime_idx ON characters_pool (anime);")
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_active_idx ON characters_pool (is_active);")
+    _run("CREATE INDEX IF NOT EXISTS characters_pool_role_idx ON characters_pool (role);")
 
 def pool_set_active(character_id: int, active: bool) -> bool:
     row = _run("UPDATE characters_pool SET is_active=%s WHERE character_id=%s RETURNING character_id", (bool(active), int(character_id)), fetch="one")
