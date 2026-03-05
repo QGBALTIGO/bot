@@ -1,12 +1,10 @@
 import os
-import psycopg
 from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
 
-# Pool robusto (melhor para concorrência + evita conexão suja)
 pool = ConnectionPool(
     conninfo=DATABASE_URL,
     min_size=1,
@@ -15,14 +13,6 @@ pool = ConnectionPool(
 )
 
 def _run(sql: str, params=(), fetch: str = "none"):
-    """
-    Executa 1 comando SQL com commit/rollback garantidos.
-
-    fetch:
-      - "none" -> None
-      - "one"  -> tuple | None
-      - "all"  -> list[tuple]
-    """
     with pool.connection() as conn:
         with conn.cursor() as cur:
             try:
@@ -49,15 +39,18 @@ def _run(sql: str, params=(), fetch: str = "none"):
                 raise
 
 def create_tables():
+    # 1) cria tabela base (se não existir)
     _run("""
     CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT PRIMARY KEY,
-        lang TEXT,
-        terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
-        terms_version TEXT,
-        accepted_at TIMESTAMPTZ
+        user_id BIGINT PRIMARY KEY
     );
     """)
+
+    # 2) migra colunas (seguro, não quebra)
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
 
 def create_or_get_user(user_id: int):
     _run(
