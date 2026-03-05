@@ -1,7 +1,4 @@
-```python
-from pathlib import Path
 
-db_code = r'''# ================================
 # database.py — Postgres (Railway) — FULL
 # Compatível com imports do seu bot.py
 #
