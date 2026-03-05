@@ -1780,7 +1780,32 @@ def miniapp_dado():
         "<style>" + _theme_css() + r"""
 /* dado */
 .panel{margin-top:14px;padding:14px;border-radius:22px}
-.row{display:flex;gap:12px;align-items:center;margin-top:12px;}
+
+/* banner */
+.banner{
+  width:100%;
+  margin:4px 0 14px 0;
+  border-radius:18px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 18px 56px rgba(0,0,0,.25);
+}
+.banner img{
+  width:100%;
+  height:140px;
+  object-fit:cover;
+  display:block;
+}
+
+/* centralização */
+.row{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:center;
+  margin-top:12px;
+}
+
 .dice{
   width:86px;height:86px;border-radius:22px;
   border:1px solid rgba(255,255,255,.14);
@@ -1896,6 +1921,11 @@ def miniapp_dado():
         "</div></div>"
 
         "<div class='panel glass'>"
+
+        "<div class='banner'>"
+        "<img src='https://photo.chelpbot.me/AgACAgEAAxkBZyvh2mmo3LWFjXlOT23EKmzTblnf5rGpAAIiDGsbzg9IRQ8V6kjWRBTgAQADAgADeQADOgQ/photo.jpg'>"
+        "</div>"
+
         "<div class='row'>"
         "<div class='dice' id='dice'>🎲</div>"
         "<button class='btn' id='roll'>ROLAR</button>"
@@ -1903,7 +1933,7 @@ def miniapp_dado():
         "<div class='optGrid' id='opts'></div>"
         "<div class='statusLine' id='status'></div>"
         "</div>"
-
+        
         # lootbox
         "<div class='lootbox' id='loot'>"
         "<div class='box' id='box'>"
