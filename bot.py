@@ -16,7 +16,7 @@ from commands.perfil import perfil
 
 # from commands.anime import anime  # quando você criar
 
-from database import create_tables
+from database import create_tables, create_anilist_tables
 
 create_tables()
 create_anilist_tables()
@@ -51,6 +51,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
