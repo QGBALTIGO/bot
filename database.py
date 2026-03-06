@@ -38,13 +38,6 @@ def _run(sql: str, params=(), fetch: str = "none"):
                     pass
                 raise
 
-def create_tables():
-    # 1) cria tabela base (se não existir)
-    _run("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT PRIMARY KEY
-    );
-    """)
 
     # 2) migra colunas (seguro)
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
