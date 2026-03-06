@@ -10,6 +10,7 @@ from commands.manga import manga
 from commands.cards import cards
 from commands.pedido import pedido
 from commands.card import card
+from database import create_tables, create_cards_tables
 
 from commands.cards_admin import (
     card_addanime,
@@ -77,4 +78,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
