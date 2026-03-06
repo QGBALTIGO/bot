@@ -3,7 +3,6 @@ import requests
 from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
 
@@ -15,17 +14,10 @@ pool = ConnectionPool(
 )
 
 
-# ==================================================
-# CORE SQL EXECUTOR
-# ==================================================
-
 def _run(sql: str, params=(), fetch: str = "none"):
-
     with pool.connection() as conn:
         with conn.cursor() as cur:
-
             try:
-
                 cur.execute(sql, params)
 
                 if fetch == "one":
@@ -42,21 +34,14 @@ def _run(sql: str, params=(), fetch: str = "none"):
                 return None
 
             except Exception:
-
                 try:
                     conn.rollback()
                 except Exception:
                     pass
-
                 raise
 
 
-# ==================================================
-# USERS
-# ==================================================
-
 def create_tables():
-
     _run("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY
@@ -67,13 +52,11 @@ def create_tables():
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;")
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;")
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;")
-
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;")
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;")
 
 
 def create_or_get_user(user_id: int):
-
     _run(
         "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
         (user_id,)
@@ -81,7 +64,6 @@ def create_or_get_user(user_id: int):
 
 
 def set_language(user_id: int, lang: str):
-
     _run(
         "UPDATE users SET lang = %s WHERE user_id = %s",
         (lang, user_id)
@@ -89,7 +71,6 @@ def set_language(user_id: int, lang: str):
 
 
 def accept_terms(user_id: int, version: str):
-
     _run(
         """
         UPDATE users
@@ -103,34 +84,27 @@ def accept_terms(user_id: int, version: str):
 
 
 def has_accepted_terms(user_id: int, version: str) -> bool:
-
     row = _run(
         "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
         (user_id,),
         fetch="one"
     )
-
     if not row:
         return False
-
     accepted, v = row
-
     return bool(accepted) and (v == version)
 
 
 def get_user_status(user_id: int):
-
     row = _run(
         "SELECT lang, terms_accepted, terms_version, welcome_sent FROM users WHERE user_id = %s",
         (user_id,),
         fetch="one"
     )
-
     if not row:
         return None
 
     lang, terms_accepted, terms_version, welcome_sent = row
-
     return {
         "lang": lang,
         "terms_accepted": bool(terms_accepted),
@@ -140,19 +114,11 @@ def get_user_status(user_id: int):
 
 
 def mark_welcome_sent(user_id: int):
-
-    _run(
-        "UPDATE users SET welcome_sent = TRUE WHERE user_id = %s",
-        (user_id,)
-    )
+    _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (user_id,))
 
 
 def reset_welcome_sent(user_id: int):
-
-    _run(
-        "UPDATE users SET welcome_sent = FALSE WHERE user_id = %s",
-        (user_id,)
-    )
+    _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (user_id,))
 
 
 # ==================================================
@@ -160,57 +126,65 @@ def reset_welcome_sent(user_id: int):
 # ==================================================
 
 def create_anilist_tables():
-
     _run("""
     CREATE TABLE IF NOT EXISTS user_anilist (
-
         telegram_id BIGINT PRIMARY KEY,
-        anilist_id BIGINT,
-        username TEXT,
-        access_token TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-
+        anilist_id BIGINT NOT NULL,
+        username TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     """)
 
 
-def save_anilist_account(telegram_id, anilist_id, username, token):
-
+def save_anilist_account(telegram_id: int, anilist_id: int, username: str, token: str):
     _run(
         """
-        INSERT INTO user_anilist
-        (telegram_id, anilist_id, username, access_token)
-        VALUES (%s,%s,%s,%s)
-
+        INSERT INTO user_anilist (telegram_id, anilist_id, username, access_token, updated_at)
+        VALUES (%s, %s, %s, %s, NOW())
         ON CONFLICT (telegram_id)
         DO UPDATE SET
             anilist_id = EXCLUDED.anilist_id,
             username = EXCLUDED.username,
-            access_token = EXCLUDED.access_token
+            access_token = EXCLUDED.access_token,
+            updated_at = NOW()
         """,
         (telegram_id, anilist_id, username, token)
     )
 
 
-def has_anilist_login(user_id):
-
+def has_anilist_login(user_id: int) -> bool:
     row = _run(
-        "SELECT telegram_id FROM user_anilist WHERE telegram_id = %s",
+        "SELECT 1 FROM user_anilist WHERE telegram_id = %s",
         (user_id,),
         fetch="one"
     )
-
     return bool(row)
 
 
-def get_anilist_profile(telegram_id: int):
+def remove_anilist_login(user_id: int):
+    _run(
+        "DELETE FROM user_anilist WHERE telegram_id = %s",
+        (user_id,)
+    )
 
+
+def get_anilist_token(user_id: int):
+    row = _run(
+        "SELECT access_token FROM user_anilist WHERE telegram_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+    if not row:
+        return None
+    return row[0]
+
+
+def get_anilist_profile(telegram_id: int):
     row = _run(
         """
-        SELECT
-            anilist_id,
-            username,
-            access_token
+        SELECT access_token
         FROM user_anilist
         WHERE telegram_id = %s
         """,
@@ -221,7 +195,7 @@ def get_anilist_profile(telegram_id: int):
     if not row:
         return None
 
-    access_token = row[2]
+    access_token = row[0]
 
     query = """
     query {
@@ -242,33 +216,26 @@ def get_anilist_profile(telegram_id: int):
     }
     """
 
-    headers = {
-        "Authorization": f"Bearer {access_token}"
-    }
-
     try:
-
         r = requests.post(
             "https://graphql.anilist.co",
             json={"query": query},
-            headers=headers,
-            timeout=10
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15
         )
 
-        data = r.json()["data"]["Viewer"]
+        data = r.json()
+        viewer = data["data"]["Viewer"]
 
-        minutes = data["statistics"]["anime"]["minutesWatched"]
-
+        minutes = viewer["statistics"]["anime"]["minutesWatched"] or 0
         days = round(minutes / 1440, 1)
 
         return {
-            "anilist_id": data["id"],
-            "name": data["name"],
-            "anime_count": data["statistics"]["anime"]["count"],
-            "manga_count": data["statistics"]["manga"]["count"],
+            "anilist_id": viewer["id"],
+            "name": viewer["name"],
+            "anime_count": viewer["statistics"]["anime"]["count"] or 0,
+            "manga_count": viewer["statistics"]["manga"]["count"] or 0,
             "days": days
         }
-
     except Exception:
-
         return None
