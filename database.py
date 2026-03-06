@@ -150,3 +150,67 @@ def has_anilist_login(user_id):
     )
 
     return bool(row)
+
+def get_anilist_profile(telegram_id: int):
+
+    row = _run(
+        """
+        SELECT
+            anilist_id,
+            username,
+            access_token
+        FROM user_anilist
+        WHERE telegram_id = %s
+        """,
+        (telegram_id,),
+        fetch="one"
+    )
+
+    if not row:
+        return None
+
+    import requests
+
+    token = row["access_token"]
+
+    query = """
+    query {
+      Viewer {
+        id
+        name
+        statistics {
+          anime {
+            count
+            minutesWatched
+          }
+          manga {
+            count
+            chaptersRead
+          }
+        }
+      }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    r = requests.post(
+        "https://graphql.anilist.co",
+        json={"query": query},
+        headers=headers
+    )
+
+    data = r.json()["data"]["Viewer"]
+
+    minutes = data["statistics"]["anime"]["minutesWatched"]
+    days = round(minutes / 1440, 1)
+
+    return {
+        "anilist_id": data["id"],
+        "name": data["name"],
+        "anime_count": data["statistics"]["anime"]["count"],
+        "manga_count": data["statistics"]["manga"]["count"],
+        "days": days
+    }
