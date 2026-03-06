@@ -2126,495 +2126,1046 @@ def mangas_page():
     )
     return HTMLResponse(html)
 
-# =====================================================
-# CARDS SYSTEM
-# =====================================================
+# =========================================================
+# CARDS SYSTEM — JSON ASSETS
+# Lê: data/cards_assets.json
+# =========================================================
 
+import json
+import os
+from typing import Any, Dict, List
+from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
-CHARACTERS_FILE = "data/personagens_anilist.txt"
+CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/cards_assets.json").strip()
+CARDS_TOP_BANNER_URL = os.getenv(
+    "CARDS_TOP_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
+).strip()
+
+_CARDS_DATA: List[Dict[str, Any]] = []
+_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
+_CARDS_TOTAL: int = 0
 
 
-def load_characters():
+def _load_cards_assets() -> int:
+    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
 
-    animes = {}
+    _CARDS_DATA = []
+    _CARDS_INDEX = {}
+    _CARDS_TOTAL = 0
+
+    path = CARDS_ASSETS_PATH
+    candidates = [path]
+
+    if not os.path.isabs(path):
+        candidates.append(os.path.join(os.getcwd(), path))
+        candidates.append(os.path.join("/app", path))
+
+    real_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            real_path = c
+            break
+
+    if not real_path:
+        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
+        return 0
 
     try:
+        with open(real_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
 
-        with open(CHARACTERS_FILE, encoding="utf-8") as f:
+        items = raw.get("items") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            print(f"[cards] Formato inválido em {real_path}", flush=True)
+            return 0
 
-            for line in f:
+        cleaned: List[Dict[str, Any]] = []
 
-                line = line.strip()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
 
-                if not line:
-                    continue
+            anime_id = item.get("anime_id")
+            anime = str(item.get("anime") or "").strip()
+            banner_image = str(item.get("banner_image") or "").strip()
+            cover_image = str(item.get("cover_image") or "").strip()
+            chars_raw = item.get("characters") or []
 
-                parts = line.split("|")
+            try:
+                anime_id = int(anime_id)
+            except Exception:
+                continue
 
-                if len(parts) < 4:
-                    continue
+            if not anime:
+                continue
 
-                char_id = int(parts[0])
-                name = parts[1]
-                anime = parts[2]
-                anime_id = int(parts[3])
+            chars: List[Dict[str, Any]] = []
+            seen_char_ids = set()
 
-                if anime_id not in animes:
+            if isinstance(chars_raw, list):
+                for c in chars_raw:
+                    if not isinstance(c, dict):
+                        continue
 
-                    animes[anime_id] = {
-                        "anime": anime,
-                        "anime_id": anime_id,
-                        "characters": []
-                    }
+                    cid = c.get("id")
+                    cname = str(c.get("name") or "").strip()
+                    canime = str(c.get("anime") or anime).strip()
+                    cimg = str(c.get("image") or "").strip()
 
-                animes[anime_id]["characters"].append({
-                    "id": char_id,
-                    "name": name,
-                    "anime": anime
-                })
+                    try:
+                        cid = int(cid)
+                    except Exception:
+                        continue
+
+                    if not cname or cid in seen_char_ids:
+                        continue
+
+                    seen_char_ids.add(cid)
+
+                    chars.append({
+                        "id": cid,
+                        "name": cname,
+                        "anime": canime or anime,
+                        "image": cimg,
+                    })
+
+            chars.sort(key=lambda x: x["name"].lower())
+
+            payload = {
+                "anime_id": anime_id,
+                "anime": anime,
+                "banner_image": banner_image,
+                "cover_image": cover_image,
+                "characters": chars,
+                "characters_count": len(chars),
+            }
+
+            cleaned.append(payload)
+            _CARDS_INDEX[anime_id] = payload
+
+        cleaned.sort(key=lambda x: x["anime"].lower())
+
+        _CARDS_DATA = cleaned
+        _CARDS_TOTAL = len(cleaned)
+
+        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
+        return _CARDS_TOTAL
 
     except Exception as e:
-        print("Erro carregando personagens:", e)
+        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
+        return 0
 
-    return list(animes.values())
+
+def _ensure_cards_loaded():
+    if not _CARDS_DATA:
+        _load_cards_assets()
 
 
-# =====================================================
-# API
-# =====================================================
+# carrega no boot sem derrubar app
+try:
+    _load_cards_assets()
+except Exception as e:
+    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
+
+
+@app.get("/api/cards/reload")
+def api_cards_reload():
+    total = _load_cards_assets()
+    return JSONResponse({"ok": True, "total": total})
+
 
 @app.get("/api/cards/animes")
-def api_cards_animes():
+def api_cards_animes(
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+):
+    _ensure_cards_loaded()
 
-    data = load_characters()
+    q = (q or "").strip().lower()
+    data = _CARDS_DATA
 
-    data.sort(key=lambda x: x["anime"])
+    if q:
+        data = [x for x in data if q in x["anime"].lower()]
 
-    return JSONResponse(data)
+    total = len(data)
+    items = data[offset: offset + limit]
+
+    payload = []
+    for a in items:
+        payload.append({
+            "anime_id": a["anime_id"],
+            "anime": a["anime"],
+            "banner_image": a["banner_image"],
+            "cover_image": a["cover_image"],
+            "characters_count": a["characters_count"],
+        })
+
+    return JSONResponse({
+        "total": total,
+        "items": payload,
+    })
 
 
 @app.get("/api/cards/characters")
-def api_cards_characters(anime_id: int):
+def api_cards_characters(
+    anime_id: int = Query(...),
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+):
+    _ensure_cards_loaded()
 
-    data = load_characters()
+    anime = _CARDS_INDEX.get(anime_id)
+    if not anime:
+        return JSONResponse({
+            "ok": False,
+            "anime": None,
+            "total": 0,
+            "items": [],
+        })
 
-    for a in data:
+    chars = anime["characters"]
+    q = (q or "").strip().lower()
 
-        if a["anime_id"] == anime_id:
-            return JSONResponse(a["characters"])
+    if q:
+        chars = [c for c in chars if q in c["name"].lower()]
 
-    return JSONResponse([])
+    total = len(chars)
+    items = chars[offset: offset + limit]
 
+    return JSONResponse({
+        "ok": True,
+        "anime": {
+            "anime_id": anime["anime_id"],
+            "anime": anime["anime"],
+            "banner_image": anime["banner_image"],
+            "cover_image": anime["cover_image"],
+            "characters_count": anime["characters_count"],
+        },
+        "total": total,
+        "items": items,
+    })
 
-# =====================================================
-# PAGE /cards
-# =====================================================
 
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page():
-
     html = """
 <!doctype html>
-<html>
+<html lang="pt-br">
 <head>
-
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Cards • Source Baltigo</title>
 
 <style>
+  :root{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+    --stroke2:rgba(255,255,255,.16);
+    --glass:rgba(255,255,255,.04);
+    --shadow:0 16px 30px rgba(0,0,0,.44);
+  }
 
-body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
-color:white;
-}
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
 
-.banner{
-height:200px;
-background:linear-gradient(180deg,rgba(0,0,0,.3),rgba(0,0,0,.8)),
-url("https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg")
-center/cover;
-display:flex;
-align-items:flex-end;
-padding:20px;
-font-size:26px;
-font-weight:900;
-letter-spacing:.05em;
-}
+  body{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+    overflow-x:hidden;
+  }
 
-.search{
-padding:16px;
-}
+  .bg{
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity:.16;
+    pointer-events:none;
+    z-index:0;
+  }
 
-.search input{
-width:100%;
-padding:12px;
-border-radius:12px;
-border:none;
-background:#111827;
-color:white;
-font-size:14px;
-}
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:980px;
+    margin:0 auto;
+    padding:18px 14px 42px;
+  }
 
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-padding:16px;
-}
+  .top-banner{
+    width:100%;
+    border-radius:26px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    box-shadow:var(--shadow);
+    position:relative;
+    background:#000;
+    min-height:220px;
+  }
 
-.card{
-background:#111827;
-border-radius:18px;
-overflow:hidden;
-cursor:pointer;
-}
+  .top-banner img{
+    width:100%;
+    height:220px;
+    object-fit:cover;
+    display:block;
+  }
 
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
-}
+  .top-banner:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
+    pointer-events:none;
+  }
 
-.name{
-padding:10px;
-font-weight:800;
-}
+  .top-copy{
+    position:absolute;
+    left:18px;
+    right:18px;
+    bottom:16px;
+    z-index:2;
+  }
 
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.26);
+    backdrop-filter: blur(8px);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+  }
+
+  .title{
+    margin-top:12px;
+    font-size:28px;
+    line-height:1.05;
+    font-weight:900;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    text-shadow:0 6px 20px rgba(0,0,0,.45);
+  }
+
+  .subtitle{
+    margin-top:8px;
+    color:rgba(255,255,255,.78);
+    font-weight:700;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .head{
+    padding:18px 4px 8px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .stats{
+    color:var(--muted);
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .search{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--glass);
+    border:1px solid var(--stroke);
+    border-radius:18px;
+    padding:13px 14px;
+    box-shadow:0 10px 18px rgba(0,0,0,.32);
+  }
+
+  .search input{
+    width:100%;
+    border:0;
+    outline:none;
+    background:transparent;
+    color:var(--txt);
+    font-size:14px;
+  }
+
+  .search input::placeholder{
+    color:rgba(255,255,255,.38);
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .cards{
+    margin-top:16px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  @media (min-width:720px){
+    .top-banner img{ height:250px; }
+    .cards{ grid-template-columns:repeat(3,1fr); }
+  }
+
+  .card{
+    cursor:pointer;
+    border-radius:24px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    box-shadow:0 18px 30px rgba(0,0,0,.42);
+    transition:transform .10s ease, border-color .12s ease, box-shadow .12s ease;
+    position:relative;
+  }
+
+  .card:hover{
+    transform:translateY(-2px);
+    border-color:var(--stroke2);
+    box-shadow:0 20px 34px rgba(0,0,0,.5);
+  }
+
+  .cover{
+    width:100%;
+    height:250px;
+    position:relative;
+    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
+  }
+
+  .cover img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .cover:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
+    pointer-events:none;
+  }
+
+  .count-pill{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+    z-index:2;
+    border-radius:999px;
+    padding:8px 10px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.95);
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.18);
+    backdrop-filter:blur(8px);
+  }
+
+  .meta{
+    padding:13px 14px 15px;
+  }
+
+  .name{
+    font-weight:900;
+    letter-spacing:.04em;
+    font-size:14px;
+    line-height:1.2;
+    text-transform:uppercase;
+    margin:0;
+  }
+
+  .sub{
+    margin-top:8px;
+    color:rgba(255,255,255,.52);
+    font-weight:800;
+    letter-spacing:.12em;
+    font-size:11px;
+    text-transform:uppercase;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .pill{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    padding:6px 10px;
+    border-radius:999px;
+  }
+
+  .empty{
+    margin-top:16px;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    border-radius:22px;
+    padding:18px;
+    color:rgba(255,255,255,.70);
+    font-weight:700;
+    text-align:center;
+  }
+
+  .footer{
+    margin-top:16px;
+    color:rgba(255,255,255,.40);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+    text-align:center;
+  }
 </style>
-
 </head>
-
 <body>
+<div class="bg"></div>
 
-<div class="banner">
-COLEÇÃO DE PERSONAGENS
+<div class="wrap">
+
+  <div class="top-banner">
+    <img src="__TOP_BANNER__" alt="Cards banner"/>
+    <div class="top-copy">
+      <div class="eyebrow">🃏 Cards • Source Baltigo</div>
+      <div class="title">Coleção de Personagens</div>
+      <div class="subtitle">Obras, personagens e artes já preparadas</div>
+    </div>
+  </div>
+
+  <div class="head">
+    <div class="stats" id="statsTxt">Carregando...</div>
+  </div>
+
+  <div class="search">
+    <span style="opacity:.62;font-weight:900;">🔎</span>
+    <input id="searchInput" type="text" placeholder="Buscar obra..." />
+  </div>
+
+  <div class="cards" id="cards"></div>
+  <div class="empty" id="emptyBox" style="display:none;">Nenhuma obra encontrada.</div>
+
+  <div class="footer">Source Baltigo • Cards</div>
 </div>
-
-<div class="search">
-<input id="search" placeholder="Buscar anime...">
-</div>
-
-<div class="grid" id="grid"></div>
 
 <script>
+  const api = "/api/cards/animes";
+  let fullData = [];
+  let filteredData = [];
 
-let data=[]
+  function esc(s){
+    return (s || "").replace(/[&<>\"']/g, (m) => ({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#039;"
+    }[m]));
+  }
 
-async function load(){
+  function pickCover(item){
+    if (item.cover_image && item.cover_image.length > 5) return item.cover_image;
+    if (item.banner_image && item.banner_image.length > 5) return item.banner_image;
+    return "__TOP_BANNER__";
+  }
 
-let r=await fetch("/api/cards/animes")
-data=await r.json()
+  function render(){
+    const box = document.getElementById("cards");
+    const empty = document.getElementById("emptyBox");
+    const stats = document.getElementById("statsTxt");
 
-render(data)
+    stats.textContent = "TOTAL DE OBRAS: " + filteredData.length;
 
-}
+    if (!filteredData.length){
+      box.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
 
-function render(list){
+    empty.style.display = "none";
 
-list.sort((a,b)=>a.anime.localeCompare(b.anime))
+    let html = "";
+    for (const item of filteredData){
+      html += `
+        <div class="card" onclick="openAnime(${item.anime_id})">
+          <div class="cover">
+            <img src="${esc(pickCover(item))}" alt="${esc(item.anime)}" loading="lazy"/>
+            <div class="count-pill">${item.characters_count || 0} chars</div>
+          </div>
+          <div class="meta">
+            <p class="name">${esc(item.anime)}</p>
+            <div class="sub">
+              <span class="pill">ID ${item.anime_id}</span>
+              <span class="pill">CARDS</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-let html=""
+    box.innerHTML = html;
+  }
 
-list.forEach(a=>{
+  function applySearch(){
+    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
 
-let cover="https://img.anili.st/media/"+a.anime_id+"/extraLarge"
+    if (!q){
+      filteredData = [...fullData];
+      render();
+      return;
+    }
 
-html+=`
-<div class="card" onclick="openAnime('${a.anime_id}')">
-<img src="${cover}">
-<div class="name">${a.anime}</div>
-</div>
-`
+    filteredData = fullData.filter(x => x.anime.toLowerCase().includes(q));
+    render();
+  }
 
-})
+  function openAnime(id){
+    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id);
+  }
 
-document.getElementById("grid").innerHTML=html
+  async function load(){
+    const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
+    const data = await res.json();
+    fullData = (data.items || []).sort((a,b) => a.anime.localeCompare(b.anime));
+    filteredData = [...fullData];
+    render();
+  }
 
-}
-
-document.getElementById("search").oninput=e=>{
-
-let q=e.target.value.toLowerCase()
-
-let filtered=data.filter(a=>a.anime.toLowerCase().includes(q))
-
-render(filtered)
-
-}
-
-function openAnime(id){
-
-window.location="/cards/anime?anime="+id
-
-}
-
-load()
-
+  document.getElementById("searchInput").addEventListener("input", applySearch);
+  load();
 </script>
-
 </body>
 </html>
 """
-
+    html = html.replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
     return HTMLResponse(html)
 
-
-# =====================================================
-# PAGE /cards/anime
-# =====================================================
 
 @app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime: int):
-
+def cards_anime_page(anime_id: int = Query(...)):
     html = """
 <!doctype html>
-<html>
+<html lang="pt-br">
 <head>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Cards Anime • Source Baltigo</title>
 
 <style>
+  :root{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+    --stroke2:rgba(255,255,255,.16);
+    --glass:rgba(255,255,255,.04);
+    --shadow:0 16px 30px rgba(0,0,0,.44);
+  }
 
-body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
-color:white;
-padding:16px;
-}
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
 
-.search input{
-width:100%;
-padding:12px;
-border-radius:12px;
-border:none;
-background:#111827;
-color:white;
-margin-bottom:16px;
-}
+  body{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+    overflow-x:hidden;
+  }
 
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-}
+  .bg{
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity:.16;
+    pointer-events:none;
+    z-index:0;
+  }
 
-.card{
-background:#111827;
-border-radius:20px;
-overflow:hidden;
-}
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:980px;
+    margin:0 auto;
+    padding:18px 14px 42px;
+  }
 
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
-}
+  .hero{
+    width:100%;
+    min-height:230px;
+    border-radius:26px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    box-shadow:var(--shadow);
+    position:relative;
+    background:#101827;
+  }
 
-.info{
-padding:10px;
-}
+  .hero img{
+    width:100%;
+    height:230px;
+    object-fit:cover;
+    display:block;
+  }
 
-.name{
-font-weight:800;
-}
+  .hero:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.80));
+    pointer-events:none;
+  }
 
-.meta{
-font-size:12px;
-opacity:.7;
-}
+  .hero-copy{
+    position:absolute;
+    left:18px;
+    right:18px;
+    bottom:16px;
+    z-index:2;
+  }
 
+  .back{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.28);
+    color:rgba(255,255,255,.95);
+    text-decoration:none;
+    backdrop-filter:blur(8px);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+  }
+
+  .title{
+    margin-top:12px;
+    font-size:28px;
+    line-height:1.05;
+    font-weight:900;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    text-shadow:0 6px 20px rgba(0,0,0,.45);
+  }
+
+  .subtitle{
+    margin-top:8px;
+    color:rgba(255,255,255,.78);
+    font-weight:700;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .head{
+    padding:18px 4px 8px;
+  }
+
+  .stats{
+    color:var(--muted);
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .search{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--glass);
+    border:1px solid var(--stroke);
+    border-radius:18px;
+    padding:13px 14px;
+    box-shadow:0 10px 18px rgba(0,0,0,.32);
+  }
+
+  .search input{
+    width:100%;
+    border:0;
+    outline:none;
+    background:transparent;
+    color:var(--txt);
+    font-size:14px;
+  }
+
+  .search input::placeholder{
+    color:rgba(255,255,255,.38);
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .cards{
+    margin-top:16px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  @media (min-width:720px){
+    .hero img{ height:260px; }
+    .cards{ grid-template-columns:repeat(3,1fr); }
+  }
+
+  .card{
+    border-radius:24px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    box-shadow:0 18px 30px rgba(0,0,0,.42);
+    transition:transform .10s ease, border-color .12s ease;
+    position:relative;
+  }
+
+  .card:hover{
+    transform:translateY(-2px);
+    border-color:var(--stroke2);
+  }
+
+  .char-image{
+    width:100%;
+    height:280px;
+    position:relative;
+    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
+  }
+
+  .char-image img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .char-image:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.58));
+    pointer-events:none;
+  }
+
+  .id-pill{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+    z-index:2;
+    border-radius:999px;
+    padding:8px 10px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.95);
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.18);
+    backdrop-filter:blur(8px);
+  }
+
+  .meta{
+    padding:13px 14px 15px;
+  }
+
+  .name{
+    font-weight:900;
+    letter-spacing:.04em;
+    font-size:14px;
+    line-height:1.2;
+    text-transform:uppercase;
+    margin:0;
+  }
+
+  .sub{
+    margin-top:8px;
+    color:rgba(255,255,255,.52);
+    font-weight:800;
+    letter-spacing:.12em;
+    font-size:11px;
+    text-transform:uppercase;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .pill{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    padding:6px 10px;
+    border-radius:999px;
+  }
+
+  .empty{
+    margin-top:16px;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    border-radius:22px;
+    padding:18px;
+    color:rgba(255,255,255,.70);
+    font-weight:700;
+    text-align:center;
+  }
+
+  .footer{
+    margin-top:16px;
+    color:rgba(255,255,255,.40);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+    text-align:center;
+  }
 </style>
-
 </head>
-
 <body>
+<div class="bg"></div>
 
-<div class="search">
-<input id="search" placeholder="Buscar personagem...">
+<div class="wrap">
+
+  <div class="hero" id="heroBox">
+    <img id="heroImg" src="" alt="Banner"/>
+    <div class="hero-copy">
+      <a class="back" href="/cards">← Voltar</a>
+      <div class="title" id="animeTitle">Carregando...</div>
+      <div class="subtitle" id="animeSub">Personagens</div>
+    </div>
+  </div>
+
+  <div class="head">
+    <div class="stats" id="statsTxt">Carregando...</div>
+  </div>
+
+  <div class="search">
+    <span style="opacity:.62;font-weight:900;">🔎</span>
+    <input id="searchInput" type="text" placeholder="Buscar personagem..." />
+  </div>
+
+  <div class="cards" id="cards"></div>
+  <div class="empty" id="emptyBox" style="display:none;">Nenhum personagem encontrado.</div>
+
+  <div class="footer">Source Baltigo • Cards</div>
 </div>
-
-<div class="grid" id="grid"></div>
 
 <script>
+  const animeId = __ANIME_ID__;
+  const api = "/api/cards/characters?anime_id=" + animeId + "&limit=5000";
+  const fallbackTop = "__TOP_BANNER__";
 
-const anime="__ANIME__"
+  let animeMeta = null;
+  let fullData = [];
+  let filteredData = [];
 
-let data=[]
+  function esc(s){
+    return (s || "").replace(/[&<>\"']/g, (m) => ({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#039;"
+    }[m]));
+  }
 
-async function load(){
+  function pickHero(meta){
+    if (meta.banner_image && meta.banner_image.length > 5) return meta.banner_image;
+    if (meta.cover_image && meta.cover_image.length > 5) return meta.cover_image;
+    return fallbackTop;
+  }
 
-let r=await fetch("/api/cards/characters?anime_id="+anime)
+  function pickCharImage(item){
+    if (item.image && item.image.length > 5) return item.image;
+    return fallbackTop;
+  }
 
-data=await r.json()
+  function render(){
+    const box = document.getElementById("cards");
+    const empty = document.getElementById("emptyBox");
+    const stats = document.getElementById("statsTxt");
 
-render(data)
+    stats.textContent = "TOTAL DE PERSONAGENS: " + filteredData.length;
 
-}
+    if (!filteredData.length){
+      box.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
 
-function render(list){
+    empty.style.display = "none";
 
-let html=""
+    let html = "";
+    for (const item of filteredData){
+      html += `
+        <div class="card">
+          <div class="char-image">
+            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
+            <div class="id-pill">ID ${item.id}</div>
+          </div>
+          <div class="meta">
+            <p class="name">${esc(item.name)}</p>
+            <div class="sub">
+              <span class="pill">${esc(item.anime)}</span>
+              <span class="pill">CARD</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-list.forEach(c=>{
+    box.innerHTML = html;
+  }
 
-let img="https://img.anili.st/character/"+c.id+"/large"
+  function applySearch(){
+    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
 
-html+=`
-<div class="card">
+    if (!q){
+      filteredData = [...fullData];
+      render();
+      return;
+    }
 
-<img src="${img}">
+    filteredData = fullData.filter(x => x.name.toLowerCase().includes(q));
+    render();
+  }
 
-<div class="info">
+  async function load(){
+    const res = await fetch(api + "&_ts=" + Date.now());
+    const data = await res.json();
 
-<div class="name">${c.name}</div>
+    animeMeta = data.anime || null;
+    fullData = (data.items || []).sort((a,b) => a.name.localeCompare(b.name));
+    filteredData = [...fullData];
 
-<div class="meta">ID: ${c.id}</div>
+    if (animeMeta){
+      document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
+      document.getElementById("animeSub").textContent = "ID " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " personagens";
+      document.getElementById("heroImg").src = pickHero(animeMeta);
+    }
 
-<div class="meta">${c.anime}</div>
+    render();
+  }
 
-</div>
-
-</div>
-`
-
-})
-
-document.getElementById("grid").innerHTML=html
-
-}
-
-document.getElementById("search").oninput=e=>{
-
-let q=e.target.value.toLowerCase()
-
-let filtered=data.filter(c=>c.name.toLowerCase().includes(q))
-
-render(filtered)
-
-}
-
-load()
-
+  document.getElementById("searchInput").addEventListener("input", applySearch);
+  load();
 </script>
-
 </body>
 </html>
 """
-
-    html = html.replace("__ANIME__", str(anime))
-
+    html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
     return HTMLResponse(html)
-
-# =========================
-# LOGIN ANILIST
-# =========================
-import os
-import base64
-import hmac
-import hashlib
-import requests
-
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-
-from database import save_anilist_account
-
-app = FastAPI()
-
-ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
-ANILIST_CLIENT_SECRET = os.getenv("ANILIST_CLIENT_SECRET", "").strip()
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
-OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
-
-
-def verify_state(state: str):
-    padded = state + "=" * (-len(state) % 4)
-    decoded = base64.urlsafe_b64decode(padded)
-
-    payload, sig = decoded.rsplit(b".", 1)
-
-    expected_sig = hmac.new(
-        OAUTH_STATE_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).digest()
-
-    if not hmac.compare_digest(sig, expected_sig):
-        raise ValueError("state inválido")
-
-    user_id_str, ts = payload.decode().split(".")
-    return int(user_id_str)
-
-
-@app.get("/callback")
-async def anilist_callback(code: str, state: str):
-    try:
-        if not ANILIST_CLIENT_ID:
-            return HTMLResponse("Erro: ANILIST_CLIENT_ID vazio.")
-        if not ANILIST_CLIENT_SECRET:
-            return HTMLResponse("Erro: ANILIST_CLIENT_SECRET vazio.")
-        if not PUBLIC_BASE_URL:
-            return HTMLResponse("Erro: PUBLIC_BASE_URL vazio.")
-        if not OAUTH_STATE_SECRET:
-            return HTMLResponse("Erro: OAUTH_STATE_SECRET vazio.")
-
-        telegram_id = verify_state(state)
-        redirect_uri = f"{PUBLIC_BASE_URL}/callback"
-
-        token_resp = requests.post(
-            "https://anilist.co/api/v2/oauth/token",
-            data={
-                "grant_type": "authorization_code",
-                "client_id": ANILIST_CLIENT_ID,
-                "client_secret": ANILIST_CLIENT_SECRET,
-                "redirect_uri": redirect_uri,
-                "code": code,
-            },
-            timeout=15,
-        )
-
-        token_json = token_resp.json()
-
-        if "access_token" not in token_json:
-            return HTMLResponse(
-                f"<pre>Erro AniList:\n{token_json}\n\nredirect_uri={redirect_uri}\nclient_id={ANILIST_CLIENT_ID}</pre>"
-            )
-
-        token = token_json["access_token"]
-
-        viewer_resp = requests.post(
-            "https://graphql.anilist.co",
-            json={"query": "query { Viewer { id name } }"},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=15,
-        )
-
-        viewer_json = viewer_resp.json()
-
-        if "data" not in viewer_json or not viewer_json["data"] or not viewer_json["data"].get("Viewer"):
-            return HTMLResponse(f"<pre>Erro GraphQL:\n{viewer_json}</pre>")
-
-        viewer = viewer_json["data"]["Viewer"]
-
-        save_anilist_account(
-            telegram_id=telegram_id,
-            anilist_id=viewer["id"],
-            username=viewer["name"],
-            token=token
-        )
-
-        return HTMLResponse("""
-        <html>
-          <head><meta charset="utf-8"><title>AniList conectado</title></head>
-          <body style="font-family: Arial, sans-serif; background:#111; color:#fff; text-align:center; padding:40px;">
-            <h2>✅ Conta AniList conectada com sucesso!</h2>
-            <p>Agora volte ao Telegram e use <b>/perfil</b>.</p>
-          </body>
-        </html>
-        """)
-    except Exception as e:
-        return HTMLResponse(f"<pre>Erro interno:\n{e}</pre>")
