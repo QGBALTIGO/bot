@@ -2127,435 +2127,1079 @@ def mangas_page():
     return HTMLResponse(html)
 
 # =========================================================
-# CARDS UI MULTILINGUE (PT / EN / ES)
+# CARDS UI I18N
+# adicionar antes das rotas /cards e /cards/anime
 # =========================================================
 
 def pick_cards_lang(lang: str | None) -> str:
     lang = (lang or "").lower().strip()
-    if lang.startswith("en"):
-        return "en"
+    if lang.startswith("pt"):
+        return "pt"
     if lang.startswith("es"):
         return "es"
+    if lang.startswith("en"):
+        return "en"
     return "pt"
 
 
-CARDS_UI_TEXTS = {
-
+CARDS_I18N = {
     "pt": {
         "eyebrow": "🃏 Cards • Source Baltigo",
         "title": "Coleção de Personagens",
-        "subtitle": "Obras e personagens disponíveis",
-        "search_work": "Buscar obra...",
-        "search_character": "Buscar personagem...",
-        "no_work": "Nenhuma obra encontrada.",
-        "no_character": "Nenhum personagem encontrado.",
+        "subtitle": "Obras, personagens e artes já preparadas",
         "total_works": "TOTAL DE OBRAS",
-        "total_characters": "TOTAL DE PERSONAGENS",
-        "characters": "Personagens",
-        "back": "← Voltar",
+        "search_work": "Buscar obra...",
+        "no_work": "Nenhuma obra encontrada.",
         "footer": "Source Baltigo • Cards",
+        "chars": "chars",
+        "cards": "CARDS",
+        "back": "← Voltar",
+        "characters": "Personagens",
+        "total_characters": "TOTAL DE PERSONAGENS",
+        "search_character": "Buscar personagem...",
+        "no_character": "Nenhum personagem encontrado.",
+        "not_found_title": "Obra não encontrada",
+        "not_found_sub": "Verifique o anime_id",
         "id": "ID",
-        "card": "CARD"
+        "card": "CARD",
     },
-
     "en": {
         "eyebrow": "🃏 Cards • Source Baltigo",
         "title": "Character Collection",
-        "subtitle": "Available works and characters",
-        "search_work": "Search work...",
-        "search_character": "Search character...",
-        "no_work": "No works found.",
-        "no_character": "No characters found.",
+        "subtitle": "Works, characters and artwork already prepared",
         "total_works": "TOTAL WORKS",
-        "total_characters": "TOTAL CHARACTERS",
-        "characters": "Characters",
-        "back": "← Back",
+        "search_work": "Search work...",
+        "no_work": "No works found.",
         "footer": "Source Baltigo • Cards",
+        "chars": "chars",
+        "cards": "CARDS",
+        "back": "← Back",
+        "characters": "Characters",
+        "total_characters": "TOTAL CHARACTERS",
+        "search_character": "Search character...",
+        "no_character": "No characters found.",
+        "not_found_title": "Work not found",
+        "not_found_sub": "Check the anime_id",
         "id": "ID",
-        "card": "CARD"
+        "card": "CARD",
     },
-
     "es": {
         "eyebrow": "🃏 Cards • Source Baltigo",
         "title": "Colección de Personajes",
-        "subtitle": "Obras y personajes disponibles",
-        "search_work": "Buscar obra...",
-        "search_character": "Buscar personaje...",
-        "no_work": "No se encontró ninguna obra.",
-        "no_character": "No se encontró ningún personaje.",
+        "subtitle": "Obras, personajes y artes ya preparadas",
         "total_works": "TOTAL DE OBRAS",
-        "total_characters": "TOTAL DE PERSONAJES",
-        "characters": "Personajes",
-        "back": "← Volver",
+        "search_work": "Buscar obra...",
+        "no_work": "No se encontró ninguna obra.",
         "footer": "Source Baltigo • Cards",
+        "chars": "chars",
+        "cards": "CARDS",
+        "back": "← Volver",
+        "characters": "Personajes",
+        "total_characters": "TOTAL DE PERSONAJES",
+        "search_character": "Buscar personaje...",
+        "no_character": "No se encontró ningún personaje.",
+        "not_found_title": "Obra no encontrada",
+        "not_found_sub": "Verifica el anime_id",
         "id": "ID",
-        "card": "CARD"
-    }
-
+        "card": "CARD",
+    },
 }
 
 
 # =========================================================
-# PAGINA PRINCIPAL
+# SUBSTITUIR A ROTA /cards POR ESTA
 # =========================================================
 
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page(lang: str = Query("pt")):
-
     L = pick_cards_lang(lang)
-    T = CARDS_UI_TEXTS[L]
+    T = CARDS_I18N[L]
 
     html = """
 <!doctype html>
-<html>
+<html lang="__LANG__">
 <head>
-
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<title>Cards</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Cards • Source Baltigo</title>
 
 <style>
+  :root{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+    --stroke2:rgba(255,255,255,.16);
+    --glass:rgba(255,255,255,.04);
+    --shadow:0 16px 30px rgba(0,0,0,.44);
+  }
 
-body{
-background:#0b0f18;
-color:white;
-font-family:system-ui;
-margin:0;
-}
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
 
-.banner{
-width:100%;
-height:240px;
-object-fit:cover;
-}
+  body{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+    overflow-x:hidden;
+  }
 
-.container{
-max-width:900px;
-margin:auto;
-padding:20px;
-}
+  .bg{
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity:.16;
+    pointer-events:none;
+    z-index:0;
+  }
 
-.lang{
-position:absolute;
-top:20px;
-right:20px;
-display:flex;
-gap:6px;
-}
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:980px;
+    margin:0 auto;
+    padding:18px 14px 42px;
+  }
 
-.lang button{
-background:#111;
-color:white;
-border:1px solid #333;
-padding:6px 10px;
-cursor:pointer;
-}
+  .top-banner{
+    width:100%;
+    border-radius:26px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    box-shadow:var(--shadow);
+    position:relative;
+    background:#000;
+    min-height:220px;
+  }
 
-.search{
-margin-top:20px;
-width:100%;
-padding:12px;
-background:#111;
-border:1px solid #333;
-color:white;
-}
+  .top-banner img{
+    width:100%;
+    height:220px;
+    object-fit:cover;
+    display:block;
+  }
 
-.grid{
-margin-top:20px;
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:12px;
-}
+  .top-banner:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
+    pointer-events:none;
+  }
 
-.card{
-background:#111;
-border:1px solid #333;
-cursor:pointer;
-}
+  .top-copy{
+    position:absolute;
+    left:18px;
+    right:18px;
+    bottom:16px;
+    z-index:2;
+  }
 
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
-}
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.26);
+    backdrop-filter: blur(8px);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+  }
 
-.card .meta{
-padding:10px;
-}
+  .title{
+    margin-top:12px;
+    font-size:28px;
+    line-height:1.05;
+    font-weight:900;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    text-shadow:0 6px 20px rgba(0,0,0,.45);
+  }
 
+  .subtitle{
+    margin-top:8px;
+    color:rgba(255,255,255,.78);
+    font-weight:700;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .langWrap{
+    position:absolute;
+    top:16px;
+    right:16px;
+    z-index:3;
+  }
+
+  .langPill {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,.16);
+    padding:10px 14px; border-radius:14px;
+    cursor:pointer; user-select:none;
+    backdrop-filter: blur(8px);
+  }
+  .langIcon { font-size:13px; opacity:.9; }
+  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+
+  .langMenu { display:none; justify-content:flex-end; gap:10px; margin:10px 0 0 0; }
+  .langBtn {
+    width:56px; text-align:center;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,.16);
+    padding:10px 0; border-radius:14px;
+    font-size:13px; font-weight:900;
+    cursor:pointer;
+    backdrop-filter: blur(8px);
+  }
+
+  .head{
+    padding:18px 4px 8px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .stats{
+    color:var(--muted);
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .search{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--glass);
+    border:1px solid var(--stroke);
+    border-radius:18px;
+    padding:13px 14px;
+    box-shadow:0 10px 18px rgba(0,0,0,.32);
+  }
+
+  .search input{
+    width:100%;
+    border:0;
+    outline:none;
+    background:transparent;
+    color:var(--txt);
+    font-size:14px;
+  }
+
+  .search input::placeholder{
+    color:rgba(255,255,255,.38);
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .cards{
+    margin-top:16px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  @media (min-width:720px){
+    .top-banner img{ height:250px; }
+    .cards{ grid-template-columns:repeat(3,1fr); }
+  }
+
+  .card{
+    cursor:pointer;
+    border-radius:24px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    box-shadow:0 18px 30px rgba(0,0,0,.42);
+    transition:transform .10s ease, border-color .12s ease, box-shadow .12s ease;
+    position:relative;
+  }
+
+  .card:hover{
+    transform:translateY(-2px);
+    border-color:var(--stroke2);
+    box-shadow:0 20px 34px rgba(0,0,0,.5);
+  }
+
+  .cover{
+    width:100%;
+    height:250px;
+    position:relative;
+    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
+  }
+
+  .cover img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .cover:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
+    pointer-events:none;
+  }
+
+  .count-pill{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+    z-index:2;
+    border-radius:999px;
+    padding:8px 10px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.95);
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.18);
+    backdrop-filter:blur(8px);
+  }
+
+  .meta{
+    padding:13px 14px 15px;
+  }
+
+  .name{
+    font-weight:900;
+    letter-spacing:.04em;
+    font-size:14px;
+    line-height:1.2;
+    text-transform:uppercase;
+    margin:0;
+  }
+
+  .sub{
+    margin-top:8px;
+    color:rgba(255,255,255,.52);
+    font-weight:800;
+    letter-spacing:.12em;
+    font-size:11px;
+    text-transform:uppercase;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .pill{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    padding:6px 10px;
+    border-radius:999px;
+  }
+
+  .empty{
+    margin-top:16px;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    border-radius:22px;
+    padding:18px;
+    color:rgba(255,255,255,.70);
+    font-weight:700;
+    text-align:center;
+  }
+
+  .footer{
+    margin-top:16px;
+    color:rgba(255,255,255,.40);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+    text-align:center;
+  }
 </style>
-
 </head>
-
 <body>
+<div class="bg"></div>
 
-<img class="banner" src="__BANNER__">
+<div class="wrap">
 
-<div class="lang">
+  <div class="top-banner">
+    <img src="__TOP_BANNER__" alt="Cards banner"/>
 
-<button onclick="setLang('pt')">PT</button>
-<button onclick="setLang('en')">EN</button>
-<button onclick="setLang('es')">ES</button>
+    <div class="langWrap">
+      <div class="langPill" id="langPill" title="Change language">
+        <span class="langIcon">文A</span>
+        <span class="langCode">__LANGCODE__</span>
+      </div>
+      <div class="langMenu" id="langMenu">
+        <div class="langBtn" data-lang="pt">PT</div>
+        <div class="langBtn" data-lang="en">EN</div>
+        <div class="langBtn" data-lang="es">ES</div>
+      </div>
+    </div>
 
-</div>
+    <div class="top-copy">
+      <div class="eyebrow">__EYEBROW__</div>
+      <div class="title">__TITLE__</div>
+      <div class="subtitle">__SUBTITLE__</div>
+    </div>
+  </div>
 
-<div class="container">
+  <div class="head">
+    <div class="stats" id="statsTxt">Carregando...</div>
+  </div>
 
-<h2>__TITLE__</h2>
-<p>__SUBTITLE__</p>
+  <div class="search">
+    <span style="opacity:.62;font-weight:900;">🔎</span>
+    <input id="searchInput" type="text" placeholder="__SEARCH_WORK__" />
+  </div>
 
-<input id="search" class="search" placeholder="__SEARCH__">
+  <div class="cards" id="cards"></div>
+  <div class="empty" id="emptyBox" style="display:none;">__NO_WORK__</div>
 
-<div id="grid" class="grid"></div>
-
+  <div class="footer">__FOOTER__</div>
 </div>
 
 <script>
+  const api = "/api/cards/animes";
+  const lang = "__LANG__";
+  const TXT_TOTAL_WORKS = "__TOTAL_WORKS__";
+  const TXT_CARDS = "__CARDS__";
+  const TXT_CHARS = "__CHARS__";
 
-const lang="__LANG__"
+  let fullData = [];
+  let filteredData = [];
 
-function setLang(l){
-const u=new URL(window.location.href)
-u.searchParams.set("lang",l)
-window.location=u
-}
+  const langPill = document.getElementById("langPill");
+  const langMenu = document.getElementById("langMenu");
+  langPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
+    if (langMenu.style.display === "flex") langMenu.style.justifyContent = "flex-end";
+  });
+  document.addEventListener("click", () => { langMenu.style.display = "none"; });
+  document.querySelectorAll(".langBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const newLang = btn.getAttribute("data-lang");
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", newLang);
+      window.location.href = url.toString();
+    });
+  });
 
-let all=[]
+  function esc(s){
+    return (s || "").replace(/[&<>\"']/g, (m) => ({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#039;"
+    }[m]));
+  }
 
-function render(list){
+  function pickCover(item){
+    if (item.cover_image && item.cover_image.length > 5) return item.cover_image;
+    if (item.banner_image && item.banner_image.length > 5) return item.banner_image;
+    return "__TOP_BANNER__";
+  }
 
-const g=document.getElementById("grid")
-g.innerHTML=""
+  function render(){
+    const box = document.getElementById("cards");
+    const empty = document.getElementById("emptyBox");
+    const stats = document.getElementById("statsTxt");
 
-list.forEach(a=>{
+    stats.textContent = TXT_TOTAL_WORKS + ": " + filteredData.length;
 
-g.innerHTML+=`
+    if (!filteredData.length){
+      box.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
 
-<div class="card" onclick="openAnime(${a.anime_id})">
+    empty.style.display = "none";
 
-<img src="${a.cover_image||a.banner_image}">
+    let html = "";
+    for (const item of filteredData){
+      html += `
+        <div class="card" onclick="openAnime(${item.anime_id})">
+          <div class="cover">
+            <img src="${esc(pickCover(item))}" alt="${esc(item.anime)}" loading="lazy"/>
+            <div class="count-pill">${item.characters_count || 0} ${TXT_CHARS}</div>
+          </div>
+          <div class="meta">
+            <p class="name">${esc(item.anime)}</p>
+            <div class="sub">
+              <span class="pill">ID ${item.anime_id}</span>
+              <span class="pill">${TXT_CARDS}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-<div class="meta">
+    box.innerHTML = html;
+  }
 
-<b>${a.anime}</b><br>
-ID ${a.anime_id}
+  function applySearch(){
+    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
 
-</div>
+    if (!q){
+      filteredData = [...fullData];
+      render();
+      return;
+    }
 
-</div>
+    filteredData = fullData.filter(x => x.anime.toLowerCase().includes(q));
+    render();
+  }
 
-`
+  function openAnime(id){
+    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id) + "&lang=" + encodeURIComponent(lang);
+  }
 
-})
+  async function load(){
+    const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
+    const data = await res.json();
+    fullData = (data.items || []).sort((a,b) => a.anime.localeCompare(b.anime));
+    filteredData = [...fullData];
+    render();
+  }
 
-}
-
-function openAnime(id){
-
-window.location="/cards/anime?anime_id="+id+"&lang="+lang
-
-}
-
-async function load(){
-
-const r=await fetch("/api/cards/animes?limit=5000")
-const j=await r.json()
-
-all=j.items||[]
-
-render(all)
-
-}
-
-document.getElementById("search").oninput=e=>{
-
-const q=e.target.value.toLowerCase()
-
-render(all.filter(a=>a.anime.toLowerCase().includes(q)))
-
-}
-
-load()
-
+  document.getElementById("searchInput").addEventListener("input", applySearch);
+  load();
 </script>
-
 </body>
 </html>
 """
-
     html = (
         html
-        .replace("__BANNER__", TOP_BANNER_URL)
+        .replace("__LANG__", L)
+        .replace("__LANGCODE__", L.upper())
+        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__EYEBROW__", T["eyebrow"])
         .replace("__TITLE__", T["title"])
         .replace("__SUBTITLE__", T["subtitle"])
-        .replace("__SEARCH__", T["search_work"])
-        .replace("__LANG__", L)
+        .replace("__TOTAL_WORKS__", T["total_works"])
+        .replace("__SEARCH_WORK__", T["search_work"])
+        .replace("__NO_WORK__", T["no_work"])
+        .replace("__FOOTER__", T["footer"])
+        .replace("__CHARS__", T["chars"])
+        .replace("__CARDS__", T["cards"])
     )
-
     return HTMLResponse(html)
 
 
 # =========================================================
-# PAGINA DO ANIME
+# SUBSTITUIR A ROTA /cards/anime POR ESTA
 # =========================================================
 
 @app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime_id:int, lang:str="pt"):
+def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
+    L = pick_cards_lang(lang)
+    T = CARDS_I18N[L]
 
-    L=pick_cards_lang(lang)
-    T=CARDS_UI_TEXTS[L]
-
-    html="""
+    html = """
 <!doctype html>
-<html>
+<html lang="__LANG__">
 <head>
-
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<title>Cards</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Cards Anime • Source Baltigo</title>
 
 <style>
+  :root{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+    --stroke2:rgba(255,255,255,.16);
+    --glass:rgba(255,255,255,.04);
+    --shadow:0 16px 30px rgba(0,0,0,.44);
+  }
 
-body{
-background:#0b0f18;
-color:white;
-font-family:system-ui;
-margin:0;
-}
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
 
-.banner{
-width:100%;
-height:240px;
-object-fit:cover;
-}
+  body{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+    overflow-x:hidden;
+  }
 
-.container{
-max-width:900px;
-margin:auto;
-padding:20px;
-}
+  .bg{
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity:.16;
+    pointer-events:none;
+    z-index:0;
+  }
 
-.search{
-margin-top:20px;
-width:100%;
-padding:12px;
-background:#111;
-border:1px solid #333;
-color:white;
-}
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:980px;
+    margin:0 auto;
+    padding:18px 14px 42px;
+  }
 
-.grid{
-margin-top:20px;
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:12px;
-}
+  .hero{
+    width:100%;
+    min-height:230px;
+    border-radius:26px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    box-shadow:var(--shadow);
+    position:relative;
+    background:#101827;
+  }
 
-.card{
-background:#111;
-border:1px solid #333;
-}
+  .hero img{
+    width:100%;
+    height:230px;
+    object-fit:cover;
+    display:block;
+  }
 
-.card img{
-width:100%;
-height:260px;
-object-fit:cover;
-}
+  .hero:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.80));
+    pointer-events:none;
+  }
 
-.card .meta{
-padding:10px;
-}
+  .hero-copy{
+    position:absolute;
+    left:18px;
+    right:18px;
+    bottom:16px;
+    z-index:2;
+  }
 
+  .langWrap{
+    position:absolute;
+    top:16px;
+    right:16px;
+    z-index:3;
+  }
+
+  .langPill {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,.16);
+    padding:10px 14px; border-radius:14px;
+    cursor:pointer; user-select:none;
+    backdrop-filter: blur(8px);
+  }
+  .langIcon { font-size:13px; opacity:.9; }
+  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+
+  .langMenu { display:none; justify-content:flex-end; gap:10px; margin:10px 0 0 0; }
+  .langBtn {
+    width:56px; text-align:center;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,.16);
+    padding:10px 0; border-radius:14px;
+    font-size:13px; font-weight:900;
+    cursor:pointer;
+    backdrop-filter: blur(8px);
+  }
+
+  .back{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.28);
+    color:rgba(255,255,255,.95);
+    text-decoration:none;
+    backdrop-filter:blur(8px);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+  }
+
+  .title{
+    margin-top:12px;
+    font-size:28px;
+    line-height:1.05;
+    font-weight:900;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    text-shadow:0 6px 20px rgba(0,0,0,.45);
+  }
+
+  .subtitle{
+    margin-top:8px;
+    color:rgba(255,255,255,.78);
+    font-weight:700;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .head{
+    padding:18px 4px 8px;
+  }
+
+  .stats{
+    color:var(--muted);
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-size:12px;
+  }
+
+  .search{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--glass);
+    border:1px solid var(--stroke);
+    border-radius:18px;
+    padding:13px 14px;
+    box-shadow:0 10px 18px rgba(0,0,0,.32);
+  }
+
+  .search input{
+    width:100%;
+    border:0;
+    outline:none;
+    background:transparent;
+    color:var(--txt);
+    font-size:14px;
+  }
+
+  .search input::placeholder{
+    color:rgba(255,255,255,.38);
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .cards{
+    margin-top:16px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  @media (min-width:720px){
+    .hero img{ height:260px; }
+    .cards{ grid-template-columns:repeat(3,1fr); }
+  }
+
+  .card{
+    border-radius:24px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    box-shadow:0 18px 30px rgba(0,0,0,.42);
+    transition:transform .10s ease, border-color .12s ease;
+    position:relative;
+  }
+
+  .card:hover{
+    transform:translateY(-2px);
+    border-color:var(--stroke2);
+  }
+
+  .char-image{
+    width:100%;
+    height:280px;
+    position:relative;
+    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
+  }
+
+  .char-image img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .char-image:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.58));
+    pointer-events:none;
+  }
+
+  .id-pill{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+    z-index:2;
+    border-radius:999px;
+    padding:8px 10px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.95);
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.18);
+    backdrop-filter:blur(8px);
+  }
+
+  .meta{
+    padding:13px 14px 15px;
+  }
+
+  .name{
+    font-weight:900;
+    letter-spacing:.04em;
+    font-size:14px;
+    line-height:1.2;
+    text-transform:uppercase;
+    margin:0;
+  }
+
+  .sub{
+    margin-top:8px;
+    color:rgba(255,255,255,.52);
+    font-weight:800;
+    letter-spacing:.12em;
+    font-size:11px;
+    text-transform:uppercase;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .pill{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    padding:6px 10px;
+    border-radius:999px;
+  }
+
+  .empty{
+    margin-top:16px;
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.03);
+    border-radius:22px;
+    padding:18px;
+    color:rgba(255,255,255,.70);
+    font-weight:700;
+    text-align:center;
+  }
+
+  .footer{
+    margin-top:16px;
+    color:rgba(255,255,255,.40);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+    text-align:center;
+  }
 </style>
-
 </head>
-
 <body>
+<div class="bg"></div>
 
-<img id="banner" class="banner">
+<div class="wrap">
 
-<div class="container">
+  <div class="hero" id="heroBox">
+    <img id="heroImg" src="" alt="Banner"/>
 
-<a href="/cards?lang=__LANG__">__BACK__</a>
+    <div class="langWrap">
+      <div class="langPill" id="langPill" title="Change language">
+        <span class="langIcon">文A</span>
+        <span class="langCode">__LANGCODE__</span>
+      </div>
+      <div class="langMenu" id="langMenu">
+        <div class="langBtn" data-lang="pt">PT</div>
+        <div class="langBtn" data-lang="en">EN</div>
+        <div class="langBtn" data-lang="es">ES</div>
+      </div>
+    </div>
 
-<h2 id="title"></h2>
+    <div class="hero-copy">
+      <a class="back" href="/cards?lang=__LANG__">__BACK__</a>
+      <div class="title" id="animeTitle">Carregando...</div>
+      <div class="subtitle" id="animeSub">__CHARACTERS__</div>
+    </div>
+  </div>
 
-<input id="search" class="search" placeholder="__SEARCH__">
+  <div class="head">
+    <div class="stats" id="statsTxt">Carregando...</div>
+  </div>
 
-<div id="grid" class="grid"></div>
+  <div class="search">
+    <span style="opacity:.62;font-weight:900;">🔎</span>
+    <input id="searchInput" type="text" placeholder="__SEARCH_CHARACTER__" />
+  </div>
 
+  <div class="cards" id="cards"></div>
+  <div class="empty" id="emptyBox" style="display:none;">__NO_CHARACTER__</div>
+
+  <div class="footer">__FOOTER__</div>
 </div>
 
 <script>
+  const animeId = __ANIME_ID__;
+  const lang = "__LANG__";
+  const api = "/api/cards/characters?anime_id=" + animeId + "&limit=5000";
+  const fallbackTop = "__TOP_BANNER__";
+  const TXT_TOTAL_CHARACTERS = "__TOTAL_CHARACTERS__";
+  const TXT_NOT_FOUND_TITLE = "__NOT_FOUND_TITLE__";
+  const TXT_NOT_FOUND_SUB = "__NOT_FOUND_SUB__";
+  const TXT_ID = "__ID__";
+  const TXT_CARD = "__CARD__";
+  const TXT_CHARACTERS = "__CHARACTERS__";
 
-const animeId=__ID__
-let all=[]
+  let animeMeta = null;
+  let fullData = [];
+  let filteredData = [];
 
-function render(list){
+  const langPill = document.getElementById("langPill");
+  const langMenu = document.getElementById("langMenu");
+  langPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
+    if (langMenu.style.display === "flex") langMenu.style.justifyContent = "flex-end";
+  });
+  document.addEventListener("click", () => { langMenu.style.display = "none"; });
+  document.querySelectorAll(".langBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const newLang = btn.getAttribute("data-lang");
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", newLang);
+      window.location.href = url.toString();
+    });
+  });
 
-const g=document.getElementById("grid")
-g.innerHTML=""
+  function esc(s){
+    return (s || "").replace(/[&<>\"']/g, (m) => ({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#039;"
+    }[m]));
+  }
 
-list.forEach(c=>{
+  function pickHero(meta){
+    if (meta.banner_image && meta.banner_image.length > 5) return meta.banner_image;
+    if (meta.cover_image && meta.cover_image.length > 5) return meta.cover_image;
+    return fallbackTop;
+  }
 
-g.innerHTML+=`
+  function pickCharImage(item){
+    if (item.image && item.image.length > 5) return item.image;
+    return fallbackTop;
+  }
 
-<div class="card">
+  function render(){
+    const box = document.getElementById("cards");
+    const empty = document.getElementById("emptyBox");
+    const stats = document.getElementById("statsTxt");
 
-<img src="${c.image}">
+    stats.textContent = TXT_TOTAL_CHARACTERS + ": " + filteredData.length;
 
-<div class="meta">
+    if (!filteredData.length){
+      box.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
 
-<b>${c.name}</b><br>
-ID ${c.id}
+    empty.style.display = "none";
 
-</div>
+    let html = "";
+    for (const item of filteredData){
+      html += `
+        <div class="card">
+          <div class="char-image">
+            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
+            <div class="id-pill">${TXT_ID} ${item.id}</div>
+          </div>
+          <div class="meta">
+            <p class="name">${esc(item.name)}</p>
+            <div class="sub">
+              <span class="pill">${esc(item.anime)}</span>
+              <span class="pill">${TXT_CARD}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-</div>
+    box.innerHTML = html;
+  }
 
-`
+  function applySearch(){
+    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
 
-})
+    if (!q){
+      filteredData = [...fullData];
+      render();
+      return;
+    }
 
-}
+    filteredData = fullData.filter(x => x.name.toLowerCase().includes(q));
+    render();
+  }
 
-async function load(){
+  async function load(){
+    const res = await fetch(api + "&_ts=" + Date.now());
+    const data = await res.json();
 
-const r=await fetch("/api/cards/characters?anime_id="+animeId)
-const j=await r.json()
+    animeMeta = data.anime || null;
+    fullData = (data.items || []).sort((a,b) => a.name.localeCompare(b.name));
+    filteredData = [...fullData];
 
-document.getElementById("title").innerText=j.anime.anime
-document.getElementById("banner").src=j.anime.banner_image||j.anime.cover_image
+    if (animeMeta){
+      document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
+      document.getElementById("animeSub").textContent = TXT_ID + " " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " " + TXT_CHARACTERS.toLowerCase();
+      document.getElementById("heroImg").src = pickHero(animeMeta);
+    } else {
+      document.getElementById("animeTitle").textContent = TXT_NOT_FOUND_TITLE;
+      document.getElementById("animeSub").textContent = TXT_NOT_FOUND_SUB;
+      document.getElementById("heroImg").src = fallbackTop;
+    }
 
-all=j.items||[]
+    render();
+  }
 
-render(all)
-
-}
-
-document.getElementById("search").oninput=e=>{
-
-const q=e.target.value.toLowerCase()
-
-render(all.filter(c=>c.name.toLowerCase().includes(q)))
-
-}
-
-load()
-
+  document.getElementById("searchInput").addEventListener("input", applySearch);
+  load();
 </script>
-
 </body>
 </html>
 """
-
-    html=(html
-        .replace("__LANG__",L)
-        .replace("__BACK__",T["back"])
-        .replace("__SEARCH__",T["search_character"])
-        .replace("__ID__",str(anime_id))
+    html = (
+        html
+        .replace("__LANG__", L)
+        .replace("__LANGCODE__", L.upper())
+        .replace("__ANIME_ID__", str(anime_id))
+        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__BACK__", T["back"])
+        .replace("__CHARACTERS__", T["characters"])
+        .replace("__TOTAL_CHARACTERS__", T["total_characters"])
+        .replace("__SEARCH_CHARACTER__", T["search_character"])
+        .replace("__NO_CHARACTER__", T["no_character"])
+        .replace("__NOT_FOUND_TITLE__", T["not_found_title"])
+        .replace("__NOT_FOUND_SUB__", T["not_found_sub"])
+        .replace("__ID__", T["id"])
+        .replace("__CARD__", T["card"])
+        .replace("__FOOTER__", T["footer"])
     )
-
     return HTMLResponse(html)
