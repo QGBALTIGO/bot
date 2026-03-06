@@ -1,9 +1,6 @@
 import os
 import threading
 import uvicorn
-import asyncio
-import time
-import httpx
 
 from telegram.ext import Application, CommandHandler
 
@@ -14,12 +11,7 @@ from commands.cards import cards
 from commands.login import login
 from commands.perfil import perfil
 
-# from commands.anime import anime  # quando você criar
-
 from database import create_tables, create_anilist_tables
-
-create_tables()
-create_anilist_tables()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
@@ -33,6 +25,7 @@ def run_webapp():
 
 def main():
     create_tables()
+    create_anilist_tables()
 
     t = threading.Thread(target=run_webapp, daemon=True)
     t.start()
@@ -40,28 +33,14 @@ def main():
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
     tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(CommandHandler("anime", anime)) 
-    tg_app.add_handler(CommandHandler("manga", manga)) 
+    tg_app.add_handler(CommandHandler("anime", anime))
+    tg_app.add_handler(CommandHandler("manga", manga))
     tg_app.add_handler(CommandHandler("cards", cards))
     tg_app.add_handler(CommandHandler("login", login))
     tg_app.add_handler(CommandHandler("perfil", perfil))
-    
+
     print("Bot + WebApp iniciado")
     tg_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
