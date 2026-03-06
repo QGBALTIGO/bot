@@ -11,6 +11,8 @@ from commands.cards import cards
 from commands.pedido import pedido
 from commands.card import card
 from database import create_tables, create_cards_tables
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from commands.card import card, card_stats_callback
 
 from commands.cards_admin import (
     card_addanime,
@@ -56,6 +58,7 @@ def main():
     tg_app.add_handler(CommandHandler("cards", cards))
     tg_app.add_handler(CommandHandler("pedido", pedido))
     tg_app.add_handler(CommandHandler("card", card))
+    tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
 
     # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
@@ -78,5 +81,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
