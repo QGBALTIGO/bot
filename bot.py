@@ -43,12 +43,12 @@ def main():
     tg_app.add_handler(CommandHandler("login", login))
     tg_app.add_handler(CommandHandler("perfil", perfil))
     
-    await application.bot.delete_webhook(drop_pending_updates=True)
     print("Bot + WebApp iniciado")
     tg_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
 
 
 
