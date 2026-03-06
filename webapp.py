@@ -730,1846 +730,588 @@ def api_channel_check(payload: dict = Body(...)):
 # =========================
 # CONFIG — CATÁLOGO
 # =========================
-CATALOG_PATH = os.getenv("CATALOG_PATH", "catalogo_enriquecido.json").strip()
-
-CATALOG_BANNER_URL = os.getenv(
-    "CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-BACKGROUND_PATTERN_URL = os.getenv("BACKGROUND_PATTERN_URL", "").strip()
-CATALOG_TITLE = os.getenv("CATALOG_TITLE", "CATÁLOGO GERAL").strip()
-CATALOG_SUBTITLE = os.getenv("CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
-
-_CATALOG: List[Dict[str, Any]] = []
-_LETTER_COUNTS: Dict[str, int] = {}
-_TOTAL: int = 0
-
-
-def _normalize_title(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-
-def _first_letter(title: str) -> str:
-    if not title:
-        return "#"
-    ch = title.strip()[0].upper()
-    if "A" <= ch <= "Z":
-        return ch
-    if ch.isdigit():
-        return "#"
-    return "#"
-
-
-def _safe_int(v: Any) -> Optional[int]:
-    try:
-        if v is None:
-            return None
-        if isinstance(v, bool):
-            return None
-        return int(v)
-    except Exception:
-        return None
-
-
-def _unwrap_records(data: Any) -> List[Dict[str, Any]]:
-    """
-    Aceita:
-      - list[dict]
-      - {"records": list[dict], ...}
-      - {"items": list[dict], ...}
-      - {"data": list[dict], ...}
-    """
-    if isinstance(data, list):
-        return [d for d in data if isinstance(d, dict)]
-
-    if isinstance(data, dict):
-        for key in ("records", "items", "data", "animes", "catalogo", "results"):
-            v = data.get(key)
-            if isinstance(v, list):
-                return [d for d in v if isinstance(d, dict)]
-        for v in data.values():
-            if isinstance(v, list):
-                return [d for d in v if isinstance(d, dict)]
-
-    return []
-
-
-def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
-    post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
-
-    if not title_raw:
-        raw_text = str(it.get("raw_text") or "").strip()
-        if raw_text:
-            title_raw = _normalize_title(raw_text.splitlines()[0])
-
-    if not title_raw or not post_url:
-        return None
-
-    anilist = it.get("anilist")
-    if not isinstance(anilist, dict):
-        anilist = None
-
-    title_display = title_raw
-    cover = ""
-    fmt = ""
-    score = None
-    year = None
-
-    if anilist:
-        if anilist.get("title_display"):
-            title_display = str(anilist.get("title_display")).strip() or title_display
-        cover = str(anilist.get("cover") or "").strip()
-        fmt = str(anilist.get("format") or "").strip()
-        score = anilist.get("averageScore")
-        year = anilist.get("seasonYear")
-
-    if year is None:
-        year = it.get("year_post")
-
-    badge = fmt.upper() if fmt else "ANIME"
-
-    status_post = str(it.get("status_post") or "").strip()
-    if status_post.lower() == "restrito":
-        return None
-
-    return {
-        "message_id": _safe_int(it.get("message_id")),
-        "titulo": _normalize_title(title_display),
-        "letter": _first_letter(title_display),
-        "link_post": post_url,
-        "cover_url": cover,
-        "format": fmt,
-        "badge": badge,
-        "score": score,
-        "year": year,
-    }
-
-
-def _load_catalog() -> Tuple[int, str]:
-    global _CATALOG, _LETTER_COUNTS, _TOTAL
-
-    _CATALOG = []
-    _LETTER_COUNTS = {}
-    _TOTAL = 0
-
-    path = CATALOG_PATH
-    if not path:
-        print("[catalog] CATALOG_PATH vazio. Catálogo ficará vazio.", flush=True)
-        return 0, "CATALOG_PATH vazio"
-
-    candidates = [path]
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[catalog] Arquivo não encontrado: {path} (testados: {candidates})", flush=True)
-        return 0, "arquivo não encontrado"
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        records = _unwrap_records(data)
-        if not records:
-            print(f"[catalog] Nenhum registro encontrado. Tipo JSON: {type(data).__name__}", flush=True)
-            return 0, "sem registros"
-
-        items: List[Dict[str, Any]] = []
-        for rec in records:
-            if not isinstance(rec, dict):
-                continue
-            coerced = _coerce_item(rec)
-            if coerced:
-                items.append(coerced)
-
-        items.sort(key=lambda x: x["titulo"].lower())
-
-        counts: Dict[str, int] = {}
-        for x in items:
-            counts[x["letter"]] = counts.get(x["letter"], 0) + 1
-
-        _CATALOG = items
-        _LETTER_COUNTS = counts
-        _TOTAL = len(items)
-
-        print(f"[catalog] Carregado OK: {_TOTAL} itens (de {real_path})", flush=True)
-        return _TOTAL, "ok"
-
-    except Exception as e:
-        print(f"[catalog] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
-        traceback.print_exc()
-        return 0, f"erro: {type(e).__name__}"
-
-
-def _filter_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
-    q = (q or "").strip().lower()
-    letter = (letter or "").strip().upper()
-
-    data = _CATALOG
-
-    if letter and letter != "ALL":
-        data = [x for x in data if x["letter"] == letter]
-
-    if q:
-        data = [x for x in data if q in x["titulo"].lower()]
-
-    total = len(data)
-
-    if offset < 0:
-        offset = 0
-    if limit < 1:
-        limit = 1
-    if limit > 200:
-        limit = 200
-
-    return data[offset : offset + limit], total
-
-
-# carrega no boot (sem crash)
-try:
-    _load_catalog()
-except Exception as e:
-    print("[catalog] ERRO inesperado no startup:", repr(e), flush=True)
-
-
-@app.get("/api/letters")
-def api_letters():
-    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
-    payload = {
-        "total": _TOTAL,
-        "counts": {k: _LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
-        "all_count": _TOTAL,
-    }
-    return JSONResponse(payload)
-
-
-@app.get("/api/catalogo")
-def api_catalogo(
-    q: str = Query(default="", max_length=80),
-    letter: str = Query(default="ALL", max_length=3),
-    limit: int = Query(default=60, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    items, total = _filter_catalog(q=q, letter=letter, limit=limit, offset=offset)
-    return JSONResponse({"total": total, "items": items})
-
-
-@app.get("/catalogo", response_class=HTMLResponse)
-def catalogo_page():
-    # IMPORTANTE: aqui NÃO usa f-string com ${} do JS.
-    # A gente usa placeholders e replace, pra nunca mais quebrar.
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>__CTITLE__ — Source Baltigo</title>
-
-  <style>
-    :root {
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.16);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-                  linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }
-
-    .bg-pattern {
-      position: fixed;
-      inset: 0;
-      background-image: url("__BPATTERN__");
-      background-size: 520px;
-      background-repeat: repeat;
-      opacity: 0.10;
-      filter: grayscale(1) contrast(1.1);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 18px 14px 40px;
-    }
-
-    .top-banner {
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }
-    .top-banner img {
-      width: 100%;
-      height: 190px;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-    }
-    .top-banner::after{
-      content:"";
-      position:absolute; inset:0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events:none;
-    }
-
-    .head {
-      padding: 16px 10px 8px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .title {
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }
-    .subtitle {
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }
-
-    .search {
-      flex: 1;
-      min-width: 220px;
-      max-width: 420px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--stroke);
-      border-radius: 18px;
-      padding: 12px 14px;
-      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }
-    .search input {
-      width: 100%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: var(--txt);
-      font-size: 14px;
-    }
-    .search input::placeholder{
-      color: rgba(255,255,255,0.35);
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    .letters {
-      margin-top: 14px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid var(--stroke);
-      border-radius: 26px;
-      padding: 14px;
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }
-    .letters-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-    }
-    @media (min-width: 720px){
-      .letters-grid { grid-template-columns: repeat(10, 1fr); }
-      .top-banner img { height: 220px; }
-    }
-
-    .letter {
-      user-select: none;
-      cursor: pointer;
-      border-radius: 16px;
-      padding: 12px 10px;
-      text-align: center;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }
-    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
-    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
-    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
-    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
-
-    .cards {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    @media (min-width: 720px){
-      .cards { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    .card {
-      cursor: pointer;
-      border-radius: 26px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
-      transition: transform .10s ease, border-color .12s ease;
-      position: relative;
-    }
-    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
-
-    .cover {
-      width: 100%;
-      height: 220px;
-      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
-      position: relative;
-    }
-    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-    .badge {
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(90,168,255,0.24);
-      border: 1px solid rgba(90,168,255,0.40);
-      color: rgba(255,255,255,0.90);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-      text-transform: uppercase;
-    }
-
-    .meta { padding: 12px 14px 14px; }
-    .meta .name {
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      font-size: 14px;
-      text-transform: uppercase;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .meta .sub {
-      margin-top: 8px;
-      color: rgba(255,255,255,0.50);
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      text-transform: uppercase;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .pill {
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      padding: 6px 10px;
-      border-radius: 999px;
-    }
-
-    .footer {
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }
-
-    .loadmore {
-      margin: 14px auto 0;
-      width: 100%;
-      max-width: 320px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.86);
-      border-radius: 16px;
-      padding: 12px 14px;
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }
-    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
-  </style>
-</head>
-
-<body>
-  <div class="bg-pattern"></div>
-
-  <div class="wrap">
-    <div class="top-banner">
-      <img src="__CBANNER__" alt="Banner"/>
-    </div>
-
-    <div class="head">
-      <div>
-        <div class="title">__CTITLE__</div>
-        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
-      </div>
-
-      <div class="search" title="Buscar anime">
-        <span style="opacity:.6;font-weight:900;">🔎</span>
-        <input id="q" type="text" placeholder="BUSCAR ANIME..." />
-      </div>
-    </div>
-
-    <div class="letters">
-      <div class="letters-grid" id="lettersGrid"></div>
-    </div>
-
-    <div class="cards" id="cards"></div>
-    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
-
-    <div class="footer">Source Baltigo • Catálogo do canal</div>
-  </div>
-
-  <script>
-    const apiLetters = "/api/letters";
-    const apiCatalogo = "/api/catalogo";
-
-    let state = {
-      letter: "ALL",
-      q: "",
-      limit: 60,
-      offset: 0,
-      total: 0,
-      loading: false,
-    };
-
-    function esc(s) {
-      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
-    }
-
-    function openLink(link) {
-      try {
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink(link);
-          return;
-        }
-      } catch (e) {}
-      window.open(link, "_blank");
-    }
-
-    function makeLetterButton(key, count) {
-      const el = document.createElement("div");
-      el.className = "letter" + (state.letter === key ? " active" : "");
-      el.innerHTML = `
-        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
-        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
-      `;
-      el.onclick = () => {
-        state.letter = key;
-        state.offset = 0;
-        document.getElementById("cards").innerHTML = "";
-        renderLetters();
-        loadCatalog(true);
-      };
-      return el;
-    }
-
-    async function renderLetters() {
-      const grid = document.getElementById("lettersGrid");
-      grid.innerHTML = "";
-
-      const res = await fetch(apiLetters + "?_ts=" + Date.now());
-      const data = await res.json();
-
-      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
-
-      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
-      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
-
-      for (let c = 65; c <= 90; c++) {
-        const k = String.fromCharCode(c);
-        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
-        grid.appendChild(makeLetterButton(k, n));
-      }
-    }
-
-    function badgeText(item) {
-      const b = (item.badge || item.format || "").toString().trim();
-      return b ? b.toUpperCase() : "ANIME";
-    }
-
-    function pillLine(item) {
-      let parts = [];
-      if (item.year) parts.push(String(item.year));
-      if (item.score) parts.push("★ " + String(item.score));
-      if (item.format) parts.push(String(item.format).toUpperCase());
-      return parts;
-    }
-
-    function makeCard(item) {
-      const card = document.createElement("div");
-      card.className = "card";
-
-      const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
-      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
-
-      card.innerHTML = `
-        <div class="cover">
-          ${coverHtml}
-          <div class="badge">${esc(badgeText(item))}</div>
-        </div>
-        <div class="meta">
-          <p class="name">${esc(item.titulo)}</p>
-          <div class="sub">
-            <span class="pill">CANAL</span>
-            ${pills}
-          </div>
-        </div>
-      `;
-
-      card.onclick = () => openLink(item.link_post);
-      return card;
-    }
-
-    async function loadCatalog(reset=false) {
-      if (state.loading) return;
-      state.loading = true;
-
-      const btn = document.getElementById("btnMore");
-      btn.disabled = true;
-      btn.textContent = "CARREGANDO...";
-
-      const params = new URLSearchParams();
-      params.set("letter", state.letter);
-      params.set("q", state.q);
-      params.set("limit", state.limit);
-      params.set("offset", state.offset);
-      params.set("_ts", String(Date.now()));
-
-      const res = await fetch(apiCatalogo + "?" + params.toString());
-      const data = await res.json();
-
-      state.total = data.total || 0;
-
-      const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {
-        cards.appendChild(makeCard(it));
-      }
-
-      state.offset += (data.items || []).length;
-
-      if (state.offset >= state.total) {
-        btn.disabled = true;
-        btn.textContent = "FIM DA LISTA";
-      } else {
-        btn.disabled = false;
-        btn.textContent = "CARREGAR MAIS";
-      }
-
-      state.loading = false;
-    }
-
-    function debounce(fn, ms) {
-      let t = null;
-      return (...args) => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      };
-    }
-
-    const onSearch = debounce(() => {
-      state.q = (document.getElementById("q").value || "").trim();
-      state.offset = 0;
-      document.getElementById("cards").innerHTML = "";
-      loadCatalog(true);
-    }, 250);
-
-    document.getElementById("q").addEventListener("input", onSearch);
-    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
-
-    (async () => {
-      await renderLetters();
-      await loadCatalog(true);
-    })();
-  </script>
-</body>
-</html>
-"""
-
-    # Placeholders
-    pattern = BACKGROUND_PATTERN_URL if BACKGROUND_PATTERN_URL else ""
-    html = (html
-        .replace("__CBANNER__", CATALOG_BANNER_URL)
-        .replace("__BPATTERN__", pattern)
-        .replace("__CTITLE__", CATALOG_TITLE)
-        .replace("__CSUB__", CATALOG_SUBTITLE)
-    )
-    return HTMLResponse(html)
-
-
-# =========================
-# CONFIG — CATÁLOGO (MANGÁS)
-# =========================
-
-MANGA_CATALOG_PATH = os.getenv("MANGA_CATALOG_PATH", "data/catalogo_mangas_enriquecido.json").strip()
-
-MANGA_CATALOG_BANNER_URL = os.getenv(
-    "MANGA_CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzguBWmp1rAsEzc6la-5rpAwuyD7vdm0AAL8C2sb1ZFIRYepX3uNQGYyAQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-MANGA_BACKGROUND_PATTERN_URL = os.getenv("MANGA_BACKGROUND_PATTERN_URL", "").strip()
-MANGA_CATALOG_TITLE = os.getenv("MANGA_CATALOG_TITLE", "CATÁLOGO MANGÁS").strip()
-MANGA_CATALOG_SUBTITLE = os.getenv("MANGA_CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
-
-_MANGA_CATALOG: List[Dict[str, Any]] = []
-_MANGA_LETTER_COUNTS: Dict[str, int] = {}
-_MANGA_TOTAL: int = 0
-
-
-def _detect_manga_badge(it: Dict[str, Any], anilist: Optional[Dict[str, Any]]) -> str:
-    """
-    Decide o badge do card:
-    - se vier format do AniList (MANGA/NOVEL/ONE_SHOT etc), usa isso
-    - tenta detectar pelo raw_text: "Formato: Manhwa/Manhua/Mangá"
-    - fallback: MANGA
-    """
-    if anilist and isinstance(anilist, dict):
-        fmt = str(anilist.get("format") or "").strip()
-        if fmt:
-            # aniList costuma ser MANGA / NOVEL / ONE_SHOT
-            if fmt.upper() == "MANGA":
-                return "MANGA"
-            if fmt.upper() == "NOVEL":
-                return "NOVEL"
-            if fmt.upper() == "ONE_SHOT":
-                return "ONE-SHOT"
-            return fmt.upper()
-
-    raw = str(it.get("raw_text") or "").lower()
-
-    # procura por "formato:"
-    if "formato" in raw:
-        # heurística simples
-        if "manhwa" in raw:
-            return "MANHWA"
-        if "manhua" in raw:
-            return "MANHUA"
-        if "mangá" in raw or "manga" in raw:
-            return "MANGA"
-
-    # fallback
-    return "MANGA"
-
-
-def _coerce_manga_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
-    post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
-
-    if not title_raw:
-        raw_text = str(it.get("raw_text") or "").strip()
-        if raw_text:
-            title_raw = _normalize_title(raw_text.splitlines()[0])
-
-    if not title_raw or not post_url:
-        return None
-
-    anilist = it.get("anilist")
-    if not isinstance(anilist, dict):
-        anilist = None
-
-    title_display = title_raw
-    cover = ""
-    fmt = ""
-    score = None
-    year = None
-
-    if anilist:
-        if anilist.get("title_display"):
-            title_display = str(anilist.get("title_display")).strip() or title_display
-        cover = str(anilist.get("cover") or "").strip()
-        fmt = str(anilist.get("format") or "").strip()
-        score = anilist.get("averageScore")
-        year = anilist.get("seasonYear")
-
-    if year is None:
-        year = it.get("year_post")
-
-    badge = _detect_manga_badge(it, anilist)
-
-    status_post = str(it.get("status_post") or "").strip()
-    if status_post.lower() == "restrito":
-        return None
-
-    return {
-        "message_id": _safe_int(it.get("message_id")),
-        "titulo": _normalize_title(title_display),
-        "letter": _first_letter(title_display),
-        "link_post": post_url,         # abre o post do canal
-        "cover_url": cover,
-        "format": fmt,
-        "badge": badge,
-        "score": score,
-        "year": year,
-    }
-
-
-def _load_manga_catalog() -> Tuple[int, str]:
-    global _MANGA_CATALOG, _MANGA_LETTER_COUNTS, _MANGA_TOTAL
-
-    _MANGA_CATALOG = []
-    _MANGA_LETTER_COUNTS = {}
-    _MANGA_TOTAL = 0
-
-    path = MANGA_CATALOG_PATH
-    if not path:
-        print("[mangas] MANGA_CATALOG_PATH vazio. Catálogo ficará vazio.", flush=True)
-        return 0, "MANGA_CATALOG_PATH vazio"
-
-    candidates = [path]
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[mangas] Arquivo não encontrado: {path} (testados: {candidates})", flush=True)
-        return 0, "arquivo não encontrado"
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        records = _unwrap_records(data)
-        if not records:
-            print(f"[mangas] Nenhum registro encontrado. Tipo JSON: {type(data).__name__}", flush=True)
-            return 0, "sem registros"
-
-        items: List[Dict[str, Any]] = []
-        for rec in records:
-            if not isinstance(rec, dict):
-                continue
-            coerced = _coerce_manga_item(rec)
-            if coerced:
-                items.append(coerced)
-
-        items.sort(key=lambda x: x["titulo"].lower())
-
-        counts: Dict[str, int] = {}
-        for x in items:
-            counts[x["letter"]] = counts.get(x["letter"], 0) + 1
-
-        _MANGA_CATALOG = items
-        _MANGA_LETTER_COUNTS = counts
-        _MANGA_TOTAL = len(items)
-
-        print(f"[mangas] Carregado OK: {_MANGA_TOTAL} itens (de {real_path})", flush=True)
-        return _MANGA_TOTAL, "ok"
-
-    except Exception as e:
-        print(f"[mangas] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
-        traceback.print_exc()
-        return 0, f"erro: {type(e).__name__}"
-
-
-def _filter_manga_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
-    q = (q or "").strip().lower()
-    letter = (letter or "").strip().upper()
-
-    data = _MANGA_CATALOG
-
-    if letter and letter != "ALL":
-        data = [x for x in data if x["letter"] == letter]
-
-    if q:
-        data = [x for x in data if q in x["titulo"].lower()]
-
-    total = len(data)
-
-    if offset < 0:
-        offset = 0
-    if limit < 1:
-        limit = 1
-    if limit > 200:
-        limit = 200
-
-    return data[offset : offset + limit], total
-
-
-# carrega no boot (sem crash)
-try:
-    _load_manga_catalog()
-except Exception as e:
-    print("[mangas] ERRO inesperado no startup:", repr(e), flush=True)
-
-
-@app.get("/api/mangas/letters")
-def api_mangas_letters():
-    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
-    payload = {
-        "total": _MANGA_TOTAL,
-        "counts": {k: _MANGA_LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
-        "all_count": _MANGA_TOTAL,
-    }
-    return JSONResponse(payload)
-
-
-@app.get("/api/mangas/catalogo")
-def api_mangas_catalogo(
-    q: str = Query(default="", max_length=80),
-    letter: str = Query(default="ALL", max_length=3),
-    limit: int = Query(default=60, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    items, total = _filter_manga_catalog(q=q, letter=letter, limit=limit, offset=offset)
-    return JSONResponse({"total": total, "items": items})
-
-
-@app.get("/mangas", response_class=HTMLResponse)
-def mangas_page():
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>__CTITLE__ — Source Baltigo</title>
-
-  <style>
-    :root {
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.16);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-                  linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }
-
-    .bg-pattern {
-      position: fixed;
-      inset: 0;
-      background-image: url("__BPATTERN__");
-      background-size: 520px;
-      background-repeat: repeat;
-      opacity: 0.10;
-      filter: grayscale(1) contrast(1.1);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 18px 14px 40px;
-    }
-
-    .top-banner {
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }
-    .top-banner img {
-      width: 100%;
-      height: 190px;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-    }
-    .top-banner::after{
-      content:"";
-      position:absolute; inset:0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events:none;
-    }
-
-    .head {
-      padding: 16px 10px 8px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .title {
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }
-    .subtitle {
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }
-
-    .search {
-      flex: 1;
-      min-width: 220px;
-      max-width: 420px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--stroke);
-      border-radius: 18px;
-      padding: 12px 14px;
-      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }
-    .search input {
-      width: 100%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: var(--txt);
-      font-size: 14px;
-    }
-    .search input::placeholder{
-      color: rgba(255,255,255,0.35);
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    .letters {
-      margin-top: 14px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid var(--stroke);
-      border-radius: 26px;
-      padding: 14px;
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }
-    .letters-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-    }
-    @media (min-width: 720px){
-      .letters-grid { grid-template-columns: repeat(10, 1fr); }
-      .top-banner img { height: 220px; }
-    }
-
-    .letter {
-      user-select: none;
-      cursor: pointer;
-      border-radius: 16px;
-      padding: 12px 10px;
-      text-align: center;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }
-    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
-    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
-    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
-    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
-
-    .cards {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    @media (min-width: 720px){
-      .cards { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    .card {
-      cursor: pointer;
-      border-radius: 26px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
-      transition: transform .10s ease, border-color .12s ease;
-      position: relative;
-    }
-    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
-
-    .cover {
-      width: 100%;
-      height: 220px;
-      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
-      position: relative;
-    }
-    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-    .badge {
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(90,168,255,0.24);
-      border: 1px solid rgba(90,168,255,0.40);
-      color: rgba(255,255,255,0.90);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-      text-transform: uppercase;
-    }
-
-    .meta { padding: 12px 14px 14px; }
-    .meta .name {
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      font-size: 14px;
-      text-transform: uppercase;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .meta .sub {
-      margin-top: 8px;
-      color: rgba(255,255,255,0.50);
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      text-transform: uppercase;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .pill {
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      padding: 6px 10px;
-      border-radius: 999px;
-    }
-
-    .footer {
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }
-
-    .loadmore {
-      margin: 14px auto 0;
-      width: 100%;
-      max-width: 320px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.86);
-      border-radius: 16px;
-      padding: 12px 14px;
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }
-    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
-  </style>
-</head>
-
-<body>
-  <div class="bg-pattern"></div>
-
-  <div class="wrap">
-    <div class="top-banner">
-      <img src="__CBANNER__" alt="Banner"/>
-    </div>
-
-    <div class="head">
-      <div>
-        <div class="title">__CTITLE__</div>
-        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
-      </div>
-
-      <div class="search" title="Buscar mangá">
-        <span style="opacity:.6;font-weight:900;">🔎</span>
-        <input id="q" type="text" placeholder="BUSCAR MANGÁ..." />
-      </div>
-    </div>
-
-    <div class="letters">
-      <div class="letters-grid" id="lettersGrid"></div>
-    </div>
-
-    <div class="cards" id="cards"></div>
-    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
-
-    <div class="footer">Source Baltigo • Catálogo do canal</div>
-  </div>
-
-  <script>
-    const apiLetters = "/api/mangas/letters";
-    const apiCatalogo = "/api/mangas/catalogo";
-
-    let state = {
-      letter: "ALL",
-      q: "",
-      limit: 60,
-      offset: 0,
-      total: 0,
-      loading: false,
-    };
-
-    function esc(s) {
-      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
-    }
-
-    function openLink(link) {
-      try {
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink(link);
-          return;
-        }
-      } catch (e) {}
-      window.open(link, "_blank");
-    }
-
-    function makeLetterButton(key, count) {
-      const el = document.createElement("div");
-      el.className = "letter" + (state.letter === key ? " active" : "");
-      el.innerHTML = `
-        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
-        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
-      `;
-      el.onclick = () => {
-        state.letter = key;
-        state.offset = 0;
-        document.getElementById("cards").innerHTML = "";
-        renderLetters();
-        loadCatalog(true);
-      };
-      return el;
-    }
-
-    async function renderLetters() {
-      const grid = document.getElementById("lettersGrid");
-      grid.innerHTML = "";
-
-      const res = await fetch(apiLetters + "?_ts=" + Date.now());
-      const data = await res.json();
-
-      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
-
-      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
-      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
-
-      for (let c = 65; c <= 90; c++) {
-        const k = String.fromCharCode(c);
-        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
-        grid.appendChild(makeLetterButton(k, n));
-      }
-    }
-
-    function badgeText(item) {
-      const b = (item.badge || item.format || "").toString().trim();
-      return b ? b.toUpperCase() : "MANGA";
-    }
-
-    function pillLine(item) {
-      let parts = [];
-      if (item.year) parts.push(String(item.year));
-      if (item.score) parts.push("★ " + String(item.score));
-      if (item.format) parts.push(String(item.format).toUpperCase());
-      return parts;
-    }
-
-    function makeCard(item) {
-      const card = document.createElement("div");
-      card.className = "card";
-
-      const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
-      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
-
-      card.innerHTML = `
-        <div class="cover">
-          ${coverHtml}
-          <div class="badge">${esc(badgeText(item))}</div>
-        </div>
-        <div class="meta">
-          <p class="name">${esc(item.titulo)}</p>
-          <div class="sub">
-            <span class="pill">CANAL</span>
-            ${pills}
-          </div>
-        </div>
-      `;
-
-      card.onclick = () => openLink(item.link_post);
-      return card;
-    }
-
-    async function loadCatalog(reset=false) {
-      if (state.loading) return;
-      state.loading = true;
-
-      const btn = document.getElementById("btnMore");
-      btn.disabled = true;
-      btn.textContent = "CARREGANDO...";
-
-      const params = new URLSearchParams();
-      params.set("letter", state.letter);
-      params.set("q", state.q);
-      params.set("limit", state.limit);
-      params.set("offset", state.offset);
-      params.set("_ts", String(Date.now()));
-
-      const res = await fetch(apiCatalogo + "?" + params.toString());
-      const data = await res.json();
-
-      state.total = data.total || 0;
-
-      const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {
-        cards.appendChild(makeCard(it));
-      }
-
-      state.offset += (data.items || []).length;
-
-      if (state.offset >= state.total) {
-        btn.disabled = true;
-        btn.textContent = "FIM DA LISTA";
-      } else {
-        btn.disabled = false;
-        btn.textContent = "CARREGAR MAIS";
-      }
-
-      state.loading = false;
-    }
-
-    function debounce(fn, ms) {
-      let t = null;
-      return (...args) => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      };
-    }
-
-    const onSearch = debounce(() => {
-      state.q = (document.getElementById("q").value || "").trim();
-      state.offset = 0;
-      document.getElementById("cards").innerHTML = "";
-      loadCatalog(true);
-    }, 250);
-
-    document.getElementById("q").addEventListener("input", onSearch);
-    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
-
-    (async () => {
-      await renderLetters();
-      await loadCatalog(true);
-    })();
-  </script>
-</body>
-</html>
-"""
-
-    pattern = MANGA_BACKGROUND_PATTERN_URL if MANGA_BACKGROUND_PATTERN_URL else ""
-    html = (html
-        .replace("__CBANNER__", MANGA_CATALOG_BANNER_URL)
-        .replace("__BPATTERN__", pattern)
-        .replace("__CTITLE__", MANGA_CATALOG_TITLE)
-        .replace("__CSUB__", MANGA_CATALOG_SUBTITLE)
-    )
-    return HTMLResponse(html)
-
-# =====================================================
-# CARDS SYSTEM
-# =====================================================
-
+import os
+import json
+import time
+import httpx
+from fastapi import FastAPI, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
-CHARACTERS_FILE = "data/personagens_anilist.txt"
+app = FastAPI()
 
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS")
 
-def load_characters():
+ANILIST_API = "https://graphql.anilist.co"
 
-    animes = {}
+CATALOGO_ANIME = "data/catalogo_enriquecido.json"
+CATALOGO_MANGA = "data/catalogo_mangas_enriquecido.json"
 
-    try:
+# ===============================
+# Carregar catálogos
+# ===============================
 
-        with open(CHARACTERS_FILE, encoding="utf-8") as f:
+def load_json(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, "r", encoding="utf8") as f:
+        return json.load(f)
 
-            for line in f:
+anime_catalog = load_json(CATALOGO_ANIME)
+manga_catalog = load_json(CATALOGO_MANGA)
 
-                line = line.strip()
+# ===============================
+# pedidos em memória
+# (pode trocar por banco depois)
+# ===============================
 
-                if not line:
-                    continue
+user_requests = {}
 
-                parts = line.split("|")
+# ===============================
+# Home WebApp
+# ===============================
 
-                if len(parts) < 4:
-                    continue
-
-                char_id = int(parts[0])
-                name = parts[1]
-                anime = parts[2]
-                anime_id = int(parts[3])
-
-                if anime_id not in animes:
-
-                    animes[anime_id] = {
-                        "anime": anime,
-                        "anime_id": anime_id,
-                        "characters": []
-                    }
-
-                animes[anime_id]["characters"].append({
-                    "id": char_id,
-                    "name": name,
-                    "anime": anime
-                })
-
-    except Exception as e:
-        print("Erro carregando personagens:", e)
-
-    return list(animes.values())
-
-
-# =====================================================
-# API
-# =====================================================
-
-@app.get("/api/cards/animes")
-def api_cards_animes():
-
-    data = load_characters()
-
-    data.sort(key=lambda x: x["anime"])
-
-    return JSONResponse(data)
-
-
-@app.get("/api/cards/characters")
-def api_cards_characters(anime_id: int):
-
-    data = load_characters()
-
-    for a in data:
-
-        if a["anime_id"] == anime_id:
-            return JSONResponse(a["characters"])
-
-    return JSONResponse([])
-
-
-# =====================================================
-# PAGE /cards
-# =====================================================
-
-@app.get("/cards", response_class=HTMLResponse)
-def cards_page():
+@app.get("/", response_class=HTMLResponse)
+def home():
 
     html = """
-<!doctype html>
-<html>
-<head>
+    <html>
+    <head>
 
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+
+    body{
+    background:#070f1b;
+    color:white;
+    font-family:Arial;
+    text-align:center;
+    padding:30px;
+    }
+
+    h1{
+    margin-bottom:30px;
+    }
+
+    .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+    }
+
+    .card{
+    background:#111c2b;
+    padding:25px;
+    border-radius:16px;
+    cursor:pointer;
+    transition:.2s;
+    }
+
+    .card:hover{
+    transform:scale(1.05);
+    }
+
+    </style>
+
+    </head>
+
+    <body>
+
+    <h1>ANYA ANIMES</h1>
+
+    <div class="grid">
+
+    <div class="card" onclick="location.href='/anime'">
+    🎬<br><br>
+    CATÁLOGO ANIME
+    </div>
+
+    <div class="card" onclick="location.href='/manga'">
+    📚<br><br>
+    CATÁLOGO MANGÁ
+    </div>
+
+    <div class="card" onclick="location.href='/pedidos'">
+    📩<br><br>
+    PEDIR ANIME / MANGÁ
+    </div>
+
+    <div class="card" onclick="location.href='/report'">
+    ⚠️<br><br>
+    REPORTAR ERRO
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(html)
+
+# ===============================
+# Página catálogo anime
+# ===============================
+
+@app.get("/anime", response_class=HTMLResponse)
+def anime_page():
+
+    cards = ""
+
+    for a in anime_catalog[:40]:
+
+        title = a.get("title","")
+        cover = a.get("cover","")
+
+        cards += f"""
+        <div class="anime">
+        <img src="{cover}">
+        <p>{title}</p>
+        </div>
+        """
+
+    html = f"""
+
+    <html>
+
+    <head>
+
+    <style>
+
+    body{{background:#081425;color:white;font-family:Arial;padding:20px}}
+
+    .grid{{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:20px;
+    }}
+
+    img{{width:100%;border-radius:12px}}
+
+    p{{font-size:14px}}
+
+    </style>
+
+    </head>
+
+    <body>
+
+    <h2>Catálogo Anime</h2>
+
+    <div class="grid">
+
+    {cards}
+
+    </div>
+
+    </body>
+
+    </html>
+
+    """
+
+    return HTMLResponse(html)
+
+# ===============================
+# Página catálogo manga
+# ===============================
+
+@app.get("/manga", response_class=HTMLResponse)
+def manga_page():
+
+    cards = ""
+
+    for m in manga_catalog[:40]:
+
+        title = m.get("title","")
+        cover = m.get("cover","")
+
+        cards += f"""
+        <div class="anime">
+        <img src="{cover}">
+        <p>{title}</p>
+        </div>
+        """
+
+    html = f"""
+
+    <html>
+
+    <head>
+
+    <style>
+
+    body{{background:#081425;color:white;font-family:Arial;padding:20px}}
+
+    .grid{{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:20px;
+    }}
+
+    img{{width:100%;border-radius:12px}}
+
+    p{{font-size:14px}}
+
+    </style>
+
+    </head>
+
+    <body>
+
+    <h2>Catálogo Mangá</h2>
+
+    <div class="grid">
+
+    {cards}
+
+    </div>
+
+    </body>
+
+    </html>
+
+    """
+
+    return HTMLResponse(html)
+
+# ===============================
+# Página pedidos
+# ===============================
+
+@app.get("/pedidos", response_class=HTMLResponse)
+def pedidos_page():
+
+    html = """
+
+<html>
+
+<head>
 
 <style>
 
 body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
+background:#070f1b;
 color:white;
-}
-
-.banner{
-height:200px;
-background:linear-gradient(180deg,rgba(0,0,0,.3),rgba(0,0,0,.8)),
-url("https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg")
-center/cover;
-display:flex;
-align-items:flex-end;
+font-family:Arial;
 padding:20px;
-font-size:26px;
-font-weight:900;
-letter-spacing:.05em;
 }
 
-.search{
-padding:16px;
-}
-
-.search input{
-width:100%;
-padding:12px;
-border-radius:12px;
+input{
+width:80%;
+padding:10px;
+border-radius:10px;
 border:none;
-background:#111827;
+}
+
+button{
+padding:10px 20px;
+border:none;
+border-radius:10px;
+background:#3c6df0;
 color:white;
-font-size:14px;
-}
-
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-padding:16px;
-}
-
-.card{
-background:#111827;
-border-radius:18px;
-overflow:hidden;
 cursor:pointer;
 }
 
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
+.item{
+display:flex;
+gap:10px;
+margin:10px 0;
 }
 
-.name{
-padding:10px;
-font-weight:800;
+img{
+width:50px;
+border-radius:8px;
 }
 
 </style>
 
-</head>
-
-<body>
-
-<div class="banner">
-COLEÇÃO DE PERSONAGENS
-</div>
-
-<div class="search">
-<input id="search" placeholder="Buscar anime...">
-</div>
-
-<div class="grid" id="grid"></div>
-
 <script>
 
-let data=[]
+async function buscar(){
 
-async function load(){
+q=document.getElementById("busca").value
 
-let r=await fetch("/api/cards/animes")
+r=await fetch("/api/search?q="+q)
+
 data=await r.json()
 
-render(data)
+list=""
 
-}
+data.forEach(x=>{
 
-function render(list){
+list+=`
+<div class='item' onclick="enviar('${x.id}','${x.title}','${x.cover}')">
 
-list.sort((a,b)=>a.anime.localeCompare(b.anime))
+<img src="${x.cover}">
+${x.title}
 
-let html=""
-
-list.forEach(a=>{
-
-let cover="https://img.anili.st/media/"+a.anime_id+"/extraLarge"
-
-html+=`
-<div class="card" onclick="openAnime('${a.anime_id}')">
-<img src="${cover}">
-<div class="name">${a.anime}</div>
 </div>
 `
 
 })
 
-document.getElementById("grid").innerHTML=html
+document.getElementById("resultados").innerHTML=list
 
 }
 
-document.getElementById("search").oninput=e=>{
+async function enviar(id,title,cover){
 
-let q=e.target.value.toLowerCase()
-
-let filtered=data.filter(a=>a.anime.toLowerCase().includes(q))
-
-render(filtered)
-
+payload={
+user_id:123,
+username:"webuser",
+name:"Web User",
+type:"anime",
+id:id,
+title:title,
+cover:cover
 }
 
-function openAnime(id){
+r=await fetch("/api/request",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify(payload)
+})
 
-window.location="/cards/anime?anime="+id
+data=await r.json()
+
+if(data.error=="limite")alert("Limite de 3 pedidos por 24h")
+else if(data.error=="existe")alert("Já existe no catálogo")
+else alert("Pedido enviado!")
 
 }
-
-load()
 
 </script>
 
+</head>
+
+<body>
+
+<h2>Pedido de Anime / Mangá</h2>
+
+<input id="busca" placeholder="Buscar no AniList">
+
+<button onclick="buscar()">Buscar</button>
+
+<div id="resultados"></div>
+
 </body>
+
 </html>
+
 """
 
     return HTMLResponse(html)
 
+# ===============================
+# Página report erro
+# ===============================
 
-# =====================================================
-# PAGE /cards/anime
-# =====================================================
+@app.get("/report", response_class=HTMLResponse)
+def report_page():
 
-@app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime: int):
+    html="""
 
-    html = """
-<!doctype html>
 <html>
-<head>
 
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
 
 <style>
 
 body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
+background:#070f1b;
 color:white;
-padding:16px;
+font-family:Arial;
+padding:30px;
 }
 
-.search input{
+textarea{
 width:100%;
-padding:12px;
-border-radius:12px;
+height:120px;
+border-radius:10px;
 border:none;
-background:#111827;
-color:white;
-margin-bottom:16px;
-}
-
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-}
-
-.card{
-background:#111827;
-border-radius:20px;
-overflow:hidden;
-}
-
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
-}
-
-.info{
 padding:10px;
 }
 
-.name{
-font-weight:800;
-}
-
-.meta{
-font-size:12px;
-opacity:.7;
+button{
+margin-top:20px;
+padding:10px 20px;
+background:#ff5050;
+border:none;
+border-radius:10px;
+color:white;
 }
 
 </style>
+
+<script>
+
+async function enviar(){
+
+msg=document.getElementById("msg").value
+
+payload={
+user_id:123,
+username:"webuser",
+message:msg
+}
+
+await fetch("/api/report",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify(payload)
+})
+
+alert("Report enviado")
+
+}
+
+</script>
 
 </head>
 
 <body>
 
-<div class="search">
-<input id="search" placeholder="Buscar personagem...">
-</div>
+<h2>Reportar erro</h2>
 
-<div class="grid" id="grid"></div>
+<textarea id="msg"></textarea>
 
-<script>
+<br>
 
-const anime="__ANIME__"
-
-let data=[]
-
-async function load(){
-
-let r=await fetch("/api/cards/characters?anime_id="+anime)
-
-data=await r.json()
-
-render(data)
-
-}
-
-function render(list){
-
-let html=""
-
-list.forEach(c=>{
-
-let img="https://img.anili.st/character/"+c.id+"/large"
-
-html+=`
-<div class="card">
-
-<img src="${img}">
-
-<div class="info">
-
-<div class="name">${c.name}</div>
-
-<div class="meta">ID: ${c.id}</div>
-
-<div class="meta">${c.anime}</div>
-
-</div>
-
-</div>
-`
-
-})
-
-document.getElementById("grid").innerHTML=html
-
-}
-
-document.getElementById("search").oninput=e=>{
-
-let q=e.target.value.toLowerCase()
-
-let filtered=data.filter(c=>c.name.toLowerCase().includes(q))
-
-render(filtered)
-
-}
-
-load()
-
-</script>
+<button onclick="enviar()">Enviar</button>
 
 </body>
-</html>
-"""
 
-    html = html.replace("__ANIME__", str(anime))
+</html>
+
+"""
 
     return HTMLResponse(html)
 
-# =========================
-# LOGIN ANILIST
-# =========================
+# ===============================
+# AniList search
+# ===============================
 
-@app.get("/callback")
-async def anilist_callback(code: str, state: str):
+@app.get("/api/search")
+async def search(q:str):
 
-    import requests
-    import base64
+    query="""
+query ($search: String) {
+Page(perPage:5){
+media(search:$search,type:ANIME){
+id
+title{romaji}
+coverImage{large}
+}
+}
+}
+"""
 
-    padded = state + "=" * (-len(state) % 4)
-    decoded = base64.urlsafe_b64decode(padded)
+    async with httpx.AsyncClient() as client:
 
-    payload, sig = decoded.rsplit(b".", 1)
+        r=await client.post(
+            ANILIST_API,
+            json={"query":query,"variables":{"search":q}}
+        )
 
-    user_id, ts = payload.decode().split(".")
-    telegram_id = int(user_id)
+    media=r.json()["data"]["Page"]["media"]
 
-    token_url = "https://anilist.co/api/v2/oauth/token"
+    return [
+        {
+            "id":x["id"],
+            "title":x["title"]["romaji"],
+            "cover":x["coverImage"]["large"]
+        }
+        for x in media
+    ]
 
-    data = {
-        "grant_type": "authorization_code",
-        "client_id": os.getenv("ANILIST_CLIENT_ID"),
-        "client_secret": os.getenv("ANILIST_CLIENT_SECRET"),
-        "redirect_uri": f"{os.getenv('BASE_URL')}/callback",
-        "code": code,
-    }
+# ===============================
+# enviar pedido
+# ===============================
 
-    r = requests.post(token_url, json=data)
+@app.post("/api/request")
+async def request(data:dict=Body(...)):
 
-    token = r.json()["access_token"]
+    user=data["user_id"]
+    title=data["title"]
+    cover=data["cover"]
+    anilist_id=data["id"]
+    media_type=data["type"]
 
-    query = """
-    query {
-      Viewer {
-        id
-        name
-      }
-    }
-    """
+    now=time.time()
 
-    headers = {"Authorization": f"Bearer {token}"}
+    if user not in user_requests:
+        user_requests[user]=[]
 
-    r = requests.post(
-        "https://graphql.anilist.co",
-        json={"query": query},
-        headers=headers
-    )
+    user_requests[user]=[
+        t for t in user_requests[user]
+        if now-t<86400
+    ]
 
-    data = r.json()["data"]["Viewer"]
+    if len(user_requests[user])>=3:
+        return {"error":"limite"}
 
-    from database import save_anilist_account
+    for a in anime_catalog:
+        if str(a.get("anilist_id"))==str(anilist_id):
+            return {"error":"existe"}
 
-    save_anilist_account(
-        telegram_id,
-        data["id"],
-        data["name"],
-        token
-    )
+    user_requests[user].append(now)
 
-    return HTMLResponse(
-        "<h2>✅ Conta conectada!</h2>"
-        "<p>Volte ao Telegram.</p>"
-    )
+    text=f"""
+
+📥 NOVO PEDIDO
+
+👤 {user}
+
+🎬 Tipo: {media_type}
+
+📺 {title}
+ID {anilist_id}
+
+"""
+
+    async with httpx.AsyncClient() as client:
+
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id":CANAL_PEDIDOS,
+                "photo":cover,
+                "caption":text
+            }
+        )
+
+    return {"ok":True}
+
+# ===============================
+# report erro
+# ===============================
+
+@app.post("/api/report")
+async def report(data:dict=Body(...)):
+
+    user=data["user_id"]
+    msg=data["message"]
+
+    text=f"""
+
+⚠️ REPORT WEBAPP
+
+USER {user}
+
+{msg}
+
+"""
+
+    async with httpx.AsyncClient() as client:
+
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={
+                "chat_id":CANAL_PEDIDOS,
+                "text":text
+            }
+        )
+
+    return {"ok":True}
