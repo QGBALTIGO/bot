@@ -4,8 +4,6 @@ from typing import Dict
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from utils.gatekeeper import gatekeeper
-
 from database import (
     add_progress_xp,
     create_or_get_user,
@@ -13,7 +11,6 @@ from database import (
     get_user_level_rank,
     get_level_progress_values,
 )
-
 from level_system import (
     build_progress_bar,
     format_rank_position,
@@ -33,10 +30,9 @@ def _get_level_lock(user_id: int) -> asyncio.Lock:
 
 async def register_progress(update: Update, xp_gain: int = 3):
     """
-    Chamado automaticamente pelos comandos.
-    NÃO colocar gatekeeper aqui.
+    Chame isso nos comandos que você quiser que contem para evolução.
+    Não mostra para o usuário que é por comando.
     """
-
     user = update.effective_user
     if not user:
         return
@@ -60,24 +56,11 @@ async def register_progress(update: Update, xp_gain: int = 3):
             f"{theme['icon']} <b>{theme['tag']}</b>\n\n"
             f"⬆️ Você alcançou o <b>Nível {new_level}</b>!"
         )
-
         await update.message.reply_html(msg)
 
 
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    msg = update.effective_message
-
-    # =========================
-    # GATEKEEPER
-    # =========================
-    ok, bloqueio = await gatekeeper(update, context)
-    if not ok:
-        if msg and bloqueio:
-            await msg.reply_html(bloqueio)
-        return
-
-    if not update.effective_user or not msg:
+    if not update.effective_user or not update.message:
         return
 
     user = update.effective_user
@@ -87,7 +70,7 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     row = get_progress_row(user_id)
     if not row:
-        await msg.reply_text("❌ Não consegui carregar seu progresso.")
+        await update.message.reply_text("❌ Não consegui carregar seu progresso.")
         return
 
     xp = int(row["xp"] or 0)
@@ -103,7 +86,7 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bar = build_progress_bar(current, total, size=10)
     theme = get_level_theme(level)
 
-    msg_txt = (
+    msg = (
         "🏆 <b>SEU PROGRESSO</b>\n\n"
         f"👤 <b>{user.first_name}</b>\n"
         f"{theme['icon']} <b>{theme['tag']}</b>\n\n"
@@ -114,4 +97,4 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Faltam <b>{remaining}</b> para o próximo nível."
     )
 
-    await msg.reply_html(msg_txt)
+    await update.message.reply_html(msg)
