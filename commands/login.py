@@ -10,25 +10,18 @@ from telegram.ext import ContextTypes
 from database import create_or_get_user, has_anilist_login
 
 ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
-PUBLIC_BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", "").strip()
 
 
 def make_state(user_id: int) -> str:
     ts = str(int(time.time()))
     payload = f"{user_id}.{ts}".encode()
-
-    sig = hmac.new(
-        OAUTH_STATE_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).digest()
-
+    sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(payload + b"." + sig).decode().rstrip("=")
 
 
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     user = update.effective_user
     user_id = user.id
 
@@ -40,8 +33,13 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    state = make_state(user_id)
+    if not ANILIST_CLIENT_ID or not PUBLIC_BASE_URL or not OAUTH_STATE_SECRET:
+        await update.message.reply_text(
+            "❌ Login AniList não configurado corretamente no servidor."
+        )
+        return
 
+    state = make_state(user_id)
     redirect_uri = f"{PUBLIC_BASE_URL}/callback"
 
     url = (
@@ -57,6 +55,6 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     await update.message.reply_text(
-        "🔑 Conecte sua conta AniList para sincronizar seus animes e mangás.",
+        "🔑 Conecte sua conta AniList para sincronizar seu perfil.",
         reply_markup=keyboard
     )
