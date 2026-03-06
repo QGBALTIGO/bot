@@ -54,10 +54,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     create_or_get_user(viewer_id)
 
-    # ======================================
-    # POR ENQUANTO: mostra o próprio perfil
-    # depois a gente faz /perfil nick
-    # ======================================
+
     row = get_user_row(viewer_id)
     if not row:
         await msg.reply_text("❌ Não consegui carregar o perfil agora.")
