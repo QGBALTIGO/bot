@@ -1,5 +1,5 @@
 # webapp.py — (SUBSTITUIR TUDO)
-# MiniApp Termos (PT/EN/ES) + verificação de canal (sem requests)
+# MiniApp Termos (PT/EN/ES) verificação de canal (sem requests)
 # + MiniApp Catálogo do canal (cards A–Z) baseado em catalogo_enriquecido.json
 #
 # Requisitos: fastapi, uvicorn, httpx
