@@ -165,7 +165,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_copies = get_card_total_copies(char_id)
 
         caption = (
-            f"╭─ 🎴 Card <code>#{char_id}</code>\n"
+            f"╭─ 🧧 Card <code>#{char_id}</code>\n"
             f"│\n"
             f"│ 👤 <b>{name}{emoji}</b>\n"
             f"│ 🎬 {anime}\n"
@@ -180,7 +180,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎰 Ver estatísticas", callback_data=f"cardstats:{char_id}")]
+            [InlineKeyboardButton("🔎", callback_data=f"cardstats:{char_id}")]
         ])
 
         # salva o texto do popup no contexto do callback_data simples? não.
