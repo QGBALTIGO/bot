@@ -2162,6 +2162,8 @@ CARDS_I18N = {
         "not_found_sub": "Verifique o anime_id",
         "id": "ID",
         "card": "CARD",
+        "loading": "Carregando...",
+        "load_error": "Erro ao carregar dados."
     },
     "en": {
         "eyebrow": "🃏 Cards • Source Baltigo",
@@ -2182,6 +2184,8 @@ CARDS_I18N = {
         "not_found_sub": "Check the anime_id",
         "id": "ID",
         "card": "CARD",
+        "loading": "Loading...",
+        "load_error": "Failed to load data."
     },
     "es": {
         "eyebrow": "🃏 Cards • Source Baltigo",
@@ -2202,6 +2206,8 @@ CARDS_I18N = {
         "not_found_sub": "Verifica el anime_id",
         "id": "ID",
         "card": "CARD",
+        "loading": "Cargando...",
+        "load_error": "Error al cargar los datos."
     },
 }
 
@@ -2335,24 +2341,37 @@ def cards_page(lang: str = Query("pt")):
     z-index:3;
   }
 
-  .langPill {
-    display:flex; align-items:center; gap:10px;
+  .langPill{
+    display:flex;
+    align-items:center;
+    gap:10px;
     background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,.16);
-    padding:10px 14px; border-radius:14px;
-    cursor:pointer; user-select:none;
+    padding:10px 14px;
+    border-radius:14px;
+    cursor:pointer;
+    user-select:none;
     backdrop-filter: blur(8px);
   }
-  .langIcon { font-size:13px; opacity:.9; }
-  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+  .langIcon{ font-size:13px; opacity:.9; }
+  .langCode{ font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
 
-  .langMenu { display:none; justify-content:flex-end; gap:10px; margin:10px 0 0 0; }
-  .langBtn {
-    width:56px; text-align:center;
+  .langMenu{
+    display:none;
+    justify-content:flex-end;
+    gap:10px;
+    margin:10px 0 0 0;
+  }
+
+  .langBtn{
+    width:56px;
+    text-align:center;
     background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,.16);
-    padding:10px 0; border-radius:14px;
-    font-size:13px; font-weight:900;
+    padding:10px 0;
+    border-radius:14px;
+    font-size:13px;
+    font-weight:900;
     cursor:pointer;
     backdrop-filter: blur(8px);
   }
@@ -2550,7 +2569,7 @@ def cards_page(lang: str = Query("pt")):
   </div>
 
   <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
+    <div class="stats" id="statsTxt">__LOADING__</div>
   </div>
 
   <div class="search">
@@ -2570,6 +2589,7 @@ def cards_page(lang: str = Query("pt")):
   const TXT_TOTAL_WORKS = "__TOTAL_WORKS__";
   const TXT_CARDS = "__CARDS__";
   const TXT_CHARS = "__CHARS__";
+  const TXT_LOAD_ERROR = "__LOAD_ERROR__";
 
   let fullData = [];
   let filteredData = [];
@@ -2653,7 +2673,7 @@ def cards_page(lang: str = Query("pt")):
       return;
     }
 
-    filteredData = fullData.filter(x => x.anime.toLowerCase().includes(q));
+    filteredData = fullData.filter(x => (x.anime || "").toLowerCase().includes(q));
     render();
   }
 
@@ -2662,11 +2682,19 @@ def cards_page(lang: str = Query("pt")):
   }
 
   async function load(){
-    const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
-    const data = await res.json();
-    fullData = (data.items || []).sort((a,b) => a.anime.localeCompare(b.anime));
-    filteredData = [...fullData];
-    render();
+    try{
+      const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
+      const data = await res.json();
+
+      fullData = Array.isArray(data.items) ? data.items : [];
+      fullData.sort((a,b) => (a.anime || "").localeCompare(b.anime || ""));
+      filteredData = [...fullData];
+      render();
+    }catch(e){
+      document.getElementById("statsTxt").textContent = TXT_LOAD_ERROR;
+      document.getElementById("emptyBox").style.display = "block";
+      console.error(e);
+    }
   }
 
   document.getElementById("searchInput").addEventListener("input", applySearch);
@@ -2689,6 +2717,8 @@ def cards_page(lang: str = Query("pt")):
         .replace("__FOOTER__", T["footer"])
         .replace("__CHARS__", T["chars"])
         .replace("__CARDS__", T["cards"])
+        .replace("__LOADING__", T["loading"])
+        .replace("__LOAD_ERROR__", T["load_error"])
     )
     return HTMLResponse(html)
 
@@ -2788,24 +2818,37 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
     z-index:3;
   }
 
-  .langPill {
-    display:flex; align-items:center; gap:10px;
+  .langPill{
+    display:flex;
+    align-items:center;
+    gap:10px;
     background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,.16);
-    padding:10px 14px; border-radius:14px;
-    cursor:pointer; user-select:none;
+    padding:10px 14px;
+    border-radius:14px;
+    cursor:pointer;
+    user-select:none;
     backdrop-filter: blur(8px);
   }
-  .langIcon { font-size:13px; opacity:.9; }
-  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+  .langIcon{ font-size:13px; opacity:.9; }
+  .langCode{ font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
 
-  .langMenu { display:none; justify-content:flex-end; gap:10px; margin:10px 0 0 0; }
-  .langBtn {
-    width:56px; text-align:center;
+  .langMenu{
+    display:none;
+    justify-content:flex-end;
+    gap:10px;
+    margin:10px 0 0 0;
+  }
+
+  .langBtn{
+    width:56px;
+    text-align:center;
     background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,.16);
-    padding:10px 0; border-radius:14px;
-    font-size:13px; font-weight:900;
+    padding:10px 0;
+    border-radius:14px;
+    font-size:13px;
+    font-weight:900;
     cursor:pointer;
     backdrop-filter: blur(8px);
   }
@@ -3026,13 +3069,13 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
 
     <div class="hero-copy">
       <a class="back" href="/cards?lang=__LANG__">__BACK__</a>
-      <div class="title" id="animeTitle">Carregando...</div>
+      <div class="title" id="animeTitle">__LOADING__</div>
       <div class="subtitle" id="animeSub">__CHARACTERS__</div>
     </div>
   </div>
 
   <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
+    <div class="stats" id="statsTxt">__LOADING__</div>
   </div>
 
   <div class="search">
@@ -3057,6 +3100,7 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
   const TXT_ID = "__ID__";
   const TXT_CARD = "__CARD__";
   const TXT_CHARACTERS = "__CHARACTERS__";
+  const TXT_LOAD_ERROR = "__LOAD_ERROR__";
 
   let animeMeta = null;
   let fullData = [];
@@ -3146,29 +3190,38 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
       return;
     }
 
-    filteredData = fullData.filter(x => x.name.toLowerCase().includes(q));
+    filteredData = fullData.filter(x => (x.name || "").toLowerCase().includes(q));
     render();
   }
 
   async function load(){
-    const res = await fetch(api + "&_ts=" + Date.now());
-    const data = await res.json();
+    try{
+      const res = await fetch(api + "&_ts=" + Date.now());
+      const data = await res.json();
 
-    animeMeta = data.anime || null;
-    fullData = (data.items || []).sort((a,b) => a.name.localeCompare(b.name));
-    filteredData = [...fullData];
+      animeMeta = data.anime || null;
+      fullData = Array.isArray(data.items) ? data.items : [];
+      fullData.sort((a,b) => (a.name || "").localeCompare(b.name || ""));
+      filteredData = [...fullData];
 
-    if (animeMeta){
-      document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
-      document.getElementById("animeSub").textContent = TXT_ID + " " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " " + TXT_CHARACTERS.toLowerCase();
-      document.getElementById("heroImg").src = pickHero(animeMeta);
-    } else {
-      document.getElementById("animeTitle").textContent = TXT_NOT_FOUND_TITLE;
-      document.getElementById("animeSub").textContent = TXT_NOT_FOUND_SUB;
+      if (animeMeta){
+        document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
+        document.getElementById("animeSub").textContent = TXT_ID + " " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " " + TXT_CHARACTERS.toLowerCase();
+        document.getElementById("heroImg").src = pickHero(animeMeta);
+      } else {
+        document.getElementById("animeTitle").textContent = TXT_NOT_FOUND_TITLE;
+        document.getElementById("animeSub").textContent = TXT_NOT_FOUND_SUB;
+        document.getElementById("heroImg").src = fallbackTop;
+      }
+
+      render();
+    }catch(e){
+      document.getElementById("animeTitle").textContent = TXT_LOAD_ERROR;
+      document.getElementById("statsTxt").textContent = TXT_LOAD_ERROR;
       document.getElementById("heroImg").src = fallbackTop;
+      document.getElementById("emptyBox").style.display = "block";
+      console.error(e);
     }
-
-    render();
   }
 
   document.getElementById("searchInput").addEventListener("input", applySearch);
@@ -3193,5 +3246,7 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
         .replace("__ID__", T["id"])
         .replace("__CARD__", T["card"])
         .replace("__FOOTER__", T["footer"])
+        .replace("__LOADING__", T["loading"])
+        .replace("__LOAD_ERROR__", T["load_error"])
     )
     return HTMLResponse(html)
