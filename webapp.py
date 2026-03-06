@@ -4278,11 +4278,29 @@ def cards_anime_page(anime_id: int = Query(...)):
 # =========================
 # CONFIG — PEDIDOS / REPORTS
 # =========================
+import html
+import traceback
+import httpx
+
+from fastapi import Body, Query
+from fastapi.responses import HTMLResponse, JSONResponse
+
+from database import (
+    create_media_request_tables,
+    count_user_media_requests_last_24h,
+    media_request_exists,
+    save_media_request,
+    save_webapp_report,
+    normalize_media_title,
+)
+
 CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS", "").strip()
 PEDIDO_BANNER_URL = os.getenv(
     "PEDIDO_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
 ).strip()
+
+create_media_request_tables()
 
 _PEDIDO_ANIME_INDEX = {"title_norm": set(), "anilist_ids": set()}
 _PEDIDO_MANGA_INDEX = {"title_norm": set(), "anilist_ids": set()}
@@ -4380,22 +4398,53 @@ async def _pedido_anilist_search(query_text: str, media_type: str):
     }
     """
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
-            "https://graphql.anilist.co",
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            json={
-                "query": gql,
-                "variables": {
-                    "search": query_text,
-                    "type": "ANIME" if media_type == "anime" else "MANGA",
-                },
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+    variables = {
+        "search": query_text,
+        "type": "ANIME" if media_type == "anime" else "MANGA",
+    }
 
-    return ((data or {}).get("data") or {}).get("Page", {}).get("media", []) or []
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "SourceBaltigo/1.0",
+    }
+
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    "https://graphql.anilist.co",
+                    headers=headers,
+                    json={"query": gql, "variables": variables},
+                )
+
+            if response.status_code >= 400:
+                print(
+                    f"[pedido] AniList HTTP {response.status_code} attempt={attempt + 1}",
+                    flush=True,
+                )
+                last_error = RuntimeError(f"AniList HTTP {response.status_code}")
+                continue
+
+            data = response.json()
+            if not isinstance(data, dict):
+                last_error = RuntimeError("Resposta inválida do AniList")
+                continue
+
+            if data.get("errors"):
+                print("[pedido] AniList errors:", data.get("errors"), flush=True)
+                last_error = RuntimeError("AniList retornou erro")
+                continue
+
+            return ((data.get("data") or {}).get("Page") or {}).get("media", []) or []
+
+        except Exception as e:
+            last_error = e
+            print("[pedido] erro AniList:", repr(e), flush=True)
+
+    raise last_error or RuntimeError("Falha ao buscar no AniList")
 
 
 @app.get("/api/pedido/limit")
@@ -4432,6 +4481,9 @@ async def api_pedido_search(
                 or ""
             ).strip()
 
+            if not title:
+                continue
+
             aid = x.get("id")
             exists_catalog = _pedido_catalog_contains(media_type, title, aid)
             exists_request = media_request_exists(media_type, title, aid)
@@ -4455,7 +4507,38 @@ async def api_pedido_search(
     except Exception as e:
         print("[pedido] busca AniList falhou:", repr(e), flush=True)
         traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Não foi possível buscar agora."}, status_code=502)
+        return JSONResponse(
+            {"ok": False, "message": "Não foi possível buscar agora."},
+            status_code=502
+        )
+
+
+async def _telegram_send_message(chat_id: str, text: str):
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": "true",
+            },
+        )
+    return resp
+
+
+async def _telegram_send_photo(chat_id: str, photo: str, caption: str):
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id": chat_id,
+                "photo": photo,
+                "caption": caption,
+                "parse_mode": "HTML",
+            },
+        )
+    return resp
 
 
 @app.post("/api/pedido/send")
@@ -4496,51 +4579,60 @@ async def api_pedido_send(payload: dict = Body(...)):
 
         save_media_request(user_id, username, full_name, media_type, title, anilist_id, cover)
 
-        if CANAL_PEDIDOS and BOT_TOKEN:
-            caption = (
-                f"📥 <b>NOVO PEDIDO</b>\n\n"
-                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
-                f"🎴 <b>Tipo:</b> {media_type.upper()}\n"
-                f"📝 <b>Título:</b> <i>{title}</i>\n"
-                f"🆔 <b>AniList ID:</b> <code>{anilist_id or '-'}</code>"
-            )
-
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                if cover:
-                    resp = await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                        data={
-                            "chat_id": CANAL_PEDIDOS,
-                            "photo": cover,
-                            "caption": caption,
-                            "parse_mode": "HTML",
-                        },
-                    )
-                else:
-                    resp = await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        data={
-                            "chat_id": CANAL_PEDIDOS,
-                            "text": caption,
-                            "parse_mode": "HTML",
-                        },
-                    )
-
-                tg_json = resp.json()
-                if not tg_json.get("ok"):
-                    print("[pedido] telegram falhou:", tg_json, flush=True)
-                    return JSONResponse({
-                        "ok": False,
-                        "message": "O pedido foi salvo, mas o Telegram recusou o envio ao canal. Verifique se o bot está admin no canal."
-                    }, status_code=502)
-
-        else:
+        if not CANAL_PEDIDOS or not BOT_TOKEN:
             return JSONResponse({
                 "ok": False,
                 "message": "CANAL_PEDIDOS ou BOT_TOKEN não configurado no webapp."
             }, status_code=500)
+
+        safe_full_name = html.escape(full_name or "Sem nome")
+        safe_username = html.escape(username) if username else "sem_username"
+        safe_title = html.escape(title)
+        safe_type = html.escape(media_type.upper())
+        safe_anilist = html.escape(str(anilist_id or "-"))
+
+        caption = (
+            f"📥 <b>NOVO PEDIDO</b>\n\n"
+            f"👤 <b>Usuário:</b> {safe_full_name}\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            f"🔖 <b>Username:</b> @{safe_username}\n\n"
+            f"🎴 <b>Tipo:</b> {safe_type}\n"
+            f"📝 <b>Título:</b> <i>{safe_title}</i>\n"
+            f"🆔 <b>AniList ID:</b> <code>{safe_anilist}</code>"
+        )
+
+        resp = None
+        tg_json = None
+
+        if cover:
+            try:
+                resp = await _telegram_send_photo(CANAL_PEDIDOS, cover, caption)
+                tg_json = resp.json()
+            except Exception as e:
+                print("[pedido] sendPhoto exception:", repr(e), flush=True)
+                tg_json = {"ok": False, "description": repr(e)}
+
+        if not tg_json or not tg_json.get("ok"):
+            text_fallback = (
+                f"📥 <b>NOVO PEDIDO</b>\n\n"
+                f"👤 <b>Usuário:</b> {safe_full_name}\n"
+                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+                f"🔖 <b>Username:</b> @{safe_username}\n\n"
+                f"🎴 <b>Tipo:</b> {safe_type}\n"
+                f"📝 <b>Título:</b> <i>{safe_title}</i>\n"
+                f"🆔 <b>AniList ID:</b> <code>{safe_anilist}</code>\n"
+                f"🖼 <b>Capa:</b> {html.escape(cover or '-')}"
+            )
+
+            resp = await _telegram_send_message(CANAL_PEDIDOS, text_fallback)
+            tg_json = resp.json()
+
+            if not tg_json.get("ok"):
+                print("[pedido] telegram falhou:", tg_json, flush=True)
+                return JSONResponse({
+                    "ok": False,
+                    "message": "O pedido foi salvo, mas o Telegram recusou o envio ao canal. Verifique se o bot está admin no canal."
+                }, status_code=502)
 
         return JSONResponse({
             "ok": True,
@@ -4569,38 +4661,35 @@ async def api_pedido_report(payload: dict = Body(...)):
 
         save_webapp_report(user_id, username, full_name, report_type, message)
 
-        if CANAL_PEDIDOS and BOT_TOKEN:
-            text = (
-                f"⚠️ <b>NOVO REPORT</b>\n\n"
-                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
-                f"🏷 <b>Tipo:</b> {report_type}\n"
-                f"📝 <b>Mensagem:</b>\n{message}"
-            )
-
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                    data={
-                        "chat_id": CANAL_PEDIDOS,
-                        "text": text,
-                        "parse_mode": "HTML",
-                    },
-                )
-
-                tg_json = resp.json()
-                if not tg_json.get("ok"):
-                    print("[pedido] telegram falhou no report:", tg_json, flush=True)
-                    return JSONResponse({
-                        "ok": False,
-                        "message": "O report foi salvo, mas o Telegram recusou o envio ao canal."
-                    }, status_code=502)
-        else:
+        if not CANAL_PEDIDOS or not BOT_TOKEN:
             return JSONResponse({
                 "ok": False,
                 "message": "CANAL_PEDIDOS ou BOT_TOKEN não configurado no webapp."
             }, status_code=500)
+
+        safe_full_name = html.escape(full_name or "Sem nome")
+        safe_username = html.escape(username) if username else "sem_username"
+        safe_report_type = html.escape(report_type)
+        safe_message = html.escape(message)
+
+        text = (
+            f"⚠️ <b>NOVO REPORT</b>\n\n"
+            f"👤 <b>Usuário:</b> {safe_full_name}\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            f"🔖 <b>Username:</b> @{safe_username}\n\n"
+            f"🏷 <b>Tipo:</b> {safe_report_type}\n"
+            f"📝 <b>Mensagem:</b>\n{safe_message}"
+        )
+
+        resp = await _telegram_send_message(CANAL_PEDIDOS, text)
+        tg_json = resp.json()
+
+        if not tg_json.get("ok"):
+            print("[pedido] telegram falhou no report:", tg_json, flush=True)
+            return JSONResponse({
+                "ok": False,
+                "message": "O report foi salvo, mas o Telegram recusou o envio ao canal."
+            }, status_code=502)
 
         return JSONResponse({"ok": True, "message": "Report enviado com sucesso."})
 
