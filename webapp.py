@@ -6,7 +6,7 @@
 #
 # ENV:
 #   TERMS_VERSION="v1"
-#   BOT_TOKEN="xxxxx"                      (obrigatório p/ verificar canal)
+#   BOT_TOKEN="xxxxx"                      (obrigatório verificar canal)
 #   REQUIRED_CHANNEL="@SourcerBaltigo"     (ou -100xxxxxxxxxx)
 #   REQUIRED_CHANNEL_URL="https://t.me/SourcerBaltigo"
 #   TOP_BANNER_URL="https://..."           (banner do termos)
