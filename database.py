@@ -1,7 +1,9 @@
 import os
+import requests
 from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
 
@@ -12,10 +14,18 @@ pool = ConnectionPool(
     timeout=10,
 )
 
+
+# ==================================================
+# CORE SQL EXECUTOR
+# ==================================================
+
 def _run(sql: str, params=(), fetch: str = "none"):
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
+
             try:
+
                 cur.execute(sql, params)
 
                 if fetch == "one":
@@ -32,43 +42,54 @@ def _run(sql: str, params=(), fetch: str = "none"):
                 return None
 
             except Exception:
+
                 try:
                     conn.rollback()
                 except Exception:
                     pass
+
                 raise
 
+
+# ==================================================
+# USERS
+# ==================================================
+
 def create_tables():
-    # 1) cria tabela base (se não existir)
+
     _run("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY
     );
     """)
 
-    # 2) migra colunas (seguro)
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;")
 
-    # NOVO: obrigatoriedade do canal + controle de mensagens
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;")
+
 
 def create_or_get_user(user_id: int):
+
     _run(
         "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
         (user_id,)
     )
 
+
 def set_language(user_id: int, lang: str):
+
     _run(
         "UPDATE users SET lang = %s WHERE user_id = %s",
         (lang, user_id)
     )
 
+
 def accept_terms(user_id: int, version: str):
+
     _run(
         """
         UPDATE users
@@ -80,26 +101,36 @@ def accept_terms(user_id: int, version: str):
         (version, user_id)
     )
 
+
 def has_accepted_terms(user_id: int, version: str) -> bool:
+
     row = _run(
         "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
         (user_id,),
         fetch="one"
     )
+
     if not row:
         return False
+
     accepted, v = row
+
     return bool(accepted) and (v == version)
 
+
 def get_user_status(user_id: int):
+
     row = _run(
         "SELECT lang, terms_accepted, terms_version, welcome_sent FROM users WHERE user_id = %s",
         (user_id,),
         fetch="one"
     )
+
     if not row:
         return None
+
     lang, terms_accepted, terms_version, welcome_sent = row
+
     return {
         "lang": lang,
         "terms_accepted": bool(terms_accepted),
@@ -107,8 +138,26 @@ def get_user_status(user_id: int):
         "welcome_sent": bool(welcome_sent),
     }
 
+
 def mark_welcome_sent(user_id: int):
-    _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (user_id,))
+
+    _run(
+        "UPDATE users SET welcome_sent = TRUE WHERE user_id = %s",
+        (user_id,)
+    )
+
+
+def reset_welcome_sent(user_id: int):
+
+    _run(
+        "UPDATE users SET welcome_sent = FALSE WHERE user_id = %s",
+        (user_id,)
+    )
+
+
+# ==================================================
+# ANILIST
+# ==================================================
 
 def create_anilist_tables():
 
@@ -124,22 +173,24 @@ def create_anilist_tables():
     );
     """)
 
-def reset_welcome_sent(user_id: int):
-    _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (user_id,))
 
 def save_anilist_account(telegram_id, anilist_id, username, token):
 
-    _run("""
-    INSERT INTO user_anilist
-    (telegram_id, anilist_id, username, access_token)
-    VALUES (%s,%s,%s,%s)
+    _run(
+        """
+        INSERT INTO user_anilist
+        (telegram_id, anilist_id, username, access_token)
+        VALUES (%s,%s,%s,%s)
 
-    ON CONFLICT (telegram_id)
-    DO UPDATE SET
-        anilist_id = EXCLUDED.anilist_id,
-        username = EXCLUDED.username,
-        access_token = EXCLUDED.access_token
-    """, (telegram_id, anilist_id, username, token))
+        ON CONFLICT (telegram_id)
+        DO UPDATE SET
+            anilist_id = EXCLUDED.anilist_id,
+            username = EXCLUDED.username,
+            access_token = EXCLUDED.access_token
+        """,
+        (telegram_id, anilist_id, username, token)
+    )
+
 
 def has_anilist_login(user_id):
 
@@ -150,6 +201,7 @@ def has_anilist_login(user_id):
     )
 
     return bool(row)
+
 
 def get_anilist_profile(telegram_id: int):
 
@@ -169,9 +221,7 @@ def get_anilist_profile(telegram_id: int):
     if not row:
         return None
 
-    import requests
-
-    token = row["access_token"]
+    access_token = row[2]
 
     query = """
     query {
@@ -193,24 +243,32 @@ def get_anilist_profile(telegram_id: int):
     """
 
     headers = {
-        "Authorization": f"Bearer {token}"
+        "Authorization": f"Bearer {access_token}"
     }
 
-    r = requests.post(
-        "https://graphql.anilist.co",
-        json={"query": query},
-        headers=headers
-    )
+    try:
 
-    data = r.json()["data"]["Viewer"]
+        r = requests.post(
+            "https://graphql.anilist.co",
+            json={"query": query},
+            headers=headers,
+            timeout=10
+        )
 
-    minutes = data["statistics"]["anime"]["minutesWatched"]
-    days = round(minutes / 1440, 1)
+        data = r.json()["data"]["Viewer"]
 
-    return {
-        "anilist_id": data["id"],
-        "name": data["name"],
-        "anime_count": data["statistics"]["anime"]["count"],
-        "manga_count": data["statistics"]["manga"]["count"],
-        "days": days
-    }
+        minutes = data["statistics"]["anime"]["minutesWatched"]
+
+        days = round(minutes / 1440, 1)
+
+        return {
+            "anilist_id": data["id"],
+            "name": data["name"],
+            "anime_count": data["statistics"]["anime"]["count"],
+            "manga_count": data["statistics"]["manga"]["count"],
+            "days": days
+        }
+
+    except Exception:
+
+        return None
