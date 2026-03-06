@@ -110,7 +110,7 @@ def get_user_status(user_id: int):
 def mark_welcome_sent(user_id: int):
     _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (user_id,))
 
-ef create_anilist_tables():
+def create_anilist_tables():
 
     _run("""
     CREATE TABLE IF NOT EXISTS user_anilist (
