@@ -8,9 +8,6 @@ from commands.start import start
 from commands.anime import anime
 from commands.manga import manga
 from commands.cards import cards
-from commands.login import login
-from commands.perfil import perfil
-from commands.code import code
 
 from database import create_tables, create_anilist_tables
 
@@ -37,13 +34,11 @@ def main():
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
     tg_app.add_handler(CommandHandler("cards", cards))
-    tg_app.add_handler(CommandHandler("login", login))
-    tg_app.add_handler(CommandHandler("perfil", perfil))
-    tg_app.add_handler(CommandHandler("code", code))
 
     print("Bot + WebApp iniciado")
     tg_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
 
