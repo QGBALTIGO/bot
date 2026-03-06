@@ -495,22 +495,159 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
     )
     return rows or []
 
-def get_level_rank(user_id: int) -> int:
+# =========================================================
+# LEVEL / PROGRESS SYSTEM
+# =========================================================
 
-    row = _run(
+def create_level_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        total_actions BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
+    ON user_progress (level DESC, xp DESC)
+    """)
+
+
+def ensure_progress_row(user_id: int):
+    _run(
         """
-        SELECT rank FROM (
-            SELECT user_id,
-                   RANK() OVER (ORDER BY level DESC, commands DESC) AS rank
-            FROM users
-        ) t
+        INSERT INTO user_progress (user_id)
+        VALUES (%s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_progress_row(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_progress_row(user_id)
+
+    return _run(
+        """
+        SELECT user_id, xp, level, total_actions, updated_at
+        FROM user_progress
         WHERE user_id = %s
         """,
-        (user_id,),
+        (int(user_id),),
         fetch="one"
     )
 
-    if not row:
-        return 0
 
-    return int(row["rank"])
+def level_xp_required(level: int) -> int:
+    """
+    XP total necessária para ESTAR naquele nível.
+    Curva simples e estável.
+    """
+    level = max(1, int(level))
+    return 80 * (level - 1) * (level - 1) + 120 * (level - 1)
+
+
+def xp_to_level(xp: int) -> int:
+    xp = max(0, int(xp))
+    level = 1
+
+    while True:
+        next_level = level + 1
+        if xp < level_xp_required(next_level):
+            return level
+        level = next_level
+
+
+def get_level_progress_values(xp: int) -> Dict[str, int]:
+    xp = max(0, int(xp))
+    level = xp_to_level(xp)
+
+    current_floor = level_xp_required(level)
+    next_floor = level_xp_required(level + 1)
+
+    current_in_level = xp - current_floor
+    needed_in_level = next_floor - current_floor
+    remaining = max(next_floor - xp, 0)
+
+    return {
+        "level": level,
+        "xp_total": xp,
+        "xp_current": current_in_level,
+        "xp_needed": needed_in_level,
+        "xp_remaining": remaining,
+        "xp_next_total": next_floor,
+    }
+
+
+def add_progress_xp(user_id: int, amount: int = 3) -> Dict[str, Any]:
+    """
+    Adiciona XP e recalcula o nível.
+    Retorna old_level/new_level para level up.
+    """
+    ensure_progress_row(user_id)
+
+    row = get_progress_row(user_id)
+    old_xp = int((row or {}).get("xp") or 0)
+    old_level = int((row or {}).get("level") or 1)
+    old_actions = int((row or {}).get("total_actions") or 0)
+
+    new_xp = old_xp + max(0, int(amount))
+    new_level = xp_to_level(new_xp)
+    new_actions = old_actions + 1
+
+    _run(
+        """
+        UPDATE user_progress
+        SET xp = %s,
+            level = %s,
+            total_actions = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (new_xp, new_level, new_actions, int(user_id))
+    )
+
+    return {
+        "old_level": old_level,
+        "new_level": new_level,
+        "xp": new_xp,
+        "total_actions": new_actions,
+    }
+
+
+def get_user_level_rank(user_id: int) -> int:
+    ensure_progress_row(user_id)
+
+    row = _run(
+        """
+        SELECT rank_pos
+        FROM (
+            SELECT
+                user_id,
+                RANK() OVER (ORDER BY level DESC, xp DESC, total_actions DESC, user_id ASC) AS rank_pos
+            FROM user_progress
+        ) ranked
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    return int((row or {}).get("rank_pos") or 0)
+
+
+def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT user_id, xp, level, total_actions
+        FROM user_progress
+        ORDER BY level DESC, xp DESC, total_actions DESC, user_id ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all"
+    )
+    return rows or []
