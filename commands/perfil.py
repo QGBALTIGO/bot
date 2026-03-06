@@ -37,9 +37,9 @@ def get_dup_emoji(qty: int) -> str:
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
 
-    # =========================
+    # ========================
     # GATEKEEPER
-    # =========================
+    # ========================
     ok, bloqueio = await gatekeeper(update, context)
     if not ok:
         if msg and bloqueio:
