@@ -15,7 +15,7 @@ BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 
 PEDIDO_BANNER_URL = os.getenv(
     "PEDIDO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg"
+    "https://photo.chelpbot.me/AgACAgEAAxkBZ0w54WmrME4Fk9ObOXCy_CjgTb8IHF9cAAJRC2sb1ZFYRTRdgJDi4ysfAQADAgADeQADOgQ/photo.jpg"
 ).strip()
 
 
