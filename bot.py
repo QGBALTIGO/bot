@@ -2,7 +2,7 @@ import os
 import threading
 import uvicorn
 
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 from commands.start import start
 from commands.anime import anime
@@ -10,12 +10,8 @@ from commands.manga import manga
 from commands.cards import cards
 from commands.pedido import pedido
 from commands.nivel import nivel
-from commands.card import card
-from commands.perfil import perfil
-
-from database import create_tables, create_cards_tables
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 from commands.card import card, card_stats_callback
+from commands.perfil import perfil
 
 from commands.cards_admin import (
     card_addanime,
@@ -86,6 +82,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
