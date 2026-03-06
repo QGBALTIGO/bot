@@ -1,6 +1,9 @@
 import os
 import threading
 import uvicorn
+import asyncio
+import time
+import httpx
 
 from telegram.ext import Application, CommandHandler
 
@@ -42,6 +45,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
