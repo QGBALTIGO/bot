@@ -4274,3 +4274,413 @@ def cards_anime_page(anime_id: int = Query(...)):
 """
     html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
     return HTMLResponse(html)
+
+# =========================
+# CONFIG — PEDIDOS / REPORTS
+# =========================
+CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS", "").strip()
+PEDIDO_BANNER_URL = os.getenv(
+    "PEDIDO_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
+).strip()
+
+from database import (
+    create_media_request_tables,
+    count_user_media_requests_last_24h,
+    media_request_exists,
+    save_media_request,
+    save_webapp_report,
+    normalize_media_title,
+)
+
+create_media_request_tables()
+
+_PEDIDO_ANIME_INDEX = {"title_norm": set(), "anilist_ids": set()}
+_PEDIDO_MANGA_INDEX = {"title_norm": set(), "anilist_ids": set()}
+
+
+def _pedido_build_index(records: List[Dict[str, Any]], media_type: str):
+    idx = {"title_norm": set(), "anilist_ids": set()}
+    for rec in records:
+        try:
+            title = ""
+            anilist_id = None
+            if isinstance(rec, dict):
+                title = str(rec.get("title_raw") or rec.get("titulo") or rec.get("title") or "").strip()
+                anilist = rec.get("anilist")
+                if isinstance(anilist, dict):
+                    title = str(anilist.get("title_display") or title).strip()
+                    anilist_id = anilist.get("anilist_id") or anilist.get("id")
+            if title:
+                idx["title_norm"].add(normalize_media_title(title))
+            if anilist_id:
+                try:
+                    idx["anilist_ids"].add(int(anilist_id))
+                except Exception:
+                    pass
+        except Exception:
+            continue
+    return idx
+
+
+def _pedido_reload_indexes():
+    global _PEDIDO_ANIME_INDEX, _PEDIDO_MANGA_INDEX
+    _PEDIDO_ANIME_INDEX = _pedido_build_index(_unwrap_records(load_json(CATALOG_PATH)), "anime")
+    _PEDIDO_MANGA_INDEX = _pedido_build_index(_unwrap_records(load_json(MANGA_CATALOG_PATH)), "manga")
+
+
+try:
+    _pedido_reload_indexes()
+except Exception as e:
+    print("[pedido] falha ao montar índices:", repr(e), flush=True)
+
+
+def _pedido_catalog_contains(media_type: str, title: str, anilist_id=None) -> bool:
+    idx = _PEDIDO_ANIME_INDEX if media_type == "anime" else _PEDIDO_MANGA_INDEX
+    if anilist_id:
+        try:
+            if int(anilist_id) in idx["anilist_ids"]:
+                return True
+        except Exception:
+            pass
+    return normalize_media_title(title) in idx["title_norm"]
+
+
+async def _pedido_anilist_search(query_text: str, media_type: str):
+    media_type = "ANIME" if media_type == "anime" else "MANGA"
+    gql = """
+    query ($search: String, $type: MediaType) {
+      Page(page: 1, perPage: 12) {
+        media(search: $search, type: $type, sort: POPULARITY_DESC) {
+          id
+          title { romaji english native }
+          coverImage { large }
+          averageScore
+          format
+          status
+          seasonYear
+          episodes
+          chapters
+        }
+      }
+    }
+    """
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            "https://graphql.anilist.co",
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            json={"query": gql, "variables": {"search": query_text, "type": media_type}},
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    return ((data or {}).get("data") or {}).get("Page", {}).get("media", []) or []
+
+
+@app.get("/api/pedido/limit")
+def api_pedido_limit(uid: int = Query(...)):
+    used = count_user_media_requests_last_24h(uid)
+    remaining = max(0, 3 - used)
+    return JSONResponse({"ok": True, "used": used, "remaining": remaining, "limit": 3})
+
+
+@app.get("/api/pedido/search")
+async def api_pedido_search(q: str = Query(..., min_length=1, max_length=80), media_type: str = Query(...)):
+    media_type = (media_type or "").strip().lower()
+    if media_type not in ("anime", "manga"):
+        return JSONResponse({"ok": False, "message": "media_type inválido"}, status_code=400)
+
+    try:
+        results = await _pedido_anilist_search(q.strip(), media_type)
+        items = []
+        for x in results:
+            title = ((x.get("title") or {}).get("romaji") or (x.get("title") or {}).get("english") or (x.get("title") or {}).get("native") or "").strip()
+            aid = x.get("id")
+            exists_catalog = _pedido_catalog_contains(media_type, title, aid)
+            exists_request = media_request_exists(media_type, title, aid)
+            items.append({
+                "id": aid,
+                "title": title,
+                "cover": ((x.get("coverImage") or {}).get("large") or ""),
+                "score": x.get("averageScore"),
+                "format": x.get("format"),
+                "status": x.get("status"),
+                "year": x.get("seasonYear"),
+                "episodes": x.get("episodes"),
+                "chapters": x.get("chapters"),
+                "already_exists": bool(exists_catalog),
+                "already_requested": bool(exists_request),
+            })
+        return JSONResponse({"ok": True, "items": items})
+    except Exception as e:
+        print("[pedido] busca AniList falhou:", repr(e), flush=True)
+        return JSONResponse({"ok": False, "message": "Não foi possível buscar agora."}, status_code=502)
+
+
+@app.post("/api/pedido/send")
+async def api_pedido_send(payload: dict = Body(...)):
+    try:
+        user_id = int(payload.get("user_id") or 0)
+        username = str(payload.get("username") or "").strip()
+        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
+        media_type = str(payload.get("media_type") or "").strip().lower()
+        anilist_id = payload.get("anilist_id")
+        title = str(payload.get("title") or "").strip()
+        cover = str(payload.get("cover") or "").strip()
+
+        if user_id <= 0 or media_type not in ("anime", "manga") or not title:
+            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
+
+        used = count_user_media_requests_last_24h(user_id)
+        if used >= 3:
+            return JSONResponse({"ok": False, "code": "limit", "message": "Você atingiu o limite de 3 pedidos nas últimas 24h."}, status_code=429)
+
+        if _pedido_catalog_contains(media_type, title, anilist_id):
+            return JSONResponse({"ok": False, "code": "exists", "message": "Esse título já está disponível no catálogo."}, status_code=409)
+
+        if media_request_exists(media_type, title, anilist_id):
+            return JSONResponse({"ok": False, "code": "requested", "message": "Esse título já foi pedido e está em análise."}, status_code=409)
+
+        save_media_request(user_id, username, full_name, media_type, title, anilist_id, cover)
+
+        if CANAL_PEDIDOS and BOT_TOKEN:
+            caption = (
+                f"📥 <b>NOVO PEDIDO</b>\n\n"
+                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
+                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
+                f"🎴 <b>Tipo:</b> {media_type.upper()}\n"
+                f"📝 <b>Título:</b> <i>{title}</i>\n"
+                f"🆔 <b>AniList ID:</b> <code>{anilist_id or '-'}</code>"
+            )
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if cover:
+                    await client.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+                        data={
+                            "chat_id": CANAL_PEDIDOS,
+                            "photo": cover,
+                            "caption": caption,
+                            "parse_mode": "HTML",
+                        },
+                    )
+                else:
+                    await client.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        data={
+                            "chat_id": CANAL_PEDIDOS,
+                            "text": caption,
+                            "parse_mode": "HTML",
+                        },
+                    )
+
+        return JSONResponse({
+            "ok": True,
+            "message": "Pedido enviado com sucesso.",
+            "used": used + 1,
+            "remaining": max(0, 3 - (used + 1)),
+        })
+
+    except Exception as e:
+        print("[pedido] falha ao enviar pedido:", repr(e), flush=True)
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "message": "Não foi possível enviar seu pedido."}, status_code=500)
+
+
+@app.post("/api/pedido/report")
+async def api_pedido_report(payload: dict = Body(...)):
+    try:
+        user_id = int(payload.get("user_id") or 0)
+        username = str(payload.get("username") or "").strip()
+        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
+        report_type = str(payload.get("report_type") or "Outro").strip()
+        message = str(payload.get("message") or "").strip()
+
+        if user_id <= 0 or not message:
+            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
+
+        save_webapp_report(user_id, username, full_name, report_type, message)
+
+        if CANAL_PEDIDOS and BOT_TOKEN:
+            text = (
+                f"⚠️ <b>NOVO REPORT</b>\n\n"
+                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
+                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
+                f"🏷 <b>Tipo:</b> {report_type}\n"
+                f"📝 <b>Mensagem:</b>\n{message}"
+            )
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    data={
+                        "chat_id": CANAL_PEDIDOS,
+                        "text": text,
+                        "parse_mode": "HTML",
+                    },
+                )
+
+        return JSONResponse({"ok": True, "message": "Report enviado com sucesso."})
+
+    except Exception as e:
+        print("[pedido] falha ao enviar report:", repr(e), flush=True)
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "message": "Não foi possível enviar o report."}, status_code=500)
+
+
+@app.get("/pedido", response_class=HTMLResponse)
+def pedido_page():
+    html = """<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Central de Pedidos — Source Baltigo</title>
+  <style>
+    :root {
+      --bg0:#060b14; --bg1:#0c1627; --card:rgba(255,255,255,.05); --stroke:rgba(255,255,255,.10);
+      --stroke2:rgba(255,255,255,.18); --txt:rgba(255,255,255,.94); --muted:rgba(255,255,255,.58);
+      --blue:rgba(79,139,255,.30); --blue2:#5da7ff; --green:#45e58d; --red:#ff6565; --yellow:#ffcf5a;
+      --shadow:0 20px 40px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box} html,body{height:100%} body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:var(--txt);background:
+      radial-gradient(1000px 500px at 10% 0%, rgba(60,130,246,.18), transparent 60%),
+      radial-gradient(900px 500px at 100% 20%, rgba(168,85,247,.14), transparent 60%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));}
+    .wrap{max-width:960px;margin:0 auto;padding:16px 14px 40px}.hero{border:1px solid var(--stroke);border-radius:28px;overflow:hidden;box-shadow:var(--shadow);background:rgba(255,255,255,.03)}
+    .heroTop{position:relative;height:190px;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.70)), url('__PEDIDO_BANNER__') center/cover no-repeat}
+    .heroBody{padding:18px}.eyebrow{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border-radius:999px;border:1px solid rgba(93,167,255,.35);background:rgba(93,167,255,.12);font-size:12px;font-weight:900;letter-spacing:.10em;text-transform:uppercase}
+    h1{margin:14px 0 6px;font-size:26px;line-height:1.1}.sub{color:var(--muted);font-size:14px;line-height:1.45}.limitBox{margin-top:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid var(--stroke)}
+    .limitBar{height:10px;width:160px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.limitFill{height:100%;width:0;background:linear-gradient(90deg,#4f8bff,#45e58d)}
+    .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.tab{padding:14px 10px;border-radius:18px;text-align:center;border:1px solid var(--stroke);background:rgba(255,255,255,.04);font-weight:900;letter-spacing:.06em;cursor:pointer;user-select:none}.tab.active{background:var(--blue);border-color:rgba(93,167,255,.45)}
+    .panel{margin-top:16px;padding:16px;border-radius:24px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);box-shadow:var(--shadow)}
+    .searchRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.searchWrap{flex:1;min-width:220px;display:flex;gap:10px;align-items:center;padding:14px 14px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.04)}
+    .searchWrap input,.reportBox textarea{width:100%;border:0;outline:none;background:transparent;color:var(--txt);font-size:14px}.searchWrap input::placeholder,.reportBox textarea::placeholder{color:rgba(255,255,255,.35)}
+    .btn{border:0;border-radius:18px;padding:14px 16px;font-weight:900;letter-spacing:.06em;cursor:pointer}.btnPrimary{background:#5da7ff;color:#08111f}.btnGhost{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--stroke)}
+    .hint{margin-top:10px;color:var(--muted);font-size:13px}.results{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.empty{padding:26px 14px;text-align:center;color:var(--muted);border:1px dashed var(--stroke);border-radius:20px;margin-top:16px}
+    .card{border-radius:22px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.04);box-shadow:0 16px 28px rgba(0,0,0,.35)}
+    .cover{height:220px;background:linear-gradient(135deg,rgba(93,167,255,.16),rgba(255,255,255,.03));position:relative}.cover img{width:100%;height:100%;object-fit:cover;display:block}.badge{position:absolute;left:12px;bottom:12px;padding:8px 10px;border-radius:14px;background:rgba(0,0,0,.45);backdrop-filter:blur(10px);font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;border:1px solid rgba(255,255,255,.14)}
+    .meta{padding:14px}.title{font-size:14px;font-weight:900;line-height:1.22;letter-spacing:.03em;text-transform:uppercase}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chip{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);font-size:11px;font-weight:800;color:rgba(255,255,255,.76)}
+    .state{margin-top:12px;font-size:12px;font-weight:900;letter-spacing:.05em}.ok{color:var(--green)} .warn{color:var(--yellow)} .bad{color:#ff8b8b}
+    .card .btn{width:100%;margin-top:12px}.reportTypes{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px}.rType{padding:12px 10px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);text-align:center;font-weight:800;cursor:pointer}.rType.active{background:rgba(255,101,101,.16);border-color:rgba(255,101,101,.38)}
+    .reportBox{margin-top:12px;padding:14px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.04)} .reportBox textarea{min-height:130px;resize:vertical}
+    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;padding:14px 16px;border-radius:16px;background:rgba(7,11,20,.92);border:1px solid var(--stroke2);box-shadow:var(--shadow);display:none;z-index:50}.toast.show{display:block}
+    .skeleton{height:316px;border-radius:22px;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.09),rgba(255,255,255,.05));background-size:200% 100%;animation:sh 1.2s linear infinite} @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    @media (min-width: 760px){.results{grid-template-columns:repeat(3,1fr)}.heroTop{height:240px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="heroTop"></div>
+      <div class="heroBody">
+        <div class="eyebrow">📩 Mini App • Central unificada</div>
+        <h1>Central de Pedidos</h1>
+        <div class="sub">Peça <b>animes</b>, <b>mangás</b> e envie <b>reports</b> em um só lugar, com o mesmo padrão dos outros miniapps do bot.</div>
+        <div class="limitBox">
+          <div>
+            <div style="font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:12px">Limite diário</div>
+            <div id="limitText" class="sub" style="margin-top:6px">Carregando...</div>
+          </div>
+          <div class="limitBar"><div class="limitFill" id="limitFill"></div></div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" data-tab="anime">🎬 Anime</div>
+          <div class="tab" data-tab="manga">📚 Mangá</div>
+          <div class="tab" data-tab="report">⚠️ Reportar erro</div>
+        </div>
+
+        <div id="panelAnime" class="panel">
+          <div class="searchRow">
+            <div class="searchWrap"><span>🔎</span><input id="searchAnime" placeholder="Busque um anime no AniList..."></div>
+            <button class="btn btnPrimary" id="btnSearchAnime">Buscar</button>
+          </div>
+          <div class="hint">Dica: pesquise pelo nome mais conhecido para encontrar mais rápido.</div>
+          <div id="animeResults" class="results"></div>
+          <div id="animeEmpty" class="empty">Pesquise um anime para começar.</div>
+        </div>
+
+        <div id="panelManga" class="panel" style="display:none">
+          <div class="searchRow">
+            <div class="searchWrap"><span>🔎</span><input id="searchManga" placeholder="Busque um mangá no AniList..."></div>
+            <button class="btn btnPrimary" id="btnSearchManga">Buscar</button>
+          </div>
+          <div class="hint">Você pode pedir mangás, manhwas e novels que apareçam no AniList.</div>
+          <div id="mangaResults" class="results"></div>
+          <div id="mangaEmpty" class="empty">Pesquise um mangá para começar.</div>
+        </div>
+
+        <div id="panelReport" class="panel" style="display:none">
+          <div style="font-weight:900;text-transform:uppercase;letter-spacing:.06em;font-size:13px;margin-bottom:12px">Tipo do report</div>
+          <div class="reportTypes" id="reportTypes">
+            <div class="rType active" data-type="Bug visual">Bug visual</div>
+            <div class="rType" data-type="Erro ao abrir">Erro ao abrir</div>
+            <div class="rType" data-type="Anime faltando">Anime faltando</div>
+            <div class="rType" data-type="Mangá faltando">Mangá faltando</div>
+            <div class="rType" data-type="Card errado">Card errado</div>
+            <div class="rType" data-type="Outro">Outro</div>
+          </div>
+          <div class="reportBox"><textarea id="reportMessage" placeholder="Descreva o problema com o máximo de detalhe possível..."></textarea></div>
+          <div class="hint">O report é enviado para o mesmo canal privado de pedidos.</div>
+          <button class="btn btnPrimary" id="btnSendReport" style="margin-top:12px;width:100%">Enviar report</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
+const currentUser = {
+  id: user && user.id ? Number(user.id) : 0,
+  username: user && user.username ? user.username : '',
+  full_name: user ? [user.first_name || '', user.last_name || ''].join(' ').trim() : ''
+};
+
+let currentTab = 'anime';
+let currentReportType = 'Bug visual';
+let limitState = {limit:3, used:0, remaining:3};
+
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(window.__toastT); window.__toastT=setTimeout(()=>el.classList.remove('show'), 3400);}
+function esc(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+function setTab(tab){ currentTab=tab; document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===tab)); document.getElementById('panelAnime').style.display = tab==='anime'?'block':'none'; document.getElementById('panelManga').style.display = tab==='manga'?'block':'none'; document.getElementById('panelReport').style.display = tab==='report'?'block':'none'; }
+async function getJSON(url){ const r=await fetch(url); const d=await r.json(); if(!r.ok||d.ok===false) throw new Error(d.message || 'Erro'); return d; }
+async function postJSON(url,payload){ const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const d=await r.json(); if(!r.ok||d.ok===false) throw new Error(d.message || 'Erro'); return d; }
+function updateLimitUI(){ const used=limitState.used||0, limit=limitState.limit||3, remaining=Math.max(0, limit-used); document.getElementById('limitText').textContent = `Pedidos restantes hoje: ${remaining}/${limit}`; document.getElementById('limitFill').style.width = `${Math.min(100,(used/limit)*100)}%`; }
+async function loadLimit(){ if(!currentUser.id){ document.getElementById('limitText').textContent='Abra este Mini App pelo Telegram.'; return; } try{ limitState = await getJSON(`/api/pedido/limit?uid=${currentUser.id}`); updateLimitUI(); }catch(e){ document.getElementById('limitText').textContent='Não foi possível carregar o limite.'; }}
+function skeletons(containerId, emptyId){ document.getElementById(emptyId).style.display='none'; const c=document.getElementById(containerId); c.innerHTML=''; for(let i=0;i<6;i++){ const d=document.createElement('div'); d.className='skeleton'; c.appendChild(d);} }
+function renderResults(containerId, emptyId, items, mediaType){ const c=document.getElementById(containerId); const e=document.getElementById(emptyId); c.innerHTML=''; if(!items || !items.length){ e.textContent='Nenhum resultado encontrado.'; e.style.display='block'; return; } e.style.display='none'; for(const item of items){ const stateText = item.already_exists ? 'Já está disponível no catálogo' : (item.already_requested ? 'Já foi pedido e está em análise' : 'Disponível para pedido'); const stateClass = item.already_exists ? 'bad' : (item.already_requested ? 'warn' : 'ok'); const sub = []; if(item.year) sub.push(item.year); if(item.score) sub.push('★ '+item.score); if(item.format) sub.push(item.format); if(mediaType==='anime' && item.episodes) sub.push(item.episodes+' eps'); if(mediaType==='manga' && item.chapters) sub.push(item.chapters+' caps'); const disabled = item.already_exists || item.already_requested || (limitState.used >= (limitState.limit||3)); const el=document.createElement('div'); el.className='card'; el.innerHTML = `
+  <div class="cover">${item.cover ? `<img src="${esc(item.cover)}" alt="${esc(item.title)}">` : ''}<div class="badge">${esc(mediaType.toUpperCase())}</div></div>
+  <div class="meta">
+    <div class="title">${esc(item.title)}</div>
+    <div class="chips">${sub.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>
+    <div class="state ${stateClass}">${esc(stateText)}</div>
+    <button class="btn ${disabled ? 'btnGhost' : 'btnPrimary'}" ${disabled ? 'disabled' : ''}>${disabled ? 'Indisponível' : 'Pedir agora'}</button>
+  </div>`;
+      const btn = el.querySelector('button');
+      if(!disabled){ btn.addEventListener('click', ()=>sendRequest(mediaType, item)); }
+      c.appendChild(el);
+    }
+}
+async function runSearch(mediaType){ if(!currentUser.id){ toast('Abra este Mini App dentro do Telegram.'); return; } const inputId = mediaType==='anime' ? 'searchAnime' : 'searchManga'; const containerId = mediaType==='anime' ? 'animeResults' : 'mangaResults'; const emptyId = mediaType==='anime' ? 'animeEmpty' : 'mangaEmpty'; const q=(document.getElementById(inputId).value||'').trim(); if(!q){ toast('Digite um nome para buscar.'); return; } skeletons(containerId, emptyId); try{ const data = await getJSON(`/api/pedido/search?q=${encodeURIComponent(q)}&media_type=${mediaType}`); renderResults(containerId, emptyId, data.items||[], mediaType); }catch(e){ document.getElementById(containerId).innerHTML=''; document.getElementById(emptyId).textContent=e.message || 'Não foi possível buscar agora.'; document.getElementById(emptyId).style.display='block'; }}
+async function sendRequest(mediaType, item){ if(!currentUser.id){ toast('Abra este Mini App dentro do Telegram.'); return; } try{ const data = await postJSON('/api/pedido/send', { user_id: currentUser.id, username: currentUser.username, full_name: currentUser.full_name, media_type: mediaType, anilist_id: item.id, title: item.title, cover: item.cover || '' }); limitState.used = data.used; limitState.remaining = data.remaining; updateLimitUI(); toast(`✅ ${item.title} enviado com sucesso.`); }catch(e){ toast(e.message || 'Não foi possível enviar o pedido.'); }}
+async function sendReport(){ if(!currentUser.id){ toast('Abra este Mini App dentro do Telegram.'); return; } const message=(document.getElementById('reportMessage').value||'').trim(); if(!message){ toast('Descreva o problema antes de enviar.'); return; } try{ await postJSON('/api/pedido/report', { user_id: currentUser.id, username: currentUser.username, full_name: currentUser.full_name, report_type: currentReportType, message }); document.getElementById('reportMessage').value=''; toast('✅ Report enviado com sucesso.'); }catch(e){ toast(e.message || 'Não foi possível enviar o report.'); }}
+
+document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>setTab(el.dataset.tab)));
+document.querySelectorAll('.rType').forEach(el=>el.addEventListener('click',()=>{ document.querySelectorAll('.rType').forEach(x=>x.classList.remove('active')); el.classList.add('active'); currentReportType=el.dataset.type; }));
+document.getElementById('btnSearchAnime').addEventListener('click',()=>runSearch('anime'));
+document.getElementById('btnSearchManga').addEventListener('click',()=>runSearch('manga'));
+document.getElementById('btnSendReport').addEventListener('click',sendReport);
+document.getElementById('searchAnime').addEventListener('keydown',(e)=>{ if(e.key==='Enter') runSearch('anime'); });
+document.getElementById('searchManga').addEventListener('keydown',(e)=>{ if(e.key==='Enter') runSearch('manga'); });
+loadLimit();
+</script>
+</body>
+</html>
+"""
+    return HTMLResponse(html.replace("__PEDIDO_BANNER__", PEDIDO_BANNER_URL))
