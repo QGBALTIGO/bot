@@ -2,10 +2,6 @@
 # BUILD CARDS ASSETS (ANILIST)
 # =========================================================
 
-import json
-import asyncio
-import aiohttp
-
 CARDS_FILE = "data/cards_assets.json"
 CHAR_FILE = "data/personagens_anilist.txt"
 
