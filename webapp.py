@@ -2513,58 +2513,77 @@ load()
 # LOGIN ANILIST
 # =========================
 
+from fastapi.responses import HTMLResponse
+import os
+import base64
+import requests
+
+from database import save_anilist_account
+
+
 @app.get("/callback")
 async def anilist_callback(code: str, state: str):
 
-    padded = state + "=" * (-len(state) % 4)
-    decoded = base64.urlsafe_b64decode(padded)
+    try:
 
-    payload, sig = decoded.rsplit(b".", 1)
+        padded = state + "=" * (-len(state) % 4)
+        decoded = base64.urlsafe_b64decode(padded)
 
-    user_id, ts = payload.decode().split(".")
-    telegram_id = int(user_id)
+        payload, sig = decoded.rsplit(b".", 1)
 
-    token_url = "https://anilist.co/api/v2/oauth/token"
+        user_id, ts = payload.decode().split(".")
+        telegram_id = int(user_id)
 
-    data = {
-        "grant_type": "authorization_code",
-        "client_id": os.getenv("ANILIST_CLIENT_ID"),
-        "client_secret": os.getenv("ANILIST_CLIENT_SECRET"),
-        "redirect_uri": f"{os.getenv('BASE_URL')}/callback",
-        "code": code,
-    }
+        token_url = "https://anilist.co/api/v2/oauth/token"
 
-    r = requests.post(token_url, json=data)
+        data = {
+            "grant_type": "authorization_code",
+            "client_id": os.getenv("ANILIST_CLIENT_ID"),
+            "client_secret": os.getenv("ANILIST_CLIENT_SECRET"),
+            "redirect_uri": f"{os.getenv('BASE_URL')}/callback",
+            "code": code,
+        }
 
-    token = r.json()["access_token"]
+        r = requests.post(token_url, json=data)
 
-    query = """
-    query {
-      Viewer {
-        id
-        name
-      }
-    }
-    """
+        token_data = r.json()
 
-    headers = {"Authorization": f"Bearer {token}"}
+        if "access_token" not in token_data:
+            return HTMLResponse(f"Erro AniList: {token_data}")
 
-    r = requests.post(
-        "https://graphql.anilist.co",
-        json={"query": query},
-        headers=headers
-    )
+        token = token_data["access_token"]
 
-    data = r.json()["data"]["Viewer"]
+        query = """
+        query {
+          Viewer {
+            id
+            name
+          }
+        }
+        """
 
-    save_anilist_account(
-        telegram_id,
-        data["id"],
-        data["name"],
-        token
-    )
+        headers = {"Authorization": f"Bearer {token}"}
 
-    return HTMLResponse("""
-    <h2>✅ Conta AniList conectada!</h2>
-    <p>Você já pode voltar ao Telegram.</p>
-    """)
+        r = requests.post(
+            "https://graphql.anilist.co",
+            json={"query": query},
+            headers=headers
+        )
+
+        viewer = r.json()["data"]["Viewer"]
+
+        save_anilist_account(
+            telegram_id,
+            viewer["id"],
+            viewer["name"],
+            token
+        )
+
+        return HTMLResponse("""
+        <h2>✅ Conta AniList conectada!</h2>
+        <p>Você já pode voltar ao Telegram.</p>
+        """)
+
+    except Exception as e:
+
+        return HTMLResponse(f"<h2>Erro:</h2><pre>{e}</pre>")
