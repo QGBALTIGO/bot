@@ -2,7 +2,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
 
-from utils.gatekeeper import TERMS_VERSION
+from utils.gatekeeper import gatekeeper
 
 from cards_service import find_anime
 
