@@ -18,7 +18,7 @@
 #   CATALOG_TITLE="CATÁLOGO"
 #   CATALOG_SUBTITLE="TOTAL"
 #
-# Rotas:
+# Rotas
 #   GET  /                  -> health
 #   GET  /terms             -> MiniApp (Termos)
 #   POST /api/channel/check -> verifica inscrição no canal
