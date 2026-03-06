@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 
-CARDS_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZyvh2mmo3LWFjXlOT23EKmzTblnf5rGpAAIiDGsbzg9IRQ8V6kjWRBTgAQADAgADeQADOgQ/photo.jpg"
+CARDS_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
