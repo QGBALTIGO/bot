@@ -1,5 +1,4 @@
 import os
-import requests
 from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
@@ -12,7 +11,6 @@ pool = ConnectionPool(
     max_size=10,
     timeout=10,
 )
-
 
 def _run(sql: str, params=(), fetch: str = "none"):
     with pool.connection() as conn:
@@ -40,21 +38,23 @@ def _run(sql: str, params=(), fetch: str = "none"):
                     pass
                 raise
 
-
 def create_tables():
+    # 1) cria tabela base (se não existir)
     _run("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY
     );
     """)
 
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;")
+    # 2) migra colunas (seguro)
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
 
+    # NOVO: obrigatoriedade do canal + controle de mensagens
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
 
 def create_or_get_user(user_id: int):
     _run(
@@ -62,13 +62,11 @@ def create_or_get_user(user_id: int):
         (user_id,)
     )
 
-
 def set_language(user_id: int, lang: str):
     _run(
         "UPDATE users SET lang = %s WHERE user_id = %s",
         (lang, user_id)
     )
-
 
 def accept_terms(user_id: int, version: str):
     _run(
@@ -82,7 +80,6 @@ def accept_terms(user_id: int, version: str):
         (version, user_id)
     )
 
-
 def has_accepted_terms(user_id: int, version: str) -> bool:
     row = _run(
         "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
@@ -94,7 +91,6 @@ def has_accepted_terms(user_id: int, version: str) -> bool:
     accepted, v = row
     return bool(accepted) and (v == version)
 
-
 def get_user_status(user_id: int):
     row = _run(
         "SELECT lang, terms_accepted, terms_version, welcome_sent FROM users WHERE user_id = %s",
@@ -103,7 +99,6 @@ def get_user_status(user_id: int):
     )
     if not row:
         return None
-
     lang, terms_accepted, terms_version, welcome_sent = row
     return {
         "lang": lang,
@@ -112,12 +107,8 @@ def get_user_status(user_id: int):
         "welcome_sent": bool(welcome_sent),
     }
 
-
 def mark_welcome_sent(user_id: int):
     _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (user_id,))
 
-
 def reset_welcome_sent(user_id: int):
     _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (user_id,))
-
-
