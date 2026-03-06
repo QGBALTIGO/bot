@@ -33,6 +33,9 @@ import os
 import json
 import re
 import traceback
+import asyncio
+import time
+import httpx
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -2188,9 +2191,167 @@ def api_cards_characters(anime_id: str):
     return JSONResponse([])
 
 
-# =========================
-# MINIAPP — CARDS
-# =========================
+# =========================================================
+# CARDS SYSTEM — PERSONAGENS (ANILIST)
+# =========================================================
+
+ANILIST_API = "https://graphql.anilist.co"
+CHARACTERS_FILE = "data/personagens_anilist.txt"
+
+CHAR_CACHE = {}
+CACHE_TTL = 3600
+
+
+def load_characters():
+
+    animes = {}
+
+    try:
+
+        with open(CHARACTERS_FILE, encoding="utf-8") as f:
+
+            for line in f:
+
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                parts = line.split("|")
+
+                if len(parts) < 4:
+                    continue
+
+                char_id = int(parts[0])
+                name = parts[1]
+                anime = parts[2]
+                anime_id = int(parts[3])
+
+                if anime_id not in animes:
+
+                    animes[anime_id] = {
+                        "anime": anime,
+                        "anime_id": anime_id,
+                        "characters": []
+                    }
+
+                animes[anime_id]["characters"].append({
+                    "id": char_id,
+                    "name": name,
+                    "anime": anime
+                })
+
+    except Exception as e:
+        print("Erro ao carregar personagens:", e)
+
+    return list(animes.values())
+
+
+async def fetch_anime_characters(anime_id: int):
+
+    now = time.time()
+
+    if anime_id in CHAR_CACHE:
+
+        data, ts = CHAR_CACHE[anime_id]
+
+        if now - ts < CACHE_TTL:
+            return data
+
+    query = """
+    query ($id:Int){
+      Media(id:$id,type:ANIME){
+        characters(page:1,perPage:50){
+          edges{
+            node{
+              id
+              name{full}
+              image{large}
+            }
+          }
+        }
+      }
+    }
+    """
+
+    async with httpx.AsyncClient() as client:
+
+        r = await client.post(
+            ANILIST_API,
+            json={"query": query, "variables": {"id": anime_id}},
+        )
+
+        data = r.json()
+
+    chars = {}
+
+    try:
+
+        edges = data["data"]["Media"]["characters"]["edges"]
+
+        for c in edges:
+
+            node = c["node"]
+
+            chars[node["id"]] = {
+                "name": node["name"]["full"],
+                "image": node["image"]["large"]
+            }
+
+    except Exception as e:
+        print("Erro AniList:", e)
+
+    CHAR_CACHE[anime_id] = (chars, now)
+
+    return chars
+
+
+@app.get("/api/cards/animes")
+def api_cards_animes():
+
+    data = load_characters()
+
+    data.sort(key=lambda x: x["anime"])
+
+    return JSONResponse(data)
+
+
+@app.get("/api/cards/characters")
+async def api_cards_characters(anime_id: int):
+
+    data = load_characters()
+
+    anime = None
+
+    for a in data:
+        if a["anime_id"] == anime_id:
+            anime = a
+            break
+
+    if not anime:
+        return JSONResponse([])
+
+    images = await fetch_anime_characters(anime_id)
+
+    result = []
+
+    for c in anime["characters"]:
+
+        img = images.get(c["id"], {}).get("image", "")
+
+        result.append({
+            "id": c["id"],
+            "name": c["name"],
+            "anime": c["anime"],
+            "image": img
+        })
+
+    return JSONResponse(result)
+
+
+# =========================================================
+# PAGE /cards
+# =========================================================
 
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page():
@@ -2207,7 +2368,7 @@ def cards_page():
 
 body{
 margin:0;
-font-family:-apple-system,system-ui,Segoe UI,Roboto;
+font-family:-apple-system,system-ui;
 background:linear-gradient(180deg,#070b12,#0a1220);
 color:white;
 }
@@ -2222,7 +2383,6 @@ align-items:end;
 padding:20px;
 font-weight:900;
 font-size:24px;
-letter-spacing:.08em;
 }
 
 .search{
@@ -2236,7 +2396,6 @@ border-radius:14px;
 border:none;
 background:#111827;
 color:white;
-font-weight:600;
 }
 
 .grid{
@@ -2247,15 +2406,10 @@ padding:16px;
 }
 
 .card{
-border-radius:20px;
+border-radius:18px;
 overflow:hidden;
 background:#111827;
 cursor:pointer;
-transition:.15s;
-}
-
-.card:hover{
-transform:translateY(-3px);
 }
 
 .card img{
@@ -2275,9 +2429,7 @@ font-weight:800;
 
 <body>
 
-<div class="banner">
-COLEÇÃO DE PERSONAGENS
-</div>
+<div class="banner">COLEÇÃO DE PERSONAGENS</div>
 
 <div class="search">
 <input id="search" placeholder="Buscar anime...">
@@ -2348,12 +2500,12 @@ load()
     return HTMLResponse(html)
 
 
-# =========================
-# PERSONAGENS
-# =========================
+# =========================================================
+# PAGE /cards/anime
+# =========================================================
 
 @app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime: str):
+def cards_anime_page(anime: int):
 
     html = """
 <!doctype html>
@@ -2446,7 +2598,10 @@ let html=""
 
 list.forEach(c=>{
 
-let img="https://img.anili.st/character/"+c.id+"/large"
+let img=c.image
+
+if(!img)
+img="https://img.anili.st/character/"+c.id+"/large"
 
 html+=`
 <div class="card">
@@ -2490,6 +2645,6 @@ load()
 </html>
 """
 
-    html = html.replace("__ANIME__", anime)
+    html = html.replace("__ANIME__", str(anime))
 
     return HTMLResponse(html)
