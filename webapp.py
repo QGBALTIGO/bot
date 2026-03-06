@@ -4275,535 +4275,406 @@ def cards_anime_page(anime_id: int = Query(...)):
     html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
     return HTMLResponse(html)
 
-# =========================
-# CONFIG — PEDIDOS / REPORTS
-# =========================
-CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS", "").strip()
-PEDIDO_BANNER_URL = os.getenv(
-    "PEDIDO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
-).strip()
+# ============================================
+# SISTEMA DE PEDIDOS (ANIME / MANGA / REPORT)
+# ============================================
 
-from database import (
-    create_media_request_tables,
-    count_user_media_requests_last_24h,
-    media_request_exists,
-    save_media_request,
-    save_webapp_report,
-    normalize_media_title,
-)
+import httpx
+import traceback
+from fastapi import Body, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 
-create_media_request_tables()
+CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS","").strip()
 
-_PEDIDO_ANIME_INDEX = {"title_norm": set(), "anilist_ids": set()}
-_PEDIDO_MANGA_INDEX = {"title_norm": set(), "anilist_ids": set()}
+# --------------------------------
+# BUSCA ANILIST
+# --------------------------------
 
+async def anilist_search(q: str, media_type: str):
 
-def _pedido_build_index(records: List[Dict[str, Any]], media_type: str):
-    idx = {"title_norm": set(), "anilist_ids": set()}
-    for rec in records:
-        try:
-            title = ""
-            anilist_id = None
-            if isinstance(rec, dict):
-                title = str(rec.get("title_raw") or rec.get("titulo") or rec.get("title") or "").strip()
-                anilist = rec.get("anilist")
-                if isinstance(anilist, dict):
-                    title = str(anilist.get("title_display") or title).strip()
-                    anilist_id = anilist.get("anilist_id") or anilist.get("id")
-            if title:
-                idx["title_norm"].add(normalize_media_title(title))
-            if anilist_id:
-                try:
-                    idx["anilist_ids"].add(int(anilist_id))
-                except Exception:
-                    pass
-        except Exception:
-            continue
-    return idx
-
-
-def _pedido_reload_indexes():
-    global _PEDIDO_ANIME_INDEX, _PEDIDO_MANGA_INDEX
-    _PEDIDO_ANIME_INDEX = _pedido_build_index(_unwrap_records(load_json(CATALOG_PATH)), "anime")
-    _PEDIDO_MANGA_INDEX = _pedido_build_index(_unwrap_records(load_json(MANGA_CATALOG_PATH)), "manga")
-
-
-try:
-    _pedido_reload_indexes()
-except Exception as e:
-    print("[pedido] falha ao montar índices:", repr(e), flush=True)
-
-
-def _pedido_catalog_contains(media_type: str, title: str, anilist_id=None) -> bool:
-    idx = _PEDIDO_ANIME_INDEX if media_type == "anime" else _PEDIDO_MANGA_INDEX
-    if anilist_id:
-        try:
-            if int(anilist_id) in idx["anilist_ids"]:
-                return True
-        except Exception:
-            pass
-    return normalize_media_title(title) in idx["title_norm"]
-
-
-async def _pedido_anilist_search(query_text: str, media_type: str):
-    media_type = "ANIME" if media_type == "anime" else "MANGA"
     gql = """
     query ($search: String, $type: MediaType) {
-      Page(page: 1, perPage: 12) {
-        media(search: $search, type: $type, sort: POPULARITY_DESC) {
+      Page(page:1, perPage:8) {
+        media(search:$search,type:$type){
           id
-          title { romaji english native }
-          coverImage { large }
+          title{romaji english}
+          coverImage{large}
           averageScore
           format
-          status
           seasonYear
-          episodes
-          chapters
         }
       }
     }
     """
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
+    async with httpx.AsyncClient(timeout=20) as client:
+
+        r = await client.post(
             "https://graphql.anilist.co",
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            json={"query": gql, "variables": {"search": query_text, "type": media_type}},
+            json={
+                "query":gql,
+                "variables":{
+                    "search":q,
+                    "type":media_type
+                }
+            }
         )
-        response.raise_for_status()
-        data = response.json()
 
-    return ((data or {}).get("data") or {}).get("Page", {}).get("media", []) or []
+        j = r.json()
 
+    media = j.get("data",{}).get("Page",{}).get("media",[])
 
-@app.get("/api/pedido/limit")
-def api_pedido_limit(uid: int = Query(...)):
-    used = count_user_media_requests_last_24h(uid)
-    remaining = max(0, 3 - used)
-    return JSONResponse({"ok": True, "used": used, "remaining": remaining, "limit": 3})
+    out=[]
 
+    for m in media:
 
-@app.get("/api/pedido/search")
-async def api_pedido_search(q: str = Query(..., min_length=1, max_length=80), media_type: str = Query(...)):
-    media_type = (media_type or "").strip().lower()
-    if media_type not in ("anime", "manga"):
-        return JSONResponse({"ok": False, "message": "media_type inválido"}, status_code=400)
+        title = (
+            m.get("title",{}).get("romaji")
+            or m.get("title",{}).get("english")
+            or "Sem título"
+        )
 
-    try:
-        results = await _pedido_anilist_search(q.strip(), media_type)
-        items = []
-        for x in results:
-            title = ((x.get("title") or {}).get("romaji") or (x.get("title") or {}).get("english") or (x.get("title") or {}).get("native") or "").strip()
-            aid = x.get("id")
-            exists_catalog = _pedido_catalog_contains(media_type, title, aid)
-            exists_request = media_request_exists(media_type, title, aid)
-            items.append({
-                "id": aid,
-                "title": title,
-                "cover": ((x.get("coverImage") or {}).get("large") or ""),
-                "score": x.get("averageScore"),
-                "format": x.get("format"),
-                "status": x.get("status"),
-                "year": x.get("seasonYear"),
-                "episodes": x.get("episodes"),
-                "chapters": x.get("chapters"),
-                "already_exists": bool(exists_catalog),
-                "already_requested": bool(exists_request),
-            })
-        return JSONResponse({"ok": True, "items": items})
-    except Exception as e:
-        print("[pedido] busca AniList falhou:", repr(e), flush=True)
-        return JSONResponse({"ok": False, "message": "Não foi possível buscar agora."}, status_code=502)
-
-
-@app.post("/api/pedido/send")
-async def api_pedido_send(payload: dict = Body(...)):
-    try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
-        media_type = str(payload.get("media_type") or "").strip().lower()
-        anilist_id = payload.get("anilist_id")
-        title = str(payload.get("title") or "").strip()
-        cover = str(payload.get("cover") or "").strip()
-
-        if user_id <= 0 or media_type not in ("anime", "manga") or not title:
-            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
-
-        used = count_user_media_requests_last_24h(user_id)
-        if used >= 3:
-            return JSONResponse({"ok": False, "code": "limit", "message": "Você atingiu o limite de 3 pedidos nas últimas 24h."}, status_code=429)
-
-        if _pedido_catalog_contains(media_type, title, anilist_id):
-            return JSONResponse({"ok": False, "code": "exists", "message": "Esse título já está disponível no catálogo."}, status_code=409)
-
-        if media_request_exists(media_type, title, anilist_id):
-            return JSONResponse({"ok": False, "code": "requested", "message": "Esse título já foi pedido e está em análise."}, status_code=409)
-
-        save_media_request(user_id, username, full_name, media_type, title, anilist_id, cover)
-
-        if CANAL_PEDIDOS and BOT_TOKEN:
-            caption = (
-                f"📥 <b>NOVO PEDIDO</b>\n\n"
-                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
-                f"🎴 <b>Tipo:</b> {media_type.upper()}\n"
-                f"📝 <b>Título:</b> <i>{title}</i>\n"
-                f"🆔 <b>AniList ID:</b> <code>{anilist_id or '-'}</code>"
-            )
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                if cover:
-                    await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                        data={
-                            "chat_id": CANAL_PEDIDOS,
-                            "photo": cover,
-                            "caption": caption,
-                            "parse_mode": "HTML",
-                        },
-                    )
-                else:
-                    await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        data={
-                            "chat_id": CANAL_PEDIDOS,
-                            "text": caption,
-                            "parse_mode": "HTML",
-                        },
-                    )
-
-        return JSONResponse({
-            "ok": True,
-            "message": "Pedido enviado com sucesso.",
-            "used": used + 1,
-            "remaining": max(0, 3 - (used + 1)),
+        out.append({
+            "id":m.get("id"),
+            "title":title,
+            "cover":m.get("coverImage",{}).get("large"),
+            "score":m.get("averageScore"),
+            "year":m.get("seasonYear"),
+            "format":m.get("format")
         })
 
-    except Exception as e:
-        print("[pedido] falha ao enviar pedido:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Não foi possível enviar seu pedido."}, status_code=500)
+    return out
 
 
-@app.post("/api/pedido/report")
-async def api_pedido_report(payload: dict = Body(...)):
+# --------------------------------
+# LIMITE DE PEDIDOS
+# --------------------------------
+
+@app.get("/api/pedido/limit")
+def pedido_limit(uid:int):
+
+    used = count_user_media_requests_last_24h(uid)
+
+    return {
+        "limit":3,
+        "used":used,
+        "remaining":max(0,3-used)
+    }
+
+
+# --------------------------------
+# BUSCA
+# --------------------------------
+
+@app.get("/api/pedido/search")
+async def pedido_search(q:str,media_type:str):
+
     try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
-        report_type = str(payload.get("report_type") or "Outro").strip()
-        message = str(payload.get("message") or "").strip()
 
-        if user_id <= 0 or not message:
-            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
+        media_type = media_type.upper()
 
-        save_webapp_report(user_id, username, full_name, report_type, message)
+        if media_type not in ("ANIME","MANGA"):
+            return {"ok":False}
 
-        if CANAL_PEDIDOS and BOT_TOKEN:
-            text = (
-                f"⚠️ <b>NOVO REPORT</b>\n\n"
-                f"👤 <b>Usuário:</b> {full_name or 'Sem nome'}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"🔖 <b>Username:</b> @{username if username else 'sem_username'}\n\n"
-                f"🏷 <b>Tipo:</b> {report_type}\n"
-                f"📝 <b>Mensagem:</b>\n{message}"
-            )
-            async with httpx.AsyncClient(timeout=20.0) as client:
+        results = await anilist_search(q,media_type)
+
+        return {
+            "ok":True,
+            "items":results
+        }
+
+    except Exception as e:
+
+        print("erro busca",e)
+
+        return {"ok":False}
+
+
+# --------------------------------
+# ENVIAR PEDIDO
+# --------------------------------
+
+@app.post("/api/pedido/send")
+async def pedido_send(data:dict = Body(...)):
+
+    try:
+
+        user_id = int(data.get("user_id"))
+        username = data.get("username") or ""
+        full_name = data.get("full_name") or ""
+        title = data.get("title")
+        media_type = data.get("media_type")
+        anilist_id = data.get("anilist_id")
+        cover = data.get("cover")
+
+        used = count_user_media_requests_last_24h(user_id)
+
+        if used >= 3:
+
+            return {
+                "ok":False,
+                "msg":"Você atingiu o limite diário"
+            }
+
+        if media_request_exists(media_type,title,anilist_id):
+
+            return {
+                "ok":False,
+                "msg":"Esse título já foi pedido"
+            }
+
+        save_media_request(
+            user_id,
+            username,
+            full_name,
+            media_type,
+            title,
+            anilist_id,
+            cover
+        )
+
+        msg = f"""
+📥 NOVO PEDIDO
+
+👤 {full_name}
+🆔 {user_id}
+
+🎬 Tipo: {media_type}
+📌 {title}
+
+AniList: {anilist_id}
+"""
+
+        async with httpx.AsyncClient() as client:
+
+            if cover:
+
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+                    data={
+                        "chat_id":CANAL_PEDIDOS,
+                        "photo":cover,
+                        "caption":msg
+                    }
+                )
+
+            else:
+
                 await client.post(
                     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                     data={
-                        "chat_id": CANAL_PEDIDOS,
-                        "text": text,
-                        "parse_mode": "HTML",
-                    },
+                        "chat_id":CANAL_PEDIDOS,
+                        "text":msg
+                    }
                 )
 
-        return JSONResponse({"ok": True, "message": "Report enviado com sucesso."})
+        return {
+            "ok":True,
+            "msg":"Pedido enviado!"
+        }
 
     except Exception as e:
-        print("[pedido] falha ao enviar report:", repr(e), flush=True)
+
         traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Não foi possível enviar o report."}, status_code=500)
+
+        return {
+            "ok":False,
+            "msg":"Erro ao enviar pedido"
+        }
 
 
-@app.get("/pedido", response_class=HTMLResponse)
+# --------------------------------
+# REPORTAR ERRO
+# --------------------------------
+
+@app.post("/api/pedido/report")
+async def pedido_report(data:dict = Body(...)):
+
+    try:
+
+        user_id = data.get("user_id")
+        message = data.get("message")
+
+        msg = f"""
+⚠️ REPORT
+
+ID: {user_id}
+
+{message}
+"""
+
+        async with httpx.AsyncClient() as client:
+
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                data={
+                    "chat_id":CANAL_PEDIDOS,
+                    "text":msg
+                }
+            )
+
+        return {"ok":True}
+
+    except:
+
+        return {"ok":False}
+
+
+# --------------------------------
+# MINI APP
+# --------------------------------
+
+@app.get("/pedido",response_class=HTMLResponse)
 def pedido_webapp():
-    html = """
-<!doctype html>
+
+    return HTMLResponse("""
+<!DOCTYPE html>
 <html>
+
 <head>
-<meta charset="utf-8">
+
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
+
 body{
-background:#0b1320;
-font-family:sans-serif;
+background:#0f172a;
 color:white;
-padding:20px;
-}
-
-.container{
-max-width:600px;
-margin:auto;
-}
-
-.tabs{
-display:flex;
-gap:10px;
-margin-bottom:20px;
-}
-
-.tab{
-flex:1;
-padding:12px;
-border-radius:12px;
-background:#1a2742;
-text-align:center;
-cursor:pointer;
-}
-
-.tab.active{
-background:#3a66ff;
+font-family:sans-serif;
+padding:20px
 }
 
 input{
 width:100%;
-padding:14px;
-border-radius:12px;
+padding:12px;
+border-radius:10px;
 border:none;
-background:#18233c;
-color:white;
-margin-bottom:10px;
+margin-bottom:10px
 }
 
 button{
-padding:12px 20px;
+padding:10px 16px;
 border:none;
 border-radius:10px;
-background:#3a66ff;
+background:#3b82f6;
 color:white;
-cursor:pointer;
+cursor:pointer
 }
 
-.result{
-margin-top:20px;
+.card{
+background:#1e293b;
+padding:10px;
+border-radius:10px;
+margin-top:10px;
+display:flex;
+gap:10px
 }
+
+img{
+width:60px;
+border-radius:6px
+}
+
 </style>
+
 </head>
 
 <body>
 
-<div class="container">
-
 <h2>📥 Central de Pedidos</h2>
 
-<div class="tabs">
-<div class="tab active" onclick="setTab('anime')" id="t_anime">Anime</div>
-<div class="tab" onclick="setTab('manga')" id="t_manga">Mangá</div>
-<div class="tab" onclick="setTab('erro')" id="t_erro">Erro</div>
-</div>
+<input id="search" placeholder="Buscar...">
 
-<div id="anime">
-<input id="animeInput" placeholder="Buscar anime...">
-<button onclick="buscarAnime()">Buscar</button>
-<div id="animeResult" class="result"></div>
-</div>
+<select id="type">
+<option value="ANIME">Anime</option>
+<option value="MANGA">Mangá</option>
+</select>
 
-<div id="manga" style="display:none">
-<input id="mangaInput" placeholder="Buscar mangá...">
-<button onclick="buscarManga()">Buscar</button>
-<div id="mangaResult" class="result"></div>
-</div>
+<br><br>
 
-<div id="erro" style="display:none">
-<input id="erroInput" placeholder="Descreva o erro">
-<button onclick="reportarErro()">Enviar</button>
-</div>
+<button onclick="buscar()">Buscar</button>
 
-</div>
+<div id="results"></div>
 
 <script>
 
-const tg = window.Telegram.WebApp;
-tg.ready();
+const tg = window.Telegram.WebApp
 
-let user = tg.initDataUnsafe?.user || null;
+tg.ready()
 
-function setTab(tab){
+let user = tg.initDataUnsafe?.user
 
-document.getElementById("anime").style.display="none"
-document.getElementById("manga").style.display="none"
-document.getElementById("erro").style.display="none"
+async function buscar(){
 
-document.getElementById(tab).style.display="block"
+let q=document.getElementById("search").value
+let type=document.getElementById("type").value
 
-document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active"))
-document.getElementById("t_"+tab).classList.add("active")
-}
+let r=await fetch(`/api/pedido/search?q=${q}&media_type=${type}`)
 
-async function buscarAnime(){
-
-let q = document.getElementById("animeInput").value
-
-let r = await fetch("/api/pedido/anime?q="+encodeURIComponent(q))
-let data = await r.json()
+let j=await r.json()
 
 let html=""
 
-data.forEach(a=>{
+j.items.forEach(a=>{
+
 html+=`
-<div style="margin-top:10px">
+<div class="card">
+
+<img src="${a.cover}">
+
+<div>
+
 <b>${a.title}</b>
-<button onclick="pedir('anime','${a.title}')">Pedir</button>
-</div>`
+
+<br>
+
+<button onclick="pedir('${a.id}','${a.title}','${a.cover}','${type}')">
+Pedir
+</button>
+
+</div>
+
+</div>
+`
 })
 
-document.getElementById("animeResult").innerHTML=html
+document.getElementById("results").innerHTML=html
 }
 
-async function buscarManga(){
+async function pedir(id,title,cover,type){
 
-let q = document.getElementById("mangaInput").value
+let r=await fetch("/api/pedido/send",{
 
-let r = await fetch("/api/pedido/manga?q="+encodeURIComponent(q))
-let data = await r.json()
-
-let html=""
-
-data.forEach(a=>{
-html+=`
-<div style="margin-top:10px">
-<b>${a.title}</b>
-<button onclick="pedir('manga','${a.title}')">Pedir</button>
-</div>`
-})
-
-document.getElementById("mangaResult").innerHTML=html
-}
-
-async function pedir(tipo,titulo){
-
-let r = await fetch("/api/pedido/enviar",{
 method:"POST",
-headers:{"Content-Type":"application/json"},
+
+headers:{
+"Content-Type":"application/json"
+},
+
 body:JSON.stringify({
-user_id:user?.id,
-username:user?.username,
-tipo:tipo,
-titulo:titulo
-})
-})
 
-let res = await r.json()
-alert(res.msg)
-}
+user_id:user.id,
+username:user.username,
+full_name:user.first_name,
+media_type:type,
+title:title,
+anilist_id:id,
+cover:cover
 
-async function reportarErro(){
-
-let texto = document.getElementById("erroInput").value
-
-await fetch("/api/pedido/report",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-user_id:user?.id,
-texto:texto
-})
 })
 
-alert("Erro enviado")
+})
+
+let j=await r.json()
+
+alert(j.msg)
+
 }
 
 </script>
 
 </body>
 </html>
-"""
-    return html
-
-@app.get("/api/pedido/anime")
-async def pedido_anime(q: str):
-
-    url = "https://graphql.anilist.co"
-
-    query = """
-    query ($search: String) {
-      Page(perPage:5) {
-        media(search:$search,type:ANIME){
-          title{romaji}
-        }
-      }
-    }
-    """
-
-    async with aiohttp.ClientSession() as s:
-        async with s.post(url,json={"query":query,"variables":{"search":q}}) as r:
-            j = await r.json()
-
-    return [{"title":m["title"]["romaji"]} for m in j["data"]["Page"]["media"]]
-
-    @app.get("/api/pedido/manga")
-async def pedido_manga(q: str):
-
-    url = "https://graphql.anilist.co"
-
-    query = """
-    query ($search: String) {
-      Page(perPage:5) {
-        media(search:$search,type:MANGA){
-          title{romaji}
-        }
-      }
-    }
-    """
-
-    async with aiohttp.ClientSession() as s:
-        async with s.post(url,json={"query":query,"variables":{"search":q}}) as r:
-            j = await r.json()
-
-    return [{"title":m["title"]["romaji"]} for m in j["data"]["Page"]["media"]]
-
-    @app.post("/api/pedido/enviar")
-async def pedido_enviar(data: dict):
-
-    user_id = data.get("user_id")
-    titulo = data.get("titulo")
-    tipo = data.get("tipo")
-
-    msg = f"""
-📥 NOVO PEDIDO
-
-👤 ID: {user_id}
-🎬 Tipo: {tipo}
-📌 Título: {titulo}
-"""
-
-    await bot.send_message(
-        chat_id=CANAL_PEDIDOS,
-        text=msg
-    )
-
-    return {"msg":"Pedido enviado!"}
-
-    @app.post("/api/pedido/report")
-async def pedido_report(data: dict):
-
-    msg = f"""
-⚠️ REPORT DE ERRO
-
-👤 ID: {data.get("user_id")}
-
-📝 {data.get("texto")}
-"""
-
-    await bot.send_message(
-        chat_id=CANAL_PEDIDOS,
-        text=msg
-    )
-
-    return {"ok":True}
+""")
