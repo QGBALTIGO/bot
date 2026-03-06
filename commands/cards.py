@@ -1,3 +1,7 @@
+from telegram.ext import ContextTypes
+
+from cards_service import find_anime
+
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ok, msg = await gatekeeper(update, context)
