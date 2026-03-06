@@ -19,10 +19,6 @@ def run_webapp():
     from webapp import app as web_app
     uvicorn.run(web_app, host="0.0.0.0", port=PORT, log_level="info")
 
-def main():
-    create_tables()
-    create_anilist_tables()
-
     t = threading.Thread(target=run_webapp, daemon=True)
     t.start()
 
@@ -38,6 +34,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
