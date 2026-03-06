@@ -2206,10 +2206,6 @@ CARDS_I18N = {
 }
 
 
-# =========================================================
-# SUBSTITUIR A ROTA /cards POR ESTA
-# =========================================================
-
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page(lang: str = Query("pt")):
     L = pick_cards_lang(lang)
@@ -2596,7 +2592,7 @@ def cards_page(lang: str = Query("pt")):
   });
 
   function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
+    return (s || "").replace(/[&<>"']/g, (m) => ({
       "&":"&amp;",
       "<":"&lt;",
       ">":"&gt;",
@@ -2683,7 +2679,7 @@ def cards_page(lang: str = Query("pt")):
         html
         .replace("__LANG__", L)
         .replace("__LANGCODE__", L.upper())
-        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__TOP_BANNER__", TOP_BANNER_URL)
         .replace("__EYEBROW__", T["eyebrow"])
         .replace("__TITLE__", T["title"])
         .replace("__SUBTITLE__", T["subtitle"])
@@ -2696,10 +2692,6 @@ def cards_page(lang: str = Query("pt")):
     )
     return HTMLResponse(html)
 
-
-# =========================================================
-# SUBSTITUIR A ROTA /cards/anime POR ESTA
-# =========================================================
 
 @app.get("/cards/anime", response_class=HTMLResponse)
 def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
@@ -3088,7 +3080,7 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
   });
 
   function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
+    return (s || "").replace(/[&<>"']/g, (m) => ({
       "&":"&amp;",
       "<":"&lt;",
       ">":"&gt;",
@@ -3190,7 +3182,7 @@ def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
         .replace("__LANG__", L)
         .replace("__LANGCODE__", L.upper())
         .replace("__ANIME_ID__", str(anime_id))
-        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__TOP_BANNER__", TOP_BANNER_URL)
         .replace("__BACK__", T["back"])
         .replace("__CHARACTERS__", T["characters"])
         .replace("__TOTAL_CHARACTERS__", T["total_characters"])
