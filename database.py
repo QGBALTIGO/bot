@@ -266,3 +266,62 @@ def save_webapp_report(user_id: int, username: str, full_name: str, report_type:
         """,
         (int(user_id), (username or '').strip(), (full_name or '').strip(), (report_type or '').strip(), (message or '').strip())
     )
+
+from typing import Optional, Dict, Any
+
+def create_cards_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_card_collection (
+        user_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        first_obtained_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (user_id, character_id)
+    )
+    """)
+
+
+def get_user_card_quantity(user_id: int, character_id: int) -> int:
+    row = _run("""
+        SELECT quantity
+        FROM user_card_collection
+        WHERE user_id = %s AND character_id = %s
+    """, (user_id, character_id), fetch="one")
+
+    if not row:
+        return 0
+
+    return int(row.get("quantity") or 0)
+
+
+def add_card_copy(user_id: int, character_id: int, amount: int = 1):
+    _run("""
+        INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id, character_id)
+        DO UPDATE SET
+            quantity = user_card_collection.quantity + EXCLUDED.quantity,
+            updated_at = NOW()
+    """, (user_id, character_id, amount))
+
+
+def get_card_total_copies(character_id: int) -> int:
+    row = _run("""
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM user_card_collection
+        WHERE character_id = %s
+    """, (character_id,), fetch="one")
+
+    return int((row or {}).get("total") or 0)
+
+
+def get_card_owner_count(character_id: int) -> int:
+    row = _run("""
+        SELECT COUNT(*) AS total
+        FROM user_card_collection
+        WHERE character_id = %s
+          AND quantity > 0
+    """, (character_id,), fetch="one")
+
+    return int((row or {}).get("total") or 0)
