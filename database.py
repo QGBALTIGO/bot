@@ -72,22 +72,38 @@ def create_users_table():
     _run("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY,
+        nick TEXT,
         lang TEXT,
+        coins BIGINT NOT NULL DEFAULT 0,
+
         terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
         terms_version TEXT,
         accepted_at TIMESTAMPTZ,
+
         welcome_sent BOOLEAN NOT NULL DEFAULT FALSE,
-        must_join_ok BOOLEAN NOT NULL DEFAULT FALSE
+        must_join_ok BOOLEAN NOT NULL DEFAULT FALSE,
+
+        fav_name TEXT,
+        fav_image TEXT,
+        fav_character_id BIGINT
     );
     """)
 
-    # Migrações seguras caso a tabela já exista antiga
+    # Migrações seguras
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT NOT NULL DEFAULT 0;""")
+
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
+
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
+
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_image TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_character_id BIGINT;""")
 
 
 def create_media_request_tables():
@@ -145,7 +161,7 @@ def create_cards_tables():
     CREATE TABLE IF NOT EXISTS user_card_collection (
         user_id BIGINT NOT NULL,
         character_id BIGINT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 0,
+        quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
         first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (user_id, character_id)
@@ -162,15 +178,119 @@ def create_cards_tables():
     ON user_card_collection (user_id)
     """)
 
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_collection_user_char
+    ON user_card_collection (user_id, character_id)
+    """)
+
+
+def create_level_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        total_actions BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
+    ON user_progress (level DESC, xp DESC)
+    """)
+
+
+def create_friendship_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS friendships (
+        user_id BIGINT NOT NULL,
+        friend_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'accepted',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, friend_id)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_user
+    ON friendships (user_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_friend
+    ON friendships (friend_id)
+    """)
+
 
 # =========================================================
 # USERS
 # =========================================================
 
-def create_or_get_user(user_id: int):
+def create_or_get_user(user_id: int, nick: Optional[str] = None):
     _run(
-        "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
-        (int(user_id),)
+        """
+        INSERT INTO users (user_id, nick)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id), (nick or "").strip() or None)
+    )
+
+
+def set_user_nick(user_id: int, nick: str):
+    _run(
+        "UPDATE users SET nick = %s WHERE user_id = %s",
+        ((nick or "").strip(), int(user_id))
+    )
+
+
+def get_user_row(user_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT
+            user_id,
+            nick,
+            lang,
+            coins,
+            terms_accepted,
+            terms_version,
+            accepted_at,
+            welcome_sent,
+            must_join_ok,
+            fav_name,
+            fav_image,
+            fav_character_id
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def get_user_by_nick(nick: str) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT
+            user_id,
+            nick,
+            lang,
+            coins,
+            terms_accepted,
+            terms_version,
+            accepted_at,
+            welcome_sent,
+            must_join_ok,
+            fav_name,
+            fav_image,
+            fav_character_id
+        FROM users
+        WHERE LOWER(nick) = LOWER(%s)
+        LIMIT 1
+        """,
+        ((nick or "").strip(),),
+        fetch="one"
     )
 
 
@@ -178,6 +298,44 @@ def set_language(user_id: int, lang: str):
     _run(
         "UPDATE users SET lang = %s WHERE user_id = %s",
         ((lang or "").strip(), int(user_id))
+    )
+
+
+def add_coins(user_id: int, amount: int):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    _run(
+        """
+        UPDATE users
+        SET coins = coins + %s
+        WHERE user_id = %s
+        """,
+        (amount, int(user_id))
+    )
+
+
+def remove_coins(user_id: int, amount: int):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    _run(
+        """
+        UPDATE users
+        SET coins = GREATEST(coins - %s, 0)
+        WHERE user_id = %s
+        """,
+        (amount, int(user_id))
+    )
+
+
+def set_coins(user_id: int, amount: int):
+    amount = max(0, int(amount))
+    _run(
+        "UPDATE users SET coins = %s WHERE user_id = %s",
+        (amount, int(user_id))
     )
 
 
@@ -240,6 +398,59 @@ def set_must_join_ok(user_id: int, value: bool):
         "UPDATE users SET must_join_ok = %s WHERE user_id = %s",
         (bool(value), int(user_id))
     )
+
+
+# =========================================================
+# FAVORITES
+# =========================================================
+
+def set_favorite_card(user_id: int, character_id: int, fav_name: str, fav_image: str):
+    _run(
+        """
+        UPDATE users
+        SET fav_character_id = %s,
+            fav_name = %s,
+            fav_image = %s
+        WHERE user_id = %s
+        """,
+        (
+            int(character_id),
+            (fav_name or "").strip(),
+            (fav_image or "").strip(),
+            int(user_id),
+        )
+    )
+
+
+def clear_favorite_card(user_id: int):
+    _run(
+        """
+        UPDATE users
+        SET fav_character_id = NULL,
+            fav_name = NULL,
+            fav_image = NULL
+        WHERE user_id = %s
+        """,
+        (int(user_id),)
+    )
+
+
+def get_user_favorite_card_quantity(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT c.quantity
+        FROM users u
+        LEFT JOIN user_card_collection c
+          ON c.user_id = u.user_id
+         AND c.character_id = u.fav_character_id
+        WHERE u.user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    return int((row or {}).get("quantity") or 0)
 
 
 # =========================================================
@@ -367,9 +578,7 @@ def get_user_card_quantity(user_id: int, character_id: int) -> int:
         (int(user_id), int(character_id)),
         fetch="one"
     )
-    if not row:
-        return 0
-    return int(row.get("quantity") or 0)
+    return int((row or {}).get("quantity") or 0)
 
 
 def add_card_copy(user_id: int, character_id: int, amount: int = 1):
@@ -497,26 +706,23 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
     )
     return rows or []
 
+
+def count_collection(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM user_card_collection
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
 # =========================================================
 # LEVEL / PROGRESS SYSTEM
 # =========================================================
-
-def create_level_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS user_progress (
-        user_id BIGINT PRIMARY KEY,
-        xp BIGINT NOT NULL DEFAULT 0,
-        level INTEGER NOT NULL DEFAULT 1,
-        total_actions BIGINT NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
-    ON user_progress (level DESC, xp DESC)
-    """)
-
 
 def ensure_progress_row(user_id: int):
     _run(
@@ -544,10 +750,6 @@ def get_progress_row(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 def level_xp_required(level: int) -> int:
-    """
-    XP total necessária para ESTAR naquele nível.
-    Curva simples e estável.
-    """
     level = max(1, int(level))
     return 80 * (level - 1) * (level - 1) + 120 * (level - 1)
 
@@ -585,10 +787,6 @@ def get_level_progress_values(xp: int) -> Dict[str, int]:
 
 
 def add_progress_xp(user_id: int, amount: int = 3) -> Dict[str, Any]:
-    """
-    Adiciona XP e recalcula o nível.
-    Retorna old_level/new_level para level up.
-    """
     ensure_progress_row(user_id)
 
     row = get_progress_row(user_id)
@@ -654,26 +852,10 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
     )
     return rows or []
 
-def create_friendship_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS friendships (
-        user_id BIGINT NOT NULL,
-        friend_id BIGINT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'accepted',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (user_id, friend_id)
-    )
-    """)
 
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_friendships_user
-    ON friendships (user_id)
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_friendships_friend
-    ON friendships (friend_id)
-    """)
+# =========================================================
+# FRIENDSHIPS
+# =========================================================
 
 def get_friend_count(user_id: int) -> int:
     row = _run(
@@ -687,25 +869,3 @@ def get_friend_count(user_id: int) -> int:
         fetch="one"
     )
     return int((row or {}).get("total") or 0)
-
-def get_user_favorite_card_quantity(user_id: int) -> int:
-    row = _run(
-        """
-        SELECT u.fav_name, c.quantity
-        FROM users u
-        LEFT JOIN user_card_collection c
-          ON c.user_id = u.user_id
-        WHERE u.user_id = %s
-        LIMIT 1
-        """,
-        (int(user_id),),
-        fetch="one"
-    )
-
-    if not row:
-        return 0
-
-    # por enquanto, como fav_name está salvo como texto e não como character_id,
-    # a quantidade exata por personagem favorito ainda depende de ligarmos isso melhor depois.
-    # então aqui usamos quantity se houver, senão 0.
-    return int((row or {}).get("quantity") or 0)
