@@ -2,23 +2,30 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
 
+from utils.gatekeeper import gatekeeper
 from cards_service import find_anime
 
-async def comando(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    msg = update.effective_message
-
-    ok, bloqueio = await gatekeeper(update, context)
-    if not ok:
-        if msg and bloqueio:
-            await msg.reply_html(bloqueio)
-        return
 
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 CARDS_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    msg = update.effective_message
+
+    # =========================
+    # GATEKEEPER (termos + canal)
+    # =========================
+    ok, bloqueio = await gatekeeper(update, context)
+    if not ok:
+        if msg and bloqueio:
+            await msg.reply_html(bloqueio)
+        return
+
+    # =========================
+    # BUSCA DIRETA
+    # =========================
     direct_query = " ".join(context.args).strip()
 
     if direct_query:
@@ -31,6 +38,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Abrindo direto a obra encontrada nos cards."
             )
             botao = "🃏 Abrir Obra"
+
         else:
             url = f"{BASE_URL}/cards"
             texto = (
@@ -39,6 +47,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Vou abrir a página geral dos cards para você buscar lá."
             )
             botao = "🃏 Abrir Cards"
+
     else:
         url = f"{BASE_URL}/cards"
         texto = (
@@ -51,13 +60,20 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         botao = "🃏 Abrir Cards"
 
+    # =========================
+    # BOTÃO WEBAPP
+    # =========================
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton(botao, web_app=WebAppInfo(url=url))]
     ])
 
-    await update.message.reply_photo(
-        photo=CARDS_BANNER,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb
-    )
+    # =========================
+    # ENVIO DA MENSAGEM
+    # =========================
+    if msg:
+        await msg.reply_photo(
+            photo=CARDS_BANNER,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
