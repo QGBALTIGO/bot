@@ -2122,3 +2122,142 @@ def mangas_page():
         .replace("__CSUB__", MANGA_CATALOG_SUBTITLE)
     )
     return HTMLResponse(html)
+
+CHARACTERS_FILE = "data/personagens_anilist.txt"
+
+    def load_characters():
+    animes = {}
+
+    with open(CHARACTERS_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            char_id, name, anime, anime_id, role = line.split("|")
+
+            if anime_id not in animes:
+                animes[anime_id] = {
+                    "anime": anime,
+                    "anime_id": anime_id,
+                    "characters": []
+                }
+
+            animes[anime_id]["characters"].append({
+                "id": int(char_id),
+                "name": name,
+                "role": role
+            })
+
+    return list(animes.values())
+
+    @app.get("/api/cards/animes")
+def api_cards_animes():
+
+    data = load_characters()
+
+    return JSONResponse(data)
+
+    @app.get("/api/cards/characters")
+def api_cards_characters(anime_id: str):
+
+    data = load_characters()
+
+    for anime in data:
+        if anime["anime_id"] == anime_id:
+            return JSONResponse(anime["characters"])
+
+    return JSONResponse([])
+
+    async def fetch_character_image(char_id):
+
+    query = """
+    query ($id: Int) {
+      Character(id: $id) {
+        image {
+          large
+        }
+      }
+    }
+    """
+
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"id": char_id}},
+        )
+
+    data = r.json()
+
+    return data["data"]["Character"]["image"]["large"]
+
+    @app.get("/cards", response_class=HTMLResponse)
+def cards_page():
+
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:sans-serif;
+padding:20px;
+}
+
+.card{
+background:#1e293b;
+padding:15px;
+margin:10px;
+border-radius:12px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>🃏 Coleção de Cards</h2>
+
+<div id="list"></div>
+
+<script>
+
+async function load(){
+
+let res = await fetch("/api/cards/animes")
+let data = await res.json()
+
+let html=""
+
+data.forEach(a=>{
+html+=`
+<div class="card" onclick="openAnime('${a.anime_id}')">
+${a.anime}
+</div>
+`
+})
+
+document.getElementById("list").innerHTML=html
+
+}
+
+function openAnime(id){
+window.location="/cards/anime?anime="+id
+}
+
+load()
+
+</script>
+
+</body>
+</html>
+"""
+
+    return HTMLResponse(html)
