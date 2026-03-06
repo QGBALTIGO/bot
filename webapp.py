@@ -2137,7 +2137,7 @@ from typing import Any, Dict, List
 from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/cards_assets.json").strip()
+CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
 CARDS_TOP_BANNER_URL = os.getenv(
     "CARDS_TOP_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
