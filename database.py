@@ -163,31 +163,11 @@ def has_anilist_login(user_id: int) -> bool:
     return bool(row)
 
 
-def remove_anilist_login(user_id: int):
-    _run(
-        "DELETE FROM user_anilist WHERE telegram_id = %s",
-        (user_id,)
-    )
+def get_anilist_profile(telegram_id: int):
+    import requests
 
-
-def get_anilist_token(user_id: int):
     row = _run(
         "SELECT access_token FROM user_anilist WHERE telegram_id = %s",
-        (user_id,),
-        fetch="one"
-    )
-    if not row:
-        return None
-    return row[0]
-
-
-def get_anilist_profile(telegram_id: int):
-    row = _run(
-        """
-        SELECT access_token
-        FROM user_anilist
-        WHERE telegram_id = %s
-        """,
         (telegram_id,),
         fetch="one"
     )
@@ -221,7 +201,7 @@ def get_anilist_profile(telegram_id: int):
             "https://graphql.anilist.co",
             json={"query": query},
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=15
+            timeout=20
         )
 
         data = r.json()
