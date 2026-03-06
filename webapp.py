@@ -2124,7 +2124,7 @@ def mangas_page():
     return HTMLResponse(html)
 
 # =========================
-# CONFIG — CARDS (PERSONAGENS)
+# CONFIG — CARDS
 # =========================
 
 CHARACTERS_FILE = "data/personagens_anilist.txt"
@@ -2133,53 +2133,45 @@ CHARACTERS_FILE = "data/personagens_anilist.txt"
 def load_characters():
     animes = {}
 
-    try:
-        with open(CHARACTERS_FILE, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+    with open(CHARACTERS_FILE, encoding="utf-8") as f:
+        for line in f:
 
-                parts = line.split("|")
-                if len(parts) < 4:
-                    continue
+            line = line.strip()
+            if not line:
+                continue
 
-                char_id = parts[0]
-                name = parts[1]
-                anime = parts[2]
-                anime_id = parts[3]
+            parts = line.split("|")
 
-                if anime_id not in animes:
-                    animes[anime_id] = {
-                        "anime": anime,
-                        "anime_id": anime_id,
-                        "characters": []
-                    }
+            char_id = parts[0]
+            name = parts[1]
+            anime = parts[2]
+            anime_id = parts[3]
 
-                animes[anime_id]["characters"].append({
-                    "id": int(char_id),
-                    "name": name,
-                    "anime": anime
-                })
+            if anime_id not in animes:
 
-    except Exception as e:
-        print("Erro ao carregar personagens:", e)
+                cover = f"https://img.anili.st/media/{anime_id}"
+
+                animes[anime_id] = {
+                    "anime": anime,
+                    "anime_id": anime_id,
+                    "cover": cover,
+                    "characters": []
+                }
+
+            animes[anime_id]["characters"].append({
+                "id": int(char_id),
+                "name": name,
+                "anime": anime,
+                "anime_id": anime_id
+            })
 
     return list(animes.values())
 
-
-# =========================
-# API — LISTAR ANIMES
-# =========================
 
 @app.get("/api/cards/animes")
 def api_cards_animes():
     return JSONResponse(load_characters())
 
-
-# =========================
-# API — PERSONAGENS DO ANIME
-# =========================
 
 @app.get("/api/cards/characters")
 def api_cards_characters(anime_id: str):
@@ -2194,7 +2186,7 @@ def api_cards_characters(anime_id: str):
 
 
 # =========================
-# MINI APP — CARDS
+# MINIAPP CARDS
 # =========================
 
 @app.get("/cards", response_class=HTMLResponse)
@@ -2205,47 +2197,46 @@ def cards_page():
 <html>
 <head>
 
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 
 body{
-background: radial-gradient(900px 500px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-linear-gradient(180deg,#070b12,#0a1220);
-font-family: -apple-system,system-ui,Segoe UI,Roboto,Arial;
 margin:0;
-padding:20px;
+background:#0a1220;
+font-family:system-ui;
 color:white;
 }
 
-.title{
-font-weight:900;
-letter-spacing:.08em;
-font-size:22px;
-margin-bottom:16px;
+.banner{
+width:100%;
+height:200px;
+background:url('https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg') center/cover;
 }
 
 .grid{
 display:grid;
 grid-template-columns:repeat(2,1fr);
-gap:12px;
+gap:14px;
+padding:16px;
 }
 
 .card{
-background:rgba(255,255,255,0.04);
-border:1px solid rgba(255,255,255,0.1);
-border-radius:18px;
-padding:14px;
+border-radius:20px;
+overflow:hidden;
+background:#111827;
 cursor:pointer;
-transition:.15s;
-font-weight:800;
-letter-spacing:.04em;
 }
 
-.card:hover{
-transform:translateY(-2px);
-border-color:rgba(255,255,255,0.2);
+.card img{
+width:100%;
+height:240px;
+object-fit:cover;
+}
+
+.name{
+padding:12px;
+font-weight:800;
 }
 
 </style>
@@ -2254,9 +2245,9 @@ border-color:rgba(255,255,255,0.2);
 
 <body>
 
-<div class="title">🃏 COLEÇÃO DE PERSONAGENS</div>
+<div class="banner"></div>
 
-<div id="grid" class="grid"></div>
+<div class="grid" id="grid"></div>
 
 <script>
 
@@ -2268,11 +2259,14 @@ let data = await r.json()
 let html=""
 
 data.forEach(a=>{
+
 html+=`
 <div class="card" onclick="openAnime('${a.anime_id}')">
-${a.anime}
+<img src="${a.cover}">
+<div class="name">${a.anime}</div>
 </div>
 `
+
 })
 
 document.getElementById("grid").innerHTML=html
@@ -2295,7 +2289,7 @@ load()
 
 
 # =========================
-# MINI APP — PERSONAGENS
+# PERSONAGENS
 # =========================
 
 @app.get("/cards/anime", response_class=HTMLResponse)
@@ -2306,23 +2300,16 @@ def cards_anime_page(anime: str):
 <html>
 <head>
 
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 
 body{
-background:#070b12;
+margin:0;
+background:#0a1220;
 font-family:system-ui;
 color:white;
-margin:0;
-padding:20px;
-}
-
-.title{
-font-size:20px;
-font-weight:900;
-margin-bottom:16px;
+padding:16px;
 }
 
 .grid{
@@ -2332,22 +2319,30 @@ gap:14px;
 }
 
 .card{
-background:rgba(255,255,255,0.04);
-border:1px solid rgba(255,255,255,0.1);
+background:#111827;
 border-radius:20px;
 overflow:hidden;
 }
 
 .card img{
 width:100%;
-height:220px;
+height:240px;
 object-fit:cover;
 }
 
-.name{
+.info{
 padding:10px;
+}
+
+.name{
 font-weight:800;
 font-size:14px;
+}
+
+.meta{
+font-size:12px;
+opacity:.7;
+margin-top:4px;
 }
 
 </style>
@@ -2356,9 +2351,7 @@ font-size:14px;
 
 <body>
 
-<div class="title">PERSONAGENS</div>
-
-<div id="grid" class="grid"></div>
+<div class="grid" id="grid"></div>
 
 <script>
 
@@ -2373,12 +2366,16 @@ let html=""
 
 data.forEach(c=>{
 
-let img="https://img.anili.st/media/"+c.id
+let img="https://img.anili.st/character/"+c.id
 
 html+=`
 <div class="card">
 <img src="${img}">
+<div class="info">
 <div class="name">${c.name}</div>
+<div class="meta">ID: ${c.id}</div>
+<div class="meta">${c.anime}</div>
+</div>
 </div>
 `
 
