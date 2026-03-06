@@ -2508,3 +2508,68 @@ load()
     html = html.replace("__ANIME__", str(anime))
 
     return HTMLResponse(html)
+
+# =========================
+# LOGIN ANILIST
+# =========================
+
+@app.get("/callback")
+async def anilist_callback(code: str, state: str):
+
+    import requests
+    import base64
+
+    padded = state + "=" * (-len(state) % 4)
+    decoded = base64.urlsafe_b64decode(padded)
+
+    payload, sig = decoded.rsplit(b".", 1)
+
+    user_id, ts = payload.decode().split(".")
+    telegram_id = int(user_id)
+
+    token_url = "https://anilist.co/api/v2/oauth/token"
+
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": os.getenv("ANILIST_CLIENT_ID"),
+        "client_secret": os.getenv("ANILIST_CLIENT_SECRET"),
+        "redirect_uri": f"{os.getenv('BASE_URL')}/callback",
+        "code": code,
+    }
+
+    r = requests.post(token_url, json=data)
+
+    token = r.json()["access_token"]
+
+    query = """
+    query {
+      Viewer {
+        id
+        name
+      }
+    }
+    """
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    r = requests.post(
+        "https://graphql.anilist.co",
+        json={"query": query},
+        headers=headers
+    )
+
+    data = r.json()["data"]["Viewer"]
+
+    from database import save_anilist_account
+
+    save_anilist_account(
+        telegram_id,
+        data["id"],
+        data["name"],
+        token
+    )
+
+    return HTMLResponse(
+        "<h2>✅ Conta conectada!</h2>"
+        "<p>Volte ao Telegram.</p>"
+    )
