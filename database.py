@@ -494,3 +494,23 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
         fetch="all"
     )
     return rows or []
+
+def get_level_rank(user_id: int) -> int:
+
+    row = _run(
+        """
+        SELECT rank FROM (
+            SELECT user_id,
+                   RANK() OVER (ORDER BY level DESC, commands DESC) AS rank
+            FROM users
+        ) t
+        WHERE user_id = %s
+        """,
+        (user_id,),
+        fetch="one"
+    )
+
+    if not row:
+        return 0
+
+    return int(row["rank"])
