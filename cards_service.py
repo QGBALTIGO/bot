@@ -6,8 +6,18 @@ from copy import deepcopy
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
-CARDS_OVERRIDES_PATH = os.getenv("CARDS_OVERRIDES_PATH", "data/cards_overrides.json").strip()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
+CARDS_ASSETS_PATH = os.getenv(
+    "CARDS_ASSETS_PATH",
+    os.path.join(DATA_DIR, "personagens_anilist.txt"),
+).strip()
+
+CARDS_OVERRIDES_PATH = os.getenv(
+    "CARDS_OVERRIDES_PATH",
+    os.path.join(DATA_DIR, "cards_overrides.json"),
+).strip()
 
 _LOCK = RLock()
 _CACHE: Optional[Dict[str, Any]] = None
@@ -24,37 +34,12 @@ def _default_overrides() -> Dict[str, Any]:
         "anime_name_overrides": {},
         "anime_banner_overrides": {},
         "anime_cover_overrides": {},
-        "subcategories": {}
+        "subcategories": {},
     }
 
 
-def _resolve_path(path: str) -> str:
-    candidates = [path]
-
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-
-    return candidates[0]
-
-
-def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="cards_", suffix=".tmp", dir=os.path.dirname(path))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, path)
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+def _ensure_data_dir() -> None:
+    os.makedirs(os.path.dirname(CARDS_OVERRIDES_PATH), exist_ok=True)
 
 
 def _normalize_text(text: Any) -> str:
@@ -64,10 +49,36 @@ def _normalize_text(text: Any) -> str:
     return " ".join(text.split())
 
 
-def load_cards_assets_raw() -> List[Dict[str, Any]]:
-    path = _resolve_path(CARDS_ASSETS_PATH)
+def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    with open(path, "r", encoding="utf-8") as f:
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="cards_",
+        suffix=".tmp",
+        dir=os.path.dirname(path),
+    )
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        os.replace(tmp_path, path)
+
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+
+def load_cards_assets_raw() -> List[Dict[str, Any]]:
+    if not os.path.exists(CARDS_ASSETS_PATH):
+        raise FileNotFoundError(
+            f"Arquivo de assets não encontrado: {CARDS_ASSETS_PATH}"
+        )
+
+    with open(CARDS_ASSETS_PATH, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
     if isinstance(raw, dict):
@@ -141,15 +152,15 @@ def load_cards_assets_raw() -> List[Dict[str, Any]]:
 
 
 def load_cards_overrides() -> Dict[str, Any]:
-    path = _resolve_path(CARDS_OVERRIDES_PATH)
+    _ensure_data_dir()
 
-    if not os.path.exists(path):
+    if not os.path.exists(CARDS_OVERRIDES_PATH):
         data = _default_overrides()
-        _atomic_write_json(path, data)
+        _atomic_write_json(CARDS_OVERRIDES_PATH, data)
         return data
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(CARDS_OVERRIDES_PATH, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except Exception:
         raw = {}
@@ -177,9 +188,15 @@ def load_cards_overrides() -> Dict[str, Any]:
 
 
 def save_cards_overrides(data: Dict[str, Any]) -> None:
-    path = _resolve_path(CARDS_OVERRIDES_PATH)
-    _atomic_write_json(path, data)
+    _ensure_data_dir()
+    _atomic_write_json(CARDS_OVERRIDES_PATH, data)
     reload_cards_cache()
+
+
+def reload_cards_cache() -> None:
+    global _CACHE
+    with _LOCK:
+        _CACHE = None
 
 
 def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
@@ -199,7 +216,6 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
         characters_by_id: Dict[int, Dict[str, Any]] = {}
         characters_by_anime: Dict[int, List[Dict[str, Any]]] = {}
 
-        # BASE
         for anime in assets:
             anime_id = int(anime["anime_id"])
             if anime_id in deleted_animes:
@@ -215,6 +231,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 "banner_image": banner_image,
                 "cover_image": cover_image,
                 "characters": [],
+                "characters_count": 0,
             }
 
             animes_by_id[anime_id] = anime_obj
@@ -239,7 +256,6 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 characters_by_id[cid] = char_obj
                 characters_by_anime[anime_id].append(char_obj)
 
-        # OBRAS CUSTOM
         for anime in overrides["custom_animes"]:
             if not isinstance(anime, dict):
                 continue
@@ -262,12 +278,12 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 "banner_image": str(anime.get("banner_image") or "").strip(),
                 "cover_image": str(anime.get("cover_image") or "").strip(),
                 "characters": [],
+                "characters_count": 0,
             }
 
             animes_by_id[anime_id] = anime_obj
             characters_by_anime.setdefault(anime_id, [])
 
-        # PERSONAGENS CUSTOM
         for ch in overrides["custom_characters"]:
             if not isinstance(ch, dict):
                 continue
@@ -290,6 +306,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                     "banner_image": "",
                     "cover_image": "",
                     "characters": [],
+                    "characters_count": 0,
                 }
                 animes_by_id[anime_id] = anime_obj
                 characters_by_anime.setdefault(anime_id, [])
@@ -317,13 +334,13 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             current.append(char_obj)
             characters_by_anime[anime_id] = current
 
-        # ORGANIZA LISTAS
         animes_list: List[Dict[str, Any]] = []
         animes_by_name: Dict[str, Dict[str, Any]] = {}
 
         for anime_id, anime_obj in animes_by_id.items():
             chars = characters_by_anime.get(anime_id, [])
             chars.sort(key=lambda x: _normalize_text(x["name"]))
+            anime_obj["characters_count"] = len(chars)
 
             anime_final = {
                 "anime_id": anime_obj["anime_id"],
@@ -338,7 +355,6 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
 
         animes_list.sort(key=lambda x: _normalize_text(x["anime"]))
 
-        # SUBCATEGORIAS
         subcategories: Dict[str, List[Dict[str, Any]]] = {}
         for subcat_name, ids in overrides["subcategories"].items():
             if not isinstance(ids, list):
@@ -372,13 +388,8 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             "subcategories": subcategories,
             "overrides": overrides,
         }
+
         return _CACHE
-
-
-def reload_cards_cache() -> None:
-    global _CACHE
-    with _LOCK:
-        _CACHE = None
 
 
 def find_anime(query: Any) -> Optional[Dict[str, Any]]:
@@ -398,7 +409,6 @@ def find_anime(query: Any) -> Optional[Dict[str, Any]]:
     if exact:
         return exact
 
-    # contains
     candidates = []
     for anime in data["animes_list"]:
         name_n = _normalize_text(anime["anime"])
@@ -445,15 +455,16 @@ def override_delete_character(character_id: int) -> None:
     data = _get_overrides_copy()
     cid = int(character_id)
 
-    if cid not in data["deleted_characters"]:
+    if cid not in [int(x) for x in data["deleted_characters"]]:
         data["deleted_characters"].append(cid)
 
-    # remove de subcategorias
     for subcat, ids in data["subcategories"].items():
         data["subcategories"][subcat] = [x for x in ids if int(x) != cid]
 
-    # remove de custom_characters
-    data["custom_characters"] = [x for x in data["custom_characters"] if int(x.get("id", -1)) != cid]
+    data["custom_characters"] = [
+        x for x in data["custom_characters"]
+        if int(x.get("id", -1)) != cid
+    ]
 
     save_cards_overrides(data)
 
@@ -483,11 +494,13 @@ def override_add_character(character_id: int, name: str, anime_id: int, anime_na
         "image": str(image_url).strip(),
     }
 
-    data["custom_characters"] = [x for x in data["custom_characters"] if int(x.get("id", -1)) != cid]
+    data["custom_characters"] = [
+        x for x in data["custom_characters"]
+        if int(x.get("id", -1)) != cid
+    ]
     data["custom_characters"].append(item)
 
-    if cid in data["deleted_characters"]:
-        data["deleted_characters"] = [x for x in data["deleted_characters"] if int(x) != cid]
+    data["deleted_characters"] = [x for x in data["deleted_characters"] if int(x) != cid]
 
     save_cards_overrides(data)
 
@@ -496,11 +509,18 @@ def override_delete_anime(anime_id: int) -> None:
     data = _get_overrides_copy()
     aid = int(anime_id)
 
-    if aid not in data["deleted_animes"]:
+    if aid not in [int(x) for x in data["deleted_animes"]]:
         data["deleted_animes"].append(aid)
 
-    data["custom_animes"] = [x for x in data["custom_animes"] if int(x.get("anime_id", -1)) != aid]
-    data["custom_characters"] = [x for x in data["custom_characters"] if int(x.get("anime_id", -1)) != aid]
+    data["custom_animes"] = [
+        x for x in data["custom_animes"]
+        if int(x.get("anime_id", -1)) != aid
+    ]
+
+    data["custom_characters"] = [
+        x for x in data["custom_characters"]
+        if int(x.get("anime_id", -1)) != aid
+    ]
 
     save_cards_overrides(data)
 
@@ -517,11 +537,13 @@ def override_add_anime(anime_id: int, anime_name: str, banner_image: str = "", c
         "characters": [],
     }
 
-    data["custom_animes"] = [x for x in data["custom_animes"] if int(x.get("anime_id", -1)) != aid]
+    data["custom_animes"] = [
+        x for x in data["custom_animes"]
+        if int(x.get("anime_id", -1)) != aid
+    ]
     data["custom_animes"].append(item)
 
-    if aid in data["deleted_animes"]:
-        data["deleted_animes"] = [x for x in data["deleted_animes"] if int(x) != aid]
+    data["deleted_animes"] = [x for x in data["deleted_animes"] if int(x) != aid]
 
     save_cards_overrides(data)
 
@@ -557,9 +579,13 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
     data = _get_overrides_copy()
     key = str(name).strip()
     cid = int(character_id)
+
     data["subcategories"].setdefault(key, [])
-    if cid not in [int(x) for x in data["subcategories"][key]]:
+
+    current_ids = [int(x) for x in data["subcategories"][key]]
+    if cid not in current_ids:
         data["subcategories"][key].append(cid)
+
     save_cards_overrides(data)
 
 
@@ -567,6 +593,8 @@ def override_subcategory_remove_character(name: str, character_id: int) -> None:
     data = _get_overrides_copy()
     key = str(name).strip()
     cid = int(character_id)
+
     if key in data["subcategories"]:
         data["subcategories"][key] = [x for x in data["subcategories"][key] if int(x) != cid]
+
     save_cards_overrides(data)
