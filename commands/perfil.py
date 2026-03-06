@@ -90,12 +90,10 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = (
         "🎴 <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"👤 | <b>{nick}</b>\n"
-        f"🏷️ | <i>{rank_tag}</i>\n\n"
+        f"👤 | <b>{nick}</b>\n\n"
         f"📚 | <i>Coleção</i>: <b>{fmt_num(total_colecao)}</b>\n"
         f"🪙 | <i>Coins</i>: <b>{fmt_num(coins)}</b>\n"
         f"⭐ | <i>Nível</i>: <b>{fmt_num(level)}</b>\n"
-        f"🏅 | <i>Ranking</i>: <b>#{fmt_num(rank) if rank > 0 else '—'}</b>\n"
         f"🤝 | <i>Amizades</i>: <b>{fmt_num(amizade_total)}</b>\n\n"
         "❤️ <i>Favorito</i>:\n"
     )
