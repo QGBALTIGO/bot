@@ -5,9 +5,10 @@ from database import get_anilist_profile
 
 
 async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user:
+        return
 
     user_id = update.effective_user.id
-
     profile = get_anilist_profile(user_id)
 
     if not profile:
@@ -16,19 +17,12 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    name = profile["name"]
-    anilist_id = profile["anilist_id"]
-
-    anime_count = profile["anime_count"]
-    days = profile["days"]
-    manga_count = profile["manga_count"]
-
     text = (
-        f"👤 Nome: {name}\n"
-        f"ID: {anilist_id}\n\n"
-        f"📺 Anime Watched: {anime_count}\n"
-        f"⏱ Days Watched: {days}\n"
-        f"📖 Manga Read: {manga_count}"
+        f"👤 Nome: {profile['name']}\n"
+        f"🆔 ID: {profile['anilist_id']}\n\n"
+        f"📺 Animes assistidos: {profile['anime_count']}\n"
+        f"⏱ Dias assistidos: {profile['days']}\n"
+        f"📖 Mangás lidos: {profile['manga_count']}"
     )
 
     await update.message.reply_text(text)
