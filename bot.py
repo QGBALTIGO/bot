@@ -9,6 +9,7 @@ from commands.anime import anime
 from commands.manga import manga
 from commands.cards import cards
 from commands.pedido import pedido
+from commands.card import card
 
 from commands.cards_admin import (
     card_addanime,
@@ -53,6 +54,7 @@ def main():
     tg_app.add_handler(CommandHandler("manga", manga))
     tg_app.add_handler(CommandHandler("cards", cards))
     tg_app.add_handler(CommandHandler("pedido", pedido))
+    tg_app.add_handler(CommandHandler("card", card))
 
     # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
@@ -75,3 +77,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
