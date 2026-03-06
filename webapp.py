@@ -2522,20 +2522,78 @@ from database import save_anilist_account
 
 ANILIST_CLIENT_ID = os.getenv("ANILIST_CLIENT_ID", "").strip()
 ANILIST_CLIENT_SECRET = os.getenv("ANILIST_CLIENT_SECRET", "").strip()
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
 
 
 @app.get("/callback")
 async def anilist_callback(code: str, state: str):
-    import os
-    from fastapi.responses import HTMLResponse
+    try:
+        if not ANILIST_CLIENT_ID:
+            return HTMLResponse("Erro: ANILIST_CLIENT_ID vazio.")
+        if not ANILIST_CLIENT_SECRET:
+            return HTMLResponse("Erro: ANILIST_CLIENT_SECRET vazio.")
+        if not PUBLIC_BASE_URL:
+            return HTMLResponse("Erro: PUBLIC_BASE_URL vazio.")
 
-    return HTMLResponse(
-        f"""
-        <pre>
-ANILIST_CLIENT_ID={os.getenv("ANILIST_CLIENT_ID")}
-ANILIST_CLIENT_SECRET={'SET' if os.getenv("ANILIST_CLIENT_SECRET") else 'EMPTY'}
-PUBLIC_BASE_URL={os.getenv("PUBLIC_BASE_URL")}
-        </pre>
-        """
-    )
+        padded = state + "=" * (-len(state) % 4)
+        decoded = base64.urlsafe_b64decode(padded)
+        payload, sig = decoded.rsplit(b".", 1)
+
+        user_id, ts = payload.decode().split(".")
+        telegram_id = int(user_id)
+
+        redirect_uri = f"{PUBLIC_BASE_URL}/callback"
+
+        token_resp = requests.post(
+            "https://anilist.co/api/v2/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": ANILIST_CLIENT_ID,
+                "client_secret": ANILIST_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "code": code,
+            },
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=15,
+        )
+
+        token_json = token_resp.json()
+
+        if "access_token" not in token_json:
+            return HTMLResponse(
+                f"<pre>token_status={token_resp.status_code}\n{token_json}\n\nredirect_uri={redirect_uri}\nclient_id={ANILIST_CLIENT_ID}</pre>"
+            )
+
+        token = token_json["access_token"]
+
+        viewer_resp = requests.post(
+            "https://graphql.anilist.co",
+            json={"query": "query { Viewer { id name } }"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+
+        viewer_json = viewer_resp.json()
+
+        if "data" not in viewer_json or not viewer_json["data"] or not viewer_json["data"].get("Viewer"):
+            return HTMLResponse(f"<pre>{viewer_json}</pre>")
+
+        viewer = viewer_json["data"]["Viewer"]
+
+        save_anilist_account(
+            telegram_id,
+            viewer["id"],
+            viewer["name"],
+            token
+        )
+
+        return HTMLResponse(
+            "<h2>✅ Conta AniList conectada com sucesso!</h2>"
+            "<p>Volte ao Telegram e use /perfil.</p>"
+        )
+
+    except Exception as e:
+        return HTMLResponse(f"<h2>Erro interno</h2><pre>{e}</pre>")
