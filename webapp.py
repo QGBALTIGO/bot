@@ -4725,3 +4725,85 @@ alert("Erro enviado")
 </html>
 """
     return html
+
+@app.get("/api/pedido/anime")
+async def pedido_anime(q: str):
+
+    url = "https://graphql.anilist.co"
+
+    query = """
+    query ($search: String) {
+      Page(perPage:5) {
+        media(search:$search,type:ANIME){
+          title{romaji}
+        }
+      }
+    }
+    """
+
+    async with aiohttp.ClientSession() as s:
+        async with s.post(url,json={"query":query,"variables":{"search":q}}) as r:
+            j = await r.json()
+
+    return [{"title":m["title"]["romaji"]} for m in j["data"]["Page"]["media"]]
+
+    @app.get("/api/pedido/manga")
+async def pedido_manga(q: str):
+
+    url = "https://graphql.anilist.co"
+
+    query = """
+    query ($search: String) {
+      Page(perPage:5) {
+        media(search:$search,type:MANGA){
+          title{romaji}
+        }
+      }
+    }
+    """
+
+    async with aiohttp.ClientSession() as s:
+        async with s.post(url,json={"query":query,"variables":{"search":q}}) as r:
+            j = await r.json()
+
+    return [{"title":m["title"]["romaji"]} for m in j["data"]["Page"]["media"]]
+
+    @app.post("/api/pedido/enviar")
+async def pedido_enviar(data: dict):
+
+    user_id = data.get("user_id")
+    titulo = data.get("titulo")
+    tipo = data.get("tipo")
+
+    msg = f"""
+📥 NOVO PEDIDO
+
+👤 ID: {user_id}
+🎬 Tipo: {tipo}
+📌 Título: {titulo}
+"""
+
+    await bot.send_message(
+        chat_id=CANAL_PEDIDOS,
+        text=msg
+    )
+
+    return {"msg":"Pedido enviado!"}
+
+    @app.post("/api/pedido/report")
+async def pedido_report(data: dict):
+
+    msg = f"""
+⚠️ REPORT DE ERRO
+
+👤 ID: {data.get("user_id")}
+
+📝 {data.get("texto")}
+"""
+
+    await bot.send_message(
+        chat_id=CANAL_PEDIDOS,
+        text=msg
+    )
+
+    return {"ok":True}
