@@ -2131,38 +2131,31 @@ CHARACTERS_FILE = "data/personagens_anilist.txt"
 
 
 def load_characters():
+
     animes = {}
 
     with open(CHARACTERS_FILE, encoding="utf-8") as f:
+
         for line in f:
 
-            line = line.strip()
+            line=line.strip()
             if not line:
                 continue
 
-            parts = line.split("|")
-
-            char_id = parts[0]
-            name = parts[1]
-            anime = parts[2]
-            anime_id = parts[3]
+            char_id,name,anime,anime_id=line.split("|")[:4]
 
             if anime_id not in animes:
 
-                cover = f"https://img.anili.st/media/{anime_id}"
-
-                animes[anime_id] = {
-                    "anime": anime,
-                    "anime_id": anime_id,
-                    "cover": cover,
-                    "characters": []
+                animes[anime_id]={
+                    "anime":anime,
+                    "anime_id":anime_id,
+                    "characters":[]
                 }
 
             animes[anime_id]["characters"].append({
-                "id": int(char_id),
-                "name": name,
-                "anime": anime,
-                "anime_id": anime_id
+                "id":int(char_id),
+                "name":name,
+                "anime":anime
             })
 
     return list(animes.values())
@@ -2174,225 +2167,12 @@ def api_cards_animes():
 
 
 @app.get("/api/cards/characters")
-def api_cards_characters(anime_id: str):
+def api_cards_characters(anime_id:str):
 
-    data = load_characters()
+    data=load_characters()
 
     for anime in data:
-        if anime["anime_id"] == anime_id:
+        if anime["anime_id"]==anime_id:
             return JSONResponse(anime["characters"])
 
     return JSONResponse([])
-
-
-# =========================
-# MINIAPP CARDS
-# =========================
-
-@app.get("/cards", response_class=HTMLResponse)
-def cards_page():
-
-    html = """
-<!doctype html>
-<html>
-<head>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<style>
-
-body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
-color:white;
-}
-
-.banner{
-width:100%;
-height:200px;
-background:url('https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg') center/cover;
-}
-
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-padding:16px;
-}
-
-.card{
-border-radius:20px;
-overflow:hidden;
-background:#111827;
-cursor:pointer;
-}
-
-.card img{
-width:100%;
-height:240px;
-object-fit:cover;
-}
-
-.name{
-padding:12px;
-font-weight:800;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="banner"></div>
-
-<div class="grid" id="grid"></div>
-
-<script>
-
-async function load(){
-
-let r = await fetch("/api/cards/animes")
-let data = await r.json()
-
-let html=""
-
-data.forEach(a=>{
-
-html+=`
-<div class="card" onclick="openAnime('${a.anime_id}')">
-<img src="${a.cover}">
-<div class="name">${a.anime}</div>
-</div>
-`
-
-})
-
-document.getElementById("grid").innerHTML=html
-
-}
-
-function openAnime(id){
-window.location="/cards/anime?anime="+id
-}
-
-load()
-
-</script>
-
-</body>
-</html>
-"""
-
-    return HTMLResponse(html)
-
-
-# =========================
-# PERSONAGENS
-# =========================
-
-@app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime: str):
-
-    html = """
-<!doctype html>
-<html>
-<head>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<style>
-
-body{
-margin:0;
-background:#0a1220;
-font-family:system-ui;
-color:white;
-padding:16px;
-}
-
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px;
-}
-
-.card{
-background:#111827;
-border-radius:20px;
-overflow:hidden;
-}
-
-.card img{
-width:100%;
-height:240px;
-object-fit:cover;
-}
-
-.info{
-padding:10px;
-}
-
-.name{
-font-weight:800;
-font-size:14px;
-}
-
-.meta{
-font-size:12px;
-opacity:.7;
-margin-top:4px;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="grid" id="grid"></div>
-
-<script>
-
-const anime="__ANIME__"
-
-async function load(){
-
-let r = await fetch("/api/cards/characters?anime_id="+anime)
-let data = await r.json()
-
-let html=""
-
-data.forEach(c=>{
-
-let img="https://img.anili.st/character/"+c.id
-
-html+=`
-<div class="card">
-<img src="${img}">
-<div class="info">
-<div class="name">${c.name}</div>
-<div class="meta">ID: ${c.id}</div>
-<div class="meta">${c.anime}</div>
-</div>
-</div>
-`
-
-})
-
-document.getElementById("grid").innerHTML=html
-
-}
-
-load()
-
-</script>
-
-</body>
-</html>
-"""
-
-    html = html.replace("__ANIME__", anime)
-
-    return HTMLResponse(html)
