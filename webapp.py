@@ -3232,153 +3232,34 @@ Pedido:
 
 
 # =========================================================
-# CARDS SYSTEM — JSON ASSETS
-# Lê: data/cards_assets.json
+# CARDS SYSTEM — WEBAPP FINAL
+# Base: data/personagens_anilist.txt
+# Overrides: data/cards_overrides.json
 # =========================================================
 
-import json
-import os
-from typing import Any, Dict, List
 from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
-CARDS_TOP_BANNER_URL = os.getenv(
-    "CARDS_TOP_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
-).strip()
+from cards_service import (
+    build_cards_final_data,
+    find_anime,
+    list_subcategories,
+    reload_cards_cache,
+    search_characters,
+)
 
-_CARDS_DATA: List[Dict[str, Any]] = []
-_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
-_CARDS_TOTAL: int = 0
-
-
-def _load_cards_assets() -> int:
-    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
-
-    _CARDS_DATA = []
-    _CARDS_INDEX = {}
-    _CARDS_TOTAL = 0
-
-    path = CARDS_ASSETS_PATH
-    candidates = [path]
-
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
-        return 0
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        items = raw.get("items") if isinstance(raw, dict) else raw
-        if not isinstance(items, list):
-            print(f"[cards] Formato inválido em {real_path}", flush=True)
-            return 0
-
-        cleaned: List[Dict[str, Any]] = []
-
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-
-            anime_id = item.get("anime_id")
-            anime = str(item.get("anime") or "").strip()
-            banner_image = str(item.get("banner_image") or "").strip()
-            cover_image = str(item.get("cover_image") or "").strip()
-            chars_raw = item.get("characters") or []
-
-            try:
-                anime_id = int(anime_id)
-            except Exception:
-                continue
-
-            if not anime:
-                continue
-
-            chars: List[Dict[str, Any]] = []
-            seen_char_ids = set()
-
-            if isinstance(chars_raw, list):
-                for c in chars_raw:
-                    if not isinstance(c, dict):
-                        continue
-
-                    cid = c.get("id")
-                    cname = str(c.get("name") or "").strip()
-                    canime = str(c.get("anime") or anime).strip()
-                    cimg = str(c.get("image") or "").strip()
-
-                    try:
-                        cid = int(cid)
-                    except Exception:
-                        continue
-
-                    if not cname or cid in seen_char_ids:
-                        continue
-
-                    seen_char_ids.add(cid)
-
-                    chars.append({
-                        "id": cid,
-                        "name": cname,
-                        "anime": canime or anime,
-                        "image": cimg,
-                    })
-
-            chars.sort(key=lambda x: x["name"].lower())
-
-            payload = {
-                "anime_id": anime_id,
-                "anime": anime,
-                "banner_image": banner_image,
-                "cover_image": cover_image,
-                "characters": chars,
-                "characters_count": len(chars),
-            }
-
-            cleaned.append(payload)
-            _CARDS_INDEX[anime_id] = payload
-
-        cleaned.sort(key=lambda x: x["anime"].lower())
-
-        _CARDS_DATA = cleaned
-        _CARDS_TOTAL = len(cleaned)
-
-        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
-        return _CARDS_TOTAL
-
-    except Exception as e:
-        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
-        return 0
-
-
-def _ensure_cards_loaded():
-    if not _CARDS_DATA:
-        _load_cards_assets()
-
-
-# carrega no boot sem derrubar app
-try:
-    _load_cards_assets()
-except Exception as e:
-    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
+CARDS_TOP_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
 @app.get("/api/cards/reload")
 def api_cards_reload():
-    total = _load_cards_assets()
-    return JSONResponse({"ok": True, "total": total})
+    reload_cards_cache()
+    data = build_cards_final_data(force_reload=True)
+    return JSONResponse({
+        "ok": True,
+        "total_animes": len(data["animes_list"]),
+        "total_characters": len(data["characters_by_id"]),
+    })
 
 
 @app.get("/api/cards/animes")
@@ -3387,30 +3268,20 @@ def api_cards_animes(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    data = build_cards_final_data()
+    items = list(data["animes_list"])
 
-    q = (q or "").strip().lower()
-    data = _CARDS_DATA
+    qn = q.strip().lower()
+    if qn:
+        items = [x for x in items if qn in x["anime"].lower()]
 
-    if q:
-        data = [x for x in data if q in x["anime"].lower()]
-
-    total = len(data)
-    items = data[offset: offset + limit]
-
-    payload = []
-    for a in items:
-        payload.append({
-            "anime_id": a["anime_id"],
-            "anime": a["anime"],
-            "banner_image": a["banner_image"],
-            "cover_image": a["cover_image"],
-            "characters_count": a["characters_count"],
-        })
+    total = len(items)
+    items = items[offset: offset + limit]
 
     return JSONResponse({
+        "ok": True,
         "total": total,
-        "items": payload,
+        "items": items,
     })
 
 
@@ -3421,9 +3292,9 @@ def api_cards_characters(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    data = build_cards_final_data()
+    anime = data["animes_by_id"].get(anime_id)
 
-    anime = _CARDS_INDEX.get(anime_id)
     if not anime:
         return JSONResponse({
             "ok": False,
@@ -3432,24 +3303,73 @@ def api_cards_characters(
             "items": [],
         })
 
-    chars = anime["characters"]
-    q = (q or "").strip().lower()
+    chars = list(data["characters_by_anime"].get(anime_id, []))
 
-    if q:
-        chars = [c for c in chars if q in c["name"].lower()]
+    qn = q.strip().lower()
+    if qn:
+        chars = [x for x in chars if qn in x["name"].lower()]
 
     total = len(chars)
     items = chars[offset: offset + limit]
 
     return JSONResponse({
         "ok": True,
-        "anime": {
-            "anime_id": anime["anime_id"],
-            "anime": anime["anime"],
-            "banner_image": anime["banner_image"],
-            "cover_image": anime["cover_image"],
-            "characters_count": anime["characters_count"],
-        },
+        "anime": anime,
+        "total": total,
+        "items": items,
+    })
+
+
+@app.get("/api/cards/search")
+def api_cards_search(
+    q: str = Query(..., min_length=1, max_length=120),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    items = search_characters(q, limit=limit)
+    return JSONResponse({
+        "ok": True,
+        "total": len(items),
+        "items": items,
+    })
+
+
+@app.get("/api/cards/find-anime")
+def api_cards_find_anime(q: str = Query(..., min_length=1, max_length=120)):
+    anime = find_anime(q)
+    return JSONResponse({
+        "ok": bool(anime),
+        "anime": anime,
+    })
+
+
+@app.get("/api/cards/subcategories")
+def api_cards_subcategories():
+    return JSONResponse({
+        "ok": True,
+        "items": list_subcategories(),
+    })
+
+
+@app.get("/api/cards/subcategory")
+def api_cards_subcategory(
+    name: str = Query(..., min_length=1, max_length=120),
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+):
+    data = build_cards_final_data()
+    chars = list(data["subcategories"].get(name, []))
+
+    qn = q.strip().lower()
+    if qn:
+        chars = [x for x in chars if qn in x["name"].lower()]
+
+    total = len(chars)
+    items = chars[offset: offset + limit]
+
+    return JSONResponse({
+        "ok": True,
+        "subcategory": name,
         "total": total,
         "items": items,
     })
@@ -3502,7 +3422,7 @@ def cards_page():
   .wrap{
     position:relative;
     z-index:1;
-    max-width:980px;
+    max-width:1080px;
     margin:0 auto;
     padding:18px 14px 42px;
   }
@@ -3591,6 +3511,12 @@ def cards_page():
     font-size:12px;
   }
 
+  .search-stack{
+    display:grid;
+    gap:12px;
+    margin-top:2px;
+  }
+
   .search{
     width:100%;
     display:flex;
@@ -3617,6 +3543,34 @@ def cards_page():
     font-weight:800;
     letter-spacing:.06em;
     text-transform:uppercase;
+  }
+
+  .section-title{
+    margin-top:22px;
+    margin-bottom:10px;
+    font-size:15px;
+    font-weight:900;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.78);
+  }
+
+  .subs{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .sub-btn{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    color:#fff;
+    padding:10px 14px;
+    border-radius:999px;
+    cursor:pointer;
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:.06em;
   }
 
   .cards{
@@ -3749,7 +3703,7 @@ def cards_page():
     <div class="top-copy">
       <div class="eyebrow">🃏 Cards • Source Baltigo</div>
       <div class="title">Coleção de Personagens</div>
-      <div class="subtitle">Obras, personagens e artes já preparadas</div>
+      <div class="subtitle">Obras, subcategorias e personagens</div>
     </div>
   </div>
 
@@ -3757,11 +3711,22 @@ def cards_page():
     <div class="stats" id="statsTxt">Carregando...</div>
   </div>
 
-  <div class="search">
-    <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar obra..." />
+  <div class="search-stack">
+    <div class="search">
+      <span style="opacity:.62;font-weight:900;">🎬</span>
+      <input id="searchInput" type="text" placeholder="Buscar obra..." />
+    </div>
+
+    <div class="search">
+      <span style="opacity:.62;font-weight:900;">🧍</span>
+      <input id="charSearchInput" type="text" placeholder="Buscar personagem e apertar Enter..." />
+    </div>
   </div>
 
+  <div class="section-title">Subcategorias</div>
+  <div class="subs" id="subsBox"></div>
+
+  <div class="section-title">Obras</div>
   <div class="cards" id="cards"></div>
   <div class="empty" id="emptyBox" style="display:none;">Nenhuma obra encontrada.</div>
 
@@ -3774,7 +3739,7 @@ def cards_page():
   let filteredData = [];
 
   function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
+    return String(s || "").replace(/[&<>"']/g, (m) => ({
       "&":"&amp;",
       "<":"&lt;",
       ">":"&gt;",
@@ -3835,7 +3800,7 @@ def cards_page():
       return;
     }
 
-    filteredData = fullData.filter(x => x.anime.toLowerCase().includes(q));
+    filteredData = fullData.filter(x => String(x.anime || "").toLowerCase().includes(q));
     render();
   }
 
@@ -3843,16 +3808,47 @@ def cards_page():
     window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id);
   }
 
+  async function loadSubs(){
+    const subsBox = document.getElementById("subsBox");
+    const res = await fetch("/api/cards/subcategories?_ts=" + Date.now());
+    const data = await res.json();
+    const items = data.items || [];
+
+    if (!items.length){
+      subsBox.innerHTML = '<div style="color:rgba(255,255,255,.45);font-weight:700;">Nenhuma subcategoria criada.</div>';
+      return;
+    }
+
+    let html = "";
+    for (const item of items){
+      html += `<button class="sub-btn" onclick="openSubcategory('${esc(item.name)}')">${esc(item.name)} (${item.count || 0})</button>`;
+    }
+    subsBox.innerHTML = html;
+  }
+
+  function openSubcategory(name){
+    window.location.href = "/cards/subcategory?name=" + encodeURIComponent(name);
+  }
+
   async function load(){
     const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
     const data = await res.json();
-    fullData = (data.items || []).sort((a,b) => a.anime.localeCompare(b.anime));
+    fullData = (data.items || []).sort((a,b) => String(a.anime || "").localeCompare(String(b.anime || "")));
     filteredData = [...fullData];
     render();
   }
 
   document.getElementById("searchInput").addEventListener("input", applySearch);
+
+  document.getElementById("charSearchInput").addEventListener("keydown", function(e){
+    if (e.key !== "Enter") return;
+    const q = (this.value || "").trim();
+    if (!q) return;
+    window.location.href = "/cards/search?q=" + encodeURIComponent(q);
+  });
+
   load();
+  loadSubs();
 </script>
 </body>
 </html>
@@ -4179,7 +4175,7 @@ def cards_anime_page(anime_id: int = Query(...)):
   let filteredData = [];
 
   function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
+    return String(s || "").replace(/[&<>"']/g, (m) => ({
       "&":"&amp;",
       "<":"&lt;",
       ">":"&gt;",
@@ -4245,7 +4241,7 @@ def cards_anime_page(anime_id: int = Query(...)):
       return;
     }
 
-    filteredData = fullData.filter(x => x.name.toLowerCase().includes(q));
+    filteredData = fullData.filter(x => String(x.name || "").toLowerCase().includes(q));
     render();
   }
 
@@ -4254,13 +4250,17 @@ def cards_anime_page(anime_id: int = Query(...)):
     const data = await res.json();
 
     animeMeta = data.anime || null;
-    fullData = (data.items || []).sort((a,b) => a.name.localeCompare(b.name));
+    fullData = (data.items || []).sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
     filteredData = [...fullData];
 
     if (animeMeta){
       document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
       document.getElementById("animeSub").textContent = "ID " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " personagens";
       document.getElementById("heroImg").src = pickHero(animeMeta);
+    } else {
+      document.getElementById("animeTitle").textContent = "Obra não encontrada";
+      document.getElementById("animeSub").textContent = "Verifique o anime_id";
+      document.getElementById("heroImg").src = fallbackTop;
     }
 
     render();
@@ -4273,6 +4273,212 @@ def cards_anime_page(anime_id: int = Query(...)):
 </html>
 """
     html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+    return HTMLResponse(html)
+
+
+@app.get("/cards/subcategory", response_class=HTMLResponse)
+def cards_subcategory_page(name: str = Query(...)):
+    safe_name = str(name).replace("\\", "\\\\").replace("'", "\\'")
+    html = f"""
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Subcategoria • Source Baltigo</title>
+
+<style>
+  :root{{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+    --stroke2:rgba(255,255,255,.16);
+    --shadow:0 16px 30px rgba(0,0,0,.44);
+  }}
+  *{{ box-sizing:border-box; }}
+  body{{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+  }}
+  .wrap{{max-width:980px;margin:0 auto;padding:18px 14px 42px;}}
+  .back{{
+    display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#fff;
+    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
+    border-radius:999px;padding:8px 12px;font-size:11px;font-weight:900;
+    letter-spacing:.12em;text-transform:uppercase;
+  }}
+  .title{{margin:18px 0 8px;font-size:28px;font-weight:900;text-transform:uppercase;}}
+  .meta{{color:var(--muted);font-weight:800;letter-spacing:.10em;text-transform:uppercase;font-size:12px;margin-bottom:16px;}}
+  .cards{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}}
+  @media (min-width:720px){{ .cards{{grid-template-columns:repeat(3,1fr);}} }}
+  .card{{border-radius:24px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
+  .char-image{{width:100%;height:280px;background:#111;}}
+  .char-image img{{width:100%;height:100%;object-fit:cover;display:block;}}
+  .meta2{{padding:13px 14px 15px;}}
+  .name{{font-weight:900;font-size:14px;text-transform:uppercase;margin:0;}}
+  .sub{{margin-top:8px;color:rgba(255,255,255,.52);font-weight:800;letter-spacing:.12em;font-size:11px;text-transform:uppercase;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/cards">← Voltar</a>
+  <div class="title">Subcategoria: {name}</div>
+  <div id="meta" class="meta">Carregando...</div>
+  <div id="cards" class="cards"></div>
+</div>
+
+<script>
+const subName = '{safe_name}';
+const cards = document.getElementById("cards");
+const meta = document.getElementById("meta");
+const fallbackTop = "{CARDS_TOP_BANNER_URL}";
+
+function esc(s){{
+  return String(s || "").replace(/[&<>"']/g, (m) => ({{
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#039;"
+  }})[m]);
+}}
+
+async function load(){{
+  const res = await fetch("/api/cards/subcategory?name=" + encodeURIComponent(subName) + "&limit=5000&_ts=" + Date.now());
+  const data = await res.json();
+  const items = data.items || [];
+  meta.textContent = "TOTAL DE PERSONAGENS: " + items.length;
+
+  let html = "";
+  for (const item of items){{
+    html += `
+      <div class="card">
+        <div class="char-image">
+          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
+        </div>
+        <div class="meta2">
+          <p class="name">${{esc(item.name)}}</p>
+          <div class="sub">${{esc(item.anime)}}</div>
+        </div>
+      </div>
+    `;
+  }}
+  cards.innerHTML = html;
+}}
+
+load();
+</script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
+
+
+@app.get("/cards/search", response_class=HTMLResponse)
+def cards_search_page(q: str = Query(...)):
+    safe_q = str(q).replace("\\", "\\\\").replace("'", "\\'")
+    html = f"""
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Busca • Source Baltigo</title>
+
+<style>
+  :root{{
+    --bg0:#070b12;
+    --bg1:#0a1220;
+    --txt:rgba(255,255,255,.94);
+    --muted:rgba(255,255,255,.58);
+    --stroke:rgba(255,255,255,.10);
+  }}
+  *{{ box-sizing:border-box; }}
+  body{{
+    margin:0;
+    color:var(--txt);
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+  }}
+  .wrap{{max-width:980px;margin:0 auto;padding:18px 14px 42px;}}
+  .back{{
+    display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#fff;
+    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
+    border-radius:999px;padding:8px 12px;font-size:11px;font-weight:900;
+    letter-spacing:.12em;text-transform:uppercase;
+  }}
+  .title{{margin:18px 0 8px;font-size:28px;font-weight:900;text-transform:uppercase;}}
+  .meta{{color:var(--muted);font-weight:800;letter-spacing:.10em;text-transform:uppercase;font-size:12px;margin-bottom:16px;}}
+  .cards{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}}
+  @media (min-width:720px){{ .cards{{grid-template-columns:repeat(3,1fr);}} }}
+  .card{{border-radius:24px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
+  .char-image{{width:100%;height:280px;background:#111;}}
+  .char-image img{{width:100%;height:100%;object-fit:cover;display:block;}}
+  .meta2{{padding:13px 14px 15px;}}
+  .name{{font-weight:900;font-size:14px;text-transform:uppercase;margin:0;}}
+  .sub{{margin-top:8px;color:rgba(255,255,255,.52);font-weight:800;letter-spacing:.12em;font-size:11px;text-transform:uppercase;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/cards">← Voltar</a>
+  <div class="title">Busca: {q}</div>
+  <div id="meta" class="meta">Carregando...</div>
+  <div id="cards" class="cards"></div>
+</div>
+
+<script>
+const searchQ = '{safe_q}';
+const cards = document.getElementById("cards");
+const meta = document.getElementById("meta");
+const fallbackTop = "{CARDS_TOP_BANNER_URL}";
+
+function esc(s){{
+  return String(s || "").replace(/[&<>"']/g, (m) => ({{
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#039;"
+  }})[m]);
+}}
+
+async function load(){{
+  const res = await fetch("/api/cards/search?q=" + encodeURIComponent(searchQ) + "&limit=500&_ts=" + Date.now());
+  const data = await res.json();
+  const items = data.items || [];
+  meta.textContent = "TOTAL DE RESULTADOS: " + items.length;
+
+  let html = "";
+  for (const item of items){{
+    html += `
+      <div class="card">
+        <div class="char-image">
+          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
+        </div>
+        <div class="meta2">
+          <p class="name">${{esc(item.name)}}</p>
+          <div class="sub">${{esc(item.anime)}}</div>
+        </div>
+      </div>
+    `;
+  }}
+  cards.innerHTML = html;
+}}
+
+load();
+</script>
+</body>
+</html>
+"""
     return HTMLResponse(html)
 
 # =========================
