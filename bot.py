@@ -4,7 +4,6 @@ import uvicorn
 import asyncio
 import time
 import httpx
-import aiohttp
 
 from telegram.ext import Application, CommandHandler
 
@@ -12,7 +11,6 @@ from commands.start import start
 from commands.anime import anime
 from commands.manga import manga
 from commands.cards import cards
-from commands.buildcards import buildcards
 
 # from commands.anime import anime  # quando você criar
 
@@ -40,7 +38,6 @@ def main():
     tg_app.add_handler(CommandHandler("anime", anime)) 
     tg_app.add_handler(CommandHandler("manga", manga)) 
     tg_app.add_handler(CommandHandler("cards", cards))
-    tg_app.add_handler(CommandHandler("buildcards", buildcards))
     
     
     print("Bot + WebApp iniciado")
@@ -48,6 +45,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
