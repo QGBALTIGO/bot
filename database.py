@@ -126,3 +126,27 @@ def create_anilist_tables():
 
 def reset_welcome_sent(user_id: int):
     _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (user_id,))
+
+def save_anilist_account(telegram_id, anilist_id, username, token):
+
+    _run("""
+    INSERT INTO user_anilist
+    (telegram_id, anilist_id, username, access_token)
+    VALUES (%s,%s,%s,%s)
+
+    ON CONFLICT (telegram_id)
+    DO UPDATE SET
+        anilist_id = EXCLUDED.anilist_id,
+        username = EXCLUDED.username,
+        access_token = EXCLUDED.access_token
+    """, (telegram_id, anilist_id, username, token))
+
+def has_anilist_login(user_id):
+
+    row = _run(
+        "SELECT telegram_id FROM user_anilist WHERE telegram_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    return bool(row)
