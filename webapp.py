@@ -2126,9 +2126,11 @@ def mangas_page():
     )
     return HTMLResponse(html)
 
-# =========================
-# CARDS — PERSONAGENS
-# =========================
+# =====================================================
+# CARDS SYSTEM
+# =====================================================
+
+from fastapi.responses import HTMLResponse, JSONResponse
 
 CHARACTERS_FILE = "data/personagens_anilist.txt"
 
@@ -2144,15 +2146,19 @@ def load_characters():
             for line in f:
 
                 line = line.strip()
+
                 if not line:
                     continue
 
                 parts = line.split("|")
 
-                char_id = parts[0]
+                if len(parts) < 4:
+                    continue
+
+                char_id = int(parts[0])
                 name = parts[1]
                 anime = parts[2]
-                anime_id = parts[3]
+                anime_id = int(parts[3])
 
                 if anime_id not in animes:
 
@@ -2163,74 +2169,20 @@ def load_characters():
                     }
 
                 animes[anime_id]["characters"].append({
-                    "id": int(char_id),
+                    "id": char_id,
                     "name": name,
                     "anime": anime
                 })
 
     except Exception as e:
-        print("Erro ao carregar personagens:", e)
+        print("Erro carregando personagens:", e)
 
     return list(animes.values())
 
 
-@app.get("/api/cards/animes")
-def api_cards_animes():
-    return JSONResponse(load_characters())
-
-
-@app.get("/api/cards/characters")
-def api_cards_characters(anime_id: str):
-
-    data = load_characters()
-
-    for anime in data:
-        if anime["anime_id"] == anime_id:
-            return JSONResponse(anime["characters"])
-
-    return JSONResponse([])
-
-
 # =====================================================
-# CARDS SYSTEM (VERSÃO SIMPLES E ESTÁVEL)
+# API
 # =====================================================
-
-CHARACTERS_FILE = "data/personagens_anilist.txt"
-
-
-def load_characters():
-
-    animes = {}
-
-    with open(CHARACTERS_FILE, encoding="utf-8") as f:
-
-        for line in f:
-
-            line = line.strip()
-            if not line:
-                continue
-
-            char_id, name, anime, anime_id = line.split("|")[:4]
-
-            char_id = int(char_id)
-            anime_id = int(anime_id)
-
-            if anime_id not in animes:
-
-                animes[anime_id] = {
-                    "anime": anime,
-                    "anime_id": anime_id,
-                    "characters": []
-                }
-
-            animes[anime_id]["characters"].append({
-                "id": char_id,
-                "name": name,
-                "anime": anime
-            })
-
-    return list(animes.values())
-
 
 @app.get("/api/cards/animes")
 def api_cards_animes():
@@ -2248,10 +2200,16 @@ def api_cards_characters(anime_id: int):
     data = load_characters()
 
     for a in data:
+
         if a["anime_id"] == anime_id:
             return JSONResponse(a["characters"])
 
     return JSONResponse([])
+
+
+# =====================================================
+# PAGE /cards
+# =====================================================
 
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page():
@@ -2261,7 +2219,8 @@ def cards_page():
 <html>
 <head>
 
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 
 <style>
 
@@ -2274,18 +2233,19 @@ color:white;
 
 .banner{
 height:200px;
-background:linear-gradient(180deg,rgba(0,0,0,.2),rgba(0,0,0,.8)),
+background:linear-gradient(180deg,rgba(0,0,0,.3),rgba(0,0,0,.8)),
 url("https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg")
 center/cover;
 display:flex;
-align-items:end;
+align-items:flex-end;
 padding:20px;
-font-size:24px;
+font-size:26px;
 font-weight:900;
+letter-spacing:.05em;
 }
 
 .search{
-padding:14px;
+padding:16px;
 }
 
 .search input{
@@ -2295,6 +2255,7 @@ border-radius:12px;
 border:none;
 background:#111827;
 color:white;
+font-size:14px;
 }
 
 .grid{
@@ -2328,7 +2289,9 @@ font-weight:800;
 
 <body>
 
-<div class="banner">COLEÇÃO DE PERSONAGENS</div>
+<div class="banner">
+COLEÇÃO DE PERSONAGENS
+</div>
 
 <div class="search">
 <input id="search" placeholder="Buscar anime...">
@@ -2398,7 +2361,12 @@ load()
 
     return HTMLResponse(html)
 
-    @app.get("/cards/anime", response_class=HTMLResponse)
+
+# =====================================================
+# PAGE /cards/anime
+# =====================================================
+
+@app.get("/cards/anime", response_class=HTMLResponse)
 def cards_anime_page(anime: int):
 
     html = """
@@ -2480,6 +2448,7 @@ let data=[]
 async function load(){
 
 let r=await fetch("/api/cards/characters?anime_id="+anime)
+
 data=await r.json()
 
 render(data)
