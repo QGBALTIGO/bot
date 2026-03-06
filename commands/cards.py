@@ -1,16 +1,11 @@
-import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ContextTypes
-
-from utils.gatekeeper import gatekeeper
-
-from cards_service import find_anime
-
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
-CARDS_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
-
-
 async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    ok, msg = await gatekeeper(update, context)
+    if not ok:
+        if msg:
+            await update.message.reply_html(msg)
+        return
+
     direct_query = " ".join(context.args).strip()
 
     if direct_query:
@@ -31,6 +26,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Vou abrir a página geral dos cards para você buscar lá."
             )
             botao = "🃏 Abrir Cards"
+
     else:
         url = f"{BASE_URL}/cards"
         texto = (
