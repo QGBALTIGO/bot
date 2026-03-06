@@ -2123,42 +2123,65 @@ def mangas_page():
     )
     return HTMLResponse(html)
 
+# =========================
+# CONFIG — CARDS (PERSONAGENS)
+# =========================
+
 CHARACTERS_FILE = "data/personagens_anilist.txt"
 
-    def load_characters():
+
+def load_characters():
     animes = {}
 
-    with open(CHARACTERS_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
+    try:
+        with open(CHARACTERS_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
 
-            char_id, name, anime, anime_id, role = line.split("|")
+                parts = line.split("|")
+                if len(parts) < 4:
+                    continue
 
-            if anime_id not in animes:
-                animes[anime_id] = {
-                    "anime": anime,
-                    "anime_id": anime_id,
-                    "characters": []
-                }
+                char_id = parts[0]
+                name = parts[1]
+                anime = parts[2]
+                anime_id = parts[3]
 
-            animes[anime_id]["characters"].append({
-                "id": int(char_id),
-                "name": name,
-                "role": role
-            })
+                if anime_id not in animes:
+                    animes[anime_id] = {
+                        "anime": anime,
+                        "anime_id": anime_id,
+                        "characters": []
+                    }
+
+                animes[anime_id]["characters"].append({
+                    "id": int(char_id),
+                    "name": name,
+                    "anime": anime
+                })
+
+    except Exception as e:
+        print("Erro ao carregar personagens:", e)
 
     return list(animes.values())
 
-    @app.get("/api/cards/animes")
+
+# =========================
+# API — LISTAR ANIMES
+# =========================
+
+@app.get("/api/cards/animes")
 def api_cards_animes():
+    return JSONResponse(load_characters())
 
-    data = load_characters()
 
-    return JSONResponse(data)
+# =========================
+# API — PERSONAGENS DO ANIME
+# =========================
 
-    @app.get("/api/cards/characters")
+@app.get("/api/cards/characters")
 def api_cards_characters(anime_id: str):
 
     data = load_characters()
@@ -2169,52 +2192,60 @@ def api_cards_characters(anime_id: str):
 
     return JSONResponse([])
 
-    async def fetch_character_image(char_id):
 
-    query = """
-    query ($id: Int) {
-      Character(id: $id) {
-        image {
-          large
-        }
-      }
-    }
-    """
+# =========================
+# MINI APP — CARDS
+# =========================
 
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            "https://graphql.anilist.co",
-            json={"query": query, "variables": {"id": char_id}},
-        )
-
-    data = r.json()
-
-    return data["data"]["Character"]["image"]["large"]
-
-    @app.get("/cards", response_class=HTMLResponse)
+@app.get("/cards", response_class=HTMLResponse)
 def cards_page():
 
     html = """
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
 
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 
 <style>
 
 body{
-background:#0f172a;
-color:white;
-font-family:sans-serif;
+background: radial-gradient(900px 500px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
+linear-gradient(180deg,#070b12,#0a1220);
+font-family: -apple-system,system-ui,Segoe UI,Roboto,Arial;
+margin:0;
 padding:20px;
+color:white;
+}
+
+.title{
+font-weight:900;
+letter-spacing:.08em;
+font-size:22px;
+margin-bottom:16px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:12px;
 }
 
 .card{
-background:#1e293b;
-padding:15px;
-margin:10px;
-border-radius:12px;
+background:rgba(255,255,255,0.04);
+border:1px solid rgba(255,255,255,0.1);
+border-radius:18px;
+padding:14px;
+cursor:pointer;
+transition:.15s;
+font-weight:800;
+letter-spacing:.04em;
+}
+
+.card:hover{
+transform:translateY(-2px);
+border-color:rgba(255,255,255,0.2);
 }
 
 </style>
@@ -2223,16 +2254,16 @@ border-radius:12px;
 
 <body>
 
-<h2>🃏 Coleção de Cards</h2>
+<div class="title">🃏 COLEÇÃO DE PERSONAGENS</div>
 
-<div id="list"></div>
+<div id="grid" class="grid"></div>
 
 <script>
 
 async function load(){
 
-let res = await fetch("/api/cards/animes")
-let data = await res.json()
+let r = await fetch("/api/cards/animes")
+let data = await r.json()
 
 let html=""
 
@@ -2244,7 +2275,7 @@ ${a.anime}
 `
 })
 
-document.getElementById("list").innerHTML=html
+document.getElementById("grid").innerHTML=html
 
 }
 
@@ -2259,5 +2290,112 @@ load()
 </body>
 </html>
 """
+
+    return HTMLResponse(html)
+
+
+# =========================
+# MINI APP — PERSONAGENS
+# =========================
+
+@app.get("/cards/anime", response_class=HTMLResponse)
+def cards_anime_page(anime: str):
+
+    html = """
+<!doctype html>
+<html>
+<head>
+
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<style>
+
+body{
+background:#070b12;
+font-family:system-ui;
+color:white;
+margin:0;
+padding:20px;
+}
+
+.title{
+font-size:20px;
+font-weight:900;
+margin-bottom:16px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:14px;
+}
+
+.card{
+background:rgba(255,255,255,0.04);
+border:1px solid rgba(255,255,255,0.1);
+border-radius:20px;
+overflow:hidden;
+}
+
+.card img{
+width:100%;
+height:220px;
+object-fit:cover;
+}
+
+.name{
+padding:10px;
+font-weight:800;
+font-size:14px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="title">PERSONAGENS</div>
+
+<div id="grid" class="grid"></div>
+
+<script>
+
+const anime="__ANIME__"
+
+async function load(){
+
+let r = await fetch("/api/cards/characters?anime_id="+anime)
+let data = await r.json()
+
+let html=""
+
+data.forEach(c=>{
+
+let img="https://img.anili.st/media/"+c.id
+
+html+=`
+<div class="card">
+<img src="${img}">
+<div class="name">${c.name}</div>
+</div>
+`
+
+})
+
+document.getElementById("grid").innerHTML=html
+
+}
+
+load()
+
+</script>
+
+</body>
+</html>
+"""
+
+    html = html.replace("__ANIME__", anime)
 
     return HTMLResponse(html)
