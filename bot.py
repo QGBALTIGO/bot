@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler
 from commands.start import start
 from commands.anime import anime
 from commands.manga import manga
+from commands.cards import cards
 
 # from commands.anime import anime  # quando você criar
 
@@ -33,12 +34,15 @@ def main():
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime)) 
     tg_app.add_handler(CommandHandler("manga", manga)) 
+    tg_app.add_handler(CommandHandler("cards", cards))
+    
     
     print("Bot + WebApp iniciado")
     tg_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
 
 
 
