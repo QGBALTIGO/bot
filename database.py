@@ -65,6 +65,7 @@ def create_tables():
     create_media_request_tables()
     create_cards_tables()
     create_level_tables()
+    create_friendship_tables()
 
 
 def create_users_table():
@@ -652,3 +653,59 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
         fetch="all"
     )
     return rows or []
+
+def create_friendship_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS friendships (
+        user_id BIGINT NOT NULL,
+        friend_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'accepted',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, friend_id)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_user
+    ON friendships (user_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_friend
+    ON friendships (friend_id)
+    """)
+
+def get_friend_count(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM friendships
+        WHERE user_id = %s
+          AND status = 'accepted'
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+def get_user_favorite_card_quantity(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT u.fav_name, c.quantity
+        FROM users u
+        LEFT JOIN user_card_collection c
+          ON c.user_id = u.user_id
+        WHERE u.user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return 0
+
+    # por enquanto, como fav_name está salvo como texto e não como character_id,
+    # a quantidade exata por personagem favorito ainda depende de ligarmos isso melhor depois.
+    # então aqui usamos quantity se houver, senão 0.
+    return int((row or {}).get("quantity") or 0)
