@@ -2127,234 +2127,93 @@ def mangas_page():
     return HTMLResponse(html)
 
 # =========================================================
-# CARDS SYSTEM — JSON ASSETS
-# Lê: data/cards_assets.json
+# CARDS UI MULTILÍNGUE
+# Substituir as rotas /cards e /cards/anime por estas
 # =========================================================
 
-import json
-import os
-from typing import Any, Dict, List
-from fastapi import Query
-from fastapi.responses import HTMLResponse, JSONResponse
-
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
-CARDS_TOP_BANNER_URL = os.getenv(
-    "CARDS_TOP_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-_CARDS_DATA: List[Dict[str, Any]] = []
-_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
-_CARDS_TOTAL: int = 0
+def pick_cards_lang(lang: str | None) -> str:
+    lang = (lang or "").lower().strip()
+    if lang.startswith("pt"):
+        return "pt"
+    if lang.startswith("es"):
+        return "es"
+    if lang.startswith("en"):
+        return "en"
+    return "pt"
 
 
-def _load_cards_assets() -> int:
-    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
-
-    _CARDS_DATA = []
-    _CARDS_INDEX = {}
-    _CARDS_TOTAL = 0
-
-    path = CARDS_ASSETS_PATH
-    candidates = [path]
-
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
-        return 0
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        items = raw.get("items") if isinstance(raw, dict) else raw
-        if not isinstance(items, list):
-            print(f"[cards] Formato inválido em {real_path}", flush=True)
-            return 0
-
-        cleaned: List[Dict[str, Any]] = []
-
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-
-            anime_id = item.get("anime_id")
-            anime = str(item.get("anime") or "").strip()
-            banner_image = str(item.get("banner_image") or "").strip()
-            cover_image = str(item.get("cover_image") or "").strip()
-            chars_raw = item.get("characters") or []
-
-            try:
-                anime_id = int(anime_id)
-            except Exception:
-                continue
-
-            if not anime:
-                continue
-
-            chars: List[Dict[str, Any]] = []
-            seen_char_ids = set()
-
-            if isinstance(chars_raw, list):
-                for c in chars_raw:
-                    if not isinstance(c, dict):
-                        continue
-
-                    cid = c.get("id")
-                    cname = str(c.get("name") or "").strip()
-                    canime = str(c.get("anime") or anime).strip()
-                    cimg = str(c.get("image") or "").strip()
-
-                    try:
-                        cid = int(cid)
-                    except Exception:
-                        continue
-
-                    if not cname or cid in seen_char_ids:
-                        continue
-
-                    seen_char_ids.add(cid)
-
-                    chars.append({
-                        "id": cid,
-                        "name": cname,
-                        "anime": canime or anime,
-                        "image": cimg,
-                    })
-
-            chars.sort(key=lambda x: x["name"].lower())
-
-            payload = {
-                "anime_id": anime_id,
-                "anime": anime,
-                "banner_image": banner_image,
-                "cover_image": cover_image,
-                "characters": chars,
-                "characters_count": len(chars),
-            }
-
-            cleaned.append(payload)
-            _CARDS_INDEX[anime_id] = payload
-
-        cleaned.sort(key=lambda x: x["anime"].lower())
-
-        _CARDS_DATA = cleaned
-        _CARDS_TOTAL = len(cleaned)
-
-        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
-        return _CARDS_TOTAL
-
-    except Exception as e:
-        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
-        return 0
-
-
-def _ensure_cards_loaded():
-    if not _CARDS_DATA:
-        _load_cards_assets()
-
-
-# carrega no boot sem derrubar app
-try:
-    _load_cards_assets()
-except Exception as e:
-    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
-
-
-@app.get("/api/cards/reload")
-def api_cards_reload():
-    total = _load_cards_assets()
-    return JSONResponse({"ok": True, "total": total})
-
-
-@app.get("/api/cards/animes")
-def api_cards_animes(
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    _ensure_cards_loaded()
-
-    q = (q or "").strip().lower()
-    data = _CARDS_DATA
-
-    if q:
-        data = [x for x in data if q in x["anime"].lower()]
-
-    total = len(data)
-    items = data[offset: offset + limit]
-
-    payload = []
-    for a in items:
-        payload.append({
-            "anime_id": a["anime_id"],
-            "anime": a["anime"],
-            "banner_image": a["banner_image"],
-            "cover_image": a["cover_image"],
-            "characters_count": a["characters_count"],
-        })
-
-    return JSONResponse({
-        "total": total,
-        "items": payload,
-    })
-
-
-@app.get("/api/cards/characters")
-def api_cards_characters(
-    anime_id: int = Query(...),
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    _ensure_cards_loaded()
-
-    anime = _CARDS_INDEX.get(anime_id)
-    if not anime:
-        return JSONResponse({
-            "ok": False,
-            "anime": None,
-            "total": 0,
-            "items": [],
-        })
-
-    chars = anime["characters"]
-    q = (q or "").strip().lower()
-
-    if q:
-        chars = [c for c in chars if q in c["name"].lower()]
-
-    total = len(chars)
-    items = chars[offset: offset + limit]
-
-    return JSONResponse({
-        "ok": True,
-        "anime": {
-            "anime_id": anime["anime_id"],
-            "anime": anime["anime"],
-            "banner_image": anime["banner_image"],
-            "cover_image": anime["cover_image"],
-            "characters_count": anime["characters_count"],
-        },
-        "total": total,
-        "items": items,
-    })
+CARDS_UI_TEXTS = {
+    "pt": {
+        "eyebrow": "🃏 Cards • Source Baltigo",
+        "title": "Coleção de Personagens",
+        "subtitle": "Obras, personagens e artes já preparadas",
+        "total_works": "TOTAL DE OBRAS",
+        "search_work": "Buscar obra...",
+        "no_work": "Nenhuma obra encontrada.",
+        "cards": "CARDS",
+        "chars": "chars",
+        "footer": "Source Baltigo • Cards",
+        "back": "← Voltar",
+        "characters": "Personagens",
+        "total_characters": "TOTAL DE PERSONAGENS",
+        "search_character": "Buscar personagem...",
+        "no_character": "Nenhum personagem encontrado.",
+        "not_found_title": "Obra não encontrada",
+        "not_found_sub": "Verifique o anime_id",
+        "id": "ID",
+        "card": "CARD",
+    },
+    "en": {
+        "eyebrow": "🃏 Cards • Source Baltigo",
+        "title": "Character Collection",
+        "subtitle": "Works, characters and artwork already prepared",
+        "total_works": "TOTAL WORKS",
+        "search_work": "Search work...",
+        "no_work": "No works found.",
+        "cards": "CARDS",
+        "chars": "chars",
+        "footer": "Source Baltigo • Cards",
+        "back": "← Back",
+        "characters": "Characters",
+        "total_characters": "TOTAL CHARACTERS",
+        "search_character": "Search character...",
+        "no_character": "No characters found.",
+        "not_found_title": "Work not found",
+        "not_found_sub": "Check the anime_id",
+        "id": "ID",
+        "card": "CARD",
+    },
+    "es": {
+        "eyebrow": "🃏 Cards • Source Baltigo",
+        "title": "Colección de Personajes",
+        "subtitle": "Obras, personajes y artes ya preparadas",
+        "total_works": "TOTAL DE OBRAS",
+        "search_work": "Buscar obra...",
+        "no_work": "No se encontró ninguna obra.",
+        "cards": "CARDS",
+        "chars": "chars",
+        "footer": "Source Baltigo • Cards",
+        "back": "← Volver",
+        "characters": "Personajes",
+        "total_characters": "TOTAL DE PERSONAJES",
+        "search_character": "Buscar personaje...",
+        "no_character": "No se encontró ningún personaje.",
+        "not_found_title": "Obra no encontrada",
+        "not_found_sub": "Verifica el anime_id",
+        "id": "ID",
+        "card": "CARD",
+    },
+}
 
 
 @app.get("/cards", response_class=HTMLResponse)
-def cards_page():
+def cards_page(lang: str = Query("pt")):
+    L = pick_cards_lang(lang)
+    T = CARDS_UI_TEXTS[L]
+
     html = """
 <!doctype html>
-<html lang="pt-br">
+<html lang="__LANG__">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -2467,6 +2326,40 @@ def cards_page():
     letter-spacing:.10em;
     text-transform:uppercase;
     font-size:12px;
+  }
+
+  .top-tools{
+    position:absolute;
+    top:16px;
+    right:16px;
+    z-index:3;
+  }
+
+  .langPill {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(0,0,0,.28);
+    border:1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(8px);
+    padding:10px 14px; border-radius:14px;
+    cursor:pointer; user-select:none;
+  }
+  .langIcon { font-size:13px; opacity:.9; }
+  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+
+  .langMenu {
+    display:none;
+    justify-content:flex-end;
+    gap:10px;
+    margin-top:10px;
+  }
+  .langBtn {
+    width:56px; text-align:center;
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(8px);
+    padding:10px 0; border-radius:14px;
+    font-size:13px; font-weight:900;
+    cursor:pointer;
   }
 
   .head{
@@ -2641,10 +2534,23 @@ def cards_page():
 
   <div class="top-banner">
     <img src="__TOP_BANNER__" alt="Cards banner"/>
+
+    <div class="top-tools">
+      <div class="langPill" id="langPill" title="Change language">
+        <span class="langIcon">文A</span>
+        <span class="langCode">__LANGCODE__</span>
+      </div>
+      <div class="langMenu" id="langMenu">
+        <div class="langBtn" data-lang="pt">PT</div>
+        <div class="langBtn" data-lang="en">EN</div>
+        <div class="langBtn" data-lang="es">ES</div>
+      </div>
+    </div>
+
     <div class="top-copy">
-      <div class="eyebrow">🃏 Cards • Source Baltigo</div>
-      <div class="title">Coleção de Personagens</div>
-      <div class="subtitle">Obras, personagens e artes já preparadas</div>
+      <div class="eyebrow">__EYEBROW__</div>
+      <div class="title">__TITLE__</div>
+      <div class="subtitle">__SUBTITLE__</div>
     </div>
   </div>
 
@@ -2654,19 +2560,40 @@ def cards_page():
 
   <div class="search">
     <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar obra..." />
+    <input id="searchInput" type="text" placeholder="__SEARCH_WORK__" />
   </div>
 
   <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhuma obra encontrada.</div>
+  <div class="empty" id="emptyBox" style="display:none;">__NO_WORK__</div>
 
-  <div class="footer">Source Baltigo • Cards</div>
+  <div class="footer">__FOOTER__</div>
 </div>
 
 <script>
   const api = "/api/cards/animes";
+  const lang = "__LANG__";
+  const TXT_TOTAL_WORKS = "__TOTAL_WORKS__";
+  const TXT_CARDS = "__CARDS__";
+  const TXT_CHARS = "__CHARS__";
+
   let fullData = [];
   let filteredData = [];
+
+  const langPill = document.getElementById("langPill");
+  const langMenu = document.getElementById("langMenu");
+  langPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
+  });
+  document.addEventListener("click", () => { langMenu.style.display = "none"; });
+  document.querySelectorAll(".langBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const newLang = btn.getAttribute("data-lang");
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", newLang);
+      window.location.href = url.toString();
+    });
+  });
 
   function esc(s){
     return (s || "").replace(/[&<>\"']/g, (m) => ({
@@ -2689,7 +2616,7 @@ def cards_page():
     const empty = document.getElementById("emptyBox");
     const stats = document.getElementById("statsTxt");
 
-    stats.textContent = "TOTAL DE OBRAS: " + filteredData.length;
+    stats.textContent = TXT_TOTAL_WORKS + ": " + filteredData.length;
 
     if (!filteredData.length){
       box.innerHTML = "";
@@ -2705,13 +2632,13 @@ def cards_page():
         <div class="card" onclick="openAnime(${item.anime_id})">
           <div class="cover">
             <img src="${esc(pickCover(item))}" alt="${esc(item.anime)}" loading="lazy"/>
-            <div class="count-pill">${item.characters_count || 0} chars</div>
+            <div class="count-pill">${item.characters_count || 0} ${TXT_CHARS}</div>
           </div>
           <div class="meta">
             <p class="name">${esc(item.anime)}</p>
             <div class="sub">
               <span class="pill">ID ${item.anime_id}</span>
-              <span class="pill">CARDS</span>
+              <span class="pill">${TXT_CARDS}</span>
             </div>
           </div>
         </div>
@@ -2735,7 +2662,7 @@ def cards_page():
   }
 
   function openAnime(id){
-    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id);
+    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id) + "&lang=" + encodeURIComponent(lang);
   }
 
   async function load(){
@@ -2752,15 +2679,32 @@ def cards_page():
 </body>
 </html>
 """
-    html = html.replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+    html = (
+        html
+        .replace("__LANG__", L)
+        .replace("__LANGCODE__", L.upper())
+        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__EYEBROW__", T["eyebrow"])
+        .replace("__TITLE__", T["title"])
+        .replace("__SUBTITLE__", T["subtitle"])
+        .replace("__TOTAL_WORKS__", T["total_works"])
+        .replace("__SEARCH_WORK__", T["search_work"])
+        .replace("__NO_WORK__", T["no_work"])
+        .replace("__CARDS__", T["cards"])
+        .replace("__CHARS__", T["chars"])
+        .replace("__FOOTER__", T["footer"])
+    )
     return HTMLResponse(html)
 
 
 @app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime_id: int = Query(...)):
+def cards_anime_page(anime_id: int = Query(...), lang: str = Query("pt")):
+    L = pick_cards_lang(lang)
+    T = CARDS_UI_TEXTS[L]
+
     html = """
 <!doctype html>
-<html lang="pt-br">
+<html lang="__LANG__">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -2839,6 +2783,40 @@ def cards_anime_page(anime_id: int = Query(...)):
     right:18px;
     bottom:16px;
     z-index:2;
+  }
+
+  .hero-tools{
+    position:absolute;
+    top:16px;
+    right:16px;
+    z-index:3;
+  }
+
+  .langPill {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(0,0,0,.28);
+    border:1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(8px);
+    padding:10px 14px; border-radius:14px;
+    cursor:pointer; user-select:none;
+  }
+  .langIcon { font-size:13px; opacity:.9; }
+  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
+
+  .langMenu {
+    display:none;
+    justify-content:flex-end;
+    gap:10px;
+    margin-top:10px;
+  }
+  .langBtn {
+    width:56px; text-align:center;
+    background:rgba(0,0,0,.32);
+    border:1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(8px);
+    padding:10px 0; border-radius:14px;
+    font-size:13px; font-weight:900;
+    cursor:pointer;
   }
 
   .back{
@@ -3042,10 +3020,23 @@ def cards_anime_page(anime_id: int = Query(...)):
 
   <div class="hero" id="heroBox">
     <img id="heroImg" src="" alt="Banner"/>
+
+    <div class="hero-tools">
+      <div class="langPill" id="langPill" title="Change language">
+        <span class="langIcon">文A</span>
+        <span class="langCode">__LANGCODE__</span>
+      </div>
+      <div class="langMenu" id="langMenu">
+        <div class="langBtn" data-lang="pt">PT</div>
+        <div class="langBtn" data-lang="en">EN</div>
+        <div class="langBtn" data-lang="es">ES</div>
+      </div>
+    </div>
+
     <div class="hero-copy">
-      <a class="back" href="/cards">← Voltar</a>
+      <a class="back" id="backBtn" href="/cards?lang=__LANG__">__BACK__</a>
       <div class="title" id="animeTitle">Carregando...</div>
-      <div class="subtitle" id="animeSub">Personagens</div>
+      <div class="subtitle" id="animeSub">__CHARACTERS__</div>
     </div>
   </div>
 
@@ -3055,23 +3046,45 @@ def cards_anime_page(anime_id: int = Query(...)):
 
   <div class="search">
     <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar personagem..." />
+    <input id="searchInput" type="text" placeholder="__SEARCH_CHARACTER__" />
   </div>
 
   <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhum personagem encontrado.</div>
+  <div class="empty" id="emptyBox" style="display:none;">__NO_CHARACTER__</div>
 
-  <div class="footer">Source Baltigo • Cards</div>
+  <div class="footer">__FOOTER__</div>
 </div>
 
 <script>
   const animeId = __ANIME_ID__;
+  const lang = "__LANG__";
   const api = "/api/cards/characters?anime_id=" + animeId + "&limit=5000";
   const fallbackTop = "__TOP_BANNER__";
+  const TXT_TOTAL_CHARACTERS = "__TOTAL_CHARACTERS__";
+  const TXT_NOT_FOUND_TITLE = "__NOT_FOUND_TITLE__";
+  const TXT_NOT_FOUND_SUB = "__NOT_FOUND_SUB__";
+  const TXT_ID = "__ID__";
+  const TXT_CARD = "__CARD__";
 
   let animeMeta = null;
   let fullData = [];
   let filteredData = [];
+
+  const langPill = document.getElementById("langPill");
+  const langMenu = document.getElementById("langMenu");
+  langPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
+  });
+  document.addEventListener("click", () => { langMenu.style.display = "none"; });
+  document.querySelectorAll(".langBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const newLang = btn.getAttribute("data-lang");
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", newLang);
+      window.location.href = url.toString();
+    });
+  });
 
   function esc(s){
     return (s || "").replace(/[&<>\"']/g, (m) => ({
@@ -3099,7 +3112,7 @@ def cards_anime_page(anime_id: int = Query(...)):
     const empty = document.getElementById("emptyBox");
     const stats = document.getElementById("statsTxt");
 
-    stats.textContent = "TOTAL DE PERSONAGENS: " + filteredData.length;
+    stats.textContent = TXT_TOTAL_CHARACTERS + ": " + filteredData.length;
 
     if (!filteredData.length){
       box.innerHTML = "";
@@ -3115,13 +3128,13 @@ def cards_anime_page(anime_id: int = Query(...)):
         <div class="card">
           <div class="char-image">
             <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
-            <div class="id-pill">ID ${item.id}</div>
+            <div class="id-pill">${TXT_ID} ${item.id}</div>
           </div>
           <div class="meta">
             <p class="name">${esc(item.name)}</p>
             <div class="sub">
               <span class="pill">${esc(item.anime)}</span>
-              <span class="pill">CARD</span>
+              <span class="pill">${TXT_CARD}</span>
             </div>
           </div>
         </div>
@@ -3154,8 +3167,12 @@ def cards_anime_page(anime_id: int = Query(...)):
 
     if (animeMeta){
       document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
-      document.getElementById("animeSub").textContent = "ID " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " personagens";
+      document.getElementById("animeSub").textContent = TXT_ID + " " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " __CHARACTERS__".toLowerCase();
       document.getElementById("heroImg").src = pickHero(animeMeta);
+    } else {
+      document.getElementById("animeTitle").textContent = TXT_NOT_FOUND_TITLE;
+      document.getElementById("animeSub").textContent = TXT_NOT_FOUND_SUB;
+      document.getElementById("heroImg").src = fallbackTop;
     }
 
     render();
@@ -3167,5 +3184,21 @@ def cards_anime_page(anime_id: int = Query(...)):
 </body>
 </html>
 """
-    html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+    html = (
+        html
+        .replace("__LANG__", L)
+        .replace("__LANGCODE__", L.upper())
+        .replace("__ANIME_ID__", str(anime_id))
+        .replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
+        .replace("__BACK__", T["back"])
+        .replace("__CHARACTERS__", T["characters"])
+        .replace("__TOTAL_CHARACTERS__", T["total_characters"])
+        .replace("__SEARCH_CHARACTER__", T["search_character"])
+        .replace("__NO_CHARACTER__", T["no_character"])
+        .replace("__NOT_FOUND_TITLE__", T["not_found_title"])
+        .replace("__NOT_FOUND_SUB__", T["not_found_sub"])
+        .replace("__ID__", T["id"])
+        .replace("__CARD__", T["card"])
+        .replace("__FOOTER__", T["footer"])
+    )
     return HTMLResponse(html)
