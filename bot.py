@@ -18,6 +18,9 @@ from commands.perfil import perfil
 
 from database import create_tables
 
+create_tables()
+create_anilist_tables()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
@@ -48,6 +51,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
