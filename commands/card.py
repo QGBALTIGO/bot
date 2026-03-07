@@ -1,158 +1,239 @@
+import json
 import os
-from telegram import Update
+import re
+from typing import Dict, Any, Optional
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-_chars_cache = {}
-_file_path = None
+from utils.gatekeeper import gatekeeper
+
+from database import (
+    get_user_card_quantity,
+    get_card_owner_count,
+    get_card_total_copies,
+)
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+DATA_PATHS = [
+    os.path.join(BASE_DIR, "data", "personagens_anilist.txt"),
+    os.path.join(BASE_DIR, "dados", "personagens_anilist.txt"),
+]
+
+_chars_cache: Optional[Dict[int, Dict[str, Any]]] = None
 
 
-def find_file():
-    global _file_path
+def get_dup_emoji(qty: int) -> str:
+    if qty >= 20:
+        return " 👑"
+    elif qty >= 15:
+        return " 🌟"
+    elif qty >= 10:
+        return " ⭐"
+    elif qty >= 5:
+        return " 💫"
+    elif qty >= 2:
+        return " ✨"
+    return ""
 
-    possible = [
-        "data/personagens_anilist.txt",
-        "./data/personagens_anilist.txt",
-        "../data/personagens_anilist.txt",
-        "/app/data/personagens_anilist.txt",
-        "bot/data/personagens_anilist.txt",
-    ]
 
-    for p in possible:
+def _resolve_path():
+    for p in DATA_PATHS:
         if os.path.exists(p):
-            _file_path = p
             return p
-
-    return None
+    raise FileNotFoundError("personagens_anilist.txt não encontrado")
 
 
 def load_characters():
     global _chars_cache
 
-    if _chars_cache:
+    if _chars_cache is not None:
         return _chars_cache
 
-    path = find_file()
+    path = _resolve_path()
 
-    if not path:
-        print("❌ personagens_anilist.txt NÃO encontrado")
-        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    if isinstance(raw, dict):
+        items = raw.get("items", [])
+    else:
+        items = raw
 
     chars = {}
 
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
+    for anime in items:
+        if not isinstance(anime, dict):
+            continue
 
-            line = line.strip()
+        anime_name = anime.get("anime") or "Obra desconhecida"
 
-            if not line:
-                continue
-
-            parts = line.split("|")
-
-            if len(parts) < 3:
+        for c in anime.get("characters", []):
+            if not isinstance(c, dict):
                 continue
 
             try:
-                char_id = int(parts[0])
-            except:
+                cid = int(c["id"])
+            except Exception:
                 continue
 
-            name = parts[1].strip()
-            anime = parts[2].strip()
-
-            chars[char_id] = {
-                "id": char_id,
-                "name": name,
-                "anime": anime
+            chars[cid] = {
+                "id": cid,
+                "name": c.get("name", "Sem nome"),
+                "image": c.get("image"),
+                "anime": anime_name,
             }
-
-    print(f"✅ {len(chars)} personagens carregados")
 
     _chars_cache = chars
     return chars
 
 
-def search_character(query):
+def find_character_by_name(name: str):
+    name = name.lower().strip()
 
     chars = load_characters()
 
-    if not chars:
-        return None
+    for c in chars.values():
+        if c["name"].lower() == name:
+            return c
 
-    # busca por ID
-    if query.isdigit():
+    for c in chars.values():
+        if c["name"].lower().startswith(name):
+            return c
 
-        cid = int(query)
-
-        if cid in chars:
-            return chars[cid]
-
-    # busca por nome
-    query = query.lower()
-
-    for char in chars.values():
-
-        if query in char["name"].lower():
-            return char
+    for c in chars.values():
+        if name in c["name"].lower():
+            return c
 
     return None
 
 
-async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def extract_id(text: str):
+    m = re.match(r"^\s*(\d+)", text)
+    if m:
+        return int(m.group(1))
+    return None
 
+
+def fmt_num(n: int) -> str:
+    return f"{int(n):,}".replace(",", ".")
+
+
+async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
 
+    # =========================
+    # GATEKEEPER (termos + canal)
+    # =========================
+    ok, bloqueio = await gatekeeper(update, context)
+    if not ok:
+        if msg and bloqueio:
+            await msg.reply_html(bloqueio)
+        return
+
+    if not msg or not update.effective_user:
+        return
+
+    if not context.args:
+        await msg.reply_html(
+            "🎴 <b>Card</b>\n\n"
+            "Use:\n"
+            "<code>/card ID</code>\n"
+            "<code>/card Nome</code>\n"
+            "<code>/card ID. Nome</code>"
+        )
+        return
+
     try:
+        query = " ".join(context.args).strip()
+        chars = load_characters()
 
-        if not context.args:
-            await msg.reply_text(
-                "Use:\n"
-                "/card nome\n"
-                "/card ID"
-            )
-            return
+        char = None
 
-        query = " ".join(context.args)
+        cid = extract_id(query)
 
-        char = search_character(query)
+        if cid is not None:
+            char = chars.get(cid)
+        elif query.isdigit():
+            char = chars.get(int(query))
+        else:
+            char = find_character_by_name(query)
 
         if not char:
-
-            path = find_file()
-
-            if not path:
-                await msg.reply_text(
-                    "❌ Arquivo personagens_anilist.txt não encontrado."
-                )
-                return
-
-            await msg.reply_text(
-                "❌ Personagem não encontrado."
-            )
+            await msg.reply_text("❌ Personagem não encontrado.")
             return
 
-        name = char["name"]
-        anime = char["anime"]
-        char_id = char["id"]
+        user_id = update.effective_user.id
+        char_id = int(char["id"])
+        name = str(char["name"])
+        anime = str(char["anime"])
+        image = char.get("image")
 
-        image = f"https://img.anili.st/character/{char_id}"
+        qty = get_user_card_quantity(user_id, char_id)
+        emoji = get_dup_emoji(qty)
 
-        text = (
-            f"🎴 <b>{name}</b>\n"
-            f"📺 {anime}\n"
-            f"🆔 {char_id}"
+        total_rolls = 12483  # preview por enquanto
+        owners = get_card_owner_count(char_id)
+        total_copies = get_card_total_copies(char_id)
+
+        caption = (
+            f"╭─ 🧧 Card <code>#{char_id}</code>\n"
+            f"│\n"
+            f"│ 👤 <b>{name}{emoji}</b>\n"
+            f"│ 🎬 {anime}\n"
+            f"│\n"
+            f"╰─ 📦 {qty}x na coleção"
         )
 
-        await msg.reply_photo(
-            photo=image,
-            caption=text,
-            parse_mode="HTML"
-        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔎", callback_data=f"cardstats:{char_id}")]
+        ])
+
+        if image:
+            await msg.reply_photo(
+                photo=image,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+        else:
+            await msg.reply_html(
+                caption,
+                reply_markup=keyboard
+            )
 
     except Exception as e:
         await msg.reply_text(f"❌ Erro no /card: {e}")
 
 
-async def card_stats_callback(update, context):
-    query = update.callback_query
-    await query.answer("Stats em breve.")
+async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q:
+        return
+
+    try:
+        data = q.data or ""
+        if not data.startswith("cardstats:"):
+            await q.answer()
+            return
+
+        char_id = int(data.split(":")[1])
+
+        total_rolls = 12483  # preview por enquanto
+        owners = get_card_owner_count(char_id)
+        total_copies = get_card_total_copies(char_id)
+
+        msg = (
+            f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
+            f"👥 Usuários que possuem: {fmt_num(owners)}\n"
+            f"📦 Total de cópias: {fmt_num(total_copies)}"
+        )
+
+        await q.answer(msg, show_alert=True)
+
+    except Exception as e:
+        try:
+            await q.answer(f"Erro: {e}", show_alert=True)
+        except Exception:
+            pass
