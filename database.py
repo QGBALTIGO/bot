@@ -17,19 +17,7 @@ pool = ConnectionPool(
 )
 
 
-# =========================================================
-# CORE SQL
-# =========================================================
-
 def _run(sql: str, params: Tuple[Any, ...] = (), fetch: str = "none"):
-    """
-    Executa SQL usando pool.
-
-    fetch:
-      - "none" -> None
-      - "one"  -> dict | None
-      - "all"  -> list[dict]
-    """
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
@@ -48,25 +36,30 @@ def _run(sql: str, params: Tuple[Any, ...] = (), fetch: str = "none"):
                 conn.commit()
                 return None
 
-            except Exception:
+            except Exception as e:
                 try:
                     conn.rollback()
                 except Exception:
                     pass
+                print("SQL ERROR:", e, flush=True)
                 raise
 
 
 # =========================================================
-# INIT / MIGRATIONS
+# INIT
 # =========================================================
 
 def create_tables():
     create_users_table()
-    create_media_request_tables()
     create_cards_tables()
     create_level_tables()
     create_friendship_tables()
+    create_media_request_tables()
 
+
+# =========================================================
+# USERS
+# =========================================================
 
 def create_users_table():
     _run("""
@@ -75,157 +68,29 @@ def create_users_table():
         nick TEXT,
         lang TEXT,
         coins BIGINT NOT NULL DEFAULT 0,
-
         terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
         terms_version TEXT,
         accepted_at TIMESTAMPTZ,
-
         welcome_sent BOOLEAN NOT NULL DEFAULT FALSE,
         must_join_ok BOOLEAN NOT NULL DEFAULT FALSE,
-
         fav_name TEXT,
         fav_image TEXT,
         fav_character_id BIGINT
-    );
-    """)
-
-    # Migrações seguras
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT NOT NULL DEFAULT 0;""")
-
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
-
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
-
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_image TEXT;""")
-    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_character_id BIGINT;""")
-
-
-def create_media_request_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS media_requests (
-        id BIGSERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        username TEXT,
-        full_name TEXT,
-        media_type TEXT NOT NULL,
-        anilist_id BIGINT,
-        title TEXT NOT NULL,
-        title_norm TEXT NOT NULL,
-        cover_url TEXT,
-        request_status TEXT NOT NULL DEFAULT 'pending',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """)
 
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_media_requests_user_created
-    ON media_requests (user_id, created_at DESC)
-    """)
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS nick TEXT""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 0""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_name TEXT""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_image TEXT""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_character_id BIGINT""")
 
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_media_requests_media_title
-    ON media_requests (media_type, title_norm)
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_media_requests_media_anilist
-    ON media_requests (media_type, anilist_id)
-    """)
-
-    _run("""
-    CREATE TABLE IF NOT EXISTS webapp_reports (
-        id BIGSERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        username TEXT,
-        full_name TEXT,
-        report_type TEXT,
-        message TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_webapp_reports_user_created
-    ON webapp_reports (user_id, created_at DESC)
-    """)
-
-
-def create_cards_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS user_card_collection (
-        user_id BIGINT NOT NULL,
-        character_id BIGINT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-        first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (user_id, character_id)
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_user_card_collection_character
-    ON user_card_collection (character_id)
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
-    ON user_card_collection (user_id)
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_collection_user_char
-    ON user_card_collection (user_id, character_id)
-    """)
-
-
-def create_level_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS user_progress (
-        user_id BIGINT PRIMARY KEY,
-        xp BIGINT NOT NULL DEFAULT 0,
-        level INTEGER NOT NULL DEFAULT 1,
-        total_actions BIGINT NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
-    ON user_progress (level DESC, xp DESC)
-    """)
-
-
-def create_friendship_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS friendships (
-        user_id BIGINT NOT NULL,
-        friend_id BIGINT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'accepted',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (user_id, friend_id)
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_friendships_user
-    ON friendships (user_id)
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_friendships_friend
-    ON friendships (friend_id)
-    """)
-
-
-# =========================================================
-# USERS
-# =========================================================
 
 def create_or_get_user(user_id: int, nick: Optional[str] = None):
     _run(
@@ -235,13 +100,6 @@ def create_or_get_user(user_id: int, nick: Optional[str] = None):
         ON CONFLICT (user_id) DO NOTHING
         """,
         (int(user_id), (nick or "").strip() or None)
-    )
-
-
-def set_user_nick(user_id: int, nick: str):
-    _run(
-        "UPDATE users SET nick = %s WHERE user_id = %s",
-        ((nick or "").strip(), int(user_id))
     )
 
 
@@ -269,100 +127,6 @@ def get_user_row(user_id: int) -> Optional[Dict[str, Any]]:
     )
 
 
-def get_user_by_nick(nick: str) -> Optional[Dict[str, Any]]:
-    return _run(
-        """
-        SELECT
-            user_id,
-            nick,
-            lang,
-            coins,
-            terms_accepted,
-            terms_version,
-            accepted_at,
-            welcome_sent,
-            must_join_ok,
-            fav_name,
-            fav_image,
-            fav_character_id
-        FROM users
-        WHERE LOWER(nick) = LOWER(%s)
-        LIMIT 1
-        """,
-        ((nick or "").strip(),),
-        fetch="one"
-    )
-
-
-def set_language(user_id: int, lang: str):
-    _run(
-        "UPDATE users SET lang = %s WHERE user_id = %s",
-        ((lang or "").strip(), int(user_id))
-    )
-
-
-def add_coins(user_id: int, amount: int):
-    amount = int(amount)
-    if amount <= 0:
-        return
-
-    _run(
-        """
-        UPDATE users
-        SET coins = coins + %s
-        WHERE user_id = %s
-        """,
-        (amount, int(user_id))
-    )
-
-
-def remove_coins(user_id: int, amount: int):
-    amount = int(amount)
-    if amount <= 0:
-        return
-
-    _run(
-        """
-        UPDATE users
-        SET coins = GREATEST(coins - %s, 0)
-        WHERE user_id = %s
-        """,
-        (amount, int(user_id))
-    )
-
-
-def set_coins(user_id: int, amount: int):
-    amount = max(0, int(amount))
-    _run(
-        "UPDATE users SET coins = %s WHERE user_id = %s",
-        (amount, int(user_id))
-    )
-
-
-def accept_terms(user_id: int, version: str):
-    _run(
-        """
-        UPDATE users
-           SET terms_accepted = TRUE,
-               terms_version = %s,
-               accepted_at = NOW()
-         WHERE user_id = %s
-        """,
-        ((version or "").strip(), int(user_id))
-    )
-
-
-def has_accepted_terms(user_id: int, version: str) -> bool:
-    row = _run(
-        "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
-        (int(user_id),),
-        fetch="one"
-    )
-    if not row:
-        return False
-    return bool(row["terms_accepted"]) and (row["terms_version"] == version)
-
-
 def get_user_status(user_id: int) -> Optional[Dict[str, Any]]:
     row = _run(
         """
@@ -385,24 +149,18 @@ def get_user_status(user_id: int) -> Optional[Dict[str, Any]]:
     }
 
 
-def mark_welcome_sent(user_id: int):
-    _run("UPDATE users SET welcome_sent = TRUE WHERE user_id = %s", (int(user_id),))
-
-
-def reset_welcome_sent(user_id: int):
-    _run("UPDATE users SET welcome_sent = FALSE WHERE user_id = %s", (int(user_id),))
-
-
-def set_must_join_ok(user_id: int, value: bool):
+def accept_terms(user_id: int, version: str):
     _run(
-        "UPDATE users SET must_join_ok = %s WHERE user_id = %s",
-        (bool(value), int(user_id))
+        """
+        UPDATE users
+        SET terms_accepted = TRUE,
+            terms_version = %s,
+            accepted_at = NOW()
+        WHERE user_id = %s
+        """,
+        ((version or "").strip(), int(user_id))
     )
 
-
-# =========================================================
-# FAVORITES
-# =========================================================
 
 def set_favorite_card(user_id: int, character_id: int, fav_name: str, fav_image: str):
     _run(
@@ -449,221 +207,53 @@ def get_user_favorite_card_quantity(user_id: int) -> int:
         (int(user_id),),
         fetch="one"
     )
-
     return int((row or {}).get("quantity") or 0)
 
 
 # =========================================================
-# MEDIA REQUESTS / REPORTS
+# CARDS
 # =========================================================
 
-def normalize_media_title(title: str) -> str:
-    t = (title or "").strip().lower()
-    t = re.sub(r"\s+", " ", t)
-    t = re.sub(r"[^\w\s]", "", t)
-    return t.strip()
-
-
-def count_user_media_requests_last_24h(user_id: int) -> int:
-    row = _run(
-        """
-        SELECT COUNT(*) AS total
-        FROM media_requests
-        WHERE user_id = %s
-          AND created_at >= NOW() - INTERVAL '24 hours'
-        """,
-        (int(user_id),),
-        fetch="one"
+def create_cards_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_card_collection (
+        user_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, character_id)
     )
-    return int((row or {}).get("total") or 0)
+    """)
 
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_card_collection_character
+    ON user_card_collection (character_id)
+    """)
 
-def media_request_exists(media_type: str, title: str, anilist_id=None) -> bool:
-    media_type = (media_type or "").strip()
-    title_norm = normalize_media_title(title)
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
+    ON user_card_collection (user_id)
+    """)
 
-    if anilist_id:
-        row = _run(
-            """
-            SELECT id
-            FROM media_requests
-            WHERE media_type = %s
-              AND anilist_id = %s
-              AND request_status IN ('pending', 'approved')
-            LIMIT 1
-            """,
-            (media_type, int(anilist_id)),
-            fetch="one"
-        )
-        if row:
-            return True
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_collection_user_char
+    ON user_card_collection (user_id, character_id)
+    """)
 
-    row = _run(
-        """
-        SELECT id
-        FROM media_requests
-        WHERE media_type = %s
-          AND title_norm = %s
-          AND request_status IN ('pending', 'approved')
-        LIMIT 1
-        """,
-        (media_type, title_norm),
-        fetch="one"
-    )
-    return bool(row)
-
-
-def save_media_request(
-    user_id: int,
-    username: str,
-    full_name: str,
-    media_type: str,
-    title: str,
-    anilist_id=None,
-    cover_url: str = "",
-):
-    _run(
-        """
-        INSERT INTO media_requests
-        (user_id, username, full_name, media_type, anilist_id, title, title_norm, cover_url, request_status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
-        """,
-        (
-            int(user_id),
-            (username or "").strip(),
-            (full_name or "").strip(),
-            (media_type or "").strip(),
-            int(anilist_id) if anilist_id else None,
-            (title or "").strip(),
-            normalize_media_title(title),
-            (cover_url or "").strip(),
-        )
-    )
-
-
-def save_webapp_report(
-    user_id: int,
-    username: str,
-    full_name: str,
-    report_type: str,
-    message: str,
-):
-    _run(
-        """
-        INSERT INTO webapp_reports
-        (user_id, username, full_name, report_type, message)
-        VALUES (%s, %s, %s, %s, %s)
-        """,
-        (
-            int(user_id),
-            (username or "").strip(),
-            (full_name or "").strip(),
-            (report_type or "").strip(),
-            (message or "").strip(),
-        )
-    )
-
-
-# =========================================================
-# CARDS / COLLECTION
-# =========================================================
 
 def get_user_card_quantity(user_id: int, character_id: int) -> int:
     row = _run(
         """
         SELECT quantity
         FROM user_card_collection
-        WHERE user_id = %s AND character_id = %s
+        WHERE user_id = %s
+          AND character_id = %s
         """,
         (int(user_id), int(character_id)),
         fetch="one"
     )
     return int((row or {}).get("quantity") or 0)
-
-
-def add_card_copy(user_id: int, character_id: int, amount: int = 1):
-    amount = int(amount)
-    if amount <= 0:
-        return
-
-    _run(
-        """
-        INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
-        VALUES (%s, %s, %s, NOW())
-        ON CONFLICT (user_id, character_id)
-        DO UPDATE SET
-            quantity = user_card_collection.quantity + EXCLUDED.quantity,
-            updated_at = NOW()
-        """,
-        (int(user_id), int(character_id), amount)
-    )
-
-
-def remove_card_copy(user_id: int, character_id: int, amount: int = 1):
-    amount = int(amount)
-    if amount <= 0:
-        return
-
-    row = _run(
-        """
-        SELECT quantity
-        FROM user_card_collection
-        WHERE user_id = %s AND character_id = %s
-        """,
-        (int(user_id), int(character_id)),
-        fetch="one"
-    )
-
-    current = int((row or {}).get("quantity") or 0)
-    new_qty = max(0, current - amount)
-
-    if current == 0:
-        return
-
-    if new_qty == 0:
-        _run(
-            """
-            DELETE FROM user_card_collection
-            WHERE user_id = %s AND character_id = %s
-            """,
-            (int(user_id), int(character_id))
-        )
-    else:
-        _run(
-            """
-            UPDATE user_card_collection
-            SET quantity = %s,
-                updated_at = NOW()
-            WHERE user_id = %s AND character_id = %s
-            """,
-            (new_qty, int(user_id), int(character_id))
-        )
-
-
-def set_card_quantity(user_id: int, character_id: int, quantity: int):
-    quantity = int(quantity)
-
-    if quantity <= 0:
-        _run(
-            """
-            DELETE FROM user_card_collection
-            WHERE user_id = %s AND character_id = %s
-            """,
-            (int(user_id), int(character_id))
-        )
-        return
-
-    _run(
-        """
-        INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
-        VALUES (%s, %s, %s, NOW())
-        ON CONFLICT (user_id, character_id)
-        DO UPDATE SET
-            quantity = EXCLUDED.quantity,
-            updated_at = NOW()
-        """,
-        (int(user_id), int(character_id), quantity)
-    )
 
 
 def get_card_total_copies(character_id: int) -> int:
@@ -693,20 +283,6 @@ def get_card_owner_count(character_id: int) -> int:
     return int((row or {}).get("total") or 0)
 
 
-def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
-    rows = _run(
-        """
-        SELECT user_id, character_id, quantity, first_obtained_at, updated_at
-        FROM user_card_collection
-        WHERE user_id = %s
-        ORDER BY quantity DESC, updated_at DESC
-        """,
-        (int(user_id),),
-        fetch="all"
-    )
-    return rows or []
-
-
 def count_collection(user_id: int) -> int:
     row = _run(
         """
@@ -721,8 +297,25 @@ def count_collection(user_id: int) -> int:
 
 
 # =========================================================
-# LEVEL / PROGRESS SYSTEM
+# LEVEL
 # =========================================================
+
+def create_level_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        total_actions BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
+    ON user_progress (level DESC, xp DESC)
+    """)
+
 
 def ensure_progress_row(user_id: int):
     _run(
@@ -839,23 +432,31 @@ def get_user_level_rank(user_id: int) -> int:
     return int((row or {}).get("rank_pos") or 0)
 
 
-def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
-    rows = _run(
-        """
-        SELECT user_id, xp, level, total_actions
-        FROM user_progress
-        ORDER BY level DESC, xp DESC, total_actions DESC, user_id ASC
-        LIMIT %s
-        """,
-        (int(limit),),
-        fetch="all"
-    )
-    return rows or []
-
-
 # =========================================================
 # FRIENDSHIPS
 # =========================================================
+
+def create_friendship_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS friendships (
+        user_id BIGINT NOT NULL,
+        friend_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'accepted',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, friend_id)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_user
+    ON friendships (user_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_friendships_friend
+    ON friendships (friend_id)
+    """)
+
 
 def get_friend_count(user_id: int) -> int:
     row = _run(
@@ -869,3 +470,164 @@ def get_friend_count(user_id: int) -> int:
         fetch="one"
     )
     return int((row or {}).get("total") or 0)
+
+
+# =========================================================
+# MEDIA REQUESTS / REPORTS
+# =========================================================
+
+def create_media_request_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS media_requests (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+        media_type TEXT NOT NULL,
+        anilist_id BIGINT,
+        title TEXT NOT NULL,
+        title_norm TEXT NOT NULL,
+        cover_url TEXT,
+        request_status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_user_created
+    ON media_requests (user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_media_title
+    ON media_requests (media_type, title_norm)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_media_anilist
+    ON media_requests (media_type, anilist_id)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS webapp_reports (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+        report_type TEXT,
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_webapp_reports_user_created
+    ON webapp_reports (user_id, created_at DESC)
+    """)
+
+
+def normalize_media_title(title: str) -> str:
+    t = (title or "").strip().lower()
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"[^\w\s]", "", t)
+    return t.strip()
+
+
+def count_user_media_requests_last_24h(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM media_requests
+        WHERE user_id = %s
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def media_request_exists(media_type: str, title: str, anilist_id=None) -> bool:
+    media_type = (media_type or "").strip()
+    title_norm = normalize_media_title(title)
+
+    if anilist_id:
+        row = _run(
+            """
+            SELECT id
+            FROM media_requests
+            WHERE media_type = %s
+              AND anilist_id = %s
+              AND request_status IN ('pending', 'approved')
+            LIMIT 1
+            """,
+            (media_type, int(anilist_id)),
+            fetch="one"
+        )
+        if row:
+            return True
+
+    row = _run(
+        """
+        SELECT id
+        FROM media_requests
+        WHERE media_type = %s
+          AND title_norm = %s
+          AND request_status IN ('pending', 'approved')
+        LIMIT 1
+        """,
+        (media_type, title_norm),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def save_media_request(
+    user_id: int,
+    username: str,
+    full_name: str,
+    media_type: str,
+    title: str,
+    anilist_id=None,
+    cover_url: str = "",
+):
+    _run(
+        """
+        INSERT INTO media_requests
+        (user_id, username, full_name, media_type, anilist_id, title, title_norm, cover_url, request_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+        """,
+        (
+            int(user_id),
+            (username or "").strip(),
+            (full_name or "").strip(),
+            (media_type or "").strip(),
+            int(anilist_id) if anilist_id else None,
+            (title or "").strip(),
+            normalize_media_title(title),
+            (cover_url or "").strip(),
+        )
+    )
+
+
+def save_webapp_report(
+    user_id: int,
+    username: str,
+    full_name: str,
+    report_type: str,
+    message: str,
+):
+    _run(
+        """
+        INSERT INTO webapp_reports
+        (user_id, username, full_name, report_type, message)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (
+            int(user_id),
+            (username or "").strip(),
+            (full_name or "").strip(),
+            (report_type or "").strip(),
+            (message or "").strip(),
+        )
+    )
