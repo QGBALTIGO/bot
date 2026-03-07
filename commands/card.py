@@ -6,8 +6,6 @@ from typing import Dict, Any, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from utils.gatekeeper import gatekeeper
-
 from database import (
     get_user_card_quantity,
     get_card_owner_count,
@@ -121,22 +119,11 @@ def fmt_num(n: int) -> str:
 
 
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message
-
-    # =========================
-    # GATEKEEPER (termos + canal)
-    # =========================
-    ok, bloqueio = await gatekeeper(update, context)
-    if not ok:
-        if msg and bloqueio:
-            await msg.reply_html(bloqueio)
-        return
-
-    if not msg or not update.effective_user:
+    if not update.message or not update.effective_user:
         return
 
     if not context.args:
-        await msg.reply_html(
+        await update.message.reply_html(
             "🎴 <b>Card</b>\n\n"
             "Use:\n"
             "<code>/card ID</code>\n"
@@ -161,7 +148,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
             char = find_character_by_name(query)
 
         if not char:
-            await msg.reply_text("❌ Personagem não encontrado.")
+            await update.message.reply_text("❌ Personagem não encontrado.")
             return
 
         user_id = update.effective_user.id
@@ -186,25 +173,33 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"╰─ 📦 {qty}x na coleção"
         )
 
+        popup_text = (
+            f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
+            f"👥 Usuários que possuem: {fmt_num(owners)}\n"
+            f"📦 Total de cópias: {fmt_num(total_copies)}"
+        )
+
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔎", callback_data=f"cardstats:{char_id}")]
         ])
 
+        # salva o texto do popup no contexto do callback_data simples? não.
+        # então recalculamos no callback pelo char_id.
         if image:
-            await msg.reply_photo(
+            await update.message.reply_photo(
                 photo=image,
                 caption=caption,
                 parse_mode="HTML",
                 reply_markup=keyboard
             )
         else:
-            await msg.reply_html(
+            await update.message.reply_html(
                 caption,
                 reply_markup=keyboard
             )
 
     except Exception as e:
-        await msg.reply_text(f"❌ Erro no /card: {e}")
+        await update.message.reply_text(f"❌ Erro no /card: {e}")
 
 
 async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
