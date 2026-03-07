@@ -26646,7 +26646,7 @@
           "id": 1012,
           "name": "Majin Boo",
           "anime": "Dragon Ball Z",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/1012.jpg"
+          "image": "https://carder.top/imagens/1772536671961-762987843.jpg"
         },
         {
           "id": 2123,
