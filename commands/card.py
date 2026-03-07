@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 from database import (
+    create_or_get_user,
     get_user_card_quantity,
     get_card_owner_count,
     get_card_total_copies,
@@ -27,25 +28,25 @@ _chars_cache: Optional[Dict[int, Dict[str, Any]]] = None
 def get_dup_emoji(qty: int) -> str:
     if qty >= 20:
         return " 👑"
-    elif qty >= 15:
+    if qty >= 15:
         return " 🌟"
-    elif qty >= 10:
+    if qty >= 10:
         return " ⭐"
-    elif qty >= 5:
+    if qty >= 5:
         return " 💫"
-    elif qty >= 2:
+    if qty >= 2:
         return " ✨"
     return ""
 
 
-def _resolve_path():
+def _resolve_path() -> str:
     for p in DATA_PATHS:
         if os.path.exists(p):
             return p
-    raise FileNotFoundError("personagens_anilist.txt não encontrado")
+    raise FileNotFoundError(f"personagens_anilist.txt não encontrado. Testados: {DATA_PATHS}")
 
 
-def load_characters():
+def load_characters() -> Dict[int, Dict[str, Any]]:
     global _chars_cache
 
     if _chars_cache is not None:
@@ -58,30 +59,42 @@ def load_characters():
 
     if isinstance(raw, dict):
         items = raw.get("items", [])
-    else:
+    elif isinstance(raw, list):
         items = raw
+    else:
+        items = []
 
-    chars = {}
+    chars: Dict[int, Dict[str, Any]] = {}
 
     for anime in items:
         if not isinstance(anime, dict):
             continue
 
-        anime_name = anime.get("anime") or "Obra desconhecida"
+        anime_name = str(anime.get("anime") or "Obra desconhecida").strip()
 
-        for c in anime.get("characters", []):
+        chars_raw = anime.get("characters", [])
+        if not isinstance(chars_raw, list):
+            continue
+
+        for c in chars_raw:
             if not isinstance(c, dict):
                 continue
 
             try:
-                cid = int(c["id"])
+                cid = int(c.get("id"))
             except Exception:
+                continue
+
+            name = str(c.get("name") or "").strip()
+            image = str(c.get("image") or "").strip()
+
+            if not name:
                 continue
 
             chars[cid] = {
                 "id": cid,
-                "name": c.get("name", "Sem nome"),
-                "image": c.get("image"),
+                "name": name,
+                "image": image,
                 "anime": anime_name,
             }
 
@@ -89,28 +102,30 @@ def load_characters():
     return chars
 
 
-def find_character_by_name(name: str):
-    name = name.lower().strip()
+def find_character_by_name(name: str) -> Optional[Dict[str, Any]]:
+    query = str(name or "").strip().lower()
+    if not query:
+        return None
 
     chars = load_characters()
 
     for c in chars.values():
-        if c["name"].lower() == name:
+        if c["name"].lower() == query:
             return c
 
     for c in chars.values():
-        if c["name"].lower().startswith(name):
+        if c["name"].lower().startswith(query):
             return c
 
     for c in chars.values():
-        if name in c["name"].lower():
+        if query in c["name"].lower():
             return c
 
     return None
 
 
-def extract_id(text: str):
-    m = re.match(r"^\s*(\d+)", text)
+def extract_id(text: str) -> Optional[int]:
+    m = re.match(r"^\s*(\d+)", str(text or ""))
     if m:
         return int(m.group(1))
     return None
@@ -123,34 +138,33 @@ def fmt_num(n: int) -> str:
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
 
-    # =========================
-    # GATEKEEPER (termos + canal)
-    # =========================
-    ok, bloqueio = await gatekeeper(update, context)
-    if not ok:
-        if msg and bloqueio:
-            await msg.reply_html(bloqueio)
-        return
-
-    if not msg or not update.effective_user:
-        return
-
-    if not context.args:
-        await msg.reply_html(
-            "🎴 <b>Card</b>\n\n"
-            "Use:\n"
-            "<code>/card ID</code>\n"
-            "<code>/card Nome</code>\n"
-            "<code>/card ID. Nome</code>"
-        )
-        return
-
     try:
+        ok, bloqueio = await gatekeeper(update, context)
+        if not ok:
+            if msg and bloqueio:
+                await msg.reply_html(bloqueio)
+            return
+
+        if not msg or not update.effective_user:
+            return
+
+        user = update.effective_user
+        create_or_get_user(user.id, user.first_name)
+
+        if not context.args:
+            await msg.reply_html(
+                "🎴 <b>Card</b>\n\n"
+                "Use:\n"
+                "<code>/card ID</code>\n"
+                "<code>/card Nome</code>\n"
+                "<code>/card ID. Nome</code>"
+            )
+            return
+
         query = " ".join(context.args).strip()
         chars = load_characters()
 
         char = None
-
         cid = extract_id(query)
 
         if cid is not None:
@@ -164,16 +178,15 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("❌ Personagem não encontrado.")
             return
 
-        user_id = update.effective_user.id
         char_id = int(char["id"])
         name = str(char["name"])
         anime = str(char["anime"])
-        image = char.get("image")
+        image = str(char.get("image") or "").strip()
 
-        qty = get_user_card_quantity(user_id, char_id)
+        qty = get_user_card_quantity(user.id, char_id)
         emoji = get_dup_emoji(qty)
 
-        total_rolls = 12483  # preview por enquanto
+        total_rolls = 12483
         owners = get_card_owner_count(char_id)
         total_copies = get_card_total_copies(char_id)
 
@@ -195,16 +208,17 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 photo=image,
                 caption=caption,
                 parse_mode="HTML",
-                reply_markup=keyboard
+                reply_markup=keyboard,
             )
         else:
             await msg.reply_html(
                 caption,
-                reply_markup=keyboard
+                reply_markup=keyboard,
             )
 
     except Exception as e:
-        await msg.reply_text(f"❌ Erro no /card: {e}")
+        if msg:
+            await msg.reply_text(f"❌ Erro no /card: {e}")
 
 
 async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,17 +234,17 @@ async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         char_id = int(data.split(":")[1])
 
-        total_rolls = 12483  # preview por enquanto
+        total_rolls = 12483
         owners = get_card_owner_count(char_id)
         total_copies = get_card_total_copies(char_id)
 
-        msg = (
+        popup = (
             f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
             f"👥 Usuários que possuem: {fmt_num(owners)}\n"
             f"📦 Total de cópias: {fmt_num(total_copies)}"
         )
 
-        await q.answer(msg, show_alert=True)
+        await q.answer(popup, show_alert=True)
 
     except Exception as e:
         try:
