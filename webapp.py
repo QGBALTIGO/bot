@@ -1,4 +1,4 @@
-# webapp.py — (SUBSTITUIR TUDO)
+## webapp.py — MiniApp de termos e catálogo
 # MiniApp Termos (PT/EN/ES) verificação de canal (sem requests)
 # + MiniApp Catálogo do canal (cards A–Z) baseado em catalogo_enriquecido.json
 #
@@ -7,12 +7,12 @@
 # ENV:
 #   TERMS_VERSION="v1"
 #   BOT_TOKEN="xxxxx"                      (obrigatório verificar canal)
-#   REQUIRED_CHANNEL="@SourcerBaltigo"     (ou -100xxxxxxxxxx)
-#   REQUIRED_CHANNEL_URL="https://t.me/SourcerBaltigo"
+#   REQUIRED_CHANNEL="@SourceBaltigo"      (ou -100xxxxxxxxxx)
+#   REQUIRED_CHANNEL_URL="https://t.me/SourceBaltigo"
 #   TOP_BANNER_URL="https://..."           (banner do termos)
 #   BACKGROUND_URL="https://..."           (fundo do termos)
 #
-#   CATALOG_PATH="catalogo_enriquecido.json"
+#   CATALOG_PATH="data/catalogo_enriquecido.json"
 #   CATALOG_BANNER_URL="https://..."       (banner do catálogo)
 #   BACKGROUND_PATTERN_URL="https://..."   (pattern do catálogo)
 #   CATALOG_TITLE="CATÁLOGO"
@@ -37,8 +37,6 @@ import asyncio
 import time
 import httpx
 from typing import Any, Dict, List, Optional, Tuple
-
-import httpx
 from fastapi import FastAPI, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -53,8 +51,8 @@ app = FastAPI()
 TERMS_VERSION = (os.getenv("TERMS_VERSION", "v1").strip() or "v1")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
-REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 
 TOP_BANNER_URL = os.getenv(
     "TOP_BANNER_URL",
@@ -62,6 +60,7 @@ TOP_BANNER_URL = os.getenv(
 ).strip()
 
 BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # URL pública (pode ficar vazio)
+EMPTY_BG_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
 
 
 def pick_lang(lang: Optional[str]) -> str:
@@ -618,7 +617,7 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
     </div>
     """
 
-    bg = BACKGROUND_URL if BACKGROUND_URL else ""
+    bg = BACKGROUND_URL if BACKGROUND_URL else EMPTY_BG_DATA_URI
     html = (TERMS_HTML
         .replace("__UID__", str(uid))
         .replace("__LANG__", L)
@@ -730,7 +729,7 @@ def api_channel_check(payload: dict = Body(...)):
 # =========================
 # CONFIG — CATÁLOGO
 # =========================
-CATALOG_PATH = os.getenv("CATALOG_PATH", "catalogo_enriquecido.json").strip()
+CATALOG_PATH = os.getenv("CATALOG_PATH", "data/catalogo_enriquecido.json").strip()
 
 CATALOG_BANNER_URL = os.getenv(
     "CATALOG_BANNER_URL",
@@ -1426,7 +1425,7 @@ def catalogo_page():
 """
 
     # Placeholders
-    pattern = BACKGROUND_PATTERN_URL if BACKGROUND_PATTERN_URL else ""
+    pattern = BACKGROUND_PATTERN_URL if BACKGROUND_PATTERN_URL else EMPTY_BG_DATA_URI
     html = (html
         .replace("__CBANNER__", CATALOG_BANNER_URL)
         .replace("__BPATTERN__", pattern)
@@ -2117,7 +2116,7 @@ def mangas_page():
 </html>
 """
 
-    pattern = MANGA_BACKGROUND_PATTERN_URL if MANGA_BACKGROUND_PATTERN_URL else ""
+    pattern = MANGA_BACKGROUND_PATTERN_URL if MANGA_BACKGROUND_PATTERN_URL else EMPTY_BG_DATA_URI
     html = (html
         .replace("__CBANNER__", MANGA_CATALOG_BANNER_URL)
         .replace("__BPATTERN__", pattern)

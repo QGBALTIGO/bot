@@ -6,6 +6,8 @@ from typing import Dict, Any, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
+from utils.runtime_guard import lock_manager, rate_limiter
+
 from database import (
     get_user_card_quantity,
     get_card_owner_count,
@@ -20,6 +22,11 @@ DATA_PATHS = [
 ]
 
 _chars_cache: Optional[Dict[int, Dict[str, Any]]] = None
+
+
+CARD_CALLBACK_RATE_LIMIT = int(os.getenv("CARD_CALLBACK_RATE_LIMIT", "4"))
+CARD_CALLBACK_RATE_WINDOW_SECONDS = float(os.getenv("CARD_CALLBACK_RATE_WINDOW_SECONDS", "3"))
+
 
 
 def get_dup_emoji(qty: int) -> str:
@@ -207,25 +214,43 @@ async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not q:
         return
 
+    user = update.effective_user
+    if not user:
+        await q.answer()
+        return
+
     try:
         data = q.data or ""
         if not data.startswith("cardstats:"):
             await q.answer()
             return
 
+        allowed = await rate_limiter.allow(
+            key=f"cardstats:{user.id}",
+            limit=CARD_CALLBACK_RATE_LIMIT,
+            window_seconds=CARD_CALLBACK_RATE_WINDOW_SECONDS,
+        )
+        if not allowed:
+            await q.answer("⌛ Aguarde um instante antes de clicar novamente.", show_alert=False)
+            return
+
         char_id = int(data.split(":")[1])
 
-        total_rolls = 12483  # preview por enquanto
-        owners = get_card_owner_count(char_id)
-        total_copies = get_card_total_copies(char_id)
+        lock = await lock_manager.acquire(f"cardstats:{user.id}:{char_id}")
+        try:
+            total_rolls = 12483  # preview por enquanto
+            owners = get_card_owner_count(char_id)
+            total_copies = get_card_total_copies(char_id)
 
-        msg = (
-            f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
-            f"👥 Usuários que possuem: {fmt_num(owners)}\n"
-            f"📦 Total de cópias: {fmt_num(total_copies)}"
-        )
+            msg = (
+                f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
+                f"👥 Usuários que possuem: {fmt_num(owners)}\n"
+                f"📦 Total de cópias: {fmt_num(total_copies)}"
+            )
 
-        await q.answer(msg, show_alert=True)
+            await q.answer(msg, show_alert=True)
+        finally:
+            lock.release()
 
     except Exception as e:
         try:

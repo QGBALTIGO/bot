@@ -4,9 +4,32 @@ from telegram.ext import ContextTypes
 
 from database import create_or_get_user, get_user_status
 from commands.nivel import register_progress
+from utils.runtime_guard import rate_limiter
 
 TERMS_VERSION = os.getenv("TERMS_VERSION", "v1").strip() or "v1"
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "").strip()
+
+PROGRESS_RATE_LIMIT = int(os.getenv("PROGRESS_RATE_LIMIT", "1"))
+PROGRESS_RATE_WINDOW_SECONDS = float(os.getenv("PROGRESS_RATE_WINDOW_SECONDS", "2.5"))
+GATEKEEPER_RATE_LIMIT = int(os.getenv("GATEKEEPER_RATE_LIMIT", "8"))
+GATEKEEPER_RATE_WINDOW_SECONDS = float(os.getenv("GATEKEEPER_RATE_WINDOW_SECONDS", "5"))
+
+
+ADMIN_COMMANDS = {
+    "/card_reload",
+    "/card_delchar",
+    "/card_addchar",
+    "/card_setcharimg",
+    "/card_setcharname",
+    "/card_delanime",
+    "/card_addanime",
+    "/card_setanimebanner",
+    "/card_setanimecover",
+    "/card_addsubcat",
+    "/card_delsubcat",
+    "/card_subadd",
+    "/card_subremove",
+}
 
 IGNORED_PROGRESS_COMMANDS = {
     "/start",
@@ -57,6 +80,18 @@ async def _maybe_register_progress(update: Update, command_name: str) -> None:
     if command_name in IGNORED_PROGRESS_COMMANDS:
         return
 
+    user = update.effective_user
+    if not user:
+        return
+
+    allowed = await rate_limiter.allow(
+        key=f"progress:{user.id}",
+        limit=PROGRESS_RATE_LIMIT,
+        window_seconds=PROGRESS_RATE_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return
+
     try:
         await register_progress(update)
     except Exception:
@@ -79,6 +114,18 @@ async def gatekeeper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tupl
 
     text = message.text or ""
     command_name = _extract_command(text)
+
+    if command_name in ADMIN_COMMANDS:
+        return True, ""
+
+    allowed = await rate_limiter.allow(
+        key=f"gatekeeper:{user.id}",
+        limit=GATEKEEPER_RATE_LIMIT,
+        window_seconds=GATEKEEPER_RATE_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return False, ""
+
 
     # =====================
     # GRUPOS
