@@ -40,20 +40,40 @@ def load_characters():
             except:
                 continue
 
-            name = parts[1]
-            anime = parts[2]
-
-            image = ""
+            name = parts[1].strip()
+            anime = parts[2].strip()
 
             chars[char_id] = {
                 "id": char_id,
                 "name": name,
-                "anime": anime,
-                "image": image,
+                "anime": anime
             }
 
     _chars_cache = chars
     return chars
+
+
+def search_character(query):
+
+    chars = load_characters()
+
+    # buscar por ID
+    if query.isdigit():
+
+        cid = int(query)
+
+        if cid in chars:
+            return chars[cid]
+
+    # buscar por nome
+    query = query.lower()
+
+    for char in chars.values():
+
+        if query in char["name"].lower():
+            return char
+
+    return None
 
 
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,27 +83,26 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
 
         if not context.args:
-            await msg.reply_text("Use:\n/card ID_DO_PERSONAGEM")
+            await msg.reply_text(
+                "Use:\n"
+                "/card nome\n"
+                "/card ID"
+            )
             return
 
-        try:
-            char_id = int(context.args[0])
-        except:
-            await msg.reply_text("ID inválido.")
-            return
+        query = " ".join(context.args)
 
-        chars = load_characters()
-
-        char = chars.get(char_id)
+        char = search_character(query)
 
         if not char:
-            await msg.reply_text("Personagem não encontrado.")
+            await msg.reply_text("❌ Personagem não encontrado.")
             return
 
         name = char["name"]
         anime = char["anime"]
+        char_id = char["id"]
 
-        image_url = f"https://img.anili.st/character/{char_id}"
+        image = f"https://img.anili.st/character/{char_id}"
 
         text = (
             f"🎴 <b>{name}</b>\n"
@@ -92,10 +111,15 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await msg.reply_photo(
-            photo=image_url,
+            photo=image,
             caption=text,
-            parse_mode="HTML",
+            parse_mode="HTML"
         )
 
     except Exception as e:
         await msg.reply_text(f"❌ Erro no /card: {e}")
+
+
+async def card_stats_callback(update, context):
+    query = update.callback_query
+    await query.answer("Stats em breve.")
