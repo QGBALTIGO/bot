@@ -3,11 +3,26 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 _chars_cache = {}
+_file_path = None
 
 
-def _resolve_path():
-    base = os.path.dirname(os.path.dirname(__file__))
-    return os.path.join(base, "data", "personagens_anilist.txt")
+def find_file():
+    global _file_path
+
+    possible = [
+        "data/personagens_anilist.txt",
+        "./data/personagens_anilist.txt",
+        "../data/personagens_anilist.txt",
+        "/app/data/personagens_anilist.txt",
+        "bot/data/personagens_anilist.txt",
+    ]
+
+    for p in possible:
+        if os.path.exists(p):
+            _file_path = p
+            return p
+
+    return None
 
 
 def load_characters():
@@ -16,11 +31,13 @@ def load_characters():
     if _chars_cache:
         return _chars_cache
 
-    path = _resolve_path()
-    chars = {}
+    path = find_file()
 
-    if not os.path.exists(path):
+    if not path:
+        print("❌ personagens_anilist.txt NÃO encontrado")
         return {}
+
+    chars = {}
 
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -49,6 +66,8 @@ def load_characters():
                 "anime": anime
             }
 
+    print(f"✅ {len(chars)} personagens carregados")
+
     _chars_cache = chars
     return chars
 
@@ -57,7 +76,10 @@ def search_character(query):
 
     chars = load_characters()
 
-    # buscar por ID
+    if not chars:
+        return None
+
+    # busca por ID
     if query.isdigit():
 
         cid = int(query)
@@ -65,7 +87,7 @@ def search_character(query):
         if cid in chars:
             return chars[cid]
 
-    # buscar por nome
+    # busca por nome
     query = query.lower()
 
     for char in chars.values():
@@ -95,7 +117,18 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         char = search_character(query)
 
         if not char:
-            await msg.reply_text("❌ Personagem não encontrado.")
+
+            path = find_file()
+
+            if not path:
+                await msg.reply_text(
+                    "❌ Arquivo personagens_anilist.txt não encontrado."
+                )
+                return
+
+            await msg.reply_text(
+                "❌ Personagem não encontrado."
+            )
             return
 
         name = char["name"]
