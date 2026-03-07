@@ -1,21 +1,13 @@
 import os
 import threading
+import traceback
+
 import uvicorn
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
-from telegram.ext import Application, CommandHandler
-
-from commands.start import start
 from commands.anime import anime
-from commands.manga import manga
-from commands.cards import cards
-from commands.pedido import pedido
-from commands.nivel import nivel
-from commands.card import card
-
-from database import create_tables, create_cards_tables
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 from commands.card import card, card_stats_callback
-
+from commands.cards import cards
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -31,7 +23,10 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
-
+from commands.manga import manga
+from commands.nivel import nivel
+from commands.pedido import pedido
+from commands.start import start
 from database import create_tables
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -41,17 +36,21 @@ if not BOT_TOKEN:
 PORT = int(os.getenv("PORT", "8000"))
 
 
-def run_webapp():
+def run_webapp() -> None:
     from webapp import app as web_app
+
     uvicorn.run(web_app, host="0.0.0.0", port=PORT, log_level="info")
 
 
-def main():
-    create_tables()
 
-    t = threading.Thread(target=run_webapp, daemon=True)
-    t.start()
+async def on_error(update, context) -> None:
+    try:
+        print("[telegram-error]", repr(getattr(context, "error", None)), flush=True)
+        traceback.print_exc()
+    except Exception:
+        pass
 
+def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
     tg_app.add_handler(CommandHandler("start", start))
@@ -78,12 +77,25 @@ def main():
     tg_app.add_handler(CommandHandler("card_subadd", card_subadd))
     tg_app.add_handler(CommandHandler("card_subremove", card_subremove))
 
+    tg_app.add_error_handler(on_error)
+
+    return tg_app
+
+
+def main() -> None:
+    create_tables()
+
+    web_thread = threading.Thread(target=run_webapp, daemon=True)
+    web_thread.start()
+
+    tg_app = build_application()
+
     print("Bot + WebApp iniciado")
-    tg_app.run_polling(drop_pending_updates=True)
+    tg_app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query"],
+    )
 
 
 if __name__ == "__main__":
     main()
-
-
-
