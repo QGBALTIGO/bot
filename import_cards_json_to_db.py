@@ -7,7 +7,7 @@ if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_PATH = os.path.join(BASE_DIR, "data", "personagens_anilist.json")  # ajuste o nome se for outro
+JSON_PATH = os.path.join(BASE_DIR, "data", "personagens_anilist.txt")  # ajuste o nome se for outro
 
 
 def main():
