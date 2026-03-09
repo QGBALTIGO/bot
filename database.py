@@ -64,6 +64,7 @@ def create_tables():
     create_users_table()
     create_media_request_tables()
     create_cards_tables()
+    create_cards_catalog_tables()
     create_level_tables()
 
 
@@ -652,3 +653,36 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
         fetch="all"
     )
     return rows or []
+
+def create_cards_catalog_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS animes (
+        anime_id BIGINT PRIMARY KEY,
+        anime_name TEXT NOT NULL,
+        banner_image TEXT NOT NULL DEFAULT '',
+        cover_image TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS characters (
+        character_id BIGINT PRIMARY KEY,
+        anime_id BIGINT NOT NULL REFERENCES animes(anime_id) ON DELETE CASCADE,
+        character_name TEXT NOT NULL,
+        image_url TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_characters_anime_id
+    ON characters (anime_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_characters_name
+    ON characters (character_name)
+    """)

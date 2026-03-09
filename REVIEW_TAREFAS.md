@@ -1,4 +1,4 @@
-# Revisão rápida da base e tarefas sugeridas
+
 
 Abaixo estão 4 tarefas objetivas, cada uma mapeada para um tipo de problema pedido.
 
