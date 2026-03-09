@@ -1,34 +1,3 @@
-## webapp.py — MiniApp de termos e catálogo
-# MiniApp Termos (PT/EN/ES) verificação de canal (sem requests)
-# + MiniApp Catálogo do canal (cards A–Z) baseado em catalogo_enriquecido.json
-#
-# Requisitos: fastapi, uvicorn, httpx
-#
-# ENV:
-#   TERMS_VERSION="v1"
-#   BOT_TOKEN="xxxxx"                      (obrigatório verificar canal)
-#   REQUIRED_CHANNEL="@SourceBaltigo"      (ou -100xxxxxxxxxx)
-#   REQUIRED_CHANNEL_URL="https://t.me/SourceBaltigo"
-#   TOP_BANNER_URL="https://..."           (banner do termos)
-#   BACKGROUND_URL="https://..."           (fundo do termos)
-#
-#   CATALOG_PATH="data/catalogo_enriquecido.json"
-#   CATALOG_BANNER_URL="https://..."       (banner do catálogo)
-#   BACKGROUND_PATTERN_URL="https://..."   (pattern do catálogo)
-#   CATALOG_TITLE="CATÁLOGO"
-#   CATALOG_SUBTITLE="TOTAL"
-#
-# Rotas
-#   GET  /                  -> health
-#   GET  /terms             -> MiniApp (Termos)
-#   POST /api/channel/check -> verifica inscrição no canal
-#   POST /api/terms/accept  -> aceita termos
-#   POST /api/terms/decline -> recusa termos
-#
-#   GET  /catalogo          -> MiniApp (Catálogo)
-#   GET  /api/letters       -> contagem por letra
-#   GET  /api/catalogo      -> lista filtrada (q, letter, limit, offset)
-
 import os
 import json
 import re
@@ -36,16 +5,14 @@ import traceback
 import asyncio
 import time
 import httpx
+import random
 import hashlib
 import hmac
 from urllib.parse import parse_qsl
-
-from fastapi import Header, HTTPException
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import FastAPI, Query, Body
-from fastapi.responses import HTMLResponse, JSONResponse
 
-from database import create_or_get_user, accept_terms, set_language
+from fastapi import FastAPI, Query, Body, Header, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from database import (
     create_or_get_user,
@@ -53,8 +20,12 @@ from database import (
     set_language,
     get_dado_state,
     get_next_dado_recharge_info,
+    expire_stale_dice_rolls,
+    get_active_dice_roll,
+    create_dice_roll,
+    pick_dice_roll_anime,
+    resolve_dice_roll,
 )
-
 
 app = FastAPI()
 
@@ -5267,17 +5238,35 @@ loadLimit();
 """
     return HTMLResponse(html.replace("__PEDIDO_BANNER__", PEDIDO_BANNER_URL))
 
-# =========================
-# CONFIG — DADO
-# =========================
+# =========================================================
+# CONFIG — DADO / GACHA WEBAPP
+# =========================================================
+
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-    # =========================
-# TELEGRAM WEBAPP AUTH (DADO)
-# =========================
+ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
+DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
+
+_DADO_RATE: Dict[Tuple[int, str], float] = {}
+
+
+def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECONDS) -> bool:
+    now = time.time()
+    k = (int(user_id), str(key))
+    last = _DADO_RATE.get(k, 0.0)
+    if now - last < window:
+        return False
+    _DADO_RATE[k] = now
+    return True
+
+
+# =========================================================
+# TELEGRAM WEBAPP AUTH
+# =========================================================
+
 def verify_telegram_init_data(init_data: str) -> dict:
     if not init_data:
         raise HTTPException(status_code=401, detail="initData ausente")
@@ -5295,323 +5284,1105 @@ def verify_telegram_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="initData inválido")
 
     user_json = data.get("user")
-    if not user_json:
-        raise HTTPException(status_code=401, detail="user ausente")
-
-    try:
-        user = json.loads(user_json)
-    except Exception:
-        raise HTTPException(status_code=401, detail="user inválido")
-
-    if not isinstance(user, dict) or "id" not in user:
+    user = json.loads(user_json) if user_json else None
+    if not user or "id" not in user:
         raise HTTPException(status_code=401, detail="user inválido")
 
     return {"user": user, "raw": data}
 
-    @app.get("/api/dado/state")
-def api_dado_state(x_telegram_init_data: str = Header(default="")):
-    auth = verify_telegram_init_data(x_telegram_init_data)
-    user = auth["user"]
+
+def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
+    payload = verify_telegram_init_data(x_telegram_init_data)
+    user = payload["user"]
 
     user_id = int(user["id"])
+    username = (user.get("username") or "").strip()
+    full_name = " ".join(
+        p for p in [
+            (user.get("first_name") or "").strip(),
+            (user.get("last_name") or "").strip(),
+        ] if p
+    ).strip()
+
     create_or_get_user(user_id)
+    return {
+        "user_id": user_id,
+        "username": username,
+        "full_name": full_name,
+    }
+
+
+# =========================================================
+# DADO — HELPERS ANILIST
+# =========================================================
+
+async def _anilist_post(query: str, variables: Optional[dict] = None) -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(
+            ANILIST_API,
+            json={"query": query, "variables": variables or {}},
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "errors" in data:
+            raise RuntimeError(str(data["errors"][:1]))
+        return data.get("data") or {}
+
+
+async def _fetch_random_anime_options(n: int) -> List[dict]:
+    """
+    Pega opções de anime populares do AniList.
+    """
+    n = max(1, min(6, int(n)))
+    page = random.randint(1, 8)
+
+    query = """
+    query ($page: Int) {
+      Page(page: $page, perPage: 50) {
+        media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+          id
+          title { romaji english }
+          coverImage { large }
+        }
+      }
+    }
+    """
+
+    data = await _anilist_post(query, {"page": page})
+    media = ((data.get("Page") or {}).get("media") or [])
+
+    pool = []
+    seen = set()
+
+    for m in media:
+        anime_id = m.get("id")
+        if not anime_id or anime_id in seen:
+            continue
+        seen.add(int(anime_id))
+
+        title = (
+            ((m.get("title") or {}).get("romaji"))
+            or ((m.get("title") or {}).get("english"))
+            or "Anime"
+        )
+        cover = ((m.get("coverImage") or {}).get("large")) or ""
+
+        pool.append({
+            "id": int(anime_id),
+            "title": str(title).strip(),
+            "cover": cover,
+        })
+
+    if len(pool) < n:
+        raise RuntimeError("pool de anime insuficiente")
+
+    return random.sample(pool, n)
+
+
+async def _fetch_random_character_from_anime(anime_id: int) -> Optional[dict]:
+    query = """
+    query ($id: Int, $page: Int) {
+      Media(id: $id, type: ANIME) {
+        title { romaji english }
+        coverImage { large }
+        characters(page: $page, perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
+          edges {
+            role
+            node {
+              id
+              name { full }
+              image { large }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    pages = [1, random.randint(1, 4)]
+    chars: List[dict] = []
+    seen = set()
+    anime_title = "Anime"
+    anime_cover = ""
+
+    for p in pages:
+        data = await _anilist_post(query, {"id": int(anime_id), "page": int(p)})
+        media = data.get("Media")
+        if not media:
+            continue
+
+        anime_title = (
+            ((media.get("title") or {}).get("romaji"))
+            or ((media.get("title") or {}).get("english"))
+            or "Anime"
+        )
+        anime_cover = ((media.get("coverImage") or {}).get("large")) or ""
+
+        edges = (((media.get("characters") or {}).get("edges")) or [])
+        for e in edges:
+            role = str(e.get("role") or "").upper()
+            if role not in ("MAIN", "SUPPORTING"):
+                continue
+
+            node = e.get("node") or {}
+            cid = node.get("id")
+            name = ((node.get("name") or {}).get("full")) or ""
+            image = ((node.get("image") or {}).get("large")) or ""
+
+            if not cid or not name or int(cid) in seen:
+                continue
+
+            seen.add(int(cid))
+            chars.append({
+                "id": int(cid),
+                "name": str(name).strip(),
+                "image": image or anime_cover,
+                "anime_title": anime_title,
+                "anime_cover": anime_cover,
+            })
+
+    if not chars:
+        return None
+
+    random.shuffle(chars)
+    return chars[0]
+
+
+def _rarity_from_roll(dice_value: int, character_id: int) -> dict:
+    seed = ((int(character_id) * 1103515245) + (int(dice_value) * 12345)) & 0xFFFFFFFF
+    r = seed % 1000
+
+    if r < 30:
+        return {"tier": "MYTHIC", "stars": 5}
+    if r < 150:
+        return {"tier": "LEGENDARY", "stars": 4}
+    if r < 420:
+        return {"tier": "EPIC", "stars": 3}
+    if r < 760:
+        return {"tier": "RARE", "stars": 2}
+    return {"tier": "COMMON", "stars": 1}
+
+
+# =========================================================
+# API — DADO
+# =========================================================
+
+@app.get("/api/dado/state")
+def api_dado_state(x_telegram_init_data: str = Header(default="")):
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    try:
+        expire_stale_dice_rolls(refund_pending=True)
+    except Exception:
+        pass
 
     state = get_dado_state(user_id) or {}
     recharge = get_next_dado_recharge_info(user_id) or {}
+    active = get_active_dice_roll(user_id)
 
-    balance = int(state.get("balance") or 0)
+    roll_payload = None
+    if active:
+        roll_payload = {
+            "roll_id": int(active["roll_id"]),
+            "dice_value": int(active["dice_value"]),
+            "options": active.get("options_json") or [],
+            "status": active.get("status"),
+            "selected_anime_id": active.get("selected_anime_id"),
+            "rewarded_character_id": active.get("rewarded_character_id"),
+        }
 
     return JSONResponse({
         "ok": True,
-        "user_id": user_id,
-        "balance": balance,
+        "balance": int(state.get("balance") or 0),
         "next_recharge_hhmm": recharge.get("next_recharge_hhmm") or "--:--",
         "next_recharge_iso": recharge.get("next_recharge_iso"),
         "timezone": recharge.get("timezone") or "America/Sao_Paulo",
         "max_balance": int(recharge.get("max_balance") or 24),
-        "initial_balance": 4,
+        "active_roll": roll_payload,
         "recharge_hours": ["01:00", "04:00", "07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
     })
 
-    @app.get("/dado", response_class=HTMLResponse)
+
+@app.post("/api/dado/roll")
+async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    if not _dado_rate_limit(user_id, "roll", 1.4):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+
+    try:
+        expire_stale_dice_rolls(refund_pending=True)
+    except Exception:
+        pass
+
+    active = get_active_dice_roll(user_id)
+    if active:
+        return JSONResponse({
+            "ok": True,
+            "reused": True,
+            "roll_id": int(active["roll_id"]),
+            "dice_value": int(active["dice_value"]),
+            "options": active.get("options_json") or [],
+            "status": active.get("status"),
+            "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
+        })
+
+    dice_value = random.SystemRandom().randint(1, 6)
+    options = await _fetch_random_anime_options(dice_value)
+
+    created = create_dice_roll(user_id, dice_value, options)
+    if not created.get("ok"):
+        return JSONResponse(created, status_code=200)
+
+    roll = created["roll"]
+    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
+
+    return JSONResponse({
+        "ok": True,
+        "reused": bool(created.get("reused")),
+        "roll_id": int(roll["roll_id"]),
+        "dice_value": int(roll["dice_value"]),
+        "options": roll.get("options_json") or [],
+        "status": roll.get("status"),
+        "balance": balance,
+    })
+
+
+@app.post("/api/dado/pick")
+async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_data: str = Header(default="")):
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    if not _dado_rate_limit(user_id, "pick", 1.0):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+
+    roll_id = int(payload_body.get("roll_id") or 0)
+    anime_id = int(payload_body.get("anime_id") or 0)
+
+    if roll_id <= 0 or anime_id <= 0:
+        raise HTTPException(status_code=400, detail="roll_id/anime_id inválidos")
+
+    picked = pick_dice_roll_anime(user_id, roll_id, anime_id)
+    if not picked.get("ok"):
+        return JSONResponse(picked, status_code=200)
+
+    roll = picked["roll"]
+    char = await _fetch_random_character_from_anime(anime_id)
+    if not char:
+        return JSONResponse({"ok": False, "error": "character_not_found"}, status_code=200)
+
+    resolved = resolve_dice_roll(user_id, roll_id, int(char["id"]))
+    if not resolved.get("ok"):
+        return JSONResponse(resolved, status_code=200)
+
+    rarity = _rarity_from_roll(int(roll["dice_value"]), int(char["id"]))
+    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
+
+    return JSONResponse({
+        "ok": True,
+        "roll_id": int(roll_id),
+        "balance": balance,
+        "character": {
+            "id": int(char["id"]),
+            "name": char["name"],
+            "image": char["image"],
+            "anime_title": char["anime_title"],
+            "anime_cover": char["anime_cover"],
+            "tier": rarity["tier"],
+            "stars": rarity["stars"],
+        },
+    })
+
+
+# =========================================================
+# PAGE — /dado
+# =========================================================
+
+@app.get("/dado", response_class=HTMLResponse)
 def dado_page():
-    html = f"""<!doctype html>
+    html = """<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Sistema de Dados • Source Baltigo</title>
+  <title>Sistema de Dados — Source Baltigo</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
   <style>
-    :root {{
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.16);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-      --panel: rgba(255,255,255,0.04);
-      --accent: rgba(90,168,255,0.22);
-      --accent2: rgba(124,92,255,0.28);
-    }}
+    :root{
+      --bg0:#060912;
+      --bg1:#0b1222;
+      --panel:rgba(255,255,255,.045);
+      --stroke:rgba(255,255,255,.10);
+      --txt:rgba(255,255,255,.94);
+      --muted:rgba(255,255,255,.62);
+      --pink:#ff2bd6;
+      --cyan:#00f2ff;
+      --gold:#ffd65a;
+      --ok:#63ffa8;
+      --shadow:0 16px 34px rgba(0,0,0,.45);
+    }
 
-    * {{ box-sizing: border-box; }}
-    html, body {{ height: 100%; }}
-    body {{
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      color:var(--txt);
       background:
-        radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-        linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }}
+        radial-gradient(1200px 700px at 50% -10%, rgba(0,242,255,.10), transparent 55%),
+        radial-gradient(900px 500px at 20% 20%, rgba(255,43,214,.08), transparent 50%),
+        linear-gradient(180deg,var(--bg0),var(--bg1));
+      overflow-x:hidden;
+    }
 
-    .wrap {{
-      max-width: 880px;
-      margin: 0 auto;
-      padding: 18px 14px 36px;
-    }}
+    .wrap{
+      max-width:980px;
+      margin:0 auto;
+      padding:14px 14px 34px;
+    }
 
-    .banner {{
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }}
+    .banner{
+      border-radius:24px;
+      overflow:hidden;
+      border:1px solid var(--stroke);
+      box-shadow:var(--shadow);
+      position:relative;
+      background:#000;
+    }
 
-    .banner img {{
-      width: 100%;
-      height: 210px;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-    }}
+    .banner img{
+      width:100%;
+      height:210px;
+      object-fit:cover;
+      display:block;
+    }
 
-    .banner::after {{
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events: none;
-    }}
+    .banner:after{
+      content:"";
+      position:absolute; inset:0;
+      background:linear-gradient(180deg,rgba(0,0,0,.06),rgba(0,0,0,.72));
+    }
 
-    .hero {{
-      margin-top: 16px;
-      padding: 16px;
-      border-radius: 24px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.035);
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }}
+    .hero{
+      margin-top:14px;
+      border-radius:24px;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.035);
+      box-shadow:0 16px 26px rgba(0,0,0,.35);
+      padding:16px;
+      backdrop-filter:blur(8px);
+    }
 
-    .title {{
-      font-weight: 900;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }}
+    .title{
+      font-size:24px;
+      font-weight:1000;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
 
-    .sub {{
-      margin-top: 8px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: .03em;
-      font-size: 14px;
-      line-height: 1.5;
-    }}
+    .sub{
+      margin-top:8px;
+      color:var(--muted);
+      font-size:14px;
+      font-weight:700;
+      line-height:1.5;
+    }
 
-    .grid {{
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }}
+    .stats{
+      margin-top:16px;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
+    }
 
-    @media (max-width: 640px) {{
-      .grid {{
-        grid-template-columns: 1fr;
-      }}
-    }}
+    @media (max-width:700px){
+      .stats{grid-template-columns:1fr}
+    }
 
-    .stat {{
-      border-radius: 20px;
-      padding: 16px;
-      border: 1px solid var(--stroke);
-      background: var(--panel);
-      box-shadow: 0 16px 26px rgba(0,0,0,0.22);
-    }}
+    .stat{
+      border-radius:20px;
+      background:var(--panel);
+      border:1px solid var(--stroke);
+      padding:16px;
+      box-shadow:0 10px 22px rgba(0,0,0,.25);
+    }
 
-    .stat .k {{
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-    }}
+    .stat .k{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
 
-    .stat .v {{
-      margin-top: 8px;
-      font-size: 24px;
-      font-weight: 1000;
-      letter-spacing: .04em;
-    }}
+    .stat .v{
+      margin-top:8px;
+      font-size:24px;
+      font-weight:1000;
+    }
 
-    .box {{
-      margin-top: 14px;
-      padding: 16px;
-      border-radius: 20px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-    }}
+    .diceStage{
+      margin-top:16px;
+      border-radius:24px;
+      overflow:hidden;
+      border:1px solid var(--stroke);
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255,43,214,.07), transparent 38%),
+        radial-gradient(circle at 50% 100%, rgba(0,242,255,.07), transparent 38%),
+        rgba(255,255,255,.025);
+      box-shadow:var(--shadow);
+      min-height:340px;
+      position:relative;
+    }
 
-    .times {{
-      margin-top: 8px;
-      color: rgba(255,255,255,.85);
-      font-size: 14px;
-      line-height: 1.8;
-      font-weight: 800;
-      letter-spacing: .04em;
-    }}
+    #sceneWrap{
+      width:100%;
+      height:340px;
+      position:relative;
+    }
 
-    .cta {{
-      margin-top: 18px;
-      width: 100%;
-      border: 1px solid rgba(90,168,255,0.38);
-      background: linear-gradient(180deg, rgba(90,168,255,0.22), rgba(124,92,255,0.22));
-      color: #fff;
-      border-radius: 18px;
-      padding: 16px 14px;
-      font-weight: 1000;
-      letter-spacing: .10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 18px 30px rgba(0,0,0,0.30);
-    }}
+    .hud{
+      position:absolute;
+      left:0; right:0; bottom:14px;
+      display:flex;
+      justify-content:center;
+      pointer-events:none;
+    }
 
-    .cta:disabled {{
-      opacity: .5;
-      cursor: not-allowed;
-    }}
+    .hudTag{
+      padding:10px 14px;
+      border-radius:999px;
+      background:rgba(0,0,0,.34);
+      border:1px solid rgba(255,255,255,.12);
+      font-weight:900;
+      font-size:12px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      box-shadow:0 8px 18px rgba(0,0,0,.28);
+    }
 
-    .msg {{
-      margin-top: 12px;
-      min-height: 20px;
-      color: rgba(255,255,255,.68);
-      font-size: 13px;
-      font-weight: 700;
-      white-space: pre-wrap;
-    }}
+    .actions{
+      margin-top:16px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
 
-    .footer {{
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }}
+    .btn{
+      flex:1;
+      min-width:180px;
+      border:none;
+      border-radius:18px;
+      padding:16px 14px;
+      color:#fff;
+      font-weight:1000;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      cursor:pointer;
+      box-shadow:0 18px 30px rgba(0,0,0,.3);
+      transition:transform .15s ease, opacity .15s ease;
+    }
+
+    .btn:active{transform:scale(.985)}
+    .btn[disabled]{opacity:.45;cursor:not-allowed}
+
+    .btnRoll{
+      background:linear-gradient(135deg, rgba(255,43,214,.88), rgba(0,242,255,.88));
+      border:1px solid rgba(255,255,255,.18);
+    }
+
+    .btnReset{
+      background:linear-gradient(135deg, rgba(255,214,90,.30), rgba(255,214,90,.18));
+      border:1px solid rgba(255,214,90,.28);
+    }
+
+    .msg{
+      margin-top:14px;
+      min-height:20px;
+      color:rgba(255,255,255,.72);
+      font-size:13px;
+      font-weight:800;
+      white-space:pre-wrap;
+    }
+
+    .animeGrid{
+      margin-top:16px;
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:12px;
+    }
+
+    @media (max-width:720px){
+      .animeGrid{grid-template-columns:1fr}
+    }
+
+    .animeCard{
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.035);
+      box-shadow:0 12px 24px rgba(0,0,0,.24);
+      cursor:pointer;
+      transition:transform .16s ease, border-color .16s ease;
+    }
+    .animeCard:hover{transform:translateY(-2px);border-color:rgba(0,242,255,.34)}
+    .animeCard[aria-disabled="true"]{opacity:.58;pointer-events:none}
+
+    .animeCover{
+      width:100%;
+      height:142px;
+      object-fit:cover;
+      display:block;
+      background:#111;
+    }
+
+    .animeMeta{padding:12px}
+    .animeTitle{
+      font-size:15px;
+      font-weight:1000;
+      line-height:1.35;
+    }
+
+    .animeHint{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    .reveal{
+      margin-top:18px;
+      border-radius:24px;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.035);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      display:none;
+    }
+
+    .reveal.show{display:block; animation:fadeUp .35s ease;}
+
+    .revealImg{
+      width:100%;
+      height:260px;
+      object-fit:cover;
+      display:block;
+      background:#111;
+    }
+
+    .revealBody{padding:16px}
+    .rarity{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border-radius:999px;
+      padding:8px 12px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.12);
+      font-size:12px;
+      font-weight:1000;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+
+    .charName{
+      margin-top:12px;
+      font-size:24px;
+      font-weight:1000;
+      line-height:1.2;
+    }
+
+    .animeFrom{
+      margin-top:8px;
+      color:var(--muted);
+      font-weight:800;
+      font-size:14px;
+    }
+
+    .footer{
+      margin-top:16px;
+      text-align:center;
+      color:rgba(255,255,255,.38);
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.08em;
+    }
+
+    @keyframes fadeUp{
+      from{opacity:0;transform:translateY(10px)}
+      to{opacity:1;transform:translateY(0)}
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="banner">
-      <img src="{DADO_BANNER_URL}" alt="Dado"/>
+      <img src="__DADO_BANNER_URL__" alt="Sistema de Dados">
     </div>
 
     <div class="hero">
       <div class="title">Sistema de Dados</div>
       <div class="sub">
-        Use seus dados para descobrir animes e obter personagens para a sua coleção.
+        Role o dado 3D, receba entre 1 e 6 opções de anime e escolha uma para revelar um personagem da sua coleção.
       </div>
 
-      <div class="grid">
+      <div class="stats">
         <div class="stat">
           <div class="k">Dados disponíveis</div>
           <div class="v" id="balanceTxt">...</div>
         </div>
-
         <div class="stat">
           <div class="k">Próximo dado</div>
           <div class="v" id="nextTxt">...</div>
         </div>
-      </div>
-
-      <div class="box">
-        <div class="k" style="color: rgba(255,255,255,.58); font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;">
-          Recargas fixas
-        </div>
-        <div class="times">
-          01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h<br>
-          🇧🇷 Horário de São Paulo<br>
-          🎁 Novos jogadores começam com 4 giros<br>
-          📦 Acúmulo máximo: 3 dias
+        <div class="stat">
+          <div class="k">Recargas</div>
+          <div class="v" style="font-size:16px;line-height:1.5">01h • 04h • 07h<br>10h • 13h • 16h<br>19h • 22h</div>
         </div>
       </div>
 
-      <button id="rollBtn" class="cta" disabled>Em breve: rolar dado</button>
+      <div class="diceStage">
+        <div id="sceneWrap"></div>
+        <div class="hud"><div class="hudTag" id="hudTxt">Pronto para rolar</div></div>
+      </div>
+
+      <div class="actions">
+        <button id="rollBtn" class="btn btnRoll">Rolar Dado</button>
+        <button id="resetBtn" class="btn btnReset" type="button">Limpar tela</button>
+      </div>
+
       <div class="msg" id="msg">Carregando seus dados...</div>
+
+      <div id="animeGrid" class="animeGrid"></div>
+
+      <div id="revealBox" class="reveal">
+        <img id="revealImg" class="revealImg" src="" alt="Personagem">
+        <div class="revealBody">
+          <div id="rarityTxt" class="rarity">REWARD</div>
+          <div id="charName" class="charName"></div>
+          <div id="animeFrom" class="animeFrom"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="footer">Source Baltigo • Dados</div>
+    <div class="footer">Source Baltigo • Dado Gacha</div>
   </div>
 
   <script>
     const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-    if (tg) {{
-      try {{
+    if (tg) {
+      try {
         tg.ready();
         tg.expand();
-      }} catch(e) {{}}
-    }}
+        tg.setHeaderColor("#0b1222");
+        tg.setBackgroundColor("#060912");
+      } catch(e) {}
+    }
 
-    function setMsg(text) {{
-      document.getElementById("msg").textContent = text || "";
-    }}
+    const state = {
+      balance: 0,
+      nextRecharge: "--:--",
+      currentRollId: 0,
+      currentDice: 0,
+      rolling: false,
+      choosing: false,
+      options: [],
+    };
 
-    async function loadState() {{
-      try {{
-        if (!tg || !tg.initData) {{
-          setMsg("Abra este Mini App pelo Telegram.");
+    const msg = document.getElementById("msg");
+    const balanceTxt = document.getElementById("balanceTxt");
+    const nextTxt = document.getElementById("nextTxt");
+    const hudTxt = document.getElementById("hudTxt");
+    const animeGrid = document.getElementById("animeGrid");
+    const revealBox = document.getElementById("revealBox");
+    const revealImg = document.getElementById("revealImg");
+    const rarityTxt = document.getElementById("rarityTxt");
+    const charName = document.getElementById("charName");
+    const animeFrom = document.getElementById("animeFrom");
+    const rollBtn = document.getElementById("rollBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    function setMsg(text){ msg.textContent = text || ""; }
+    function setHud(text){ hudTxt.textContent = text || ""; }
+    function setBalance(v){ balanceTxt.textContent = String(v ?? 0); }
+    function setNext(v){ nextTxt.textContent = String(v || "--:--"); }
+
+    function clearReveal(){
+      revealBox.classList.remove("show");
+      revealImg.src = "";
+      charName.textContent = "";
+      animeFrom.textContent = "";
+      rarityTxt.textContent = "REWARD";
+    }
+
+    function clearAnimeCards(){
+      animeGrid.innerHTML = "";
+    }
+
+    function resetScreen(){
+      clearAnimeCards();
+      clearReveal();
+      state.currentRollId = 0;
+      state.currentDice = 0;
+      state.options = [];
+      setHud("Pronto para rolar");
+      setMsg("Tela limpa.");
+    }
+
+    async function apiGet(url){
+      const res = await fetch(url + "?_ts=" + Date.now(), {
+        headers: {"X-Telegram-Init-Data": tg ? tg.initData : ""}
+      });
+      let data = {};
+      try { data = await res.json(); } catch(e) {}
+      if (!res.ok) {
+        throw new Error(data.detail || ("Erro HTTP " + res.status));
+      }
+      return data;
+    }
+
+    async function apiPost(url, payload){
+      const res = await fetch(url + "?_ts=" + Date.now(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Telegram-Init-Data": tg ? tg.initData : ""
+        },
+        body: JSON.stringify(payload || {})
+      });
+      let data = {};
+      try { data = await res.json(); } catch(e) {}
+      if (!res.ok) {
+        throw new Error(data.detail || ("Erro HTTP " + res.status));
+      }
+      return data;
+    }
+
+    // =========================
+    // THREE.JS DICE
+    // =========================
+    let renderer, scene, camera, dice, particles = [];
+    let ambient, point, frameHandle = 0;
+
+    function createTextTexture(value){
+      const c = document.createElement("canvas");
+      c.width = 512;
+      c.height = 512;
+      const ctx = c.getContext("2d");
+
+      const g = ctx.createLinearGradient(0, 0, 512, 512);
+      g.addColorStop(0, "#1a2034");
+      g.addColorStop(1, "#090d17");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 512, 512);
+
+      ctx.strokeStyle = "rgba(255,255,255,.18)";
+      ctx.lineWidth = 10;
+      ctx.strokeRect(20, 20, 472, 472);
+
+      ctx.shadowColor = "rgba(0,242,255,.6)";
+      ctx.shadowBlur = 24;
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 260px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(value), 256, 278);
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function setupScene(){
+      const el = document.getElementById("sceneWrap");
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+
+      renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(w, h);
+      el.innerHTML = "";
+      el.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
+      camera.position.set(0, 0.8, 6.8);
+
+      ambient = new THREE.AmbientLight(0xffffff, 1.4);
+      scene.add(ambient);
+
+      point = new THREE.PointLight(0xffffff, 1.8, 30);
+      point.position.set(2.8, 3.6, 5.2);
+      scene.add(point);
+
+      const floorGeo = new THREE.CircleGeometry(2.8, 64);
+      const floorMat = new THREE.MeshBasicMaterial({
+        color: 0x112031,
+        transparent: true,
+        opacity: .35
+      });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -1.55;
+      scene.add(floor);
+
+      const mats = [1,2,3,4,5,6].map(n => new THREE.MeshStandardMaterial({
+        map: createTextTexture(n),
+        roughness: 0.42,
+        metalness: 0.35
+      }));
+
+      const geo = new THREE.BoxGeometry(2.05, 2.05, 2.05, 1, 1, 1);
+      dice = new THREE.Mesh(geo, mats);
+      scene.add(dice);
+
+      const edgeGeo = new THREE.EdgesGeometry(geo);
+      const edgeMat = new THREE.LineBasicMaterial({color: 0x6ae7ff, transparent:true, opacity:.55});
+      const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+      dice.add(edges);
+
+      particles = [];
+      for (let i = 0; i < 40; i++) {
+        const pGeo = new THREE.SphereGeometry(0.03, 8, 8);
+        const pMat = new THREE.MeshBasicMaterial({color: (i % 2 ? 0x00f2ff : 0xff2bd6)});
+        const p = new THREE.Mesh(pGeo, pMat);
+        p.position.set(
+          (Math.random() - .5) * 4,
+          (Math.random() - .5) * 3,
+          (Math.random() - .5) * 3
+        );
+        p.userData = {
+          vx: (Math.random() - .5) * 0.02,
+          vy: (Math.random() - .5) * 0.02,
+          vz: (Math.random() - .5) * 0.02,
+        };
+        scene.add(p);
+        particles.push(p);
+      }
+
+      cancelAnimationFrame(frameHandle);
+      const tick = () => {
+        if (!renderer || !scene || !camera || !dice) return;
+        dice.rotation.x += 0.003;
+        dice.rotation.y += 0.004;
+        particles.forEach(p => {
+          p.position.x += p.userData.vx;
+          p.position.y += p.userData.vy;
+          p.position.z += p.userData.vz;
+          if (Math.abs(p.position.x) > 3) p.userData.vx *= -1;
+          if (Math.abs(p.position.y) > 2) p.userData.vy *= -1;
+          if (Math.abs(p.position.z) > 2) p.userData.vz *= -1;
+        });
+        renderer.render(scene, camera);
+        frameHandle = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    function resizeScene(){
+      const el = document.getElementById("sceneWrap");
+      if (!renderer || !camera || !el) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+
+    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+    async function animateDiceResult(value){
+      if (!dice) return;
+
+      state.rolling = true;
+      rollBtn.disabled = true;
+      setHud("Rolando...");
+      clearAnimeCards();
+      clearReveal();
+
+      const targets = {
+        1: {x: 0, y: 0},
+        2: {x: Math.PI / 2, y: 0},
+        3: {x: 0, y: -Math.PI / 2},
+        4: {x: 0, y: Math.PI / 2},
+        5: {x: -Math.PI / 2, y: 0},
+        6: {x: Math.PI, y: 0},
+      };
+
+      const t = targets[value] || targets[1];
+      const startX = dice.rotation.x;
+      const startY = dice.rotation.y;
+
+      const endX = t.x + (Math.PI * 6);
+      const endY = t.y + (Math.PI * 7);
+
+      const duration = 1700;
+      const start = performance.now();
+
+      await new Promise(resolve => {
+        function step(now){
+          const p = Math.min((now - start) / duration, 1);
+          const ease = 1 - Math.pow(1 - p, 4);
+          dice.rotation.x = startX + (endX - startX) * ease;
+          dice.rotation.y = startY + (endY - startY) * ease;
+          camera.position.x = Math.sin(p * Math.PI * 2) * 0.18;
+          camera.position.y = 0.8 + Math.sin(p * Math.PI * 5) * 0.06;
+          camera.lookAt(0, 0, 0);
+          if (p < 1) requestAnimationFrame(step);
+          else resolve();
+        }
+        requestAnimationFrame(step);
+      });
+
+      camera.position.set(0, 0.8, 6.8);
+      camera.lookAt(0, 0, 0);
+
+      setHud("Resultado: " + value);
+      state.rolling = false;
+      rollBtn.disabled = false;
+    }
+
+    function renderAnimeOptions(options){
+      animeGrid.innerHTML = "";
+      clearReveal();
+
+      options.forEach(opt => {
+        const card = document.createElement("div");
+        card.className = "animeCard";
+        card.innerHTML = `
+          <img class="animeCover" src="${opt.cover || ""}" alt="">
+          <div class="animeMeta">
+            <div class="animeTitle">${opt.title || "Anime"}</div>
+            <div class="animeHint">Toque para escolher</div>
+          </div>
+        `;
+        card.addEventListener("click", () => chooseAnime(opt, card));
+        animeGrid.appendChild(card);
+      });
+    }
+
+    async function chooseAnime(opt, cardEl){
+      if (!state.currentRollId || state.choosing) return;
+      state.choosing = true;
+
+      [...animeGrid.children].forEach(el => el.setAttribute("aria-disabled", "true"));
+      setMsg("Revelando personagem...");
+
+      try {
+        const data = await apiPost("/api/dado/pick", {
+          roll_id: state.currentRollId,
+          anime_id: Number(opt.id),
+        });
+
+        if (!data.ok) throw new Error(data.error || "Falha ao revelar personagem.");
+
+        const ch = data.character || {};
+        setBalance(data.balance ?? state.balance);
+
+        revealImg.src = ch.image || opt.cover || "";
+        rarityTxt.textContent = `${ch.tier || "COMMON"} • ${"★".repeat(Number(ch.stars || 1))}`;
+        charName.textContent = ch.name || "Personagem";
+        animeFrom.textContent = "Obtido de " + (ch.anime_title || opt.title || "Anime");
+        revealBox.classList.add("show");
+
+        setHud("Personagem revelado");
+        setMsg("✨ Personagem obtido com sucesso.");
+      } catch (e) {
+        [...animeGrid.children].forEach(el => el.removeAttribute("aria-disabled"));
+        setMsg("❌ " + (e.message || "Falha ao escolher anime."));
+      } finally {
+        state.choosing = false;
+      }
+    }
+
+    async function loadState(){
+      try {
+        if (!tg || !tg.initData) {
+          setMsg("Abra este WebApp pelo Telegram.");
+          rollBtn.disabled = true;
           return;
-        }}
+        }
 
-        const res = await fetch("/api/dado/state?_ts=" + Date.now(), {{
-          headers: {{
-            "X-Telegram-Init-Data": tg.initData
-          }}
-        }});
+        const data = await apiGet("/api/dado/state");
+        setBalance(data.balance ?? 0);
+        setNext(data.next_recharge_hhmm || "--:--");
+        state.balance = Number(data.balance || 0);
 
-        const data = await res.json();
+        if (data.active_roll && data.active_roll.roll_id) {
+          state.currentRollId = Number(data.active_roll.roll_id);
+          state.currentDice = Number(data.active_roll.dice_value || 0);
+          state.options = Array.isArray(data.active_roll.options) ? data.active_roll.options : [];
+          if (state.currentDice > 0) {
+            await animateDiceResult(state.currentDice);
+          }
+          if (state.options.length) {
+            renderAnimeOptions(state.options);
+            setMsg("Você tinha uma rolagem ativa. Continue escolhendo.");
+          }
+        } else {
+          setMsg("Tudo pronto. Role o dado quando quiser.");
+        }
 
-        if (!res.ok || data.ok === false) {{
-          throw new Error(data.detail || data.message || "Erro ao carregar dados.");
-        }}
+        rollBtn.disabled = false;
+      } catch (e) {
+        rollBtn.disabled = true;
+        setMsg("❌ " + (e.message || "Não consegui carregar seus dados."));
+      }
+    }
 
-        document.getElementById("balanceTxt").textContent = String(data.balance ?? 0);
-        document.getElementById("nextTxt").textContent = String(data.next_recharge_hhmm || "--:--");
-        document.getElementById("rollBtn").disabled = false;
-        setMsg("Tudo pronto. O botão de rolagem será ligado na próxima etapa.");
-      }} catch (e) {{
-        document.getElementById("balanceTxt").textContent = "--";
-        document.getElementById("nextTxt").textContent = "--:--";
-        setMsg("❌ " + (e.message || "Erro inesperado."));
-      }}
-    }}
+    async function rollDice(){
+      if (state.rolling || state.choosing) return;
+      if (!tg || !tg.initData) {
+        setMsg("Abra este WebApp pelo Telegram.");
+        return;
+      }
 
-    document.getElementById("rollBtn").addEventListener("click", () => {{
-      setMsg("A rolagem real entra na próxima etapa.");
-    }});
+      rollBtn.disabled = true;
+      setMsg("Rolando dado...");
+      clearAnimeCards();
+      clearReveal();
 
+      try {
+        const data = await apiPost("/api/dado/roll", {});
+        if (!data.ok) {
+          const msgMap = {
+            no_balance: "Você está sem dados agora.",
+            rate_limited: "Espere um instante antes de rolar novamente.",
+          };
+          throw new Error(msgMap[data.error] || data.error || "Falha ao rolar.");
+        }
+
+        state.currentRollId = Number(data.roll_id || 0);
+        state.currentDice = Number(data.dice_value || 1);
+        state.options = Array.isArray(data.options) ? data.options : [];
+        setBalance(data.balance ?? 0);
+
+        await animateDiceResult(state.currentDice);
+        renderAnimeOptions(state.options);
+        setMsg("Escolha um anime para revelar o personagem.");
+      } catch (e) {
+        setMsg("❌ " + (e.message || "Erro ao rolar dado."));
+      } finally {
+        rollBtn.disabled = false;
+      }
+    }
+
+    rollBtn.addEventListener("click", rollDice);
+    resetBtn.addEventListener("click", resetScreen);
+    window.addEventListener("resize", resizeScene);
+
+    setupScene();
     loadState();
   </script>
 </body>
 </html>
 """
+    html = html.replace("__DADO_BANNER_URL__", DADO_BANNER_URL)
     return HTMLResponse(html)
