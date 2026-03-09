@@ -1354,6 +1354,12 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
     if not isinstance(options, list) or len(options) != dice_value:
         raise ValueError("options deve ter exatamente a quantidade do valor do dado")
 
+    clean_options.append({
+    "id": anime_id,
+    "title": str(item.get("title") or "").strip(),
+    "cover": str(item.get("cover") or "").strip(),
+})
+    
     clean_options = []
     seen_ids = set()
     for item in options:
