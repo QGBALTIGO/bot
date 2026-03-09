@@ -6127,9 +6127,6 @@ def dado_page():
       return data;
     }
 
-    // =========================
-    // THREE.JS DICE
-    // =========================
     let renderer, scene, camera, dice, particles = [];
     let ambient, point, frameHandle = 0;
 
@@ -6202,21 +6199,13 @@ def dado_page():
       floor.position.y = -1.55;
       scene.add(floor);
 
-      // ordem do BoxGeometry: +x, -x, +y, -y, +z, -z
-      // frente visual:
-      // 1 => +z
-      // 2 => +x
-      // 3 => +y
-      // 4 => -y
-      // 5 => -x
-      // 6 => -z
       const mats = [
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(2, -90), roughness: 0.42, metalness: 0.35 }), // +x
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(5,  90), roughness: 0.42, metalness: 0.35 }), // -x
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(3,   0), roughness: 0.42, metalness: 0.35 }), // +y
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(4, 180), roughness: 0.42, metalness: 0.35 }), // -y
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(1,   0), roughness: 0.42, metalness: 0.35 }), // +z
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(6, 180), roughness: 0.42, metalness: 0.35 }), // -z
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(2, -90), roughness: 0.42, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(5,  90), roughness: 0.42, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(3,   0), roughness: 0.42, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(4, 180), roughness: 0.42, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(1,   0), roughness: 0.42, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(6, 180), roughness: 0.42, metalness: 0.35 }),
       ];
 
       const geo = new THREE.BoxGeometry(2.05, 2.05, 2.05, 1, 1, 1);
@@ -6288,12 +6277,12 @@ def dado_page():
       clearReveal();
 
       const targets = {
-        1: { x: 0, y: 0 },               // +z frente
-        2: { x: 0, y: -Math.PI / 2 },    // +x frente
-        3: { x: Math.PI / 2, y: 0 },     // +y frente
-        4: { x: -Math.PI / 2, y: 0 },    // -y frente
-        5: { x: 0, y: Math.PI / 2 },     // -x frente
-        6: { x: 0, y: Math.PI },         // -z frente
+        1: { x: 0, y: 0 },
+        2: { x: 0, y: -Math.PI / 2 },
+        3: { x: Math.PI / 2, y: 0 },
+        4: { x: -Math.PI / 2, y: 0 },
+        5: { x: 0, y: Math.PI / 2 },
+        6: { x: 0, y: Math.PI },
       };
 
       const t = targets[value] || targets[1];
@@ -6494,5 +6483,4 @@ def dado_page():
 </html>
 """
     html = html.replace("__DADO_BANNER_URL__", DADO_BANNER_URL)
-    return HTMLResponse(html)ER_URL)
     return HTMLResponse(html)
