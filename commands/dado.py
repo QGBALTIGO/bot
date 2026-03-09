@@ -20,7 +20,7 @@ if not BOT_USERNAME:
 
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
 DADO_WEBAPP_URL = f"{BASE_URL}/dado"
@@ -78,9 +78,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>personagens</b> para a sua coleção.\n\n"
         "🕒 <b>Recargas fixas:</b>\n"
         "<code>01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h</code>\n"
-        "🇧🇷 Horário de São Paulo\n\n"
-        "🎁 <b>Novos jogadores começam com 4 giros</b>\n"
-        "📦 <b>Acúmulo máximo:</b> 3 dias\n\n"
+        "🇧🇷 Horário de São Paulo (Br)\n\n"
         "Toque no botão abaixo para abrir a área dos dados."
     )
 
