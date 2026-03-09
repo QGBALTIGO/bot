@@ -1,64 +1,377 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/commands/cards_admin.py b/commands/cards_admin.py
-index d3653e98abbbf7ac0151a62e81ecc34591dbc5d5..c2f5d5cbbd151240e07be8a81a739717dd220bde 100644
---- a/commands/cards_admin.py
-+++ b/commands/cards_admin.py
-@@ -4,50 +4,55 @@ from telegram import Update
- from telegram.ext import ContextTypes
- 
- from cards_service import (
-     override_add_anime,
-     override_add_character,
-     override_add_subcategory,
-     override_delete_anime,
-     override_delete_character,
-     override_delete_subcategory,
-     override_set_anime_banner,
-     override_set_anime_cover,
-     override_set_character_image,
-     override_set_character_name,
-     override_subcategory_add_character,
-     override_subcategory_remove_character,
-     reload_cards_cache,
- )
- from utils.runtime_guard import lock_manager, rate_limiter
- 
- CARD_ADMIN_IDS = {
-     int(x.strip())
-     for x in os.getenv("CARD_ADMIN_IDS", "").split(",")
-     if x.strip().isdigit()
- }
- 
-+for fallback_var in ("BOT_OWNER_ID", "OWNER_ID", "ADMIN_ID"):
-+    val = os.getenv(fallback_var, "").strip()
-+    if val.isdigit():
-+        CARD_ADMIN_IDS.add(int(val))
-+
- CARD_ADMIN_USERNAMES = {
-     x.strip().lower().lstrip("@")
-     for x in os.getenv("CARD_ADMIN_USERNAMES", "").split(",")
-     if x.strip()
- }
- 
- ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "12"))
- ADMIN_RATE_WINDOW_SECONDS = float(os.getenv("ADMIN_RATE_WINDOW_SECONDS", "10"))
- 
- 
- def _is_admin(update: Update) -> bool:
-     user = update.effective_user
-     if not user:
-         return False
- 
-     if user.id in CARD_ADMIN_IDS:
-         return True
- 
-     username = (user.username or "").strip().lower().lstrip("@")
-     if username and username in CARD_ADMIN_USERNAMES:
-         return True
- 
-     return False
- 
- 
- 
-EOF
+import os
+import re
+from telegram import Update
+from telegram.ext import ContextTypes
+
+from cards_service import (
+    override_add_anime,
+    override_add_character,
+    override_add_subcategory,
+    override_delete_anime,
+    override_delete_character,
+    override_delete_subcategory,
+    override_set_anime_banner,
+    override_set_anime_cover,
+    override_set_character_image,
+    override_set_character_name,
+    override_subcategory_add_character,
+    override_subcategory_remove_character,
+    reload_cards_cache,
 )
+from utils.runtime_guard import lock_manager, rate_limiter
+
+CARD_ADMIN_IDS = {
+    int(x.strip())
+    for x in os.getenv("CARD_ADMIN_IDS", "").split(",")
+    if x.strip().isdigit()
+}
+
+CARD_ADMIN_USERNAMES = {
+    x.strip().lower().lstrip("@")
+    for x in os.getenv("CARD_ADMIN_USERNAMES", "").split(",")
+    if x.strip()
+}
+
+ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "12"))
+ADMIN_RATE_WINDOW_SECONDS = float(os.getenv("ADMIN_RATE_WINDOW_SECONDS", "10"))
+
+
+def _is_admin(update: Update) -> bool:
+    user = update.effective_user
+    if not user:
+        return False
+
+    if user.id in CARD_ADMIN_IDS:
+        return True
+
+    username = (user.username or "").strip().lower().lstrip("@")
+    if username and username in CARD_ADMIN_USERNAMES:
+        return True
+
+    return False
+
+
+def _extract_payload(update: Update, command_name: str) -> str:
+    text = (update.effective_message.text or "").strip() if update.effective_message else ""
+    if not text:
+        return ""
+
+    pattern = rf"^/{re.escape(command_name)}(?:@[\w_]+)?\s*"
+    return re.sub(pattern, "", text, count=1, flags=re.IGNORECASE).strip()
+
+
+async def _reply(update: Update, text: str) -> None:
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(text)
+
+
+async def _deny(update: Update):
+    await _reply(update, "❌ Você não tem permissão para usar esse comando.")
+
+
+def _split_pipe(text: str):
+    return [x.strip() for x in text.split("|")]
+
+
+async def _allow_admin_command(update: Update, command_name: str) -> bool:
+    user = update.effective_user
+    if not user:
+        return False
+
+    if not _is_admin(update):
+        await _deny(update)
+        return False
+
+    allowed = await rate_limiter.allow(
+        key=f"admincmd:{user.id}",
+        limit=ADMIN_RATE_LIMIT,
+        window_seconds=ADMIN_RATE_WINDOW_SECONDS,
+    )
+    if not allowed:
+        await _reply(update, "⌛ Aguarde um instante antes de enviar mais comandos administrativos.")
+        return False
+
+    return True
+
+
+async def card_reload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_reload"):
+        return
+
+    try:
+        lock = await lock_manager.acquire("cards-admin:reload")
+        try:
+            reload_cards_cache()
+        finally:
+            lock.release()
+        await _reply(update, "✅ Cache de cards recarregado.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro no reload: {e}")
+
+
+async def card_delchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_delchar"):
+        return
+
+    try:
+        if not context.args or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_delchar 24311")
+
+        cid = int(context.args[0])
+        lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+        try:
+            override_delete_character(cid)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Personagem {cid} apagado dos cards.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao apagar personagem: {e}")
+
+
+async def card_addchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_addchar"):
+        return
+
+    try:
+        raw = _extract_payload(update, "card_addchar")
+        parts = _split_pipe(raw)
+
+        if len(parts) != 5:
+            return await _reply(
+                update,
+                "Uso:\n/card_addchar 999001 | Nome | 21366 | 3-gatsu no Lion | https://img.jpg",
+            )
+
+        if not parts[0].isdigit() or not parts[2].isdigit():
+            return await _reply(update, "❌ character_id e anime_id precisam ser números.")
+
+        cid = int(parts[0])
+        name = parts[1]
+        anime_id = int(parts[2])
+        anime_name = parts[3]
+        image = parts[4]
+
+        lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+        try:
+            override_add_character(cid, name, anime_id, anime_name, image)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Personagem {name} ({cid}) adicionado.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao adicionar personagem: {e}")
+
+
+async def card_setcharimg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_setcharimg"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_setcharimg 24311 https://img.jpg")
+
+        cid = int(context.args[0])
+        url = context.args[1].strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+        try:
+            override_set_character_image(cid, url)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Imagem do personagem {cid} atualizada.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao trocar imagem: {e}")
+
+
+async def card_setcharname(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_setcharname"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_setcharname 24311 Novo Nome")
+
+        cid = int(context.args[0])
+        name = " ".join(context.args[1:]).strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+        try:
+            override_set_character_name(cid, name)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Nome do personagem {cid} atualizado para {name}.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao trocar nome: {e}")
+
+
+async def card_delanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_delanime"):
+        return
+
+    try:
+        if not context.args or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_delanime 21366")
+
+        aid = int(context.args[0])
+        lock = await lock_manager.acquire(f"cards-admin:anime:{aid}")
+        try:
+            override_delete_anime(aid)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Obra {aid} apagada dos cards.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao apagar obra: {e}")
+
+
+async def card_addanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_addanime"):
+        return
+
+    try:
+        raw = _extract_payload(update, "card_addanime")
+        parts = _split_pipe(raw)
+
+        if len(parts) != 4:
+            return await _reply(
+                update,
+                "Uso:\n/card_addanime 999999 | Minha Obra | https://banner.jpg | https://cover.jpg",
+            )
+
+        if not parts[0].isdigit():
+            return await _reply(update, "❌ anime_id precisa ser número.")
+
+        aid = int(parts[0])
+        anime_name = parts[1]
+        banner = parts[2]
+        cover = parts[3]
+
+        lock = await lock_manager.acquire(f"cards-admin:anime:{aid}")
+        try:
+            override_add_anime(aid, anime_name, banner, cover)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Obra {anime_name} ({aid}) adicionada.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao adicionar obra: {e}")
+
+
+async def card_setanimebanner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_setanimebanner"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_setanimebanner 21366 https://banner.jpg")
+
+        aid = int(context.args[0])
+        url = context.args[1].strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:anime:{aid}")
+        try:
+            override_set_anime_banner(aid, url)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Banner da obra {aid} atualizado.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao trocar banner: {e}")
+
+
+async def card_setanimecover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_setanimecover"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[0].isdigit():
+            return await _reply(update, "Uso: /card_setanimecover 21366 https://cover.jpg")
+
+        aid = int(context.args[0])
+        url = context.args[1].strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:anime:{aid}")
+        try:
+            override_set_anime_cover(aid, url)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Cover da obra {aid} atualizada.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao trocar cover: {e}")
+
+
+async def card_addsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_addsubcat"):
+        return
+
+    try:
+        if not context.args:
+            return await _reply(update, "Uso: /card_addsubcat princesas")
+
+        name = " ".join(context.args).strip()
+        lock = await lock_manager.acquire(f"cards-admin:subcat:{name.lower()}")
+        try:
+            override_add_subcategory(name)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Subcategoria {name} criada.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao criar subcategoria: {e}")
+
+
+async def card_delsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_delsubcat"):
+        return
+
+    try:
+        if not context.args:
+            return await _reply(update, "Uso: /card_delsubcat princesas")
+
+        name = " ".join(context.args).strip()
+        lock = await lock_manager.acquire(f"cards-admin:subcat:{name.lower()}")
+        try:
+            override_delete_subcategory(name)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Subcategoria {name} apagada.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao apagar subcategoria: {e}")
+
+
+async def card_subadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_subadd"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[-1].isdigit():
+            return await _reply(update, "Uso: /card_subadd princesas 24311")
+
+        cid = int(context.args[-1])
+        name = " ".join(context.args[:-1]).strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:subcat:{name.lower()}")
+        try:
+            override_subcategory_add_character(name, cid)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Personagem {cid} adicionado em {name}.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao adicionar na subcategoria: {e}")
+
+
+async def card_subremove(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "card_subremove"):
+        return
+
+    try:
+        if len(context.args) < 2 or not context.args[-1].isdigit():
+            return await _reply(update, "Uso: /card_subremove princesas 24311")
+
+        cid = int(context.args[-1])
+        name = " ".join(context.args[:-1]).strip()
+
+        lock = await lock_manager.acquire(f"cards-admin:subcat:{name.lower()}")
+        try:
+            override_subcategory_remove_character(name, cid)
+        finally:
+            lock.release()
+        await _reply(update, f"✅ Personagem {cid} removido de {name}.")
+    except Exception as e:
+        await _reply(update, f"❌ Erro ao remover da subcategoria: {e}")
