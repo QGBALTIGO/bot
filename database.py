@@ -652,3 +652,21 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
         fetch="all"
     )
     return rows or []
+
+CREATE TABLE IF NOT EXISTS termo_games (
+    user_id BIGINT,
+    date DATE,
+    word TEXT,
+    attempts INT DEFAULT 0,
+    guesses TEXT,
+    status TEXT,
+    start_time BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS termo_stats (
+    user_id BIGINT PRIMARY KEY,
+    games_played INT DEFAULT 0,
+    wins INT DEFAULT 0,
+    current_streak INT DEFAULT 0,
+    best_streak INT DEFAULT 0
+);
