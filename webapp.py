@@ -5242,15 +5242,28 @@ loadLimit();
 # CONFIG — DADO / GACHA WEBAPP
 # =========================================================
 
+from pathlib import Path
+
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-ANILIST_API = os.getenv("ANILIST_API", "https://graphql.anilist.co").strip()
+CARDS_LOCAL_PATH = os.getenv(
+    "CARDS_LOCAL_PATH",
+    "bot/data/personagens_anilist.txt",
+).strip()
+
 DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
 
 _DADO_RATE: Dict[Tuple[int, str], float] = {}
+_DADO_LOCAL_CACHE: Dict[str, Any] = {
+    "mtime": 0.0,
+    "loaded": False,
+    "animes_list": [],
+    "animes_by_id": {},
+    "characters_by_anime": {},
+}
 
 
 def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECONDS) -> bool:
@@ -5313,148 +5326,168 @@ def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
 
 
 # =========================================================
-# DADO — HELPERS ANILIST
+# DADO — BASE LOCAL (igual ao cards)
 # =========================================================
 
-async def _anilist_post(query: str, variables: Optional[dict] = None) -> dict:
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            ANILIST_API,
-            json={"query": query, "variables": variables or {}},
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if "errors" in data:
-            raise RuntimeError(str(data["errors"][:1]))
-        return data.get("data") or {}
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except Exception:
+        return default
 
 
-async def _fetch_random_anime_options(n: int) -> List[dict]:
-    """
-    Pega opções de anime populares do AniList.
-    """
-    n = max(1, min(6, int(n)))
-    page = random.randint(1, 8)
+def _norm_text(s: str) -> str:
+    return str(s or "").strip()
 
-    query = """
-    query ($page: Int) {
-      Page(page: $page, perPage: 50) {
-        media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
-          id
-          title { romaji english }
-          coverImage { large extraLarge }
+
+def _build_cover_from_anilist(anime_id: int) -> str:
+    anime_id = int(anime_id)
+    if anime_id <= 0:
+        return DADO_BANNER_URL
+    return f"https://img.anili.st/media/{anime_id}"
+
+
+def _build_char_image_from_anilist(char_id: int) -> str:
+    char_id = int(char_id)
+    if char_id <= 0:
+        return DADO_BANNER_URL
+    return f"https://img.anili.st/character/{char_id}"
+
+
+def _load_local_dado_pool() -> Dict[str, Any]:
+    global _DADO_LOCAL_CACHE
+
+    path = Path(CARDS_LOCAL_PATH)
+    if not path.exists():
+        return {
+            "animes_list": [],
+            "animes_by_id": {},
+            "characters_by_anime": {},
         }
-      }
-    }
-    """
 
-    data = await _anilist_post(query, {"page": page})
-    media = ((data.get("Page") or {}).get("media") or [])
+    mtime = float(path.stat().st_mtime or 0.0)
+    if _DADO_LOCAL_CACHE["loaded"] and _DADO_LOCAL_CACHE["mtime"] == mtime:
+        return {
+            "animes_list": _DADO_LOCAL_CACHE["animes_list"],
+            "animes_by_id": _DADO_LOCAL_CACHE["animes_by_id"],
+            "characters_by_anime": _DADO_LOCAL_CACHE["characters_by_anime"],
+        }
 
-    pool = []
-    seen = set()
+    animes_by_id: Dict[int, Dict[str, Any]] = {}
+    characters_by_anime: Dict[int, List[Dict[str, Any]]] = {}
 
-    for m in media:
-        anime_id = m.get("id")
-        if not anime_id or anime_id in seen:
-            continue
-        seen.add(int(anime_id))
+    with path.open("r", encoding="utf-8", errors="ignore") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
 
-        title = (
-            ((m.get("title") or {}).get("romaji"))
-            or ((m.get("title") or {}).get("english"))
-            or "Anime"
-        )
-        cover = (
-            ((m.get("coverImage") or {}).get("extraLarge"))
-            or ((m.get("coverImage") or {}).get("large"))
-            or ""
-        )
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) < 5:
+                continue
 
-        pool.append({
-            "id": int(anime_id),
-            "title": str(title).strip(),
-            "cover": cover,
-        })
+            character_id = _safe_int(parts[0], 0)
+            char_name = _norm_text(parts[1])
+            anime_name = _norm_text(parts[2])
+            anime_id = _safe_int(parts[3], 0)
+            role = _norm_text(parts[4]).lower()
 
-    if len(pool) < n:
-        raise RuntimeError("pool de anime insuficiente")
+            if character_id <= 0 or anime_id <= 0 or not char_name or not anime_name:
+                continue
 
-    return random.sample(pool, n)
+            if anime_id not in animes_by_id:
+                animes_by_id[anime_id] = {
+                    "anime_id": anime_id,
+                    "anime": anime_name,
+                    "cover_image": _build_cover_from_anilist(anime_id),
+                    "banner_image": _build_cover_from_anilist(anime_id),
+                    "characters_count": 0,
+                }
+                characters_by_anime[anime_id] = []
 
-
-async def _fetch_random_character_from_anime(anime_id: int) -> Optional[dict]:
-    query = """
-    query ($id: Int, $page: Int) {
-      Media(id: $id, type: ANIME) {
-        title { romaji english }
-        coverImage { large extraLarge }
-        characters(page: $page, perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
-          edges {
-            role
-            node {
-              id
-              name { full }
-              image { large }
+            item = {
+                "id": character_id,
+                "name": char_name,
+                "anime_id": anime_id,
+                "anime": anime_name,
+                "role": role,
+                "image": _build_char_image_from_anilist(character_id),
             }
-          }
-        }
-      }
+
+            characters_by_anime[anime_id].append(item)
+
+    animes_list: List[Dict[str, Any]] = []
+
+    for anime_id, meta in animes_by_id.items():
+        chars = characters_by_anime.get(anime_id, [])
+        seen_chars = set()
+        clean_chars = []
+
+        for c in chars:
+            cid = int(c["id"])
+            if cid in seen_chars:
+                continue
+            seen_chars.add(cid)
+            clean_chars.append(c)
+
+        characters_by_anime[anime_id] = clean_chars
+        meta["characters_count"] = len(clean_chars)
+
+        if clean_chars:
+            animes_list.append(meta)
+
+    animes_list.sort(key=lambda x: str(x.get("anime") or "").lower())
+
+    _DADO_LOCAL_CACHE = {
+        "mtime": mtime,
+        "loaded": True,
+        "animes_list": animes_list,
+        "animes_by_id": animes_by_id,
+        "characters_by_anime": characters_by_anime,
     }
-    """
 
-    pages = [1, random.randint(1, 4)]
-    chars: List[dict] = []
-    seen = set()
-    anime_title = "Anime"
-    anime_cover = ""
+    return {
+        "animes_list": animes_list,
+        "animes_by_id": animes_by_id,
+        "characters_by_anime": characters_by_anime,
+    }
 
-    for p in pages:
-        data = await _anilist_post(query, {"id": int(anime_id), "page": int(p)})
-        media = data.get("Media")
-        if not media:
-            continue
 
-        anime_title = (
-            ((media.get("title") or {}).get("romaji"))
-            or ((media.get("title") or {}).get("english"))
-            or "Anime"
-        )
-        anime_cover = (
-            ((media.get("coverImage") or {}).get("extraLarge"))
-            or ((media.get("coverImage") or {}).get("large"))
-            or ""
-        )
+def _pick_random_local_animes(n: int) -> List[dict]:
+    data = _load_local_dado_pool()
+    pool = list(data["animes_list"] or [])
 
-        edges = (((media.get("characters") or {}).get("edges")) or [])
-        for e in edges:
-            role = str(e.get("role") or "").upper()
-            if role not in ("MAIN", "SUPPORTING"):
-                continue
+    n = max(1, min(6, int(n)))
+    if len(pool) < n:
+        raise RuntimeError("pool local de animes insuficiente")
 
-            node = e.get("node") or {}
-            cid = node.get("id")
-            name = ((node.get("name") or {}).get("full")) or ""
-            image = ((node.get("image") or {}).get("large")) or ""
+    picks = random.sample(pool, n)
+    return [
+        {
+            "id": int(item["anime_id"]),
+            "title": str(item["anime"]),
+            "cover": str(item.get("cover_image") or DADO_BANNER_URL),
+        }
+        for item in picks
+    ]
 
-            if not cid or not name or int(cid) in seen:
-                continue
 
-            seen.add(int(cid))
-            chars.append({
-                "id": int(cid),
-                "name": str(name).strip(),
-                "image": image or anime_cover,
-                "anime_title": anime_title,
-                "anime_cover": anime_cover,
-            })
-
+def _pick_random_local_character(anime_id: int) -> Optional[dict]:
+    data = _load_local_dado_pool()
+    chars = list((data["characters_by_anime"].get(int(anime_id)) or []))
     if not chars:
         return None
 
     random.shuffle(chars)
-    return chars[0]
+    c = chars[0]
+
+    return {
+        "id": int(c["id"]),
+        "name": str(c["name"]),
+        "image": str(c.get("image") or DADO_BANNER_URL),
+        "anime_title": str(c.get("anime") or "Anime"),
+        "anime_cover": _build_cover_from_anilist(int(anime_id)),
+    }
 
 
 def _rarity_from_roll(dice_value: int, character_id: int) -> dict:
@@ -5528,18 +5561,31 @@ async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
 
     active = get_active_dice_roll(user_id)
     if active:
-        return JSONResponse({
-            "ok": True,
-            "reused": True,
-            "roll_id": int(active["roll_id"]),
-            "dice_value": int(active["dice_value"]),
-            "options": active.get("options_json") or [],
-            "status": active.get("status"),
-            "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
-        })
+        active_options = active.get("options_json") or []
+        active_dice = int(active.get("dice_value") or 0)
+
+        if (
+            isinstance(active_options, list)
+            and 1 <= active_dice <= 6
+            and len(active_options) == active_dice
+        ):
+            return JSONResponse({
+                "ok": True,
+                "reused": True,
+                "roll_id": int(active["roll_id"]),
+                "dice_value": active_dice,
+                "options": active_options,
+                "status": active.get("status"),
+                "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
+            })
+
+        try:
+            cancel_dice_roll(user_id, int(active["roll_id"]), refund=True)
+        except Exception:
+            pass
 
     dice_value = random.SystemRandom().randint(1, 6)
-    options = await _fetch_random_anime_options(dice_value)
+    options = _pick_random_local_animes(dice_value)
 
     created = create_dice_roll(user_id, dice_value, options)
     if not created.get("ok"):
@@ -5578,7 +5624,7 @@ async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_d
         return JSONResponse(picked, status_code=200)
 
     roll = picked["roll"]
-    char = await _fetch_random_character_from_anime(anime_id)
+    char = _pick_random_local_character(anime_id)
     if not char:
         return JSONResponse({"ok": False, "error": "character_not_found"}, status_code=200)
 
@@ -6443,12 +6489,14 @@ def dado_page():
       }
 
       rollBtn.disabled = true;
-      setMsg("Rolando dado...");
       clearAnimeCards();
       clearReveal();
+      setMsg("Rolando dado...");
+      setHud("Rolando...");
 
       try {
         const data = await apiPost("/api/dado/roll", {});
+
         if (!data.ok) {
           const msgMap = {
             no_balance: "Você está sem dados agora.",
@@ -6463,10 +6511,16 @@ def dado_page():
         setBalance(data.balance ?? 0);
 
         await animateDiceResult(state.currentDice);
+
+        if (!state.options.length) {
+          throw new Error("A rolagem foi criada, mas veio sem opções de anime.");
+        }
+
         renderAnimeOptions(state.options);
         setMsg("Escolha um anime para revelar o personagem.");
       } catch (e) {
         setMsg("❌ " + (e.message || "Erro ao rolar dado."));
+        setHud("Falha na rolagem");
       } finally {
         rollBtn.disabled = false;
       }
