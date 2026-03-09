@@ -654,9 +654,13 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
     return rows or []
 
 
+# =========================================================
+# CARDS CATALOG (BASE DOS PERSONAGENS/ANIMES)
+# =========================================================
+
 def create_cards_catalog_tables():
     _run("""
-    CREATE TABLE IF NOT EXISTS card_characters (
+    CREATE TABLE IF NOT EXISTS card_characters_catalog (
         character_id BIGINT PRIMARY KEY,
         character_name TEXT NOT NULL,
         anime_name TEXT NOT NULL,
@@ -664,15 +668,155 @@ def create_cards_catalog_tables():
         is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_card_characters_catalog_anime_name
+    ON card_characters_catalog (anime_name);
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_card_characters_catalog_character_name
+    ON card_characters_catalog (character_name);
+    """)
+
+
+def upsert_card_character_catalog(
+    character_id: int,
+    character_name: str,
+    anime_name: str,
+    image_url: str = "",
+):
+    _run("""
+    INSERT INTO card_characters_catalog (
+        character_id,
+        character_name,
+        anime_name,
+        image_url,
+        is_deleted,
+        created_at,
+        updated_at
     )
-    """)
+    VALUES (%s, %s, %s, %s, FALSE, NOW(), NOW())
+    ON CONFLICT (character_id)
+    DO UPDATE SET
+        character_name = EXCLUDED.character_name,
+        anime_name = EXCLUDED.anime_name,
+        image_url = EXCLUDED.image_url,
+        is_deleted = FALSE,
+        updated_at = NOW();
+    """, (
+        int(character_id),
+        str(character_name).strip(),
+        str(anime_name).strip(),
+        str(image_url or "").strip(),
+    ))
 
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_card_characters_anime_name
-    ON card_characters (anime_name)
-    """)
 
+def get_card_character_catalog_by_id(character_id: int):
+    return _run("""
+    SELECT
+        character_id,
+        character_name,
+        anime_name,
+        image_url
+    FROM card_characters_catalog
+    WHERE character_id = %s
+      AND is_deleted = FALSE
+    LIMIT 1;
+    """, (int(character_id),), fetch="one")
+
+
+def search_card_character_catalog_by_name(name: str, limit: int = 50):
+    return _run("""
+    SELECT
+        character_id,
+        character_name,
+        anime_name,
+        image_url
+    FROM card_characters_catalog
+    WHERE character_name ILIKE %s
+      AND is_deleted = FALSE
+    ORDER BY character_name ASC
+    LIMIT %s;
+    """, (f"%{str(name).strip()}%", int(limit)), fetch="all")
+
+
+def get_card_character_catalog_exact_name(name: str):
+    return _run("""
+    SELECT
+        character_id,
+        character_name,
+        anime_name,
+        image_url
+    FROM card_characters_catalog
+    WHERE LOWER(character_name) = LOWER(%s)
+      AND is_deleted = FALSE
+    LIMIT 1;
+    """, (str(name).strip(),), fetch="one")
+
+
+def get_card_character_catalog_startswith_name(name: str):
+    return _run("""
+    SELECT
+        character_id,
+        character_name,
+        anime_name,
+        image_url
+    FROM card_characters_catalog
+    WHERE character_name ILIKE %s
+      AND is_deleted = FALSE
+    ORDER BY character_name ASC
+    LIMIT 1;
+    """, (f"{str(name).strip()}%",), fetch="one")
+
+
+def admin_set_card_character_name(character_id: int, new_name: str):
     _run("""
-    CREATE INDEX IF NOT EXISTS idx_card_characters_character_name
-    ON card_characters (character_name)
-    """)
+    UPDATE card_characters_catalog
+    SET character_name = %s,
+        updated_at = NOW()
+    WHERE character_id = %s;
+    """, (str(new_name).strip(), int(character_id)))
+
+
+def admin_set_card_character_image(character_id: int, image_url: str):
+    _run("""
+    UPDATE card_characters_catalog
+    SET image_url = %s,
+        updated_at = NOW()
+    WHERE character_id = %s;
+    """, (str(image_url).strip(), int(character_id)))
+
+
+def admin_set_card_character_anime(character_id: int, anime_name: str):
+    _run("""
+    UPDATE card_characters_catalog
+    SET anime_name = %s,
+        updated_at = NOW()
+    WHERE character_id = %s;
+    """, (str(anime_name).strip(), int(character_id)))
+
+
+def admin_delete_card_character(character_id: int):
+    _run("""
+    UPDATE card_characters_catalog
+    SET is_deleted = TRUE,
+        updated_at = NOW()
+    WHERE character_id = %s;
+    """, (int(character_id),))
+
+
+def admin_add_card_character(
+    character_id: int,
+    character_name: str,
+    anime_name: str,
+    image_url: str = "",
+):
+    upsert_card_character_catalog(
+        character_id=character_id,
+        character_name=character_name,
+        anime_name=anime_name,
+        image_url=image_url,
+    )
