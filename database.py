@@ -74,6 +74,8 @@ def create_users_table():
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY,
         lang TEXT,
+        username TEXT,
+        full_name TEXT,
         coins BIGINT NOT NULL DEFAULT 0,
         terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
         terms_version TEXT,
@@ -84,6 +86,8 @@ def create_users_table():
     """)
 
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT NOT NULL DEFAULT 0;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
@@ -304,6 +308,23 @@ def create_or_get_user(user_id: int):
     )
 
 
+def touch_user_identity(user_id: int, username: str = "", full_name: str = ""):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+        SET username = %s,
+            full_name = %s
+        WHERE user_id = %s
+        """,
+        (
+            (username or "").strip(),
+            (full_name or "").strip(),
+            int(user_id),
+        )
+    )
+
+
 def set_language(user_id: int, lang: str):
     _run(
         "UPDATE users SET lang = %s WHERE user_id = %s",
@@ -338,7 +359,7 @@ def has_accepted_terms(user_id: int, version: str) -> bool:
 def get_user_status(user_id: int) -> Optional[Dict[str, Any]]:
     row = _run(
         """
-        SELECT lang, coins, terms_accepted, terms_version, welcome_sent, must_join_ok
+        SELECT lang, username, full_name, coins, terms_accepted, terms_version, welcome_sent, must_join_ok
         FROM users
         WHERE user_id = %s
         """,
@@ -350,6 +371,8 @@ def get_user_status(user_id: int) -> Optional[Dict[str, Any]]:
 
     return {
         "lang": row.get("lang"),
+        "username": row.get("username"),
+        "full_name": row.get("full_name"),
         "coins": int(row.get("coins") or 0),
         "terms_accepted": bool(row.get("terms_accepted")),
         "terms_version": row.get("terms_version"),
@@ -1109,20 +1132,24 @@ def get_termo_global_ranking(limit: int = 10) -> List[Dict[str, Any]]:
     rows = _run(
         """
         SELECT
-            user_id,
-            games_played,
-            wins,
-            losses,
-            current_streak,
-            best_streak,
-            best_score,
+            ts.user_id,
+            u.username,
+            u.full_name,
+            ts.games_played,
+            ts.wins,
+            ts.losses,
+            ts.current_streak,
+            ts.best_streak,
+            ts.best_score,
             CASE
-                WHEN games_played > 0 THEN ROUND((wins::numeric / games_played::numeric) * 100, 2)
+                WHEN ts.games_played > 0 THEN ROUND((ts.wins::numeric / ts.games_played::numeric) * 100, 2)
                 ELSE 0
             END AS win_rate
-        FROM termo_stats
-        WHERE games_played > 0
-        ORDER BY wins DESC, best_streak DESC, best_score ASC, user_id ASC
+        FROM termo_stats ts
+        LEFT JOIN users u
+               ON u.user_id = ts.user_id
+        WHERE ts.games_played > 0
+        ORDER BY ts.wins DESC, ts.best_streak DESC, ts.best_score ASC, ts.user_id ASC
         LIMIT %s
         """,
         (int(limit),),
@@ -1135,16 +1162,20 @@ def get_termo_period_ranking(days: int, limit: int = 10) -> List[Dict[str, Any]]
     rows = _run(
         """
         SELECT
-            user_id,
-            COUNT(*) FILTER (WHERE status = 'win') AS wins,
-            COUNT(*) FILTER (WHERE status IN ('win', 'lose', 'timeout')) AS games_played,
-            COALESCE(AVG(NULLIF(won_at_attempt, 0)) FILTER (WHERE status = 'win'), 0) AS avg_attempts
-        FROM termo_games
-        WHERE mode = 'daily'
-          AND finished_at >= NOW() - (%s || ' days')::interval
-        GROUP BY user_id
-        HAVING COUNT(*) FILTER (WHERE status IN ('win', 'lose', 'timeout')) > 0
-        ORDER BY wins DESC, avg_attempts ASC, user_id ASC
+            tg.user_id,
+            u.username,
+            u.full_name,
+            COUNT(*) FILTER (WHERE tg.status = 'win') AS wins,
+            COUNT(*) FILTER (WHERE tg.status IN ('win', 'lose', 'timeout')) AS games_played,
+            COALESCE(AVG(NULLIF(tg.won_at_attempt, 0)) FILTER (WHERE tg.status = 'win'), 0) AS avg_attempts
+        FROM termo_games tg
+        LEFT JOIN users u
+               ON u.user_id = tg.user_id
+        WHERE tg.mode = 'daily'
+          AND tg.finished_at >= NOW() - (%s || ' days')::interval
+        GROUP BY tg.user_id, u.username, u.full_name
+        HAVING COUNT(*) FILTER (WHERE tg.status IN ('win', 'lose', 'timeout')) > 0
+        ORDER BY wins DESC, avg_attempts ASC, tg.user_id ASC
         LIMIT %s
         """,
         (str(int(days)), int(limit)),
