@@ -16,7 +16,6 @@ Abaixo estão 4 tarefas objetivas, cada uma mapeada para um tipo de problema ped
 - Nenhuma ocorrência de `@SourcerBaltigo` permanece no código.
 - Defaults de `REQUIRED_CHANNEL` e `REQUIRED_CHANNEL_URL` ficam consistentes com o nome oficial.
 
----
 
 ## 2) Tarefa de correção de bug
 
