@@ -6,7 +6,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado.")
 
-INPUT = "personagens_otimizado.json"
+INPUT = "personagens_anilist.json"
 
 
 def main():
