@@ -46,6 +46,7 @@ PORT = int(os.getenv("PORT", "8000"))
 def run_webapp() -> None:
     try:
         from webapp import app as web_app
+
         uvicorn.run(
             web_app,
             host="0.0.0.0",
@@ -68,7 +69,6 @@ async def on_error(update, context) -> None:
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
-    # comandos principais
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
@@ -77,19 +77,20 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CommandHandler("nivel", nivel))
 
-    # callbacks
     tg_app.add_handler(
         CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:")
     )
     tg_app.add_handler(
-        CallbackQueryHandler(termo_start_callback, pattern=r"^termo_start$")
+        CallbackQueryHandler(termo_start_callback, pattern=r"^termo_")
     )
 
-    # termo (mensagens sem comando)
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo))
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess))
+    tg_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, termo)
+    )
+    tg_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess)
+    )
 
-    # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
     tg_app.add_handler(CommandHandler("card_delchar", card_delchar))
     tg_app.add_handler(CommandHandler("card_addchar", card_addchar))
