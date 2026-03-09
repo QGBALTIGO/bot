@@ -77,7 +77,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recharge_info = get_next_dado_recharge_info(user.id)
 
         saldo = int((dado_state or {}).get("balance") or 0)
-        prox_hora = (recharge_info or {}).get("next_recharge_hhmm") or "--:--"
+        prox_hora = str((recharge_info or {}).get("next_recharge_hhmm") or "--:--")
     except Exception:
         saldo = 0
         prox_hora = "--:--"
@@ -91,7 +91,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>personagens</b> para a sua coleção.\n\n"
         "🕒 <b>Recargas fixas:</b>\n"
         "<code>01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h</code>\n"
-        "🇧🇷 Horário de São Paulo (Br)\n\n"
+        "🇧🇷 Horário de São Paulo (BR)\n\n"
         f"🎲 <b>Dados disponíveis:</b> <code>{saldo}</code>\n"
         f"⏳ <b>Próximo dado:</b> <code>{prox_hora}</code>\n\n"
         "Toque no botão abaixo para abrir a área dos dados."
