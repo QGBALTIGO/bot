@@ -36,11 +36,24 @@ import traceback
 import asyncio
 import time
 import httpx
+import hashlib
+import hmac
+from urllib.parse import parse_qsl
+
+from fastapi import Header, HTTPException
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from database import create_or_get_user, accept_terms, set_language
+
+from database import (
+    create_or_get_user,
+    accept_terms,
+    set_language,
+    get_dado_state,
+    get_next_dado_recharge_info,
+)
 
 
 app = FastAPI()
@@ -5253,3 +5266,352 @@ loadLimit();
 </html>
 """
     return HTMLResponse(html.replace("__PEDIDO_BANNER__", PEDIDO_BANNER_URL))
+
+# =========================
+# CONFIG — DADO
+# =========================
+DADO_BANNER_URL = os.getenv(
+    "DADO_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
+).strip()
+
+    # =========================
+# TELEGRAM WEBAPP AUTH (DADO)
+# =========================
+def verify_telegram_init_data(init_data: str) -> dict:
+    if not init_data:
+        raise HTTPException(status_code=401, detail="initData ausente")
+
+    data = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = data.pop("hash", None)
+    if not received_hash:
+        raise HTTPException(status_code=401, detail="hash ausente")
+
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    calculated_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(calculated_hash, received_hash):
+        raise HTTPException(status_code=401, detail="initData inválido")
+
+    user_json = data.get("user")
+    if not user_json:
+        raise HTTPException(status_code=401, detail="user ausente")
+
+    try:
+        user = json.loads(user_json)
+    except Exception:
+        raise HTTPException(status_code=401, detail="user inválido")
+
+    if not isinstance(user, dict) or "id" not in user:
+        raise HTTPException(status_code=401, detail="user inválido")
+
+    return {"user": user, "raw": data}
+
+    @app.get("/api/dado/state")
+def api_dado_state(x_telegram_init_data: str = Header(default="")):
+    auth = verify_telegram_init_data(x_telegram_init_data)
+    user = auth["user"]
+
+    user_id = int(user["id"])
+    create_or_get_user(user_id)
+
+    state = get_dado_state(user_id) or {}
+    recharge = get_next_dado_recharge_info(user_id) or {}
+
+    balance = int(state.get("balance") or 0)
+
+    return JSONResponse({
+        "ok": True,
+        "user_id": user_id,
+        "balance": balance,
+        "next_recharge_hhmm": recharge.get("next_recharge_hhmm") or "--:--",
+        "next_recharge_iso": recharge.get("next_recharge_iso"),
+        "timezone": recharge.get("timezone") or "America/Sao_Paulo",
+        "max_balance": int(recharge.get("max_balance") or 24),
+        "initial_balance": 4,
+        "recharge_hours": ["01:00", "04:00", "07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
+    })
+
+    @app.get("/dado", response_class=HTMLResponse)
+def dado_page():
+    html = f"""<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Sistema de Dados • Source Baltigo</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root {{
+      --bg0: #070b12;
+      --bg1: #0a1220;
+      --stroke: rgba(255,255,255,0.10);
+      --stroke2: rgba(255,255,255,0.16);
+      --txt: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.58);
+      --shadow: 0 14px 30px rgba(0,0,0,0.55);
+      --panel: rgba(255,255,255,0.04);
+      --accent: rgba(90,168,255,0.22);
+      --accent2: rgba(124,92,255,0.28);
+    }}
+
+    * {{ box-sizing: border-box; }}
+    html, body {{ height: 100%; }}
+    body {{
+      margin: 0;
+      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--txt);
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x: hidden;
+    }}
+
+    .wrap {{
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 18px 14px 36px;
+    }}
+
+    .banner {{
+      width: 100%;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      position: relative;
+      background: #000;
+    }}
+
+    .banner img {{
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      object-position: center;
+      display: block;
+    }}
+
+    .banner::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
+      pointer-events: none;
+    }}
+
+    .hero {{
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 24px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.035);
+      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
+    }}
+
+    .title {{
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 22px;
+      line-height: 1.15;
+    }}
+
+    .sub {{
+      margin-top: 8px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: .03em;
+      font-size: 14px;
+      line-height: 1.5;
+    }}
+
+    .grid {{
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }}
+
+    @media (max-width: 640px) {{
+      .grid {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+
+    .stat {{
+      border-radius: 20px;
+      padding: 16px;
+      border: 1px solid var(--stroke);
+      background: var(--panel);
+      box-shadow: 0 16px 26px rgba(0,0,0,0.22);
+    }}
+
+    .stat .k {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }}
+
+    .stat .v {{
+      margin-top: 8px;
+      font-size: 24px;
+      font-weight: 1000;
+      letter-spacing: .04em;
+    }}
+
+    .box {{
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.03);
+    }}
+
+    .times {{
+      margin-top: 8px;
+      color: rgba(255,255,255,.85);
+      font-size: 14px;
+      line-height: 1.8;
+      font-weight: 800;
+      letter-spacing: .04em;
+    }}
+
+    .cta {{
+      margin-top: 18px;
+      width: 100%;
+      border: 1px solid rgba(90,168,255,0.38);
+      background: linear-gradient(180deg, rgba(90,168,255,0.22), rgba(124,92,255,0.22));
+      color: #fff;
+      border-radius: 18px;
+      padding: 16px 14px;
+      font-weight: 1000;
+      letter-spacing: .10em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 18px 30px rgba(0,0,0,0.30);
+    }}
+
+    .cta:disabled {{
+      opacity: .5;
+      cursor: not-allowed;
+    }}
+
+    .msg {{
+      margin-top: 12px;
+      min-height: 20px;
+      color: rgba(255,255,255,.68);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: pre-wrap;
+    }}
+
+    .footer {{
+      margin-top: 14px;
+      color: rgba(255,255,255,0.40);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      <img src="{DADO_BANNER_URL}" alt="Dado"/>
+    </div>
+
+    <div class="hero">
+      <div class="title">Sistema de Dados</div>
+      <div class="sub">
+        Use seus dados para descobrir animes e obter personagens para a sua coleção.
+      </div>
+
+      <div class="grid">
+        <div class="stat">
+          <div class="k">Dados disponíveis</div>
+          <div class="v" id="balanceTxt">...</div>
+        </div>
+
+        <div class="stat">
+          <div class="k">Próximo dado</div>
+          <div class="v" id="nextTxt">...</div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="k" style="color: rgba(255,255,255,.58); font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;">
+          Recargas fixas
+        </div>
+        <div class="times">
+          01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h<br>
+          🇧🇷 Horário de São Paulo<br>
+          🎁 Novos jogadores começam com 4 giros<br>
+          📦 Acúmulo máximo: 3 dias
+        </div>
+      </div>
+
+      <button id="rollBtn" class="cta" disabled>Em breve: rolar dado</button>
+      <div class="msg" id="msg">Carregando seus dados...</div>
+    </div>
+
+    <div class="footer">Source Baltigo • Dados</div>
+  </div>
+
+  <script>
+    const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+    if (tg) {{
+      try {{
+        tg.ready();
+        tg.expand();
+      }} catch(e) {{}}
+    }}
+
+    function setMsg(text) {{
+      document.getElementById("msg").textContent = text || "";
+    }}
+
+    async function loadState() {{
+      try {{
+        if (!tg || !tg.initData) {{
+          setMsg("Abra este Mini App pelo Telegram.");
+          return;
+        }}
+
+        const res = await fetch("/api/dado/state?_ts=" + Date.now(), {{
+          headers: {{
+            "X-Telegram-Init-Data": tg.initData
+          }}
+        }});
+
+        const data = await res.json();
+
+        if (!res.ok || data.ok === false) {{
+          throw new Error(data.detail || data.message || "Erro ao carregar dados.");
+        }}
+
+        document.getElementById("balanceTxt").textContent = String(data.balance ?? 0);
+        document.getElementById("nextTxt").textContent = String(data.next_recharge_hhmm || "--:--");
+        document.getElementById("rollBtn").disabled = false;
+        setMsg("Tudo pronto. O botão de rolagem será ligado na próxima etapa.");
+      }} catch (e) {{
+        document.getElementById("balanceTxt").textContent = "--";
+        document.getElementById("nextTxt").textContent = "--:--";
+        setMsg("❌ " + (e.message || "Erro inesperado."));
+      }}
+    }}
+
+    document.getElementById("rollBtn").addEventListener("click", () => {{
+      setMsg("A rolagem real entra na próxima etapa.");
+    }});
+
+    loadState();
+  </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
