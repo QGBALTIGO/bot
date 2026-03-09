@@ -292,15 +292,6 @@ def create_termo_tables():
     _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS last_play_date DATE;""")
     _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
 
-    _run("""
-    INSERT INTO termo_attempt_distribution (user_id)
-    SELECT ts.user_id
-    FROM termo_stats ts
-    LEFT JOIN termo_attempt_distribution tad ON tad.user_id = ts.user_id
-    WHERE tad.user_id IS NULL
-    ON CONFLICT (user_id) DO NOTHING
-    """)
-
 
 # =========================================================
 # USERS
@@ -850,17 +841,43 @@ def create_termo_game(
         """
         INSERT INTO termo_games
         (
-            user_id, date, word, category, source,
-            attempts, guesses, used_letters, status, mode,
-            start_time, time_spent_seconds, reward_coins, reward_xp, won_at_attempt,
-            created_at, updated_at
+            user_id,
+            date,
+            word,
+            category,
+            source,
+            attempts,
+            guesses,
+            used_letters,
+            status,
+            mode,
+            start_time,
+            time_spent_seconds,
+            reward_coins,
+            reward_xp,
+            won_at_attempt,
+            created_at,
+            updated_at
         )
         VALUES
         (
-            %s, %s, %s, %s, %s,
-            0, '[]'::jsonb, '', 'playing', %s,
-            %s, 0, 0, 0, 0,
-            NOW(), NOW()
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            0,
+            '[]'::jsonb,
+            '',
+            'playing',
+            %s,
+            %s,
+            0,
+            0,
+            0,
+            0,
+            NOW(),
+            NOW()
         )
         """,
         (
@@ -873,6 +890,7 @@ def create_termo_game(
             int(start_time),
         )
     )
+
 
 def update_termo_game_progress(
     user_id: int,
@@ -1059,7 +1077,7 @@ def record_termo_result(user_id: int, win: bool, attempts: int):
 def get_termo_stats(user_id: int) -> Optional[Dict[str, Any]]:
     ensure_termo_stats_row(user_id)
 
-    row = _run(
+    return _run(
         """
         SELECT
             ts.user_id,
@@ -1085,7 +1103,6 @@ def get_termo_stats(user_id: int) -> Optional[Dict[str, Any]]:
         (int(user_id),),
         fetch="one"
     )
-    return row
 
 
 def get_termo_global_ranking(limit: int = 10) -> List[Dict[str, Any]]:
@@ -1121,8 +1138,7 @@ def get_termo_period_ranking(days: int, limit: int = 10) -> List[Dict[str, Any]]
             user_id,
             COUNT(*) FILTER (WHERE status = 'win') AS wins,
             COUNT(*) FILTER (WHERE status IN ('win', 'lose', 'timeout')) AS games_played,
-            COALESCE(AVG(NULLIF(won_at_attempt, 0)) FILTER (WHERE status = 'win'), 0) AS avg_attempts,
-            MAX(won_at_attempt) FILTER (WHERE status = 'win') AS max_attempts
+            COALESCE(AVG(NULLIF(won_at_attempt, 0)) FILTER (WHERE status = 'win'), 0) AS avg_attempts
         FROM termo_games
         WHERE mode = 'daily'
           AND finished_at >= NOW() - (%s || ' days')::interval
