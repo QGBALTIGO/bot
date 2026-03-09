@@ -1,41 +1,53 @@
-# commands/termo.py
-
 import json
 import random
 import time
-from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
-from telegram.ext import ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from datetime import datetime, timedelta
+
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
+from telegram.ext import ContextTypes
 
 from database import _run
 
-WORDS_PATH = "data/anime_words_365.json"
+WORDS_FILE = "data/anime_words_365.json"
 
 MAX_ATTEMPTS = 6
-TIME_LIMIT = 300  # 5 minutos
+TIME_LIMIT = 300
+
+ACTIVE_GAMES = {}
+LAST_GUESS = {}
+
+COOLDOWN = 2
 
 
-# =====================================================
-# CARREGAR PALAVRAS
-# =====================================================
-
-with open(WORDS_PATH, encoding="utf-8") as f:
+with open(WORDS_FILE,encoding="utf8") as f:
     WORDS = json.load(f)
 
 
-def pick_word(user_id: int):
-    random.seed(f"{user_id}-{time.strftime('%Y-%m-%d')}")
+def anti_flood(user_id):
+
+    now = time.time()
+
+    last = LAST_GUESS.get(user_id,0)
+
+    if now-last < COOLDOWN:
+        return False
+
+    LAST_GUESS[user_id] = now
+
+    return True
+
+
+def pick_word(user_id):
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    random.seed(f"{user_id}-{today}")
+
     return random.choice(WORDS)
 
 
-# =====================================================
-# COMPARAÇÃO WORDLE
-# =====================================================
-
-def evaluate_guess(word: str, guess: str):
+def evaluate(word,guess):
 
     result = []
 
@@ -53,31 +65,27 @@ def evaluate_guess(word: str, guess: str):
     return "".join(result)
 
 
-# =====================================================
-# COMANDO TEXTO "termo"
-# =====================================================
-
-async def termo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def termo(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     if update.message.text.lower() != "termo":
         return
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Iniciar Desafio", callback_data="termo_start")]
+        [InlineKeyboardButton("🎮 Iniciar Desafio",callback_data="termo_start")]
     ])
 
     text = (
         "🎌 <b>TERMO ANIME — SourceBaltigo</b>\n\n"
-        "Descubra a palavra secreta de <b>6 letras</b> relacionada ao mundo dos animes.\n\n"
+        "Descubra a palavra secreta de 6 letras relacionada a anime.\n\n"
         "🎯 6 tentativas\n"
         "⏱ 5 minutos\n"
-        "🎁 Recompensa ao acertar\n\n"
+        "🎁 Recompensa\n\n"
         "🪙 +2 Coins\n"
         "⭐ +10 XP\n\n"
-        "🟩 Letra correta posição correta\n"
-        "🟨 Letra existe posição errada\n"
-        "⬛ Letra não existe\n\n"
-        "A palavra muda todos os dias às 00:00."
+        "🟩 posição correta\n"
+        "🟨 letra existe\n"
+        "⬛ letra não existe\n\n"
+        "A palavra muda todos os dias."
     )
 
     await update.message.reply_text(
@@ -87,57 +95,52 @@ async def termo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =====================================================
-# BOTÃO INICIAR
-# =====================================================
+async def termo_start(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-async def termo_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
-    query = update.callback_query
-    await query.answer()
+    user = q.from_user.id
 
-    user = query.from_user.id
-
-    today = time.strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
 
     played = _run(
         "SELECT * FROM termo_games WHERE user_id=%s AND date=%s",
-        (user, today),
+        (user,today),
         "one"
     )
 
     if played:
-        await query.edit_message_text(
-            "❌ Você já jogou o desafio de hoje."
-        )
+        await q.edit_message_text("❌ Você já jogou hoje.")
         return
 
-    word = pick_word(user)
+    w = pick_word(user)
+
+    ACTIVE_GAMES[user] = {
+        "word":w["word"],
+        "category":w["category"],
+        "source":w["source"],
+        "attempts":0,
+        "rows":[],
+        "start":time.time()
+    }
 
     _run(
-        """
-        INSERT INTO termo_games
-        (user_id,date,word,attempts,status,start_time)
-        VALUES (%s,%s,%s,0,'playing',%s)
-        """,
-        (user, today, word["word"], int(time.time()))
+        "INSERT INTO termo_games (user_id,date,word,attempts,status,start_time) VALUES (%s,%s,%s,0,'playing',%s)",
+        (user,today,w["word"],int(time.time()))
     )
 
-    await query.edit_message_text(
+    await q.edit_message_text(
         "🎌 <b>TERMO ANIME</b>\n\n"
         "⬛⬛⬛⬛⬛⬛\n\n"
         "Tentativas: 0/6\n"
         "Tempo restante: 5:00\n\n"
-        "Digite uma palavra de 6 letras.",
+        "Digite uma palavra.",
         parse_mode="HTML"
     )
 
 
-# =====================================================
-# PROCESSAR TENTATIVA
-# =====================================================
-
-async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def termo_guess(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
@@ -149,68 +152,59 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user.id
 
-    game = _run(
-        "SELECT * FROM termo_games WHERE user_id=%s AND status='playing'",
-        (user,),
-        "one"
-    )
-
-    if not game:
+    if user not in ACTIVE_GAMES:
         return
 
-    if time.time() - game["start_time"] > TIME_LIMIT:
+    if not anti_flood(user):
+        return
 
-        _run(
-            "UPDATE termo_games SET status='timeout' WHERE user_id=%s",
-            (user,)
-        )
+    game = ACTIVE_GAMES[user]
+
+    if time.time() - game["start"] > TIME_LIMIT:
 
         await update.message.reply_text(
             f"⏱ Tempo esgotado!\n\nPalavra: {game['word'].upper()}"
         )
+
+        del ACTIVE_GAMES[user]
+
         return
 
-    attempts = game["attempts"] + 1
-    word = game["word"]
+    result = evaluate(game["word"],guess)
 
-    result = evaluate_guess(word, guess)
+    game["rows"].append(result)
 
-    if guess == word:
+    game["attempts"] += 1
 
-        _run(
-            "UPDATE termo_games SET status='win', attempts=%s WHERE user_id=%s",
-            (attempts, user)
-        )
+    if guess == game["word"]:
 
         _run(
-            "UPDATE users SET coins = coins + 2, xp = xp + 10 WHERE user_id=%s",
+            "UPDATE users SET coins=coins+2,xp=xp+10 WHERE user_id=%s",
             (user,)
         )
 
         await update.message.reply_text(
-            f"{guess.upper()}\n{result}\n\n🎉 Você acertou!"
+            f"{guess.upper()}\n{result}\n\n🎉 Acertou!\n\n🪙 +2 Coins\n⭐ +10 XP"
         )
+
+        del ACTIVE_GAMES[user]
 
         return
 
-    if attempts >= MAX_ATTEMPTS:
-
-        _run(
-            "UPDATE termo_games SET status='lose', attempts=%s WHERE user_id=%s",
-            (attempts, user)
-        )
+    if game["attempts"] >= MAX_ATTEMPTS:
 
         await update.message.reply_text(
-            f"{guess.upper()}\n{result}\n\n❌ Fim de jogo.\nPalavra: {word.upper()}"
+            f"{guess.upper()}\n{result}\n\n❌ Fim de jogo\nPalavra: {game['word'].upper()}"
         )
+
+        del ACTIVE_GAMES[user]
 
         return
 
-    _run(
-        "UPDATE termo_games SET attempts=%s WHERE user_id=%s",
-        (attempts, user)
-    )
+    rows = "\n".join(game["rows"])
 
     await update.message.reply_text(
-        f"{guess.upper()}\n{result}\n\nTentativas: {attempts}/6"
+        f"{guess.upper()}\n{result}\n\n"
+        f"{rows}\n\n"
+        f"Tentativas: {game['attempts']}/6"
     )
