@@ -33,6 +33,7 @@ from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.start import start
+from commands.dado import dado
 from commands.termo import (
     termo_cmd,
     termo_stats_cmd,
@@ -87,6 +88,7 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("pedido", pedido))
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CommandHandler("nivel", nivel))
+    tg_app.add_handler(CommandHandler("dado", dado))
 
     # termo
     tg_app.add_handler(CommandHandler("termo", termo_cmd))
