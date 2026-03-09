@@ -2124,3 +2124,113 @@ def get_termo_user_rank(user_id: int) -> int:
     )
 
     return int((row or {}).get("rank_pos") or 0)
+
+# =========================================================
+# ADMIN — DADO
+# =========================================================
+
+def admin_give_dado_to_user(user_id: int, amount: int) -> Dict[str, Any]:
+    """
+    Dá dados manualmente para 1 usuário, respeitando o teto.
+    """
+    user_id = int(user_id)
+    amount = int(amount)
+
+    if amount <= 0:
+        return {"ok": False, "error": "invalid_amount"}
+
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, user_id)
+                old_balance = int(state["balance"])
+                new_balance = min(DADO_MAX_BALANCE, old_balance + amount)
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET dado_balance = %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (new_balance, user_id)
+                )
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "user_id": user_id,
+                    "old_balance": old_balance,
+                    "new_balance": new_balance,
+                    "added": amount,
+                    "applied": new_balance - old_balance,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def admin_give_dado_to_all(amount: int) -> Dict[str, Any]:
+    """
+    Dá dados manualmente para todos os usuários, respeitando o teto.
+    """
+    amount = int(amount)
+
+    if amount <= 0:
+        return {"ok": False, "error": "invalid_amount"}
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                # garante que slots/recarga não baguncem o saldo antes do give
+                cur.execute(
+                    """
+                    SELECT user_id
+                    FROM users
+                    ORDER BY user_id
+                    FOR UPDATE
+                    """
+                )
+                users = cur.fetchall() or []
+
+                total_users = 0
+                total_applied = 0
+
+                for row in users:
+                    uid = int(row["user_id"])
+                    state = _refresh_dado_locked(cur, uid)
+                    old_balance = int(state["balance"])
+                    new_balance = min(DADO_MAX_BALANCE, old_balance + amount)
+                    applied = new_balance - old_balance
+
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, uid)
+                    )
+
+                    total_users += 1
+                    total_applied += applied
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "total_users": total_users,
+                    "added": amount,
+                    "total_applied": total_applied,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
