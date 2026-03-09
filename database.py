@@ -415,7 +415,7 @@ def create_dado_tables():
         selected_anime_id BIGINT,
         rewarded_character_id BIGINT,
         status TEXT NOT NULL DEFAULT 'pending',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
         picked_at TIMESTAMPTZ,
         resolved_at TIMESTAMPTZ,
         expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes')
@@ -443,13 +443,11 @@ def create_dado_tables():
     ON dice_rolls (user_id, status)
     """)
 
-    # Garante no máximo 1 roll ativo por usuário
     _run("""
     CREATE UNIQUE INDEX IF NOT EXISTS uq_dice_rolls_one_active_per_user
     ON dice_rolls (user_id)
     WHERE status IN ('pending', 'picked')
     """)
-
 
 # =========================================================
 # USERS
