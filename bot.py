@@ -8,6 +8,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from commands.anime import anime
 from commands.card import card, card_stats_callback
 from commands.cards import cards
+from commands.termo import termo, termo_guess, termo_start_callback
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -61,6 +62,9 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     tg_app.add_handler(CommandHandler("nivel", nivel))
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo))
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess))
+    tg_app.add_handler(CallbackQueryHandler(termo_start_callback, pattern="termo_start"))
 
     # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
