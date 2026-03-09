@@ -64,8 +64,8 @@ def create_tables():
     create_users_table()
     create_media_request_tables()
     create_cards_tables()
+    create_cards_catalog_tables()
     create_level_tables()
-
 
 def create_users_table():
     _run("""
