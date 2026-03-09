@@ -5243,6 +5243,7 @@ loadLimit();
 # =========================================================
 
 from pathlib import Path
+import re
 
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
@@ -5327,7 +5328,7 @@ def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
 
 
 # =========================================================
-# DADO — BASE LOCAL (igual ao cards)
+# DADO — BASE LOCAL (adaptado ao personagens_anilist.txt real)
 # =========================================================
 
 def _safe_int(v, default=0):
@@ -5337,7 +5338,7 @@ def _safe_int(v, default=0):
         return default
 
 
-def _norm_text(s: str) -> str:
+def _norm_text(s: Any) -> str:
     return str(s or "").strip()
 
 
@@ -5378,6 +5379,69 @@ def _resolve_local_cards_path() -> Optional[Path]:
     return None
 
 
+def _repair_loose_json_text(raw: str) -> str:
+    """
+    Corrige erros comuns do arquivo:
+    - linha de valor sem vírgula antes da próxima chave
+    - mistura de quebras entre propriedades
+    """
+    if not raw:
+        return "[]"
+
+    lines = raw.splitlines()
+    fixed: List[str] = []
+
+    key_start_re = re.compile(r'^\s*"[^"]+"\s*:')
+    prev_can_need_comma_re = re.compile(r'["\}\]0-9]$')
+
+    for line in lines:
+        stripped = line.strip()
+
+        if fixed:
+            prev = fixed[-1].rstrip()
+            prev_stripped = prev.strip()
+
+            if (
+                stripped
+                and key_start_re.match(stripped)
+                and prev_stripped
+                and not prev_stripped.endswith((",", "{", "[", ":"))
+                and prev_can_need_comma_re.search(prev_stripped)
+            ):
+                fixed[-1] = prev + ","
+
+        fixed.append(line)
+
+    txt = "\n".join(fixed)
+
+    # remove vírgula sobrando antes de ] ou }
+    txt = re.sub(r",(\s*[\]\}])", r"\1", txt)
+
+    return txt
+
+
+def _extract_items_from_local_file(path: Path) -> List[Dict[str, Any]]:
+    raw = path.read_text(encoding="utf-8", errors="ignore").strip()
+    if not raw:
+        return []
+
+    attempts = [
+        raw,
+        _repair_loose_json_text(raw),
+    ]
+
+    for candidate in attempts:
+        try:
+            parsed = json.loads(candidate)
+            items = parsed.get("items") if isinstance(parsed, dict) else parsed
+            if isinstance(items, list):
+                return [x for x in items if isinstance(x, dict)]
+        except Exception:
+            continue
+
+    return []
+
+
 def _load_local_dado_pool() -> Dict[str, Any]:
     global _DADO_LOCAL_CACHE
 
@@ -5401,69 +5465,73 @@ def _load_local_dado_pool() -> Dict[str, Any]:
             "characters_by_anime": _DADO_LOCAL_CACHE["characters_by_anime"],
         }
 
+    raw_items = _extract_items_from_local_file(path)
+
     animes_by_id: Dict[int, Dict[str, Any]] = {}
     characters_by_anime: Dict[int, List[Dict[str, Any]]] = {}
 
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
+    for item in raw_items:
+        anime_id = _safe_int(item.get("anime_id"), 0)
+        anime_name = _norm_text(item.get("anime"))
+        banner_image = _norm_text(item.get("banner_image"))
+        cover_image = _norm_text(item.get("cover_image") or item.get("imagem_de_capa"))
+        chars_raw = item.get("characters") or item.get("personagens") or []
 
-            parts = [p.strip() for p in line.split("|")]
-            if len(parts) < 5:
-                continue
+        if anime_id <= 0 or not anime_name:
+            continue
 
-            character_id = _safe_int(parts[0], 0)
-            char_name = _norm_text(parts[1])
-            anime_name = _norm_text(parts[2])
-            anime_id = _safe_int(parts[3], 0)
-            role = _norm_text(parts[4]).lower()
-
-            if character_id <= 0 or anime_id <= 0 or not char_name or not anime_name:
-                continue
-
-            if anime_id not in animes_by_id:
-                animes_by_id[anime_id] = {
-                    "anime_id": anime_id,
-                    "anime": anime_name,
-                    "cover_image": _build_cover_from_anilist(anime_id),
-                    "banner_image": _build_cover_from_anilist(anime_id),
-                    "characters_count": 0,
-                }
-                characters_by_anime[anime_id] = []
-
-            item = {
-                "id": character_id,
-                "name": char_name,
+        if anime_id not in animes_by_id:
+            animes_by_id[anime_id] = {
                 "anime_id": anime_id,
                 "anime": anime_name,
-                "role": role,
-                "image": _build_char_image_from_anilist(character_id),
+                "cover_image": cover_image or _build_cover_from_anilist(anime_id),
+                "banner_image": banner_image or cover_image or _build_cover_from_anilist(anime_id),
+                "characters_count": 0,
             }
-            characters_by_anime[anime_id].append(item)
+            characters_by_anime[anime_id] = []
+
+        if isinstance(chars_raw, list):
+            for c in chars_raw:
+                if not isinstance(c, dict):
+                    continue
+
+                cid = _safe_int(c.get("id"), 0)
+                cname = _norm_text(c.get("name") or c.get("nome"))
+                canime = _norm_text(c.get("anime") or anime_name)
+                cimg = _norm_text(c.get("image") or c.get("imagem"))
+
+                if cid <= 0 or not cname:
+                    continue
+
+                characters_by_anime[anime_id].append({
+                    "id": cid,
+                    "name": cname,
+                    "anime": canime or anime_name,
+                    "image": cimg or _build_char_image_from_anilist(cid),
+                })
 
     animes_list: List[Dict[str, Any]] = []
 
     for anime_id, meta in animes_by_id.items():
         chars = characters_by_anime.get(anime_id, [])
-        seen_chars = set()
+        seen_char_ids = set()
         clean_chars = []
 
         for c in chars:
             cid = int(c["id"])
-            if cid in seen_chars:
+            if cid in seen_char_ids:
                 continue
-            seen_chars.add(cid)
+            seen_char_ids.add(cid)
             clean_chars.append(c)
 
+        clean_chars.sort(key=lambda x: (x["name"] or "").lower())
         characters_by_anime[anime_id] = clean_chars
         meta["characters_count"] = len(clean_chars)
 
         if clean_chars:
             animes_list.append(meta)
 
-    animes_list.sort(key=lambda x: str(x.get("anime") or "").lower())
+    animes_list.sort(key=lambda x: (x.get("anime") or "").lower())
 
     _DADO_LOCAL_CACHE = {
         "mtime": mtime,
@@ -5509,7 +5577,7 @@ def _pick_random_local_animes(
         {
             "id": int(item["anime_id"]),
             "title": str(item["anime"]),
-            "cover": str(item.get("cover_image") or DADO_BANNER_URL),
+            "cover": str(item.get("cover_image") or item.get("banner_image") or DADO_BANNER_URL),
         }
         for item in picks
     ]
