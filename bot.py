@@ -3,12 +3,17 @@ import threading
 import traceback
 
 import uvicorn
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
 from commands.anime import anime
 from commands.card import card, card_stats_callback
 from commands.cards import cards
-from commands.termo import termo, termo_guess, termo_start_callback
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -28,6 +33,7 @@ from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.start import start
+from commands.termo import termo, termo_guess, termo_start_callback
 from database import create_tables
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -38,10 +44,17 @@ PORT = int(os.getenv("PORT", "8000"))
 
 
 def run_webapp() -> None:
-    from webapp import app as web_app
-
-    uvicorn.run(web_app, host="0.0.0.0", port=PORT, log_level="info")
-
+    try:
+        from webapp import app as web_app
+        uvicorn.run(
+            web_app,
+            host="0.0.0.0",
+            port=PORT,
+            log_level="info",
+        )
+    except Exception:
+        print("[webapp-error] Falha ao iniciar a WebApp", flush=True)
+        traceback.print_exc()
 
 
 async def on_error(update, context) -> None:
@@ -51,20 +64,30 @@ async def on_error(update, context) -> None:
     except Exception:
         pass
 
+
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
+    # comandos principais
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
     tg_app.add_handler(CommandHandler("cards", cards))
     tg_app.add_handler(CommandHandler("pedido", pedido))
     tg_app.add_handler(CommandHandler("card", card))
-    tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     tg_app.add_handler(CommandHandler("nivel", nivel))
+
+    # callbacks
+    tg_app.add_handler(
+        CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:")
+    )
+    tg_app.add_handler(
+        CallbackQueryHandler(termo_start_callback, pattern=r"^termo_start$")
+    )
+
+    # termo (mensagens sem comando)
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess))
-    tg_app.add_handler(CallbackQueryHandler(termo_start_callback, pattern="termo_start"))
 
     # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
@@ -94,7 +117,7 @@ def main() -> None:
 
     tg_app = build_application()
 
-    print("Bot + WebApp iniciado")
+    print("Bot + WebApp iniciado", flush=True)
     tg_app.run_polling(
         drop_pending_updates=True,
         allowed_updates=["message", "callback_query"],
