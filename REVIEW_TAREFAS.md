@@ -2,7 +2,7 @@
 
 Abaixo estão 4 tarefas objetivas, cada uma mapeada para um tipo de problema pedido.
 
-## 1) Tarefa de correção de erro de digitação (typo)
+## 1) Tarefa de correção de erro de digitação
 
 **Problema encontrado**
 - O identificador do canal padrão aparece como `@SourcerBaltigo` em múltiplos pontos, enquanto o naming do projeto e do bot usa `Source Baltigo`.
