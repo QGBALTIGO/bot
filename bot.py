@@ -33,7 +33,18 @@ from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.start import start
-from commands.termo import termo, termo_guess, termo_start_callback
+from commands.termo import (
+    termo_cmd,
+    termo_stats_cmd,
+    termo_ranking_cmd,
+    termo_ranking_week_cmd,
+    termo_ranking_month_cmd,
+    termo_treino_cmd,
+    termo_treino_stats_cmd,
+    termo_treino_stop_cmd,
+    termo_guess,
+    termo_callback,
+)
 from database import create_tables
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -46,7 +57,6 @@ PORT = int(os.getenv("PORT", "8000"))
 def run_webapp() -> None:
     try:
         from webapp import app as web_app
-
         uvicorn.run(
             web_app,
             host="0.0.0.0",
@@ -69,6 +79,7 @@ async def on_error(update, context) -> None:
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
+    # comandos principais
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
@@ -77,20 +88,30 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CommandHandler("nivel", nivel))
 
+    # termo
+    tg_app.add_handler(CommandHandler("termo", termo_cmd))
+    tg_app.add_handler(CommandHandler("termostats", termo_stats_cmd))
+    tg_app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
+    tg_app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
+    tg_app.add_handler(CommandHandler("termorankingmes", termo_ranking_month_cmd))
+    tg_app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
+    tg_app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
+    tg_app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
+
+    # callbacks
     tg_app.add_handler(
         CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:")
     )
     tg_app.add_handler(
-        CallbackQueryHandler(termo_start_callback, pattern=r"^termo_")
+        CallbackQueryHandler(termo_callback, pattern=r"^termo:")
     )
 
-    tg_app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, termo)
-    )
+    # guesses do termo: texto normal, sem barra
     tg_app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess)
     )
 
+    # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
     tg_app.add_handler(CommandHandler("card_delchar", card_delchar))
     tg_app.add_handler(CommandHandler("card_addchar", card_addchar))
@@ -106,7 +127,6 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card_subremove", card_subremove))
 
     tg_app.add_error_handler(on_error)
-
     return tg_app
 
 
