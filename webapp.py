@@ -5251,7 +5251,7 @@ DADO_BANNER_URL = os.getenv(
 
 CARDS_LOCAL_PATH = os.getenv(
     "CARDS_LOCAL_PATH",
-    "bot/data/personagens_anilist.txt",
+    "data/personagens_anilist.txt",
 ).strip()
 
 DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
@@ -5260,6 +5260,7 @@ _DADO_RATE: Dict[Tuple[int, str], float] = {}
 _DADO_LOCAL_CACHE: Dict[str, Any] = {
     "mtime": 0.0,
     "loaded": False,
+    "path": "",
     "animes_list": [],
     "animes_by_id": {},
     "characters_by_anime": {},
@@ -5354,11 +5355,34 @@ def _build_char_image_from_anilist(char_id: int) -> str:
     return f"https://img.anili.st/character/{char_id}"
 
 
+def _resolve_local_cards_path() -> Optional[Path]:
+    candidates = [
+        CARDS_LOCAL_PATH,
+        "data/personagens_anilist.txt",
+        "bot/data/personagens_anilist.txt",
+        "/app/data/personagens_anilist.txt",
+        "/app/bot/data/personagens_anilist.txt",
+    ]
+
+    seen = set()
+    for cand in candidates:
+        cand = str(cand or "").strip()
+        if not cand or cand in seen:
+            continue
+        seen.add(cand)
+
+        p = Path(cand)
+        if p.exists() and p.is_file():
+            return p
+
+    return None
+
+
 def _load_local_dado_pool() -> Dict[str, Any]:
     global _DADO_LOCAL_CACHE
 
-    path = Path(CARDS_LOCAL_PATH)
-    if not path.exists():
+    path = _resolve_local_cards_path()
+    if path is None:
         return {
             "animes_list": [],
             "animes_by_id": {},
@@ -5366,7 +5390,11 @@ def _load_local_dado_pool() -> Dict[str, Any]:
         }
 
     mtime = float(path.stat().st_mtime or 0.0)
-    if _DADO_LOCAL_CACHE["loaded"] and _DADO_LOCAL_CACHE["mtime"] == mtime:
+    if (
+        _DADO_LOCAL_CACHE["loaded"]
+        and _DADO_LOCAL_CACHE["mtime"] == mtime
+        and _DADO_LOCAL_CACHE["path"] == str(path)
+    ):
         return {
             "animes_list": _DADO_LOCAL_CACHE["animes_list"],
             "animes_by_id": _DADO_LOCAL_CACHE["animes_by_id"],
@@ -5413,7 +5441,6 @@ def _load_local_dado_pool() -> Dict[str, Any]:
                 "role": role,
                 "image": _build_char_image_from_anilist(character_id),
             }
-
             characters_by_anime[anime_id].append(item)
 
     animes_list: List[Dict[str, Any]] = []
@@ -5441,6 +5468,7 @@ def _load_local_dado_pool() -> Dict[str, Any]:
     _DADO_LOCAL_CACHE = {
         "mtime": mtime,
         "loaded": True,
+        "path": str(path),
         "animes_list": animes_list,
         "animes_by_id": animes_by_id,
         "characters_by_anime": characters_by_anime,
@@ -5453,15 +5481,30 @@ def _load_local_dado_pool() -> Dict[str, Any]:
     }
 
 
-def _pick_random_local_animes(n: int) -> List[dict]:
-    data = _load_local_dado_pool()
-    pool = list(data["animes_list"] or [])
+def _max_dice_value_from_local_pool(pool: Optional[List[Dict[str, Any]]] = None) -> int:
+    if pool is None:
+        data = _load_local_dado_pool()
+        pool = list(data.get("animes_list") or [])
+    return min(6, len(pool))
 
-    n = max(1, min(6, int(n)))
-    if len(pool) < n:
-        raise RuntimeError("pool local de animes insuficiente")
 
-    picks = random.sample(pool, n)
+def _pick_random_local_animes(
+    n: int,
+    pool: Optional[List[Dict[str, Any]]] = None,
+) -> List[dict]:
+    if pool is None:
+        data = _load_local_dado_pool()
+        pool = list(data.get("animes_list") or [])
+    else:
+        pool = list(pool or [])
+
+    if not pool:
+        return []
+
+    max_allowed = min(6, len(pool))
+    qty = max(1, min(int(n), max_allowed))
+
+    picks = random.sample(pool, qty)
     return [
         {
             "id": int(item["anime_id"]),
@@ -5584,8 +5627,33 @@ async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
         except Exception:
             pass
 
-    dice_value = random.SystemRandom().randint(1, 6)
-    options = _pick_random_local_animes(dice_value)
+    data = _load_local_dado_pool()
+    anime_pool = list(data.get("animes_list") or [])
+    max_dice_value = _max_dice_value_from_local_pool(anime_pool)
+
+    if max_dice_value <= 0:
+        return JSONResponse({
+            "ok": False,
+            "error": "anime_pool_unavailable",
+        }, status_code=200)
+
+    raw_value = random.SystemRandom().randint(1, max_dice_value)
+
+    try:
+        options = _pick_random_local_animes(raw_value, anime_pool)
+    except Exception:
+        return JSONResponse({
+            "ok": False,
+            "error": "anime_pool_unavailable",
+        }, status_code=200)
+
+    if not options:
+        return JSONResponse({
+            "ok": False,
+            "error": "anime_pool_unavailable",
+        }, status_code=200)
+
+    dice_value = len(options)
 
     created = create_dice_roll(user_id, dice_value, options)
     if not created.get("ok"):
@@ -6421,7 +6489,16 @@ def dado_page():
           anime_id: Number(opt.id),
         });
 
-        if (!data.ok) throw new Error(data.error || "Falha ao revelar personagem.");
+        if (!data.ok) {
+          const msgMap = {
+            rate_limited: "Espere um instante antes de escolher novamente.",
+            character_not_found: "Nenhum personagem válido foi encontrado para este anime.",
+            roll_not_found: "Essa rolagem não foi encontrada.",
+            expired: "Sua rolagem expirou. Role novamente.",
+            anime_not_in_roll: "Esse anime não pertence à rolagem atual.",
+          };
+          throw new Error(msgMap[data.error] || data.error || "Falha ao revelar personagem.");
+        }
 
         const ch = data.character || {};
         setBalance(data.balance ?? state.balance);
@@ -6501,6 +6578,7 @@ def dado_page():
           const msgMap = {
             no_balance: "Você está sem dados agora.",
             rate_limited: "Espere um instante antes de rolar novamente.",
+            anime_pool_unavailable: "A base local de animes não está disponível no momento.",
           };
           throw new Error(msgMap[data.error] || data.error || "Falha ao rolar.");
         }
