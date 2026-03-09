@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg_pool import ConnectionPool
@@ -65,6 +66,7 @@ def create_tables():
     create_media_request_tables()
     create_cards_tables()
     create_level_tables()
+    create_termo_tables()
 
 
 def create_users_table():
@@ -160,6 +162,109 @@ def create_cards_tables():
     CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
     ON user_card_collection (user_id)
     """)
+
+
+def create_level_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        total_actions BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
+    ON user_progress (level DESC, xp DESC)
+    """)
+
+
+def create_termo_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_games (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        date DATE NOT NULL,
+        word TEXT NOT NULL,
+        category TEXT,
+        source TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        guesses JSONB NOT NULL DEFAULT '[]'::jsonb,
+        used_letters TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'playing',
+        mode TEXT NOT NULL DEFAULT 'daily',
+        start_time BIGINT NOT NULL,
+        finished_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_termo_games_user_date_mode
+    ON termo_games (user_id, date, mode)
+    WHERE mode = 'daily'
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_games_user_status
+    ON termo_games (user_id, status)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_games_date
+    ON termo_games (date DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_stats (
+        user_id BIGINT PRIMARY KEY,
+        games_played INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        best_streak INTEGER NOT NULL DEFAULT 0,
+        best_score INTEGER NOT NULL DEFAULT 0,
+        last_play_date DATE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_stats_wins
+    ON termo_stats (wins DESC, best_streak DESC, best_score DESC, user_id ASC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_used_words (
+        user_id BIGINT NOT NULL,
+        word TEXT NOT NULL,
+        used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, word)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_used_words_user
+    ON termo_used_words (user_id, used_at DESC)
+    """)
+
+    # Migrações seguras
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS category TEXT;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS source TEXT;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS guesses JSONB NOT NULL DEFAULT '[]'::jsonb;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS used_letters TEXT NOT NULL DEFAULT '';""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'daily';""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS losses INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS best_score INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS last_play_date DATE;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
 
 
 # =========================================================
@@ -496,26 +601,10 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
     )
     return rows or []
 
+
 # =========================================================
 # LEVEL / PROGRESS SYSTEM
 # =========================================================
-
-def create_level_tables():
-    _run("""
-    CREATE TABLE IF NOT EXISTS user_progress (
-        user_id BIGINT PRIMARY KEY,
-        xp BIGINT NOT NULL DEFAULT 0,
-        level INTEGER NOT NULL DEFAULT 1,
-        total_actions BIGINT NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""
-    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
-    ON user_progress (level DESC, xp DESC)
-    """)
-
 
 def ensure_progress_row(user_id: int):
     _run(
@@ -653,20 +742,298 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
     )
     return rows or []
 
-CREATE TABLE IF NOT EXISTS termo_games (
-    user_id BIGINT,
-    date DATE,
-    word TEXT,
-    attempts INT DEFAULT 0,
-    guesses TEXT,
-    status TEXT,
-    start_time BIGINT
-);
 
-CREATE TABLE IF NOT EXISTS termo_stats (
-    user_id BIGINT PRIMARY KEY,
-    games_played INT DEFAULT 0,
-    wins INT DEFAULT 0,
-    current_streak INT DEFAULT 0,
-    best_streak INT DEFAULT 0
-);
+# =========================================================
+# TERMO
+# =========================================================
+
+def ensure_termo_stats_row(user_id: int):
+    _run(
+        """
+        INSERT INTO termo_stats (user_id)
+        VALUES (%s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_termo_daily_game(user_id: int, game_date: date) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM termo_games
+        WHERE user_id = %s
+          AND date = %s
+          AND mode = 'daily'
+        LIMIT 1
+        """,
+        (int(user_id), game_date),
+        fetch="one"
+    )
+
+
+def get_termo_active_game(user_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM termo_games
+        WHERE user_id = %s
+          AND status = 'playing'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def create_termo_game(
+    user_id: int,
+    game_date: date,
+    word: str,
+    category: str,
+    source: str,
+    start_time: int,
+    mode: str = "daily",
+):
+    _run(
+        """
+        INSERT INTO termo_games
+        (
+            user_id, date, word, category, source,
+            attempts, guesses, used_letters, status, mode,
+            start_time, created_at, updated_at
+        )
+        VALUES
+        (
+            %s, %s, %s, %s, %s,
+            0, '[]'::jsonb, '', 'playing', %s,
+            %s, NOW(), NOW()
+        )
+        """,
+        (
+            int(user_id),
+            game_date,
+            (word or "").strip().lower(),
+            (category or "").strip(),
+            (source or "").strip(),
+            (mode or "daily").strip(),
+            int(start_time),
+        )
+    )
+
+
+def update_termo_game_progress(
+    user_id: int,
+    attempts: int,
+    guesses_json: str,
+    used_letters: str,
+):
+    _run(
+        """
+        UPDATE termo_games
+        SET attempts = %s,
+            guesses = %s::jsonb,
+            used_letters = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+          AND status = 'playing'
+        """,
+        (
+            int(attempts),
+            guesses_json,
+            (used_letters or "").strip().upper(),
+            int(user_id),
+        )
+    )
+
+
+def finish_termo_game(
+    user_id: int,
+    status: str,
+    attempts: int,
+    guesses_json: str,
+    used_letters: str,
+):
+    _run(
+        """
+        UPDATE termo_games
+        SET status = %s,
+            attempts = %s,
+            guesses = %s::jsonb,
+            used_letters = %s,
+            finished_at = NOW(),
+            updated_at = NOW()
+        WHERE user_id = %s
+          AND status = 'playing'
+        """,
+        (
+            (status or "").strip(),
+            int(attempts),
+            guesses_json,
+            (used_letters or "").strip().upper(),
+            int(user_id),
+        )
+    )
+
+
+def mark_termo_word_used(user_id: int, word: str):
+    _run(
+        """
+        INSERT INTO termo_used_words (user_id, word)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id, word) DO NOTHING
+        """,
+        (int(user_id), (word or "").strip().lower())
+    )
+
+
+def has_user_used_termo_word(user_id: int, word: str) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM termo_used_words
+        WHERE user_id = %s
+          AND word = %s
+        LIMIT 1
+        """,
+        (int(user_id), (word or "").strip().lower()),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def record_termo_result(user_id: int, win: bool, attempts: int):
+    ensure_termo_stats_row(user_id)
+
+    row = _run(
+        """
+        SELECT user_id, games_played, wins, losses, current_streak, best_streak, best_score, last_play_date
+        FROM termo_stats
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {}
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    games_played = int(row.get("games_played") or 0) + 1
+    wins = int(row.get("wins") or 0)
+    losses = int(row.get("losses") or 0)
+    current_streak = int(row.get("current_streak") or 0)
+    best_streak = int(row.get("best_streak") or 0)
+    best_score = int(row.get("best_score") or 0)
+    last_play_date = row.get("last_play_date")
+
+    if win:
+        wins += 1
+
+        if last_play_date == yesterday:
+            current_streak += 1
+        elif last_play_date == today:
+            # já jogou hoje, mantém
+            current_streak = max(current_streak, 1)
+        else:
+            current_streak = 1
+
+        if current_streak > best_streak:
+            best_streak = current_streak
+
+        attempts = int(attempts)
+        if attempts > 0 and (best_score == 0 or attempts < best_score):
+            best_score = attempts
+    else:
+        losses += 1
+        current_streak = 0
+
+    _run(
+        """
+        UPDATE termo_stats
+        SET games_played = %s,
+            wins = %s,
+            losses = %s,
+            current_streak = %s,
+            best_streak = %s,
+            best_score = %s,
+            last_play_date = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (
+            games_played,
+            wins,
+            losses,
+            current_streak,
+            best_streak,
+            best_score,
+            today,
+            int(user_id),
+        )
+    )
+
+
+def get_termo_stats(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_termo_stats_row(user_id)
+
+    return _run(
+        """
+        SELECT user_id, games_played, wins, losses, current_streak, best_streak, best_score, last_play_date, updated_at
+        FROM termo_stats
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def get_termo_global_ranking(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            user_id,
+            games_played,
+            wins,
+            losses,
+            current_streak,
+            best_streak,
+            best_score,
+            CASE
+                WHEN games_played > 0 THEN ROUND((wins::numeric / games_played::numeric) * 100, 2)
+                ELSE 0
+            END AS win_rate
+        FROM termo_stats
+        WHERE games_played > 0
+        ORDER BY wins DESC, best_streak DESC, best_score ASC, user_id ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_termo_user_rank(user_id: int) -> int:
+    ensure_termo_stats_row(user_id)
+
+    row = _run(
+        """
+        SELECT rank_pos
+        FROM (
+            SELECT
+                user_id,
+                RANK() OVER (
+                    ORDER BY wins DESC, best_streak DESC, best_score ASC, user_id ASC
+                ) AS rank_pos
+            FROM termo_stats
+            WHERE games_played > 0
+        ) ranked
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    return int((row or {}).get("rank_pos") or 0)
