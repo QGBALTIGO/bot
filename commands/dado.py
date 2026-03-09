@@ -91,7 +91,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>personagens</b> para a sua coleção.\n\n"
         "🕒 <b>Recargas fixas:</b>\n"
         "<code>01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h</code>\n"
-        "🇧🇷 Horário de São Paulo\n\n"
+        "🇧🇷 Horário de São Paulo (Br)\n\n"
         f"🎲 <b>Dados disponíveis:</b> <code>{saldo}</code>\n"
         f"⏳ <b>Próximo dado:</b> <code>{prox_hora}</code>\n\n"
         "Toque no botão abaixo para abrir a área dos dados."
