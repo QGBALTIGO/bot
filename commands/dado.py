@@ -8,6 +8,7 @@ from telegram import (
 )
 from telegram.ext import ContextTypes
 
+from database import create_or_get_user, get_dado_state, get_next_dado_recharge_info
 from utils.gatekeeper import gatekeeper
 
 BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
@@ -46,7 +47,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = (
             "🎲 <b>SISTEMA DE DADOS</b>\n\n"
             "Esse comando funciona apenas no <b>privado</b> do bot.\n\n"
-            "Abra no privado para acessar seus <b>giros</b>, sua <b>rolagem</b> "
+            "Abra no privado para acessar seus <b>dados</b>, sua <b>rolagem</b> "
             "e sua futura <b>coleção</b> com segurança."
         )
 
@@ -59,15 +60,27 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # =========================
     # GATEKEEPER
-    # - termos
-    # - canal obrigatório
-    # - regras padrão do bot
     # =========================
     ok, bloqueio = await gatekeeper(update, context)
     if not ok:
         if bloqueio:
             await msg.reply_html(bloqueio)
         return
+
+    # =========================
+    # GARANTE USUÁRIO + BUSCA SALDO
+    # =========================
+    create_or_get_user(user.id)
+
+    try:
+        dado_state = get_dado_state(user.id)
+        recharge_info = get_next_dado_recharge_info(user.id)
+
+        saldo = int((dado_state or {}).get("balance") or 0)
+        prox_hora = (recharge_info or {}).get("next_recharge_hhmm") or "--:--"
+    except Exception:
+        saldo = 0
+        prox_hora = "--:--"
 
     # =========================
     # MENSAGEM PRINCIPAL
@@ -78,7 +91,9 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>personagens</b> para a sua coleção.\n\n"
         "🕒 <b>Recargas fixas:</b>\n"
         "<code>01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h</code>\n"
-        "🇧🇷 Horário de São Paulo (Br)\n\n"
+        "🇧🇷 Horário de São Paulo\n\n"
+        f"🎲 <b>Dados disponíveis:</b> <code>{saldo}</code>\n"
+        f"⏳ <b>Próximo dado:</b> <code>{prox_hora}</code>\n\n"
         "Toque no botão abaixo para abrir a área dos dados."
     )
 
