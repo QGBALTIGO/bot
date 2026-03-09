@@ -14,6 +14,7 @@ from telegram.ext import (
 from commands.anime import anime
 from commands.card import card, card_stats_callback
 from commands.cards import cards
+from commands.dado_admin import dadogive, dadogiveall
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -89,6 +90,8 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("dado", dado))
+    tg_app.add_handler(CommandHandler("dadogive", dadogive))
+    tg_app.add_handler(CommandHandler("dadogiveall", dadogiveall))
 
     # termo
     tg_app.add_handler(CommandHandler("termo", termo_cmd))
