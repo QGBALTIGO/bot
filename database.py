@@ -859,7 +859,7 @@ def create_termo_game(
         (
             %s, %s, %s, %s, %s,
             0, '[]'::jsonb, '', 'playing', %s,
-            %s, 0, 0, 0,
+            %s, 0, 0, 0, 0,
             NOW(), NOW()
         )
         """,
@@ -873,7 +873,6 @@ def create_termo_game(
             int(start_time),
         )
     )
-
 
 def update_termo_game_progress(
     user_id: int,
