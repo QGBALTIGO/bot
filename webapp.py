@@ -5343,7 +5343,7 @@ async def _fetch_random_anime_options(n: int) -> List[dict]:
         media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
           id
           title { romaji english }
-          coverImage { large }
+          coverImage { large extraLarge }
         }
       }
     }
@@ -5366,7 +5366,11 @@ async def _fetch_random_anime_options(n: int) -> List[dict]:
             or ((m.get("title") or {}).get("english"))
             or "Anime"
         )
-        cover = ((m.get("coverImage") or {}).get("large")) or ""
+        cover = (
+            ((m.get("coverImage") or {}).get("extraLarge"))
+            or ((m.get("coverImage") or {}).get("large"))
+            or ""
+        )
 
         pool.append({
             "id": int(anime_id),
@@ -5385,7 +5389,7 @@ async def _fetch_random_character_from_anime(anime_id: int) -> Optional[dict]:
     query ($id: Int, $page: Int) {
       Media(id: $id, type: ANIME) {
         title { romaji english }
-        coverImage { large }
+        coverImage { large extraLarge }
         characters(page: $page, perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
           edges {
             role
@@ -5417,7 +5421,11 @@ async def _fetch_random_character_from_anime(anime_id: int) -> Optional[dict]:
             or ((media.get("title") or {}).get("english"))
             or "Anime"
         )
-        anime_cover = ((media.get("coverImage") or {}).get("large")) or ""
+        anime_cover = (
+            ((media.get("coverImage") or {}).get("extraLarge"))
+            or ((media.get("coverImage") or {}).get("large"))
+            or ""
+        )
 
         edges = (((media.get("characters") or {}).get("edges")) or [])
         for e in edges:
@@ -5614,17 +5622,19 @@ def dado_page():
 
   <style>
     :root{
-      --bg0:#060912;
+      --bg0:#050913;
       --bg1:#0b1222;
       --panel:rgba(255,255,255,.045);
-      --stroke:rgba(255,255,255,.10);
-      --txt:rgba(255,255,255,.94);
+      --panel2:rgba(255,255,255,.03);
+      --stroke:rgba(255,255,255,.11);
+      --txt:rgba(255,255,255,.96);
       --muted:rgba(255,255,255,.62);
       --pink:#ff2bd6;
       --cyan:#00f2ff;
       --gold:#ffd65a;
       --ok:#63ffa8;
-      --shadow:0 16px 34px rgba(0,0,0,.45);
+      --shadow:0 18px 38px rgba(0,0,0,.48);
+      --shadow2:0 12px 24px rgba(0,0,0,.30);
     }
 
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -5634,8 +5644,8 @@ def dado_page():
       font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
       color:var(--txt);
       background:
-        radial-gradient(1200px 700px at 50% -10%, rgba(0,242,255,.10), transparent 55%),
-        radial-gradient(900px 500px at 20% 20%, rgba(255,43,214,.08), transparent 50%),
+        radial-gradient(1200px 700px at 50% -10%, rgba(0,242,255,.12), transparent 55%),
+        radial-gradient(900px 500px at 20% 20%, rgba(255,43,214,.10), transparent 50%),
         linear-gradient(180deg,var(--bg0),var(--bg1));
       overflow-x:hidden;
     }
@@ -5657,7 +5667,7 @@ def dado_page():
 
     .banner img{
       width:100%;
-      height:210px;
+      height:220px;
       object-fit:cover;
       display:block;
     }
@@ -5673,7 +5683,7 @@ def dado_page():
       border-radius:24px;
       border:1px solid var(--stroke);
       background:rgba(255,255,255,.035);
-      box-shadow:0 16px 26px rgba(0,0,0,.35);
+      box-shadow:var(--shadow);
       padding:16px;
       backdrop-filter:blur(8px);
     }
@@ -5700,7 +5710,7 @@ def dado_page():
       gap:12px;
     }
 
-    @media (max-width:700px){
+    @media (max-width:760px){
       .stats{grid-template-columns:1fr}
     }
 
@@ -5709,7 +5719,7 @@ def dado_page():
       background:var(--panel);
       border:1px solid var(--stroke);
       padding:16px;
-      box-shadow:0 10px 22px rgba(0,0,0,.25);
+      box-shadow:var(--shadow2);
     }
 
     .stat .k{
@@ -5724,6 +5734,7 @@ def dado_page():
       margin-top:8px;
       font-size:24px;
       font-weight:1000;
+      line-height:1.2;
     }
 
     .diceStage{
@@ -5732,17 +5743,17 @@ def dado_page():
       overflow:hidden;
       border:1px solid var(--stroke);
       background:
-        radial-gradient(circle at 50% 0%, rgba(255,43,214,.07), transparent 38%),
-        radial-gradient(circle at 50% 100%, rgba(0,242,255,.07), transparent 38%),
+        radial-gradient(circle at 50% 0%, rgba(255,43,214,.08), transparent 38%),
+        radial-gradient(circle at 50% 100%, rgba(0,242,255,.08), transparent 38%),
         rgba(255,255,255,.025);
       box-shadow:var(--shadow);
-      min-height:340px;
+      min-height:360px;
       position:relative;
     }
 
     #sceneWrap{
       width:100%;
-      height:340px;
+      height:360px;
       position:relative;
     }
 
@@ -5752,18 +5763,23 @@ def dado_page():
       display:flex;
       justify-content:center;
       pointer-events:none;
+      padding:0 14px;
     }
 
     .hudTag{
+      max-width:100%;
       padding:10px 14px;
       border-radius:999px;
-      background:rgba(0,0,0,.34);
+      background:rgba(0,0,0,.38);
       border:1px solid rgba(255,255,255,.12);
       font-weight:900;
       font-size:12px;
       letter-spacing:.12em;
       text-transform:uppercase;
       box-shadow:0 8px 18px rgba(0,0,0,.28);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
 
     .actions{
@@ -5785,14 +5801,15 @@ def dado_page():
       text-transform:uppercase;
       cursor:pointer;
       box-shadow:0 18px 30px rgba(0,0,0,.3);
-      transition:transform .15s ease, opacity .15s ease;
+      transition:transform .15s ease, opacity .15s ease, filter .15s ease;
     }
 
+    .btn:hover{filter:brightness(1.05)}
     .btn:active{transform:scale(.985)}
     .btn[disabled]{opacity:.45;cursor:not-allowed}
 
     .btnRoll{
-      background:linear-gradient(135deg, rgba(255,43,214,.88), rgba(0,242,255,.88));
+      background:linear-gradient(135deg, rgba(255,43,214,.92), rgba(0,242,255,.92));
       border:1px solid rgba(255,255,255,.18);
     }
 
@@ -5804,16 +5821,16 @@ def dado_page():
     .msg{
       margin-top:14px;
       min-height:20px;
-      color:rgba(255,255,255,.72);
+      color:rgba(255,255,255,.76);
       font-size:13px;
       font-weight:800;
       white-space:pre-wrap;
     }
 
     .animeGrid{
-      margin-top:16px;
+      margin-top:18px;
       display:grid;
-      grid-template-columns:repeat(2,1fr);
+      grid-template-columns:repeat(2,minmax(0,1fr));
       gap:12px;
     }
 
@@ -5822,38 +5839,77 @@ def dado_page():
     }
 
     .animeCard{
+      appearance:none;
+      width:100%;
+      padding:0;
+      border:none;
       border-radius:18px;
       overflow:hidden;
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);
-      box-shadow:0 12px 24px rgba(0,0,0,.24);
+      border:1px solid rgba(255,255,255,.12);
+      background:#0f1728;
+      box-shadow:0 14px 28px rgba(0,0,0,.28);
       cursor:pointer;
-      transition:transform .16s ease, border-color .16s ease;
-    }
-    .animeCard:hover{transform:translateY(-2px);border-color:rgba(0,242,255,.34)}
-    .animeCard[aria-disabled="true"]{opacity:.58;pointer-events:none}
-
-    .animeCover{
-      width:100%;
-      height:142px;
-      object-fit:cover;
-      display:block;
-      background:#111;
+      transition:transform .16s ease, border-color .16s ease, filter .16s ease;
+      text-align:left;
+      color:#fff;
+      position:relative;
+      min-height:92px;
     }
 
-    .animeMeta{padding:12px}
+    .animeCard:hover{
+      transform:translateY(-2px);
+      border-color:rgba(0,242,255,.42);
+      filter:brightness(1.02);
+    }
+
+    .animeCard[aria-disabled="true"]{
+      opacity:.55;
+      pointer-events:none;
+    }
+
+    .animeBg{
+      position:absolute;
+      inset:0;
+      background-size:cover;
+      background-position:center;
+      transform:scale(1.04);
+      filter:blur(.5px) saturate(1.05);
+      opacity:.34;
+    }
+
+    .animeOverlay{
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(90deg, rgba(6,10,18,.92) 0%, rgba(6,10,18,.78) 46%, rgba(6,10,18,.62) 100%),
+        linear-gradient(180deg, rgba(255,43,214,.08), rgba(0,242,255,.06));
+    }
+
+    .animeMeta{
+      position:relative;
+      z-index:2;
+      min-height:92px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      padding:16px;
+    }
+
     .animeTitle{
-      font-size:15px;
+      font-size:18px;
       font-weight:1000;
-      line-height:1.35;
+      line-height:1.22;
+      color:#fff;
+      text-shadow:0 2px 10px rgba(0,0,0,.38);
+      word-break:break-word;
     }
 
     .animeHint{
-      margin-top:6px;
-      color:var(--muted);
+      margin-top:8px;
+      color:rgba(255,255,255,.72);
       font-size:12px;
-      font-weight:800;
-      letter-spacing:.08em;
+      font-weight:900;
+      letter-spacing:.10em;
       text-transform:uppercase;
     }
 
@@ -5867,17 +5923,21 @@ def dado_page():
       display:none;
     }
 
-    .reveal.show{display:block; animation:fadeUp .35s ease;}
+    .reveal.show{
+      display:block;
+      animation:fadeUp .35s ease;
+    }
 
     .revealImg{
       width:100%;
-      height:260px;
+      height:300px;
       object-fit:cover;
       display:block;
       background:#111;
     }
 
     .revealBody{padding:16px}
+
     .rarity{
       display:inline-flex;
       align-items:center;
@@ -5977,6 +6037,8 @@ def dado_page():
 
   <script>
     const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+    const DADO_BANNER_FALLBACK = "__DADO_BANNER_URL__";
+
     if (tg) {
       try {
         tg.ready();
@@ -6071,29 +6133,35 @@ def dado_page():
     let renderer, scene, camera, dice, particles = [];
     let ambient, point, frameHandle = 0;
 
-    function createTextTexture(value){
+    function createFaceTexture(value, rotateDeg = 0){
       const c = document.createElement("canvas");
       c.width = 512;
       c.height = 512;
       const ctx = c.getContext("2d");
 
       const g = ctx.createLinearGradient(0, 0, 512, 512);
-      g.addColorStop(0, "#1a2034");
-      g.addColorStop(1, "#090d17");
+      g.addColorStop(0, "#1b2340");
+      g.addColorStop(1, "#0a0f1e");
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, 512, 512);
 
       ctx.strokeStyle = "rgba(255,255,255,.18)";
-      ctx.lineWidth = 10;
-      ctx.strokeRect(20, 20, 472, 472);
+      ctx.lineWidth = 12;
+      ctx.strokeRect(18, 18, 476, 476);
 
-      ctx.shadowColor = "rgba(0,242,255,.6)";
-      ctx.shadowBlur = 24;
+      ctx.save();
+      ctx.translate(256, 256);
+      ctx.rotate((rotateDeg * Math.PI) / 180);
+
+      ctx.shadowColor = "rgba(0,242,255,.65)";
+      ctx.shadowBlur = 28;
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 260px Arial";
+      ctx.font = "bold 250px Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(value), 256, 278);
+      ctx.fillText(String(value), 0, 18);
+
+      ctx.restore();
 
       const tex = new THREE.CanvasTexture(c);
       tex.needsUpdate = true;
@@ -6108,6 +6176,7 @@ def dado_page():
       renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(w, h);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
       el.innerHTML = "";
       el.appendChild(renderer.domElement);
 
@@ -6115,29 +6184,40 @@ def dado_page():
       camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
       camera.position.set(0, 0.8, 6.8);
 
-      ambient = new THREE.AmbientLight(0xffffff, 1.4);
+      ambient = new THREE.AmbientLight(0xffffff, 1.45);
       scene.add(ambient);
 
-      point = new THREE.PointLight(0xffffff, 1.8, 30);
+      point = new THREE.PointLight(0xffffff, 2.0, 30);
       point.position.set(2.8, 3.6, 5.2);
       scene.add(point);
 
-      const floorGeo = new THREE.CircleGeometry(2.8, 64);
+      const floorGeo = new THREE.CircleGeometry(2.9, 64);
       const floorMat = new THREE.MeshBasicMaterial({
         color: 0x112031,
         transparent: true,
-        opacity: .35
+        opacity: .36
       });
       const floor = new THREE.Mesh(floorGeo, floorMat);
       floor.rotation.x = -Math.PI / 2;
       floor.position.y = -1.55;
       scene.add(floor);
 
-      const mats = [1,2,3,4,5,6].map(n => new THREE.MeshStandardMaterial({
-        map: createTextTexture(n),
-        roughness: 0.42,
-        metalness: 0.35
-      }));
+      // ordem do BoxGeometry: +x, -x, +y, -y, +z, -z
+      // frente visual:
+      // 1 => +z
+      // 2 => +x
+      // 3 => +y
+      // 4 => -y
+      // 5 => -x
+      // 6 => -z
+      const mats = [
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(2, -90), roughness: 0.42, metalness: 0.35 }), // +x
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(5,  90), roughness: 0.42, metalness: 0.35 }), // -x
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(3,   0), roughness: 0.42, metalness: 0.35 }), // +y
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(4, 180), roughness: 0.42, metalness: 0.35 }), // -y
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(1,   0), roughness: 0.42, metalness: 0.35 }), // +z
+        new THREE.MeshStandardMaterial({ map: createFaceTexture(6, 180), roughness: 0.42, metalness: 0.35 }), // -z
+      ];
 
       const geo = new THREE.BoxGeometry(2.05, 2.05, 2.05, 1, 1, 1);
       dice = new THREE.Mesh(geo, mats);
@@ -6149,7 +6229,7 @@ def dado_page():
       dice.add(edges);
 
       particles = [];
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 48; i++) {
         const pGeo = new THREE.SphereGeometry(0.03, 8, 8);
         const pMat = new THREE.MeshBasicMaterial({color: (i % 2 ? 0x00f2ff : 0xff2bd6)});
         const p = new THREE.Mesh(pGeo, pMat);
@@ -6170,8 +6250,10 @@ def dado_page():
       cancelAnimationFrame(frameHandle);
       const tick = () => {
         if (!renderer || !scene || !camera || !dice) return;
-        dice.rotation.x += 0.003;
-        dice.rotation.y += 0.004;
+        if (!state.rolling) {
+          dice.rotation.x += 0.0022;
+          dice.rotation.y += 0.003;
+        }
         particles.forEach(p => {
           p.position.x += p.userData.vx;
           p.position.y += p.userData.vy;
@@ -6196,8 +6278,6 @@ def dado_page():
       camera.updateProjectionMatrix();
     }
 
-    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
     async function animateDiceResult(value){
       if (!dice) return;
 
@@ -6208,38 +6288,52 @@ def dado_page():
       clearReveal();
 
       const targets = {
-        1: {x: 0, y: 0},
-        2: {x: Math.PI / 2, y: 0},
-        3: {x: 0, y: -Math.PI / 2},
-        4: {x: 0, y: Math.PI / 2},
-        5: {x: -Math.PI / 2, y: 0},
-        6: {x: Math.PI, y: 0},
+        1: { x: 0, y: 0 },               // +z frente
+        2: { x: 0, y: -Math.PI / 2 },    // +x frente
+        3: { x: Math.PI / 2, y: 0 },     // +y frente
+        4: { x: -Math.PI / 2, y: 0 },    // -y frente
+        5: { x: 0, y: Math.PI / 2 },     // -x frente
+        6: { x: 0, y: Math.PI },         // -z frente
       };
 
       const t = targets[value] || targets[1];
-      const startX = dice.rotation.x;
-      const startY = dice.rotation.y;
 
-      const endX = t.x + (Math.PI * 6);
-      const endY = t.y + (Math.PI * 7);
+      const baseX = dice.rotation.x;
+      const baseY = dice.rotation.y;
+      const baseZ = dice.rotation.z;
 
-      const duration = 1700;
+      const endX = t.x + (Math.PI * 8);
+      const endY = t.y + (Math.PI * 9);
+      const endZ = baseZ + (Math.PI * 2.5);
+
+      const duration = 1850;
       const start = performance.now();
 
       await new Promise(resolve => {
         function step(now){
           const p = Math.min((now - start) / duration, 1);
           const ease = 1 - Math.pow(1 - p, 4);
-          dice.rotation.x = startX + (endX - startX) * ease;
-          dice.rotation.y = startY + (endY - startY) * ease;
-          camera.position.x = Math.sin(p * Math.PI * 2) * 0.18;
-          camera.position.y = 0.8 + Math.sin(p * Math.PI * 5) * 0.06;
+
+          dice.rotation.x = baseX + (endX - baseX) * ease;
+          dice.rotation.y = baseY + (endY - baseY) * ease;
+          dice.rotation.z = baseZ + (endZ - baseZ) * (1 - Math.pow(1 - p, 3)) * 0.10;
+
+          camera.position.x = Math.sin(p * Math.PI * 2) * 0.22;
+          camera.position.y = 0.8 + Math.sin(p * Math.PI * 5) * 0.08;
           camera.lookAt(0, 0, 0);
-          if (p < 1) requestAnimationFrame(step);
-          else resolve();
+
+          if (p < 1) {
+            requestAnimationFrame(step);
+          } else {
+            resolve();
+          }
         }
         requestAnimationFrame(step);
       });
+
+      dice.rotation.x = t.x;
+      dice.rotation.y = t.y;
+      dice.rotation.z = 0;
 
       camera.position.set(0, 0.8, 6.8);
       camera.lookAt(0, 0, 0);
@@ -6253,13 +6347,23 @@ def dado_page():
       animeGrid.innerHTML = "";
       clearReveal();
 
-      options.forEach(opt => {
-        const card = document.createElement("div");
+      if (!Array.isArray(options) || !options.length) {
+        setMsg("Nenhuma opção encontrada para esta rolagem.");
+        return;
+      }
+
+      options.forEach((opt, idx) => {
+        const title = (opt && opt.title) ? String(opt.title) : ("Anime " + (idx + 1));
+        const cover = (opt && opt.cover) ? String(opt.cover) : DADO_BANNER_FALLBACK;
+
+        const card = document.createElement("button");
+        card.type = "button";
         card.className = "animeCard";
         card.innerHTML = `
-          <img class="animeCover" src="${opt.cover || ""}" alt="">
+          <div class="animeBg" style="background-image:url('${cover.replace(/'/g, "\\'")}')"></div>
+          <div class="animeOverlay"></div>
           <div class="animeMeta">
-            <div class="animeTitle">${opt.title || "Anime"}</div>
+            <div class="animeTitle">${title}</div>
             <div class="animeHint">Toque para escolher</div>
           </div>
         `;
@@ -6274,6 +6378,7 @@ def dado_page():
 
       [...animeGrid.children].forEach(el => el.setAttribute("aria-disabled", "true"));
       setMsg("Revelando personagem...");
+      setHud("Escolha confirmada");
 
       try {
         const data = await apiPost("/api/dado/pick", {
@@ -6286,7 +6391,7 @@ def dado_page():
         const ch = data.character || {};
         setBalance(data.balance ?? state.balance);
 
-        revealImg.src = ch.image || opt.cover || "";
+        revealImg.src = ch.image || opt.cover || DADO_BANNER_FALLBACK;
         rarityTxt.textContent = `${ch.tier || "COMMON"} • ${"★".repeat(Number(ch.stars || 1))}`;
         charName.textContent = ch.name || "Personagem";
         animeFrom.textContent = "Obtido de " + (ch.anime_title || opt.title || "Anime");
@@ -6319,12 +6424,16 @@ def dado_page():
           state.currentRollId = Number(data.active_roll.roll_id);
           state.currentDice = Number(data.active_roll.dice_value || 0);
           state.options = Array.isArray(data.active_roll.options) ? data.active_roll.options : [];
+
           if (state.currentDice > 0) {
             await animateDiceResult(state.currentDice);
           }
+
           if (state.options.length) {
             renderAnimeOptions(state.options);
             setMsg("Você tinha uma rolagem ativa. Continue escolhendo.");
+          } else {
+            setMsg("Você tinha uma rolagem ativa, mas sem opções visíveis. Role novamente se necessário.");
           }
         } else {
           setMsg("Tudo pronto. Role o dado quando quiser.");
@@ -6385,4 +6494,5 @@ def dado_page():
 </html>
 """
     html = html.replace("__DADO_BANNER_URL__", DADO_BANNER_URL)
+    return HTMLResponse(html)ER_URL)
     return HTMLResponse(html)
