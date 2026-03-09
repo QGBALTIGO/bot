@@ -428,6 +428,35 @@ def create_dado_tables():
     _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;""")
     _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes');""")
 
+    # migração defensiva: se created_at existir como timestamptz, converte para epoch bigint
+    _run("""
+    DO $$
+    DECLARE
+        col_type TEXT;
+    BEGIN
+        SELECT data_type
+          INTO col_type
+          FROM information_schema.columns
+         WHERE table_name = 'dice_rolls'
+           AND column_name = 'created_at';
+
+        IF col_type IS NOT NULL AND col_type <> 'bigint' THEN
+            ALTER TABLE dice_rolls
+            ALTER COLUMN created_at TYPE BIGINT
+            USING CASE
+                WHEN created_at IS NULL THEN NULL
+                ELSE EXTRACT(EPOCH FROM created_at)::BIGINT
+            END;
+        END IF;
+    END
+    $$;
+    """)
+
+    _run("""
+    ALTER TABLE dice_rolls
+    ALTER COLUMN created_at SET DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+    """)
+
     _run("""
     CREATE INDEX IF NOT EXISTS idx_dice_rolls_user_created
     ON dice_rolls (user_id, created_at DESC)
@@ -448,6 +477,7 @@ def create_dado_tables():
     ON dice_rolls (user_id)
     WHERE status IN ('pending', 'picked')
     """)
+
 
 # =========================================================
 # USERS
@@ -1028,7 +1058,6 @@ def _refresh_dado_locked(cur, user_id: int) -> Dict[str, Any]:
     current_slot = _slot_number_from_dt(_now_sp())
 
     if last_slot < 0:
-        # primeira inicialização do relógio
         cur.execute(
             """
             UPDATE users
@@ -1285,7 +1314,6 @@ def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
                         (roll_id,)
                     )
 
-                    # só reembolsa se ainda nem escolheu anime
                     if refund_pending and status == "pending":
                         state = _refresh_dado_locked(cur, user_id)
                         new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
@@ -1314,11 +1342,10 @@ def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
 def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Cria um roll de forma atômica:
-    - expira roll antigo vencido do usuário
     - garante 1 roll ativo por usuário
     - atualiza saldo por slot
     - consome 1 dado
-    - cria roll pending
+    - grava created_at como BIGINT (epoch)
     """
     dice_value = int(dice_value)
     if dice_value < 1 or dice_value > 6:
@@ -1337,6 +1364,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
         clean_options.append({
             "id": anime_id,
             "title": str(item.get("title") or "").strip(),
+            "cover": str(item.get("cover") or "").strip(),
         })
 
     create_or_get_user(user_id)
@@ -1344,13 +1372,11 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                # trava usuário
                 _refresh_dado_locked(cur, user_id)
 
-                # expira roll vencido do usuário antes de criar outro
                 cur.execute(
                     """
-                    SELECT roll_id, status
+                    SELECT roll_id, status, expires_at
                     FROM dice_rolls
                     WHERE user_id = %s
                       AND status IN ('pending', 'picked')
@@ -1363,24 +1389,22 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                 active = cur.fetchone()
 
                 if active:
-                    if active["status"] == "pending" or active["status"] == "picked":
-                        cur.execute(
-                            """
-                            SELECT *
-                            FROM dice_rolls
-                            WHERE roll_id = %s
-                            """,
-                            (int(active["roll_id"]),)
-                        )
-                        existing = cur.fetchone()
-                        conn.commit()
-                        return {
-                            "ok": True,
-                            "reused": True,
-                            "roll": existing,
-                        }
+                    cur.execute(
+                        """
+                        SELECT *
+                        FROM dice_rolls
+                        WHERE roll_id = %s
+                        """,
+                        (int(active["roll_id"]),)
+                    )
+                    existing = cur.fetchone()
+                    conn.commit()
+                    return {
+                        "ok": True,
+                        "reused": True,
+                        "roll": existing,
+                    }
 
-                # refresca novamente pois _refresh_dado_locked retorna estado atual
                 state = _refresh_dado_locked(cur, user_id)
                 balance = int(state["balance"])
 
@@ -1392,7 +1416,6 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                         "balance": balance,
                     }
 
-                # consome 1 dado
                 cur.execute(
                     """
                     UPDATE users
@@ -1413,6 +1436,8 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                         "balance": 0,
                     }
 
+                created_ts = int(time.time())
+
                 cur.execute(
                     """
                     INSERT INTO dice_rolls
@@ -1430,7 +1455,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                         %s,
                         %s::jsonb,
                         'pending',
-                        NOW(),
+                        %s,
                         NOW() + (%s || ' minutes')::interval
                     )
                     RETURNING *
@@ -1439,6 +1464,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                         int(user_id),
                         dice_value,
                         json.dumps(clean_options, ensure_ascii=False),
+                        created_ts,
                         str(int(DADO_ROLL_TTL_MINUTES)),
                     )
                 )
@@ -1504,7 +1530,6 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                         """,
                         (roll_id,)
                     )
-                    # reembolso porque não houve pick válido
                     state = _refresh_dado_locked(cur, user_id)
                     new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                     cur.execute(
@@ -2124,6 +2149,7 @@ def get_termo_user_rank(user_id: int) -> int:
 
     return int((row or {}).get("rank_pos") or 0)
 
+
 # =========================================================
 # ADMIN — DADO
 # =========================================================
@@ -2186,7 +2212,6 @@ def admin_give_dado_to_all(amount: int) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                # garante que slots/recarga não baguncem o saldo antes do give
                 cur.execute(
                     """
                     SELECT user_id
