@@ -656,23 +656,10 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
 
 def create_cards_catalog_tables():
     _run("""
-    CREATE TABLE IF NOT EXISTS card_animes (
-        anime_id BIGINT PRIMARY KEY,
-        anime_name TEXT NOT NULL,
-        banner_image TEXT NOT NULL DEFAULT '',
-        cover_image TEXT NOT NULL DEFAULT '',
-        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""
     CREATE TABLE IF NOT EXISTS card_characters (
         character_id BIGINT PRIMARY KEY,
-        anime_id BIGINT NOT NULL REFERENCES card_animes(anime_id) ON DELETE CASCADE,
         character_name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT '',
+        anime_name TEXT NOT NULL,
         image_url TEXT NOT NULL DEFAULT '',
         is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -681,11 +668,11 @@ def create_cards_catalog_tables():
     """)
 
     _run("""
-    CREATE INDEX IF NOT EXISTS idx_card_characters_anime_id
-    ON card_characters (anime_id)
+    CREATE INDEX IF NOT EXISTS idx_card_characters_anime_name
+    ON card_characters (anime_name)
     """)
 
     _run("""
-    CREATE INDEX IF NOT EXISTS idx_card_characters_name
+    CREATE INDEX IF NOT EXISTS idx_card_characters_character_name
     ON card_characters (character_name)
     """)
