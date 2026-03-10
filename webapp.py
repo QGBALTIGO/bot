@@ -5252,6 +5252,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import httpx
 from fastapi import Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -5351,6 +5352,24 @@ def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
         "username": username,
         "full_name": full_name,
     }
+
+
+async def _tg_send_photo(chat_id: int, photo: str, caption: str) -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+                json={
+                    "chat_id": int(chat_id),
+                    "photo": str(photo),
+                    "caption": str(caption),
+                    "parse_mode": "HTML",
+                },
+            )
+            data = resp.json()
+            return bool(data.get("ok"))
+    except Exception:
+        return False
 
 
 # =========================================================
@@ -5809,15 +5828,34 @@ async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_d
     rarity = _rarity_from_roll(int(roll["dice_value"]), int(char["id"]))
     balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
 
+    char_id = int(char["id"])
+    name = str(char["name"])
+    image = str(char["image"] or char["anime_cover"] or DADO_BANNER_URL)
+    anime_title = str(char["anime_title"] or "Anime")
+
+    try:
+        await _tg_send_photo(
+            chat_id=user_id,
+            photo=image,
+            caption=(
+                "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+                f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+                f"<i>{anime_title}</i>\n\n"
+                "📦 <b>Adicionado à sua coleção!</b>"
+            ),
+        )
+    except Exception:
+        pass
+
     return JSONResponse({
         "ok": True,
         "roll_id": int(roll_id),
         "balance": balance,
         "character": {
-            "id": int(char["id"]),
-            "name": char["name"],
-            "image": char["image"],
-            "anime_title": char["anime_title"],
+            "id": char_id,
+            "name": name,
+            "image": image,
+            "anime_title": anime_title,
             "anime_cover": char["anime_cover"],
             "tier": rarity["tier"],
             "stars": rarity["stars"],
