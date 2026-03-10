@@ -7768,505 +7768,839 @@ def api_menu_delete_account(payload: dict = Body(...)):
     delete_user_account(uid)
     return {"ok": True}
 
-# =========================
+# =========================================================
+# SHOP — HELPERS
+# =========================================================
 
-# THEME CSS (necessário para a loja)
+SHOP_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
 
-# =========================
 
-def _theme_css():
-return """
+def _shop_rate_limit(user_id: int, key: str, window: float = 1.0) -> bool:
+    if not hasattr(_shop_rate_limit, "_mem"):
+        _shop_rate_limit._mem = {}
+    mem = _shop_rate_limit._mem
+
+    now = time.time()
+    k = f"{user_id}:{key}"
+    last = float(mem.get(k, 0.0) or 0.0)
+    if now - last < float(window):
+        return False
+    mem[k] = now
+    return True
+
+
+def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
+    from database import get_user_card_collection
+    from cards_service import build_cards_final_data
+
+    raw_rows = get_user_card_collection(int(user_id)) or []
+    data = build_cards_final_data()
+    chars_by_id = data.get("characters_by_id") or {}
+
+    qn = (q or "").strip().lower()
+    out: List[Dict[str, Any]] = []
+
+    for row in raw_rows:
+        char_id = int(row.get("character_id") or 0)
+        qty = int(row.get("quantity") or 0)
+        if char_id <= 0 or qty <= 0:
+            continue
+
+        meta = chars_by_id.get(char_id) or {}
+
+        name = str(meta.get("name") or f"Personagem {char_id}")
+        anime = str(meta.get("anime") or "Sem anime")
+        image = str(meta.get("image") or "")
+        rarity = str(meta.get("subcategory") or meta.get("role") or "").strip().upper()
+
+        if qn:
+            joined = f"{char_id} {name} {anime}".lower()
+            if qn not in joined:
+                continue
+
+        out.append({
+            "character_id": char_id,
+            "character_name": name,
+            "anime_title": anime,
+            "image": image,
+            "quantity": qty,
+            "rarity": rarity,
+        })
+
+    out.sort(key=lambda x: (x["anime_title"].lower(), x["character_name"].lower(), x["character_id"]))
+    return out
+
+
+def _shop_css() -> str:
+    return r"""
+:root{
+  --bg0:#070b12;
+  --bg1:#0a1220;
+  --txt:rgba(255,255,255,.94);
+  --muted:rgba(255,255,255,.58);
+  --stroke:rgba(255,255,255,.10);
+  --stroke2:rgba(255,255,255,.16);
+  --glass:rgba(255,255,255,.04);
+  --shadow:0 16px 30px rgba(0,0,0,.44);
+  --ok:#4ade80;
+  --danger:#ff4d6d;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+
 body{
-background:#0a1220;
-color:white;
-font-family:system-ui;
-margin:0;
+  margin:0;
+  color:var(--txt);
+  font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background:
+    radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
+    linear-gradient(180deg,var(--bg0),var(--bg1));
+  overflow-x:hidden;
+}
+
+.bg{
+  position:fixed; inset:0;
+  background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size:36px 36px;
+  opacity:.16;
+  pointer-events:none;
+  z-index:0;
 }
 
 .wrap{
-max-width:900px;
-margin:auto;
-padding:18px;
+  position:relative;
+  z-index:1;
+  max-width:980px;
+  margin:0 auto;
+  padding:18px 14px 42px;
 }
 
-.grid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:12px;
+.top-banner{
+  width:100%;
+  border-radius:26px;
+  overflow:hidden;
+  border:1px solid var(--stroke);
+  box-shadow:var(--shadow);
+  position:relative;
+  background:#000;
+  min-height:220px;
 }
 
-.card{
-border-radius:22px;
-overflow:hidden;
-background:rgba(255,255,255,.05);
-border:1px solid rgba(255,255,255,.1);
-position:relative;
+.top-banner img{
+  width:100%;
+  height:220px;
+  object-fit:cover;
+  display:block;
 }
 
-.card img{
-width:100%;
-height:220px;
-object-fit:cover;
+.top-banner:after{
+  content:"";
+  position:absolute; inset:0;
+  background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
+  pointer-events:none;
 }
 
-.overlay{
-position:absolute;
-bottom:0;
-left:0;
-right:0;
-padding:12px;
-background:linear-gradient(transparent,rgba(0,0,0,.9));
+.top-copy{
+  position:absolute;
+  left:18px;
+  right:18px;
+  bottom:16px;
+  z-index:2;
 }
 
-.name{
-font-weight:900;
-font-size:14px;
+.eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(0,0,0,.26);
+  backdrop-filter: blur(8px);
+  border-radius:999px;
+  padding:8px 12px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.14em;
+  text-transform:uppercase;
 }
 
-.meta{
-font-size:12px;
-opacity:.7;
+.title{
+  margin-top:12px;
+  font-size:28px;
+  line-height:1.05;
+  font-weight:900;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  text-shadow:0 6px 20px rgba(0,0,0,.45);
 }
 
-.pillTag{
-position:absolute;
-top:10px;
-left:10px;
-background:#000;
-padding:4px 8px;
-border-radius:8px;
-font-size:11px;
+.subtitle{
+  margin-top:8px;
+  color:rgba(255,255,255,.78);
+  font-weight:700;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  font-size:12px;
+}
+
+.head{
+  padding:18px 4px 8px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.stats{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.stat-pill{
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+  padding:10px 12px;
+  border-radius:999px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  font-size:12px;
 }
 
 .tabs{
-display:flex;
-gap:8px;
-margin-bottom:16px;
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:12px;
 }
 
 .tab{
-flex:1;
-padding:10px;
-border-radius:12px;
-background:rgba(255,255,255,.06);
-border:1px solid rgba(255,255,255,.1);
-cursor:pointer;
-font-weight:800;
+  user-select:none;
+  cursor:pointer;
+  border-radius:18px;
+  padding:14px 12px;
+  text-align:center;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.03);
+  transition:transform .08s ease, border-color .12s ease, background .12s ease;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  font-size:13px;
 }
 
-.tab.active{
-background:rgba(255,255,255,.18);
-}
+.tab:hover{ transform:translateY(-1px); border-color:var(--stroke2); }
+.tab.active{ background:rgba(90,168,255,.18); border-color:rgba(90,168,255,.42); }
 
-.actions{
-margin-top:10px;
-}
-
-.smallBtn{
-width:100%;
-padding:10px;
-border-radius:10px;
-border:0;
-font-weight:800;
-cursor:pointer;
-}
-
-.smallBtn.primary{
-background:#ff3c7c;
-color:white;
-}
-
-.buyGrid{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:12px;
-}
-
-.shopCard{
-border-radius:18px;
-padding:14px;
-background:rgba(255,255,255,.05);
-border:1px solid rgba(255,255,255,.1);
-}
-
-.price{
-font-weight:900;
-margin-top:6px;
-}
-"""
-
-# =========================
-
-# WEBAPP LOJA
-
-# =========================
-
-@app.get("/shop", response_class=HTMLResponse)
-def miniapp_shop():
-
-```
-html = (
-    "<!doctype html><html><head><meta charset='utf-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>Baltigo • Loja</title>"
-    "<style>" + _theme_css() + "</style>"
-    "</head><body>"
-    "<div class='wrap'>"
-
-    "<h2>🛒 Loja</h2>"
-
-    "<div class='tabs'>"
-    "<div class='tab active' id='tab_sell'>📦 Vender</div>"
-    "<div class='tab' id='tab_buy'>🎲 Comprar</div>"
-    "</div>"
-
-    "<div id='sellView'>"
-    "<div id='chars' class='grid'></div>"
-    "</div>"
-
-    "<div id='buyView' style='display:none'>"
-
-    "<div class='buyGrid'>"
-
-    "<div class='shopCard'>"
-    "<h3>🎲 Comprar dado</h3>"
-    "<p>Use coins para comprar dados extras.</p>"
-    "<div class='price'>2 coins</div>"
-    "<button class='smallBtn primary' onclick='buyDice()'>Comprar</button>"
-    "</div>"
-
-    "<div class='shopCard'>"
-    "<h3>✏️ Trocar nickname</h3>"
-    "<p>Permite alterar o nickname novamente.</p>"
-    "<div class='price'>3 coins</div>"
-    "<button class='smallBtn primary' onclick='buyNick()'>Comprar</button>"
-    "</div>"
-
-    "</div>"
-    "</div>"
-
-    "<script>"
-
-    "async function load(){"
-    "const r=await fetch('/api/shop/sell/all');"
-    "const d=await r.json();"
-    "const root=document.getElementById('chars');"
-    "root.innerHTML='';"
-
-    "for(const c of d.items){"
-
-    "const div=document.createElement('div');"
-    "div.className='card';"
-
-    "div.innerHTML=`"
-    "<img src='${c.image}'>"
-    "<div class='pillTag'>ID ${c.character_id}</div>"
-    "<div class='overlay'>"
-    "<div class='name'>${c.character_name}</div>"
-    "<div class='meta'>${c.anime_title}</div>"
-    "<div class='actions'>"
-    "<button class='smallBtn primary' onclick='sell(${c.character_id})'>Vender +1 coin</button>"
-    "</div>"
-    "</div>"
-    "`;"
-
-    "root.appendChild(div);"
-    "}"
-
-    "}"
-
-    "async function sell(id){"
-    "await fetch('/api/shop/sell/confirm',{"
-    "method:'POST',"
-    "headers:{'Content-Type':'application/json'},"
-    "body:JSON.stringify({character_id:id})"
-    "});"
-    "load();"
-    "}"
-
-    "async function buyDice(){"
-    "await fetch('/api/shop/buy/giro',{method:'POST'});"
-    "}"
-
-    "async function buyNick(){"
-    "await fetch('/api/shop/buy/nick',{method:'POST'});"
-    "}"
-
-    "document.getElementById('tab_sell').onclick=()=>{"
-    "document.getElementById('sellView').style.display='';"
-    "document.getElementById('buyView').style.display='none';"
-    "};"
-
-    "document.getElementById('tab_buy').onclick=()=>{"
-    "document.getElementById('sellView').style.display='none';"
-    "document.getElementById('buyView').style.display='';"
-    "};"
-
-    "load();"
-
-    "</script>"
-    "</div></body></html>"
-)
-
-return HTMLResponse(html)
-```
-
-# =========================
-
-# ALIAS /loja (evita Not Found)
-
-# =========================
-
-@app.get("/loja", response_class=HTMLResponse)
-def loja_alias():
-return miniapp_shop()
-
-
-    html = (
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1, viewport-fit=cover'>"
-        "<title>Baltigo • Loja</title>"
-        "<style>" + _theme_css() + r"""
-
-/* =========================
-LOJA
-========================= */
-
-.search{margin:10px 0 14px;}
-
-.actions{
+.search{
+  margin-top:16px;
   display:flex;
+  align-items:center;
   gap:10px;
-  margin-top:10px;
+  background:var(--glass);
+  border:1px solid var(--stroke);
+  border-radius:18px;
+  padding:13px 14px;
+  box-shadow:0 10px 18px rgba(0,0,0,.32);
 }
 
-.buyGrid{
+.search input{
+  width:100%;
+  border:0;
+  outline:none;
+  background:transparent;
+  color:var(--txt);
+  font-size:14px;
+}
+
+.search input::placeholder{
+  color:rgba(255,255,255,.38);
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.cards{
+  margin-top:16px;
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(2,1fr);
   gap:12px;
+}
+
+@media (min-width:720px){
+  .top-banner img{ height:250px; }
+  .cards{ grid-template-columns:repeat(3,1fr); }
+  .tabs{ grid-template-columns:repeat(2,220px); justify-content:flex-start; }
+}
+
+.card{
+  border-radius:24px;
+  overflow:hidden;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.03);
+  box-shadow:0 18px 30px rgba(0,0,0,.42);
+  position:relative;
+}
+
+.cover{
+  width:100%;
+  height:250px;
+  position:relative;
+  background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
+}
+
+.cover img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.cover:after{
+  content:"";
+  position:absolute; inset:0;
+  background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
+  pointer-events:none;
+}
+
+.count-pill{
+  position:absolute;
+  right:12px;
+  bottom:12px;
+  z-index:2;
+  border-radius:999px;
+  padding:8px 10px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,.95);
+  background:rgba(0,0,0,.32);
+  border:1px solid rgba(255,255,255,.18);
+  backdrop-filter:blur(8px);
+}
+
+.meta{
+  padding:13px 14px 15px;
+}
+
+.name{
+  font-weight:900;
+  letter-spacing:.04em;
+  font-size:14px;
+  line-height:1.2;
+  text-transform:uppercase;
+  margin:0;
+}
+
+.sub{
+  margin-top:8px;
+  color:rgba(255,255,255,.52);
+  font-weight:800;
+  letter-spacing:.12em;
+  font-size:11px;
+  text-transform:uppercase;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.pill{
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+  padding:6px 10px;
+  border-radius:999px;
+}
+
+.actions{
   margin-top:12px;
 }
 
-.shopCard{
+.btn{
+  width:100%;
+  border:1px solid transparent;
+  border-radius:16px;
+  padding:12px 14px;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+
+.btn-danger{
+  background:rgba(255,77,109,.18);
+  border-color:rgba(255,77,109,.34);
+  color:#fff;
+}
+
+.btn-buy{
+  background:rgba(74,222,128,.18);
+  border-color:rgba(74,222,128,.34);
+  color:#fff;
+}
+
+.buy-grid{
+  margin-top:16px;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+
+@media (min-width:720px){
+  .buy-grid{ grid-template-columns:repeat(2,1fr); }
+}
+
+.buy-card{
   border-radius:22px;
-  padding:14px;
-  position:relative;
-  overflow:hidden;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.03);
+  box-shadow:0 18px 30px rgba(0,0,0,.42);
+  padding:16px;
 }
 
-.shopCard h3{
+.buy-card h3{
   margin:0;
-  font-size:14px;
-  font-weight:1000;
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.05em;
+  text-transform:uppercase;
 }
 
-.shopCard p{
-  margin:8px 0 12px;
-  font-size:12px;
-  color:rgba(255,255,255,.72);
+.buy-card p{
+  margin:10px 0 14px;
+  color:rgba(255,255,255,.68);
+  font-size:13px;
+  line-height:1.45;
 }
 
 .price{
-  font-weight:1000;
+  margin-bottom:12px;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
   font-size:12px;
+  color:rgba(255,255,255,.82);
 }
 
-.smallBtn{
-  width:100%;
-  padding:12px;
-  border-radius:16px;
-  font-weight:1000;
-  font-size:14px;
+.empty{
+  margin-top:16px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.03);
+  border-radius:22px;
+  padding:18px;
+  color:rgba(255,255,255,.70);
+  font-weight:700;
+  text-align:center;
 }
 
-.smallBtn.primary{
-  background: linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
-  border:0;
-  color:#fff;
+.toast{
+  margin-top:14px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.03);
+  border-radius:18px;
+  padding:12px 14px;
+  font-size:13px;
+  color:rgba(255,255,255,.84);
+  font-weight:700;
 }
 
-.smallBtn.ghost{
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.05);
-  color:#fff;
+.footer{
+  margin-top:16px;
+  color:rgba(255,255,255,.40);
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-align:center;
 }
+"""
 
-""" + "</style></head><body>"
-        "<canvas id='fx'></canvas>"
-        "<div class='wrap'>"
 
-        "<div class='top'>"
-        "<div class='title'><h1>🛒 Loja</h1><div class='sub'>Venda personagens ou compre recursos</div></div>"
-        "<div class='pills'><div class='pill'>🪙 <span id='coins'>-</span></div><div class='sep'></div>"
-        "<div class='pill'>🎡 <span id='giros'>-</span></div></div>"
-        "</div>"
+# =========================================================
+# API — SHOP
+# =========================================================
 
-        "<div class='tabs glass'>"
-        "<button class='tab active' id='tab_sell'>📦 Vender</button>"
-        "<button class='tab' id='tab_buy'>🎲 Comprar</button>"
-        "</div>"
+@app.get("/api/shop/state")
+def api_shop_state(x_telegram_init_data: str = Header(default="")):
+    from database import get_user_status
 
-        "<div class='toast' id='toast'>Carregando...</div>"
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
 
-        "<div id='sellView'>"
-        "<div class='search'><input class='input glass' id='q' placeholder='Buscar personagem ou anime...' /></div>"
-        "<div id='sellSections' class='grid'></div>"
-        "</div>"
+    row = get_user_status(user_id) or {}
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+        "dado_balance": int(row.get("dado_balance") or 0),
+    })
 
-        "<div id='buyView' style='display:none;'>"
 
-        "<div class='buyGrid'>"
+@app.get("/api/shop/sell/all")
+def api_shop_sell_all(
+    q: str = Query(default="", max_length=120),
+    x_telegram_init_data: str = Header(default="")
+):
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+    items = _shop_collection_items(user_id, q=q)
 
-        "<div class='shopCard glass'>"
-        "<h3>🎲 Comprar Dado</h3>"
-        "<p>Use coins para comprar dados extras.</p>"
-        "<div class='price'>Preço: 2 coins</div>"
-        "<button class='smallBtn primary' id='buyDice'>Comprar</button>"
-        "</div>"
+    return JSONResponse({
+        "ok": True,
+        "items": items,
+    })
 
-        "<div class='shopCard glass'>"
-        "<h3>✏️ Trocar Nickname</h3>"
-        "<p>Permite alterar seu nome novamente.</p>"
-        "<div class='price'>Preço: 3 coins</div>"
-        "<button class='smallBtn primary' id='buyNick'>Comprar</button>"
-        "</div>"
 
-        "</div>"
-        "</div>"
+@app.post("/api/shop/sell/confirm")
+def api_shop_sell_confirm(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default="")
+):
+    from database import sell_character, get_user_status
 
-        + _tg_js_init()
-        + r"""
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    char_id = int(payload.get("character_id") or 0)
+    if char_id <= 0:
+        return JSONResponse({"ok": False, "error": "character_id inválido"}, status_code=400)
+
+    if not _shop_rate_limit(user_id, f"sell:{char_id}", 0.9):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+
+    result = sell_character(user_id, char_id)
+    if not result or not result.get("ok"):
+        return JSONResponse({
+            "ok": False,
+            "error": (result or {}).get("error") or "Não foi possível vender agora.",
+        }, status_code=200)
+
+    row = get_user_status(user_id) or {}
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+    })
+
+
+@app.post("/api/shop/buy/dado")
+def api_shop_buy_dado(x_telegram_init_data: str = Header(default="")):
+    from database import buy_dado, get_user_status
+
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    if not _shop_rate_limit(user_id, "buy_dado", 0.9):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+
+    result = buy_dado(user_id)
+    if not result or not result.get("ok"):
+        return JSONResponse({
+            "ok": False,
+            "error": (result or {}).get("error") or "Coins insuficientes.",
+        }, status_code=200)
+
+    row = get_user_status(user_id) or {}
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+        "dado_balance": int(row.get("dado_balance") or 0),
+    })
+
+
+@app.post("/api/shop/buy/nickname")
+def api_shop_buy_nickname(x_telegram_init_data: str = Header(default="")):
+    from database import buy_nickname_change, get_user_status
+
+    tg = _get_tg_user(x_telegram_init_data)
+    user_id = int(tg["user_id"])
+
+    if not _shop_rate_limit(user_id, "buy_nick", 0.9):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+
+    result = buy_nickname_change(user_id)
+    if not result or not result.get("ok"):
+        return JSONResponse({
+            "ok": False,
+            "error": (result or {}).get("error") or "Coins insuficientes.",
+        }, status_code=200)
+
+    row = get_user_status(user_id) or {}
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+    })
+
+
+# =========================================================
+# PAGE — /shop
+# =========================================================
+
+@app.get("/shop", response_class=HTMLResponse)
+def shop_page():
+    html = """<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Loja • Source Baltigo</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    __SHOP_CSS__
+  </style>
+</head>
+<body>
+<div class="bg"></div>
+
+<div class="wrap">
+  <div class="top-banner">
+    <img src="__SHOP_BANNER__" alt="Shop banner"/>
+    <div class="top-copy">
+      <div class="eyebrow">🛒 Shop • Source Baltigo</div>
+      <div class="title">Loja Baltigo</div>
+      <div class="subtitle">Venda personagens e compre recursos do sistema</div>
+    </div>
+  </div>
+
+  <div class="head">
+    <div class="stats">
+      <div class="stat-pill">🪙 Coins: <span id="coinsTxt">...</span></div>
+      <div class="stat-pill">🎲 Dados: <span id="dadoTxt">...</span></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tabSell">📦 Vender</div>
+    <div class="tab" id="tabBuy">🛒 Comprar</div>
+  </div>
+
+  <div id="sellView">
+    <div class="search">
+      <span style="opacity:.6;font-weight:900;">🔎</span>
+      <input id="q" type="text" placeholder="Buscar personagem ou anime..." />
+    </div>
+
+    <div class="cards" id="sellCards"></div>
+    <div class="empty" id="sellEmpty" style="display:none;">Nada para mostrar.</div>
+  </div>
+
+  <div id="buyView" style="display:none;">
+    <div class="buy-grid">
+      <div class="buy-card">
+        <h3>🎲 Comprar Dado</h3>
+        <p>Adiciona +1 dado ao seu saldo atual.</p>
+        <div class="price">Preço: 2 coins</div>
+        <button class="btn btn-buy" id="buyDadoBtn">Comprar dado</button>
+      </div>
+
+      <div class="buy-card">
+        <h3>✏️ Alterar Nickname</h3>
+        <p>Libera uma nova troca de nickname no seu perfil.</p>
+        <div class="price">Preço: 3 coins</div>
+        <button class="btn btn-buy" id="buyNickBtn">Comprar nickname</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Carregando loja...</div>
+  <div class="footer">Source Baltigo • Shop</div>
+</div>
 
 <script>
+  const tg = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
+  if (tg) { try { tg.ready(); tg.expand(); } catch(e) {} }
 
-let coins=0
-let giros=0
-let allItems=[]
+  async function fetchJson(url, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    try {
+      const initData = tg && tg.initData ? tg.initData : "";
+      if (initData) headers["x-telegram-init-data"] = initData;
+    } catch(e) {}
 
-function setToast(t){
- document.getElementById("toast").textContent=t
-}
+    const res = await fetch(url, Object.assign({}, options, { headers }));
+    const data = await res.json();
+    return { ok: res.ok, data };
+  }
 
-async function loadState(){
+  const state = {
+    items: [],
+    coins: 0,
+    dado_balance: 0,
+    q: "",
+  };
 
-const r = await apiGet("/api/shop/state")
+  function setToast(msg){
+    document.getElementById("toast").textContent = msg;
+  }
 
-coins = r.data.coins
-giros = r.data.giros
+  function syncState(){
+    document.getElementById("coinsTxt").textContent = String(state.coins ?? 0);
+    document.getElementById("dadoTxt").textContent = String(state.dado_balance ?? 0);
+  }
 
-document.getElementById("coins").textContent=coins
-document.getElementById("giros").textContent=giros
+  function esc(s){
+    return String(s || "").replace(/[&<>"']/g, m => (
+      { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]
+    ));
+  }
 
-}
+  function renderSell(){
+    const root = document.getElementById("sellCards");
+    const empty = document.getElementById("sellEmpty");
+    root.innerHTML = "";
 
-async function loadSell(){
+    const qn = state.q.trim().toLowerCase();
+    const items = state.items.filter(x => {
+      if (!qn) return true;
+      const joined = `${x.character_id} ${x.character_name} ${x.anime_title}`.toLowerCase();
+      return joined.includes(qn);
+    });
 
-const r = await apiGet("/api/shop/sell/all")
+    if (!items.length){
+      empty.style.display = "";
+      return;
+    }
 
-allItems=r.data.items||[]
+    empty.style.display = "none";
 
-renderSell()
+    for (const c of items){
+      const card = document.createElement("div");
+      card.className = "card";
 
-}
+      const cover = c.image
+        ? `<img src="${esc(c.image)}" alt="${esc(c.character_name)}"/>`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:900;opacity:.55;">SEM IMAGEM</div>`;
 
-function renderSell(){
+      const extraPill = c.rarity ? `<span class="pill">${esc(c.rarity)}</span>` : "";
 
-const root=document.getElementById("sellSections")
-root.innerHTML=""
+      card.innerHTML = `
+        <div class="cover">
+          ${cover}
+          <div class="count-pill">x${Number(c.quantity || 0)}</div>
+        </div>
+        <div class="meta">
+          <p class="name">${esc(c.character_name)}</p>
+          <div class="sub">
+            <span class="pill">${esc(c.anime_title)}</span>
+            ${extraPill}
+          </div>
+          <div class="actions">
+            <button class="btn btn-danger" data-sell="${Number(c.character_id)}">Vender +1 coin</button>
+          </div>
+        </div>
+      `;
+      root.appendChild(card);
+    }
 
-for(const c of allItems){
+    root.querySelectorAll("button[data-sell]").forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.getAttribute("data-sell"));
+        btn.disabled = true;
+        setToast("Vendendo personagem...");
+        const r = await fetchJson("/api/shop/sell/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ character_id: id }),
+        });
 
-const img=c.image||""
+        if (!r.ok || !r.data.ok){
+          setToast("❌ " + ((r.data && r.data.error) || "Não foi possível vender."));
+          btn.disabled = false;
+          return;
+        }
 
-const card=document.createElement("div")
-card.className="card"
+        state.coins = Number(r.data.coins || state.coins || 0);
+        syncState();
+        setToast("✅ Personagem vendido.");
+        await loadCollection();
+      };
+    });
+  }
 
-card.innerHTML=`
+  async function loadState(){
+    const r = await fetchJson("/api/shop/state");
+    if (!r.ok || !r.data.ok){
+      setToast("❌ Falha ao carregar estado da loja.");
+      return false;
+    }
+    state.coins = Number(r.data.coins || 0);
+    state.dado_balance = Number(r.data.dado_balance || 0);
+    syncState();
+    return true;
+  }
 
-<div class="shine"></div>
+  async function loadCollection(){
+    const r = await fetchJson("/api/shop/sell/all?q=" + encodeURIComponent(state.q || ""));
+    if (!r.ok || !r.data.ok){
+      state.items = [];
+      renderSell();
+      setToast("❌ Falha ao carregar personagens.");
+      return;
+    }
+    state.items = Array.isArray(r.data.items) ? r.data.items : [];
+    renderSell();
+    setToast("✅ Loja pronta.");
+  }
 
-<img src="${img}">
+  document.getElementById("q").addEventListener("input", async (e) => {
+    state.q = e.target.value || "";
+    renderSell();
+  });
 
-<div class="pillTag">x${c.quantity} • ID ${c.character_id}</div>
+  document.getElementById("tabSell").onclick = () => {
+    document.getElementById("tabSell").classList.add("active");
+    document.getElementById("tabBuy").classList.remove("active");
+    document.getElementById("sellView").style.display = "";
+    document.getElementById("buyView").style.display = "none";
+  };
 
-<div class="overlay">
+  document.getElementById("tabBuy").onclick = () => {
+    document.getElementById("tabBuy").classList.add("active");
+    document.getElementById("tabSell").classList.remove("active");
+    document.getElementById("buyView").style.display = "";
+    document.getElementById("sellView").style.display = "none";
+  };
 
-<div class="name">${c.character_name}</div>
+  document.getElementById("buyDadoBtn").onclick = async () => {
+    setToast("Comprando dado...");
+    const r = await fetchJson("/api/shop/buy/dado", { method: "POST" });
+    if (!r.ok || !r.data.ok){
+      setToast("❌ " + ((r.data && r.data.error) || "Coins insuficientes."));
+      return;
+    }
+    state.coins = Number(r.data.coins || state.coins || 0);
+    state.dado_balance = Number(r.data.dado_balance || state.dado_balance || 0);
+    syncState();
+    setToast("✅ Dado comprado.");
+  };
 
-<div class="meta">${c.anime_title}</div>
+  document.getElementById("buyNickBtn").onclick = async () => {
+    setToast("Comprando alteração de nickname...");
+    const r = await fetchJson("/api/shop/buy/nickname", { method: "POST" });
+    if (!r.ok || !r.data.ok){
+      setToast("❌ " + ((r.data && r.data.error) || "Coins insuficientes."));
+      return;
+    }
+    state.coins = Number(r.data.coins || state.coins || 0);
+    syncState();
+    setToast("✅ Alteração de nickname liberada.");
+  };
 
-<div class="actions">
-
-<button class="smallBtn primary" onclick="sell(${c.character_id})">
-Vender +1 coin
-</button>
-
-</div>
-
-</div>
-
-`
-
-root.appendChild(card)
-
-}
-
-}
-
-async function sell(id){
-
-const r = await apiPost("/api/shop/sell/confirm",{character_id:id})
-
-coins=r.data.coins
-
-document.getElementById("coins").textContent=coins
-
-await loadSell()
-
-}
-
-document.getElementById("buyDice").onclick=async()=>{
-
-await apiPost("/api/shop/buy/giro")
-
-await loadState()
-
-}
-
-document.getElementById("buyNick").onclick=async()=>{
-
-await apiPost("/api/shop/buy/nickname")
-
-await loadState()
-
-}
-
-document.getElementById("tab_sell").onclick=()=>{
-document.getElementById("sellView").style.display=""
-document.getElementById("buyView").style.display="none"
-}
-
-document.getElementById("tab_buy").onclick=()=>{
-document.getElementById("sellView").style.display="none"
-document.getElementById("buyView").style.display=""
-}
-
-(async()=>{
-await loadState()
-await loadSell()
-})()
-
+  (async () => {
+    const ok = await loadState();
+    if (!ok) return;
+    await loadCollection();
+  })();
 </script>
+</body>
+</html>
+"""
+    html = html.replace("__SHOP_CSS__", _shop_css())
+    html = html.replace("__SHOP_BANNER__", SHOP_PREVIEW_IMAGE)
+    return HTMLResponse(html)
 
-""" + _fx_js() + "</div></body></html>"
-    )
 
-    return HTMLResponse(content=html)
-
-
-# =========================
-# Alias /loja
-# =========================
+# Alias opcional
 @app.get("/loja", response_class=HTMLResponse)
 def loja_alias():
-    return miniapp_shop()
+    return shop_page()
