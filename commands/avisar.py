@@ -1,89 +1,96 @@
-import os
 import asyncio
+import os
+
+from telegram import Update
+from telegram.ext import ContextTypes
 
 from database import get_all_user_ids
+
 
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "0"))
 
 
-async def avisar(message, app):
+def is_owner(user_id: int) -> bool:
+    return user_id == BOT_OWNER_ID
 
-    if message.from_user.id != BOT_OWNER_ID:
+
+async def avisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    user = update.effective_user
+
+    if not message or not user:
         return
 
-    args = message.text.split()
+    if not is_owner(user.id):
+        await message.reply_text("❌ Apenas o dono do bot pode usar este comando.")
+        return
 
-    if len(args) < 3:
-        await message.reply(
-            "❌ Uso:\n"
-            "/avisar all mensagem\n"
-            "/avisar ID mensagem"
+    if not context.args or len(context.args) < 2:
+        await message.reply_text(
+            "⚠️ Uso correto:\n"
+            "/avisar all sua mensagem\n"
+            "/avisar ID_DO_USUARIO sua mensagem"
         )
         return
 
-    target = args[1]
-    text = " ".join(args[2:])
+    target = context.args[0].strip()
+    text = " ".join(context.args[1:]).strip()
 
-    # =================================================
-    # ENVIAR PARA TODOS
-    # =================================================
+    if not text:
+        await message.reply_text("❌ Mensagem vazia.")
+        return
 
+    # enviar para todos
     if target.lower() == "all":
+        user_ids = get_all_user_ids()
 
-        users = get_all_user_ids()
+        total = len(user_ids)
+        if total == 0:
+            await message.reply_text("⚠️ Nenhum usuário encontrado.")
+            return
 
-        total = len(users)
+        await message.reply_text(
+            "📢 Iniciando envio global...\n\n"
+            f"👥 Usuários encontrados: {total}"
+        )
+
         sent = 0
         failed = 0
 
-        await message.reply(
-            f"📢 Enviando aviso para {total} usuários..."
-        )
+        final_text = f"📢 Aviso da Source Baltigo\n\n{text}"
 
-        for uid in users:
-
+        for uid in user_ids:
             try:
-
-                await app.send_message(
-                    uid,
-                    f"📢 Aviso do bot:\n\n{text}"
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=final_text,
                 )
-
                 sent += 1
-
             except Exception:
                 failed += 1
 
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.04)
 
-        await message.reply(
-            "✅ Aviso enviado.\n\n"
+        await message.reply_text(
+            "✅ Envio finalizado.\n\n"
             f"👥 Usuários encontrados: {total}\n"
             f"📨 Enviados: {sent}\n"
             f"❌ Falhas: {failed}"
         )
-
         return
 
-    # =================================================
-    # ENVIAR PARA UM USUÁRIO
-    # =================================================
+    # enviar para um ID específico
+    try:
+        target_id = int(target)
+    except ValueError:
+        await message.reply_text("❌ ID inválido. Use `all` ou um ID numérico.", parse_mode="Markdown")
+        return
 
     try:
-
-        user_id = int(target)
-
-        await app.send_message(
-            user_id,
-            f"📢 Aviso do bot:\n\n{text}"
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"📢 Aviso da Source Baltigo\n\n{text}",
         )
-
-        await message.reply(
-            f"✅ Aviso enviado para {user_id}"
-        )
-
+        await message.reply_text(f"✅ Aviso enviado para o usuário `{target_id}`.", parse_mode="Markdown")
     except Exception as e:
-
-        await message.reply(
-            f"❌ Falha ao enviar:\n{e}"
-        )
+        await message.reply_text(f"❌ Falha ao enviar para `{target_id}`:\n`{e}`", parse_mode="Markdown")
