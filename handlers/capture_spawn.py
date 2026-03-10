@@ -1,5 +1,4 @@
 import os
-import json
 import random
 import asyncio
 import time
@@ -8,35 +7,14 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
-DATA_PATH = Path("bot/data/personagens_anilist.txt")
+DATA_PATH = Path("data/personagens_anilist.txt")
 
-ALL_CHARACTERS = []
+CHARACTERS = []
+ACTIVE_SPAWNS = {}
+MESSAGE_COUNTER = {}
 
-# ---------------------------------------------------------
-# LOAD DATASET
-# ---------------------------------------------------------
-
-if DATA_PATH.exists():
-
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
-
-        data = json.load(f)
-
-        for anime in data["Unid"]:
-            for char in anime["personagens"]:
-
-                ALL_CHARACTERS.append({
-                    "id": char["id"],
-                    "name": char["nome"],
-                    "anime": char["anime"],
-                    "image": char["imagem"]
-                })
-
-print(f"[CAPTURE] personagens carregados: {len(ALL_CHARACTERS)}")
-
-# ---------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------
+SPAWN_EVERY = 100
+ESCAPE_TIME = 300
 
 ENABLED_CHATS = set(
     int(x.strip())
@@ -44,44 +22,79 @@ ENABLED_CHATS = set(
     if x.strip()
 )
 
-MESSAGE_COUNTER = {}
 
-ACTIVE_SPAWNS = {}
+def _load_characters():
+    items = []
 
-SPAWN_EVERY = 100
+    if not DATA_PATH.exists():
+        print(f"[CAPTURE] arquivo não encontrado: {DATA_PATH}")
+        return items
 
-ESCAPE_TIME = 300
+    with open(DATA_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
 
-# ---------------------------------------------------------
-# SPAWN SYSTEM
-# ---------------------------------------------------------
+            if not line or "|" not in line:
+                continue
+
+            parts = line.split("|")
+            if len(parts) < 3:
+                continue
+
+            char_id = str(parts[0]).strip()
+            name = str(parts[1]).strip()
+            anime = str(parts[2]).strip()
+
+            if not char_id.isdigit():
+                continue
+
+            items.append(
+                {
+                    "id": int(char_id),
+                    "name": name,
+                    "anime": anime,
+                    "image": f"https://img.anili.st/character/{char_id}",
+                }
+            )
+
+    return items
+
+
+CHARACTERS = _load_characters()
+print(f"[CAPTURE] personagens carregados: {len(CHARACTERS)}")
+
 
 async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not update.message:
+    if not update.message or not update.effective_chat:
         return
 
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        return
+
+    chat_id = chat.id
 
     if chat_id not in ENABLED_CHATS:
         return
 
-    MESSAGE_COUNTER.setdefault(chat_id, 0)
-    MESSAGE_COUNTER[chat_id] += 1
+    if not CHARACTERS:
+        return
+
+    MESSAGE_COUNTER[chat_id] = MESSAGE_COUNTER.get(chat_id, 0) + 1
+
+    if chat_id in ACTIVE_SPAWNS:
+        return
 
     if MESSAGE_COUNTER[chat_id] < SPAWN_EVERY:
         return
 
     MESSAGE_COUNTER[chat_id] = 0
 
-    if chat_id in ACTIVE_SPAWNS:
-        return
-
-    character = random.choice(ALL_CHARACTERS)
+    character = random.choice(CHARACTERS)
 
     ACTIVE_SPAWNS[chat_id] = {
         "character": character,
-        "time": time.time()
+        "time": time.time(),
     }
 
     caption = (
@@ -95,17 +108,13 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_photo(
         photo=character["image"],
         caption=caption,
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
-    asyncio.create_task(escape_character(chat_id, context))
+    asyncio.create_task(_escape_character(chat_id, context))
 
-# ---------------------------------------------------------
-# ESCAPE
-# ---------------------------------------------------------
 
-async def escape_character(chat_id, context):
-
+async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(ESCAPE_TIME)
 
     if chat_id not in ACTIVE_SPAWNS:
@@ -119,8 +128,4 @@ async def escape_character(chat_id, context):
         f"📺 {char['anime']}"
     )
 
-    await context.bot.send_message(
-        chat_id,
-        text,
-        parse_mode="HTML"
-    )
+    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
