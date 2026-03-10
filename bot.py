@@ -11,10 +11,17 @@ from telegram.ext import (
     filters,
 )
 
+from commands.colecao import (
+    colecao,
+    colecao_callback,
+    colecao_s_callback,
+    colecao_f_callback,
+    colecao_x_callbackget_completed_anime_message,
+)
+
 from commands.anime import anime
 from commands.card import card, card_stats_callback
 from commands.cards import cards
-from commands.colecao import colecao, colecao_callback
 from commands.dado_admin import dadogive, dadogiveall
 from commands.cards_admin import (
     card_addanime,
@@ -94,6 +101,10 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("dadogive", dadogive))
     tg_app.add_handler(CommandHandler("dadogiveall", dadogiveall))
     tg_app.add_handler(CommandHandler("colecao", colecao))
+    tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
     tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
 
     # termo
