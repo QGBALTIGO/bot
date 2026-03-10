@@ -11,18 +11,35 @@ from telegram.ext import (
     filters,
 )
 
+from commands.start import start
+from commands.anime import anime
+from commands.manga import manga
+from commands.cards import cards
+from commands.card import card, card_stats_callback
 from commands.colecao import (
     colecao,
     colecao_callback,
     colecao_s_callback,
     colecao_f_callback,
-    colecao_x_callbackget_completed_anime_message,
+    colecao_x_callback,
+    get_completed_anime_message,
 )
-
-from commands.anime import anime
-from commands.card import card, card_stats_callback
-from commands.cards import cards
+from commands.pedido import pedido
+from commands.nivel import nivel
+from commands.dado import dado
 from commands.dado_admin import dadogive, dadogiveall
+from commands.termo import (
+    termo_cmd,
+    termo_stats_cmd,
+    termo_ranking_cmd,
+    termo_ranking_week_cmd,
+    termo_ranking_month_cmd,
+    termo_treino_cmd,
+    termo_treino_stats_cmd,
+    termo_treino_stop_cmd,
+    termo_guess,
+    termo_callback,
+)
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -38,24 +55,8 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
-from commands.manga import manga
-from commands.nivel import nivel
-from commands.pedido import pedido
-from commands.start import start
-from commands.dado import dado
-from commands.termo import (
-    termo_cmd,
-    termo_stats_cmd,
-    termo_ranking_cmd,
-    termo_ranking_week_cmd,
-    termo_ranking_month_cmd,
-    termo_treino_cmd,
-    termo_treino_stats_cmd,
-    termo_treino_stop_cmd,
-    termo_guess,
-    termo_callback,
-)
 from database import create_tables
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
@@ -64,9 +65,14 @@ if not BOT_TOKEN:
 PORT = int(os.getenv("PORT", "8000"))
 
 
+# =========================================================
+# WEBAPP
+# =========================================================
+
 def run_webapp() -> None:
     try:
         from webapp import app as web_app
+
         uvicorn.run(
             web_app,
             host="0.0.0.0",
@@ -78,6 +84,10 @@ def run_webapp() -> None:
         traceback.print_exc()
 
 
+# =========================================================
+# ERROR HANDLER
+# =========================================================
+
 async def on_error(update, context) -> None:
     try:
         print("[telegram-error]", repr(getattr(context, "error", None)), flush=True)
@@ -86,28 +96,28 @@ async def on_error(update, context) -> None:
         pass
 
 
-def build_application() -> Application:
-    tg_app = Application.builder().token(BOT_TOKEN).build()
+# =========================================================
+# REGISTER HELPERS
+# =========================================================
 
-    # comandos principais
+def register_main_commands(tg_app: Application) -> None:
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
     tg_app.add_handler(CommandHandler("cards", cards))
-    tg_app.add_handler(CommandHandler("pedido", pedido))
     tg_app.add_handler(CommandHandler("card", card))
+    tg_app.add_handler(CommandHandler("colecao", colecao))
+    tg_app.add_handler(CommandHandler("pedido", pedido))
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("dado", dado))
+
+
+def register_dado_admin_commands(tg_app: Application) -> None:
     tg_app.add_handler(CommandHandler("dadogive", dadogive))
     tg_app.add_handler(CommandHandler("dadogiveall", dadogiveall))
-    tg_app.add_handler(CommandHandler("colecao", colecao))
-    tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
 
-    # termo
+
+def register_termo_commands(tg_app: Application) -> None:
     tg_app.add_handler(CommandHandler("termo", termo_cmd))
     tg_app.add_handler(CommandHandler("termostats", termo_stats_cmd))
     tg_app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
@@ -117,20 +127,8 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
     tg_app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
 
-    # callbacks
-    tg_app.add_handler(
-        CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:")
-    )
-    tg_app.add_handler(
-        CallbackQueryHandler(termo_callback, pattern=r"^termo:")
-    )
 
-    # guesses do termo: texto normal, sem barra
-    tg_app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess)
-    )
-
-    # admin cards
+def register_cards_admin_commands(tg_app: Application) -> None:
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
     tg_app.add_handler(CommandHandler("card_delchar", card_delchar))
     tg_app.add_handler(CommandHandler("card_addchar", card_addchar))
@@ -145,9 +143,47 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card_subadd", card_subadd))
     tg_app.add_handler(CommandHandler("card_subremove", card_subremove))
 
+
+def register_callbacks(tg_app: Application) -> None:
+    # coleção por foto primeiro (mais específico)
+    tg_app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
+    tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
+
+    # card
+    tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
+
+    # termo
+    tg_app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
+
+
+def register_message_handlers(tg_app: Application) -> None:
+    # guesses do termo: texto normal, sem barra
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess))
+
+
+# =========================================================
+# APP BUILDER
+# =========================================================
+
+def build_application() -> Application:
+    tg_app = Application.builder().token(BOT_TOKEN).build()
+
+    register_main_commands(tg_app)
+    register_dado_admin_commands(tg_app)
+    register_termo_commands(tg_app)
+    register_cards_admin_commands(tg_app)
+    register_callbacks(tg_app)
+    register_message_handlers(tg_app)
+
     tg_app.add_error_handler(on_error)
     return tg_app
 
+
+# =========================================================
+# MAIN
+# =========================================================
 
 def main() -> None:
     create_tables()
