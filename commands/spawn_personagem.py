@@ -1,5 +1,6 @@
 import os
 import random
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -14,25 +15,21 @@ ADMIN_IDS = set(
 
 
 async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not update.message:
+    if not update.message or not update.effective_user or not update.effective_chat:
         return
 
-    user_id = update.effective_user.id
-
-    if user_id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         return
-
-    chat_id = update.effective_chat.id
 
     if not CHARACTERS:
         await update.message.reply_text("Dataset de personagens não carregado.")
         return
 
+    chat_id = update.effective_chat.id
     character = random.choice(CHARACTERS)
 
     ACTIVE_SPAWNS[chat_id] = {
-        "character": character
+        "character": character,
     }
 
     caption = (
@@ -45,5 +42,5 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
         photo=character["image"],
         caption=caption,
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
