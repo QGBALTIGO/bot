@@ -1,36 +1,92 @@
 import os
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    WebAppInfo,
+)
 from telegram.ext import ContextTypes
 
+from utils.gatekeeper import gatekeeper
 
-WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip().rstrip("/")
+
+BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
+if not BASE_URL:
+    raise RuntimeError("BASE_URL não configurado.")
+
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+if not BOT_USERNAME:
+    raise RuntimeError("BOT_USERNAME não configurado.")
+
+MENU_BANNER_URL = os.getenv(
+    "MENU_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
+).strip()
+
+MENU_WEBAPP_URL = f"{BASE_URL}/menu"
+BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
+
+
+def _is_group(update: Update) -> bool:
+    chat = update.effective_chat
+    return bool(chat and chat.type in ("group", "supergroup"))
 
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
+    msg = update.effective_message
+    user = update.effective_user
+
+    if not msg or not user:
         return
 
-    if not WEBAPP_BASE_URL:
-        await update.message.reply_html(
-            "❌ <b>WEBAPP_BASE_URL não configurado.</b>"
+    # =========================
+    # BLOQUEIO EM GRUPO
+    # =========================
+    if _is_group(update):
+        texto = (
+            "⚙️ <b>MENU DO USUÁRIO</b>\n\n"
+            "Esse comando funciona apenas no <b>privado</b> do bot.\n\n"
+            "Abra no privado para configurar seu <b>perfil</b>, seu <b>favorito</b>, "
+            "suas <b>preferências</b> e outras opções da sua conta."
         )
+
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔒 Abrir no privado", url=BOT_PRIVATE_URL)]
+        ])
+
+        await msg.reply_html(texto, reply_markup=kb)
         return
 
-    uid = int(update.effective_user.id)
-    url = f"{WEBAPP_BASE_URL}/menu?uid={uid}"
+    # =========================
+    # GATEKEEPER
+    # =========================
+    ok, bloqueio = await gatekeeper(update, context)
+    if not ok:
+        if bloqueio:
+            await msg.reply_html(bloqueio)
+        return
+
+    # =========================
+    # MINIAPP MENU
+    # =========================
+    url = f"{MENU_WEBAPP_URL}?uid={user.id}"
 
     kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "⚙️ ABRIR MENU",
-                web_app=WebAppInfo(url=url)
-            )
-        ]
+        [InlineKeyboardButton("⚙️ Abrir Menu", web_app=WebAppInfo(url=url))]
     ])
 
-    await update.message.reply_html(
+    texto = (
         "⚙️ <b>MENU DO USUÁRIO</b>\n\n"
-        "Abra o painel para configurar sua conta.",
-        reply_markup=kb
+        "Aqui você poderá configurar sua conta, definir seu <b>nickname</b>, "
+        "escolher seu <b>personagem favorito</b>, ajustar <b>idioma</b>, "
+        "<b>bandeira</b>, <b>privacidade</b> e outras preferências.\n\n"
+        "Toque no botão abaixo para abrir o menu."
+    )
+
+    await msg.reply_photo(
+        photo=MENU_BANNER_URL,
+        caption=texto,
+        parse_mode="HTML",
+        reply_markup=kb,
     )
