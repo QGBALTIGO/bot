@@ -264,7 +264,7 @@ def create_tables():
     create_level_tables()
     create_termo_tables()
     create_dado_tables()
-    get_user_card_collection(user_id)
+    create_tables()
 
 
 def create_users_table():
