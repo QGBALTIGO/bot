@@ -19,6 +19,7 @@ from commands.trocar import (
 )
 
 from commands.start import start
+from commands.ranking import ranking, callback_ranking
 from commands.perfil import perfil
 from commands.anime import anime
 from commands.manga import manga
@@ -138,6 +139,8 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("trocar", trocar))
     app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
+    app.add_handler(CommandHandler("ranking", ranking))
+    app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
     # admin dado
     app.add_handler(CommandHandler("dadogive", dadogive))
