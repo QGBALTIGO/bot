@@ -19,6 +19,7 @@ from commands.manga import manga
 from commands.cards import cards
 from commands.menu import menu
 from commands.loja import loja
+from commands.infoanime import infoanime
 from commands.daily import daily
 from handlers.capture_spawn import capture_message_handler
 from commands.capturar import capturar
