@@ -105,7 +105,7 @@ def _render_ranking(metric: str) -> str:
             name = _safe_name(r)
             level = int(r.get("level") or 1)
             xp = int(r.get("xp") or 0)
-            text += f"<b>{i}.</b> {name} — ⭐ <b>{level}</b> | XP {xp}\n"
+            text += f"<b>{i}.</b> {name} — ⭐ <b>{level}</b>\n"
 
         return text
 
