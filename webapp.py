@@ -6761,3 +6761,1009 @@ def dado_page():
 """
     html = html.replace("__DADO_BANNER_URL__", DADO_BANNER_URL)
     return HTMLResponse(html)
+
+# =========================================================
+# MENU WEBAPP — BLOCO COMPLETO
+# Cole no seu webapp.py
+# =========================================================
+
+from database import (
+    touch_user_identity,
+    get_user_status,
+    get_progress_row,
+    get_user_card_collection,
+    get_profile_settings,
+    set_profile_nickname,
+    set_profile_favorite,
+    set_profile_country,
+    set_profile_language,
+    set_profile_private,
+    set_profile_notifications,
+    delete_user_account,
+)
+
+from cards_service import get_character_by_id
+
+
+MENU_BANNER_URL = os.getenv(
+    "MENU_BANNER_URL",
+    TOP_BANNER_URL,
+).strip()
+
+MENU_BACKGROUND_URL = os.getenv(
+    "MENU_BACKGROUND_URL",
+    BACKGROUND_URL or "",
+).strip()
+
+COUNTRY_OPTIONS = [
+    {"code": "BR", "flag": "🇧🇷", "name": "Brasil"},
+    {"code": "US", "flag": "🇺🇸", "name": "United States"},
+    {"code": "ES", "flag": "🇪🇸", "name": "España"},
+    {"code": "JP", "flag": "🇯🇵", "name": "日本"},
+]
+
+LANGUAGE_OPTIONS = [
+    {"code": "pt", "name": "Português"},
+    {"code": "en", "name": "English"},
+    {"code": "es", "name": "Español"},
+]
+
+
+def _valid_menu_nickname(nickname: str) -> bool:
+    nickname = (nickname or "").strip()
+    return bool(re.match(r"^[A-Z][A-Za-z0-9_]{3,16}$", nickname))
+
+
+def _menu_user_payload(uid: int) -> Dict[str, Any]:
+    create_or_get_user(uid)
+
+    user = get_user_status(uid) or {}
+    progress = get_progress_row(uid) or {}
+    settings = get_profile_settings(uid) or {}
+    cards = get_user_card_collection(uid) or []
+
+    favorite = None
+    fav_id = settings.get("favorite_character_id")
+    if fav_id:
+        try:
+            ch = get_character_by_id(int(fav_id))
+            if ch:
+                favorite = {
+                    "id": int(fav_id),
+                    "name": str(ch.get("name") or "").strip(),
+                    "anime": str(ch.get("anime") or "").strip(),
+                    "image": str(ch.get("image") or "").strip(),
+                }
+        except Exception:
+            favorite = None
+
+    full_name = str(user.get("full_name") or "").strip()
+    username = str(user.get("username") or "").strip()
+
+    display_name = full_name or (f"@{username}" if username else f"User {uid}")
+
+    return {
+        "ok": True,
+        "profile": {
+            "user_id": int(uid),
+            "display_name": display_name,
+            "username": username,
+            "coins": int(user.get("coins") or 0),
+            "level": int(progress.get("level") or 1),
+            "collection_total": len(cards),
+            "nickname": str(settings.get("nickname") or "").strip(),
+            "favorite": favorite,
+            "country_code": str(settings.get("country_code") or "BR").strip().upper(),
+            "language": str(settings.get("language") or "pt").strip().lower(),
+            "private_profile": bool(settings.get("private_profile")),
+            "notifications_enabled": bool(settings.get("notifications_enabled", True)),
+        },
+        "countries": COUNTRY_OPTIONS,
+        "languages": LANGUAGE_OPTIONS,
+    }
+
+
+def _menu_collection_characters(uid: int) -> List[Dict[str, Any]]:
+    rows = get_user_card_collection(uid) or []
+    out: List[Dict[str, Any]] = []
+
+    for row in rows:
+        cid = int(row.get("character_id") or 0)
+        qty = int(row.get("quantity") or 0)
+        if cid <= 0 or qty <= 0:
+            continue
+
+        try:
+            ch = get_character_by_id(cid)
+        except Exception:
+            ch = None
+
+        if not ch:
+            continue
+
+        out.append({
+            "id": cid,
+            "name": str(ch.get("name") or "").strip(),
+            "anime": str(ch.get("anime") or "").strip(),
+            "image": str(ch.get("image") or "").strip(),
+            "quantity": qty,
+        })
+
+    out.sort(key=lambda x: ((x["anime"] or "").lower(), (x["name"] or "").lower(), int(x["id"])))
+    return out
+
+
+MENU_HTML = """<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Menu</title>
+<style>
+  :root{
+    --bg:#050712;
+    --card:rgba(255,255,255,0.05);
+    --stroke:rgba(255,255,255,0.10);
+    --stroke2:rgba(255,255,255,0.18);
+    --txt:rgba(255,255,255,0.94);
+    --muted:rgba(255,255,255,0.58);
+    --accent:#4f8cff;
+    --danger:#ff5f57;
+    --ok:#4ade80;
+    --shadow:0 18px 36px rgba(0,0,0,.42);
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--txt);
+    background:
+      linear-gradient(180deg, rgba(0,0,0,.48), rgba(0,0,0,.78)),
+      url("__MENU_BG__") center/cover no-repeat fixed,
+      radial-gradient(900px 520px at 50% -10%, rgba(79,140,255,.18), transparent 55%),
+      #050712;
+    overflow-x:hidden;
+  }
+
+  body:before{
+    content:"";
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size:42px 42px;
+    opacity:.12;
+    pointer-events:none;
+  }
+
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:860px;
+    margin:0 auto;
+    padding:16px 14px 40px;
+  }
+
+  .hero{
+    position:relative;
+    width:100%;
+    border-radius:28px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:#111;
+    box-shadow:var(--shadow);
+  }
+
+  .hero img{
+    width:100%;
+    height:190px;
+    object-fit:cover;
+    display:block;
+    opacity:.9;
+  }
+
+  .hero:after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.74));
+  }
+
+  .profile{
+    position:relative;
+    z-index:2;
+    margin-top:-48px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+
+  .avatar{
+    width:106px; height:106px;
+    border-radius:50%;
+    border:4px solid rgba(255,255,255,.08);
+    background:#111722;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:34px;
+    font-weight:900;
+    box-shadow:0 18px 34px rgba(0,0,0,.38);
+  }
+
+  .avatar img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .name{
+    margin-top:14px;
+    font-size:30px;
+    font-weight:900;
+    line-height:1.1;
+    text-align:center;
+  }
+
+  .sub{
+    margin-top:6px;
+    color:var(--muted);
+    font-size:15px;
+    text-align:center;
+  }
+
+  .stats{
+    margin-top:22px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  .stat{
+    border:1px solid var(--stroke);
+    background:var(--card);
+    border-radius:24px;
+    padding:18px;
+    box-shadow:var(--shadow);
+  }
+
+  .statLabel{
+    color:var(--muted);
+    font-size:13px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    font-weight:800;
+  }
+
+  .statValue{
+    margin-top:8px;
+    font-size:24px;
+    font-weight:900;
+  }
+
+  .sectionTitle{
+    margin:28px 4px 12px;
+    font-size:18px;
+    font-weight:900;
+    letter-spacing:.02em;
+  }
+
+  .list{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+
+  .row{
+    border:1px solid var(--stroke);
+    background:var(--card);
+    border-radius:24px;
+    padding:18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    box-shadow:var(--shadow);
+  }
+
+  .rowLeft{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-width:0;
+  }
+
+  .rowTitle{
+    font-size:18px;
+    font-weight:800;
+    line-height:1.15;
+  }
+
+  .rowSub{
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.35;
+  }
+
+  .btn,
+  select,
+  input{
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.06);
+    color:var(--txt);
+    border-radius:16px;
+    padding:12px 14px;
+    font-weight:800;
+    outline:none;
+  }
+
+  .btn{
+    cursor:pointer;
+    min-width:118px;
+  }
+
+  .btn:hover{
+    border-color:var(--stroke2);
+  }
+
+  .btnDanger{
+    border-color:rgba(255,95,87,.32);
+    background:rgba(255,95,87,.12);
+    color:#ffd8d6;
+  }
+
+  .btnAccent{
+    border-color:rgba(79,140,255,.30);
+    background:rgba(79,140,255,.14);
+  }
+
+  .nicknameBox{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    width:100%;
+    max-width:340px;
+  }
+
+  .nicknameBox input{
+    flex:1;
+    min-width:180px;
+  }
+
+  .msg{
+    margin-top:14px;
+    min-height:20px;
+    color:var(--muted);
+    font-size:14px;
+  }
+
+  .modalWrap{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+    background:rgba(0,0,0,.52);
+    z-index:9999;
+    padding:16px;
+  }
+
+  .modal{
+    width:100%;
+    max-width:760px;
+    max-height:78vh;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    background:#0d1320;
+    border-radius:26px;
+    box-shadow:0 24px 48px rgba(0,0,0,.52);
+    display:flex;
+    flex-direction:column;
+  }
+
+  .modalHead{
+    padding:16px;
+    border-bottom:1px solid var(--stroke);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+
+  .modalTitle{
+    font-size:18px;
+    font-weight:900;
+  }
+
+  .modalBody{
+    padding:14px;
+    overflow:auto;
+  }
+
+  .favSearch{
+    width:100%;
+    margin-bottom:12px;
+  }
+
+  .favList{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .favItem{
+    border:1px solid var(--stroke);
+    background:rgba(255,255,255,.04);
+    border-radius:20px;
+    padding:12px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+
+  .favThumb{
+    width:62px;
+    height:62px;
+    border-radius:16px;
+    overflow:hidden;
+    background:#121825;
+    flex:0 0 auto;
+  }
+
+  .favThumb img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  .favMeta{
+    min-width:0;
+    flex:1;
+  }
+
+  .favName{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.15;
+  }
+
+  .favAnime{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:13px;
+  }
+
+  .footer{
+    margin-top:18px;
+    text-align:center;
+    color:rgba(255,255,255,.42);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+  }
+
+  @media (max-width: 720px){
+    .stats{ grid-template-columns:1fr 1fr; }
+    .row{ flex-direction:column; align-items:stretch; }
+    .nicknameBox{ max-width:none; }
+    .btn, select, input{ width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <img src="__MENU_BANNER__" alt="Banner">
+  </div>
+
+  <div class="profile">
+    <div class="avatar" id="avatar">SB</div>
+    <div class="name" id="name">Carregando...</div>
+    <div class="sub" id="subtitle">...</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="statLabel">Coleção</div>
+      <div class="statValue" id="collectionTotal">0</div>
+    </div>
+    <div class="stat">
+      <div class="statLabel">Coins</div>
+      <div class="statValue" id="coins">0</div>
+    </div>
+    <div class="stat">
+      <div class="statLabel">Nível</div>
+      <div class="statValue" id="level">1</div>
+    </div>
+    <div class="stat">
+      <div class="statLabel">Favorito</div>
+      <div class="statValue" id="favoriteName">—</div>
+    </div>
+  </div>
+
+  <div class="sectionTitle">Perfil</div>
+  <div class="list">
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Nickname</div>
+        <div class="rowSub">Único, começa com maiúscula e não pode ser alterado depois.</div>
+      </div>
+      <div class="nicknameBox">
+        <input id="nicknameInput" placeholder="Ex: Kayky" maxlength="17" />
+        <button class="btn btnAccent" id="saveNicknameBtn">Salvar</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Favoritar personagem</div>
+        <div class="rowSub">Só pode escolher personagens da sua própria coleção.</div>
+      </div>
+      <button class="btn" id="favoriteBtn">Escolher</button>
+    </div>
+  </div>
+
+  <div class="sectionTitle">Preferências</div>
+  <div class="list">
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Bandeira</div>
+        <div class="rowSub">Defina seu país.</div>
+      </div>
+      <select id="countrySelect"></select>
+    </div>
+
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Idioma</div>
+        <div class="rowSub">Idioma principal da conta.</div>
+      </div>
+      <select id="languageSelect"></select>
+    </div>
+
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Perfil privado</div>
+        <div class="rowSub">Oculta o perfil para outros usuários.</div>
+      </div>
+      <button class="btn" id="privacyBtn">Desativado</button>
+    </div>
+
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Notificações</div>
+        <div class="rowSub">Avisar quando os 24 dados acumularem.</div>
+      </div>
+      <button class="btn" id="notificationsBtn">Ativado</button>
+    </div>
+  </div>
+
+  <div class="sectionTitle">Conta</div>
+  <div class="list">
+    <div class="row">
+      <div class="rowLeft">
+        <div class="rowTitle">Autoexcluir conta</div>
+        <div class="rowSub">Apaga nickname, coleção, nível, coins e preferências.</div>
+      </div>
+      <button class="btn btnDanger" id="deleteBtn">Excluir conta</button>
+    </div>
+  </div>
+
+  <div class="msg" id="msg"></div>
+  <div class="footer">Source Baltigo • Menu do usuário</div>
+</div>
+
+<div class="modalWrap" id="favoriteModalWrap">
+  <div class="modal">
+    <div class="modalHead">
+      <div class="modalTitle">Escolher favorito</div>
+      <button class="btn" id="closeFavoriteModalBtn">Fechar</button>
+    </div>
+    <div class="modalBody">
+      <input class="favSearch" id="favSearchInput" placeholder="Buscar personagem..." />
+      <div class="favList" id="favList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const uid = __UID__;
+const msg = document.getElementById("msg");
+const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); } catch(e) {} }
+
+let profileData = null;
+let favoriteCharacters = [];
+
+function setMsg(text) {
+  msg.textContent = text || "";
+}
+
+async function getJson(url) {
+  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now());
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    throw new Error((data && data.message) || "Erro");
+  }
+  return data;
+}
+
+async function postJson(url, payload) {
+  const res = await fetch(url + "?_ts=" + Date.now(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    throw new Error((data && data.message) || "Erro");
+  }
+  return data;
+}
+
+function renderAvatar(profile) {
+  const avatar = document.getElementById("avatar");
+  if (profile.favorite && profile.favorite.image) {
+    avatar.innerHTML = '<img src="' + profile.favorite.image + '" alt="avatar">';
+    return;
+  }
+  const name = (profile.display_name || "SB").trim();
+  const initials = name.slice(0, 2).toUpperCase();
+  avatar.textContent = initials;
+}
+
+function renderProfile(data) {
+  profileData = data.profile || {};
+  const p = profileData;
+
+  document.getElementById("name").textContent = p.display_name || "User";
+  document.getElementById("subtitle").textContent = p.nickname ? ("@" + p.nickname) : "Sem nickname";
+  document.getElementById("collectionTotal").textContent = String(p.collection_total || 0);
+  document.getElementById("coins").textContent = String(p.coins || 0);
+  document.getElementById("level").textContent = String(p.level || 1);
+  document.getElementById("favoriteName").textContent = p.favorite ? p.favorite.name : "—";
+
+  renderAvatar(p);
+
+  const nickInput = document.getElementById("nicknameInput");
+  const nickBtn = document.getElementById("saveNicknameBtn");
+
+  nickInput.value = p.nickname || "";
+  nickInput.disabled = !!p.nickname;
+  nickBtn.disabled = !!p.nickname;
+
+  const country = document.getElementById("countrySelect");
+  country.innerHTML = "";
+  (data.countries || []).forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.code;
+    opt.textContent = c.flag + " " + c.name;
+    if (c.code === p.country_code) opt.selected = true;
+    country.appendChild(opt);
+  });
+
+  const lang = document.getElementById("languageSelect");
+  lang.innerHTML = "";
+  (data.languages || []).forEach(l => {
+    const opt = document.createElement("option");
+    opt.value = l.code;
+    opt.textContent = l.name;
+    if (l.code === p.language) opt.selected = true;
+    lang.appendChild(opt);
+  });
+
+  document.getElementById("privacyBtn").textContent = p.private_profile ? "Ativado" : "Desativado";
+  document.getElementById("notificationsBtn").textContent = p.notifications_enabled ? "Ativado" : "Desativado";
+}
+
+async function loadProfile() {
+  const data = await getJson("/api/menu/profile?uid=" + uid);
+  renderProfile(data);
+}
+
+function openFavoriteModal() {
+  document.getElementById("favoriteModalWrap").style.display = "flex";
+}
+
+function closeFavoriteModal() {
+  document.getElementById("favoriteModalWrap").style.display = "none";
+}
+
+function renderFavoriteList(items) {
+  const wrap = document.getElementById("favList");
+  wrap.innerHTML = "";
+
+  if (!items.length) {
+    wrap.innerHTML = '<div class="rowSub">Você ainda não tem personagens na coleção.</div>';
+    return;
+  }
+
+  for (const item of items) {
+    const el = document.createElement("div");
+    el.className = "favItem";
+
+    el.innerHTML = `
+      <div class="favThumb">${item.image ? `<img src="${item.image}" alt="">` : ""}</div>
+      <div class="favMeta">
+        <div class="favName">🧧 ${item.name}</div>
+        <div class="favAnime">${item.anime || ""}</div>
+      </div>
+      <button class="btn btnAccent">Favoritar</button>
+    `;
+
+    el.querySelector("button").onclick = async () => {
+      try {
+        setMsg("Salvando favorito...");
+        await postJson("/api/menu/favorite", { uid, character_id: item.id });
+        setMsg("✅ Favorito atualizado.");
+        closeFavoriteModal();
+        await loadProfile();
+      } catch (e) {
+        setMsg("❌ " + e.message);
+      }
+    };
+
+    wrap.appendChild(el);
+  }
+}
+
+async function loadFavoriteCharacters() {
+  const data = await getJson("/api/menu/collection-characters?uid=" + uid);
+  favoriteCharacters = data.items || [];
+  renderFavoriteList(favoriteCharacters);
+}
+
+document.getElementById("favoriteBtn").onclick = async () => {
+  try {
+    setMsg("");
+    await loadFavoriteCharacters();
+    openFavoriteModal();
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("closeFavoriteModalBtn").onclick = closeFavoriteModal;
+document.getElementById("favoriteModalWrap").onclick = (e) => {
+  if (e.target.id === "favoriteModalWrap") closeFavoriteModal();
+};
+
+document.getElementById("favSearchInput").addEventListener("input", (e) => {
+  const q = (e.target.value || "").trim().toLowerCase();
+  const filtered = favoriteCharacters.filter(item => {
+    const hay = (item.name + " " + item.anime).toLowerCase();
+    return hay.includes(q);
+  });
+  renderFavoriteList(filtered);
+});
+
+document.getElementById("saveNicknameBtn").onclick = async () => {
+  try {
+    const nickname = document.getElementById("nicknameInput").value.trim();
+    setMsg("Salvando nickname...");
+    await postJson("/api/menu/nickname", { uid, nickname });
+    setMsg("✅ Nickname salvo com sucesso.");
+    await loadProfile();
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("countrySelect").onchange = async (e) => {
+  try {
+    await postJson("/api/menu/country", { uid, country_code: e.target.value });
+    setMsg("✅ Bandeira atualizada.");
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("languageSelect").onchange = async (e) => {
+  try {
+    await postJson("/api/menu/language", { uid, language: e.target.value });
+    setMsg("✅ Idioma atualizado.");
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("privacyBtn").onclick = async () => {
+  try {
+    const current = document.getElementById("privacyBtn").textContent === "Ativado";
+    await postJson("/api/menu/privacy", { uid, value: !current });
+    setMsg("✅ Privacidade atualizada.");
+    await loadProfile();
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("notificationsBtn").onclick = async () => {
+  try {
+    const current = document.getElementById("notificationsBtn").textContent === "Ativado";
+    await postJson("/api/menu/notifications", { uid, value: !current });
+    setMsg("✅ Notificações atualizadas.");
+    await loadProfile();
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+document.getElementById("deleteBtn").onclick = async () => {
+  const ok = confirm("Tem certeza que deseja excluir sua conta? Essa ação é irreversível.");
+  if (!ok) return;
+
+  try {
+    setMsg("Excluindo conta...");
+    await postJson("/api/menu/delete-account", { uid });
+    setMsg("✅ Conta excluída com sucesso.");
+    if (tg) {
+      try { tg.close(); } catch (e) {}
+    }
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+};
+
+(async () => {
+  try {
+    await loadProfile();
+  } catch (e) {
+    setMsg("❌ " + e.message);
+  }
+})();
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/menu", response_class=HTMLResponse)
+def menu_page(uid: int = Query(...)):
+    bg = MENU_BACKGROUND_URL if MENU_BACKGROUND_URL else EMPTY_BG_DATA_URI
+
+    html = (
+        MENU_HTML
+        .replace("__UID__", str(int(uid)))
+        .replace("__MENU_BANNER__", MENU_BANNER_URL)
+        .replace("__MENU_BG__", bg)
+    )
+    return HTMLResponse(html)
+
+
+@app.get("/api/menu/profile")
+def api_menu_profile(uid: int = Query(...)):
+    uid = int(uid or 0)
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    return JSONResponse(_menu_user_payload(uid))
+
+
+@app.get("/api/menu/collection-characters")
+def api_menu_collection_characters(uid: int = Query(...)):
+    uid = int(uid or 0)
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    return JSONResponse({
+        "ok": True,
+        "items": _menu_collection_characters(uid),
+    })
+
+
+@app.post("/api/menu/nickname")
+def api_menu_nickname(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    nickname = str(payload.get("nickname") or "").strip()
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    if not _valid_menu_nickname(nickname):
+        return JSONResponse({
+            "ok": False,
+            "message": "Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula."
+        }, status_code=400)
+
+    result = set_profile_nickname(uid, nickname)
+
+    if not result.get("ok"):
+        err = result.get("error")
+        if err == "nickname_locked":
+            return JSONResponse({"ok": False, "message": "Você já definiu seu nickname."}, status_code=400)
+        if err == "nickname_taken":
+            return JSONResponse({"ok": False, "message": "Esse nickname já está em uso."}, status_code=400)
+        return JSONResponse({"ok": False, "message": "Não foi possível salvar o nickname."}, status_code=400)
+
+    return {"ok": True}
+
+
+@app.post("/api/menu/favorite")
+def api_menu_favorite(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    character_id = int(payload.get("character_id") or 0)
+
+    if uid <= 0 or character_id <= 0:
+        return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
+
+    items = _menu_collection_characters(uid)
+    owned_ids = {int(item["id"]) for item in items}
+
+    if character_id not in owned_ids:
+        return JSONResponse({
+            "ok": False,
+            "message": "Você só pode favoritar personagens da sua coleção."
+        }, status_code=400)
+
+    set_profile_favorite(uid, character_id)
+    return {"ok": True}
+
+
+@app.post("/api/menu/country")
+def api_menu_country(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    country_code = str(payload.get("country_code") or "BR").strip().upper()
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    valid = {c["code"] for c in COUNTRY_OPTIONS}
+    if country_code not in valid:
+        return JSONResponse({"ok": False, "message": "País inválido."}, status_code=400)
+
+    set_profile_country(uid, country_code)
+    return {"ok": True}
+
+
+@app.post("/api/menu/language")
+def api_menu_language(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    language = str(payload.get("language") or "pt").strip().lower()
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    if language not in ("pt", "en", "es"):
+        return JSONResponse({"ok": False, "message": "Idioma inválido."}, status_code=400)
+
+    set_profile_language(uid, language)
+    return {"ok": True}
+
+
+@app.post("/api/menu/privacy")
+def api_menu_privacy(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    value = bool(payload.get("value"))
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    set_profile_private(uid, value)
+    return {"ok": True}
+
+
+@app.post("/api/menu/notifications")
+def api_menu_notifications(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+    value = bool(payload.get("value"))
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    set_profile_notifications(uid, value)
+    return {"ok": True}
+
+
+@app.post("/api/menu/delete-account")
+def api_menu_delete_account(payload: dict = Body(...)):
+    uid = int(payload.get("uid") or 0)
+
+    if uid <= 0:
+        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+    delete_user_account(uid)
+    return {"ok": True}
