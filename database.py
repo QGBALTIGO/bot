@@ -3618,31 +3618,39 @@ def swap_characters_atomic(trade_id: int) -> bool:
                 raise
 
 # =========================================================
-# FUNCAO EXCLUIR
+# ADMIN RESET SYSTEM
 # =========================================================
 
-def delete_user_account(user_id: int):
+def admin_delete_user(user_id: int):
+
+    delete_user_account(user_id)
+
+    return {
+        "ok": True,
+        "user_id": user_id
+    }
+
+
+def admin_delete_all_users():
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
 
-            cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM collection WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM coins WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM termo_stats WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM termo_games WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM trades WHERE user_a = %s OR user_b = %s", (user_id, user_id))
+            cur.execute("TRUNCATE TABLE user_card_collection CASCADE")
+            cur.execute("TRUNCATE TABLE user_progress CASCADE")
+            cur.execute("TRUNCATE TABLE termo_games CASCADE")
+            cur.execute("TRUNCATE TABLE termo_stats CASCADE")
+            cur.execute("TRUNCATE TABLE termo_attempt_distribution CASCADE")
+            cur.execute("TRUNCATE TABLE termo_used_words CASCADE")
+            cur.execute("TRUNCATE TABLE dice_rolls CASCADE")
+            cur.execute("TRUNCATE TABLE media_requests CASCADE")
+            cur.execute("TRUNCATE TABLE webapp_reports CASCADE")
+            cur.execute("TRUNCATE TABLE user_collection_profile CASCADE")
+            cur.execute("TRUNCATE TABLE user_profile_settings CASCADE")
+            cur.execute("TRUNCATE TABLE users CASCADE")
 
         conn.commit()
 
-def delete_all_users():
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-
-            cur.execute("TRUNCATE TABLE collection RESTART IDENTITY CASCADE")
-            cur.execute("TRUNCATE TABLE coins RESTART IDENTITY CASCADE")
-            cur.execute("TRUNCATE TABLE termo_stats RESTART IDENTITY CASCADE")
-            cur.execute("TRUNCATE TABLE termo_games RESTART IDENTITY CASCADE")
-            cur.execute("TRUNCATE TABLE trades RESTART IDENTITY CASCADE")
-            cur.execute("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
-
-        conn.commit()
+    return {
+        "ok": True
+    }
