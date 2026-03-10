@@ -2976,3 +2976,82 @@ def get_user_shop_history(user_id: int, limit: int = 20):
     )
 
     return rows or []
+
+# =========================================================
+# COINS SYSTEM (COMPATIBILITY HELPERS)
+# =========================================================
+
+def add_coin(user_id: int, amount: int = 1):
+    """
+    Adiciona moedas ao usuário.
+    Wrapper compatível com sistemas externos.
+    """
+    amount = int(amount)
+
+    if amount <= 0:
+        return
+
+    add_user_coins(user_id, amount)
+
+
+def remove_coin(user_id: int, amount: int = 1) -> bool:
+    """
+    Remove moedas do usuário se possível.
+    Retorna True se conseguiu remover.
+    """
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return True
+
+    row = _run(
+        """
+        SELECT coins
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return False
+
+    current = int(row.get("coins") or 0)
+
+    if current < amount:
+        return False
+
+    _run(
+        """
+        UPDATE users
+        SET coins = coins - %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (amount, int(user_id))
+    )
+
+    return True
+
+
+def get_user_coins(user_id: int) -> int:
+    """
+    Retorna quantidade de moedas do usuário
+    """
+
+    row = _run(
+        """
+        SELECT coins
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return 0
+
+    return int(row.get("coins") or 0)
