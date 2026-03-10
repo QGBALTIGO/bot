@@ -2188,7 +2188,7 @@ def update_termo_game_progress(
     )
 
 def finish_termo_game(
-    user_id: int,
+    game_id: int,
     status: str,
     attempts: int,
     guesses_json: str,
@@ -2211,8 +2211,7 @@ def finish_termo_game(
             won_at_attempt = %s,
             finished_at = NOW(),
             updated_at = NOW()
-        WHERE user_id = %s
-          AND status = 'playing'
+        WHERE id = %s
         """,
         (
             (status or "").strip(),
@@ -2223,7 +2222,7 @@ def finish_termo_game(
             int(reward_coins),
             int(reward_xp),
             int(won_at_attempt),
-            int(user_id),
+            int(game_id),
         )
     )
 
