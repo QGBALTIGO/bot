@@ -6576,7 +6576,7 @@ def dado_page():
             <div class="animeHint">Toque para escolher</div>
           </div>
         `;
-        card.addEventListener("click", () => chooseAnime(opt, card));
+        card.addEventListener("click", () => chooseAnime(opt));
         animeGrid.appendChild(card);
       });
     }
@@ -6602,6 +6602,7 @@ def dado_page():
             roll_not_found: "Essa rolagem não foi encontrada.",
             expired: "Sua rolagem expirou. Role novamente.",
             anime_not_in_roll: "Esse anime não pertence à rolagem atual.",
+            roll_invalid: "A rolagem ficou inválida e foi cancelada. Role novamente.",
           };
           throw new Error(msgMap[data.error] || data.error || "Falha ao revelar personagem.");
         }
