@@ -6,10 +6,14 @@ from handlers.capture_spawn import ACTIVE_SPAWNS
 from database import add_coin, add_progress_xp
 
 
-def _normalize(text: str) -> str:
+def normalize(text):
+
     text = text.lower()
+
     text = unicodedata.normalize("NFD", text)
+
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+
     return text.strip()
 
 
@@ -26,18 +30,17 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         return
 
-    guess = _normalize(" ".join(context.args))
+    guess = normalize(" ".join(context.args))
 
     character = ACTIVE_SPAWNS[chat_id]["character"]
 
-    correct = _normalize(character["name"])
+    correct = normalize(character["name"])
 
     if guess != correct:
         return
 
     user = update.effective_user
 
-    # recompensa
     add_coin(user.id, 1)
     add_progress_xp(user.id, 10)
 
