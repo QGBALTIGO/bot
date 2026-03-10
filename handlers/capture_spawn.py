@@ -7,7 +7,14 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
-DATA_PATH = Path("data/personagens_anilist.txt")
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+POSSIBLE_PATHS = [
+    BASE_DIR / "data" / "personagens_anilist.txt",
+    BASE_DIR / "bot" / "data" / "personagens_anilist.txt",
+    Path("data/personagens_anilist.txt"),
+    Path("bot/data/personagens_anilist.txt"),
+]
 
 CHARACTERS = []
 ACTIVE_SPAWNS = {}
@@ -23,14 +30,28 @@ ENABLED_CHATS = set(
 )
 
 
+def _find_dataset_path() -> Path | None:
+    for path in POSSIBLE_PATHS:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
 def _load_characters():
+    dataset_path = _find_dataset_path()
+
+    if not dataset_path:
+        print("[CAPTURE] dataset não encontrado.")
+        print("[CAPTURE] caminhos testados:")
+        for p in POSSIBLE_PATHS:
+            print(f" - {p}")
+        return []
+
+    print(f"[CAPTURE] usando dataset: {dataset_path}")
+
     items = []
 
-    if not DATA_PATH.exists():
-        print(f"[CAPTURE] arquivo não encontrado: {DATA_PATH}")
-        return items
-
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
+    with open(dataset_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
 
