@@ -612,3 +612,18 @@ def get_character_by_id(character_id: int):
         "anime": ch["anime"],
         "image": ch.get("image", "")
     }
+
+def get_character_by_id(character_id: int):
+    data = build_cards_final_data()
+    ch = data["characters_by_id"].get(int(character_id))
+
+    if not ch:
+        return None
+
+    return {
+        "id": int(ch["id"]),
+        "name": str(ch.get("name") or "").strip(),
+        "anime": str(ch.get("anime") or "").strip(),
+        "image": str(ch.get("image") or "").strip(),
+        "anime_id": int(ch.get("anime_id") or 0),
+    }
