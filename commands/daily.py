@@ -3,8 +3,8 @@ from telegram.ext import ContextTypes
 
 from database import create_or_get_user, claim_daily_reward, _daily_day_start_ts_sp
 
-DAILY_COINS_MIN = 40
-DAILY_COINS_MAX = 120
+DAILY_COINS_MIN = 1
+DAILY_COINS_MAX = 3
 DAILY_GIRO_CHANCE = 0.15
 
 
