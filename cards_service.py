@@ -598,3 +598,17 @@ def override_subcategory_remove_character(name: str, character_id: int) -> None:
         data["subcategories"][key] = [x for x in data["subcategories"][key] if int(x) != cid]
 
     save_cards_overrides(data)
+
+def get_character_by_id(character_id: int):
+    data = build_cards_final_data()
+    ch = data["characters_by_id"].get(int(character_id))
+
+    if not ch:
+        return None
+
+    return {
+        "id": ch["id"],
+        "name": ch["name"],
+        "anime": ch["anime"],
+        "image": ch.get("image", "")
+    }
