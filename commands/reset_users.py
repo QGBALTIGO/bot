@@ -2,7 +2,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import delete_user_account, delete_all_users
-from config import ADMINS
+
+# coloque aqui os mesmos admins que já usa no bot
+ADMINS = {123456789}
 
 
 async def reset_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -15,8 +17,7 @@ async def reset_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "Uso:\n"
-            "/resetuser ID\n"
-            "/resetall"
+            "/resetuser ID"
         )
         return
 
