@@ -1,7 +1,8 @@
 import os
+import json
 import random
-import time
 import asyncio
+import time
 from pathlib import Path
 
 from telegram import Update
@@ -9,40 +10,29 @@ from telegram.ext import ContextTypes
 
 DATA_PATH = Path("bot/data/personagens_anilist.txt")
 
-CHARACTERS = []
+ALL_CHARACTERS = []
 
 # ---------------------------------------------------------
-# LOAD CHARACTERS
+# LOAD DATASET
 # ---------------------------------------------------------
 
 if DATA_PATH.exists():
 
     with open(DATA_PATH, "r", encoding="utf-8") as f:
 
-        for line in f:
+        data = json.load(f)
 
-            line = line.strip()
+        for anime in data["Unid"]:
+            for char in anime["personagens"]:
 
-            if not line or "|" not in line:
-                continue
+                ALL_CHARACTERS.append({
+                    "id": char["id"],
+                    "name": char["nome"],
+                    "anime": char["anime"],
+                    "image": char["imagem"]
+                })
 
-            parts = line.split("|")
-
-            if len(parts) < 4:
-                continue
-
-            char_id = parts[0]
-            name = parts[1]
-            anime = parts[2]
-
-            CHARACTERS.append({
-                "id": char_id,
-                "name": name,
-                "anime": anime,
-                "image": f"https://img.anili.st/character/{char_id}"
-            })
-
-print(f"[CAPTURE] personagens carregados: {len(CHARACTERS)}")
+print(f"[CAPTURE] personagens carregados: {len(ALL_CHARACTERS)}")
 
 # ---------------------------------------------------------
 # CONFIG
@@ -63,7 +53,7 @@ SPAWN_EVERY = 100
 ESCAPE_TIME = 300
 
 # ---------------------------------------------------------
-# MESSAGE HANDLER
+# SPAWN SYSTEM
 # ---------------------------------------------------------
 
 async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,7 +67,6 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
         return
 
     MESSAGE_COUNTER.setdefault(chat_id, 0)
-
     MESSAGE_COUNTER[chat_id] += 1
 
     if MESSAGE_COUNTER[chat_id] < SPAWN_EVERY:
@@ -88,7 +77,7 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if chat_id in ACTIVE_SPAWNS:
         return
 
-    character = random.choice(CHARACTERS)
+    character = random.choice(ALL_CHARACTERS)
 
     ACTIVE_SPAWNS[chat_id] = {
         "character": character,
