@@ -273,6 +273,7 @@ def create_tables():
     create_daily_tables()
     create_weekly_ranking_tables()
     create_trades_table()
+    create_message_tables()
 
 
 def create_users_table():
@@ -3668,3 +3669,465 @@ def get_all_user_ids() -> List[int]:
     ) or []
 
     return [int(row["user_id"]) for row in rows if row.get("user_id") is not None]
+
+# =========================================================
+# USER MESSAGES SYSTEM
+# =========================================================
+
+def create_message_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_settings (
+        user_id BIGINT PRIMARY KEY,
+        allow_messages BOOLEAN NOT NULL DEFAULT TRUE,
+        allow_anonymous BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_blocks (
+        user_id BIGINT NOT NULL,
+        blocked_user_id BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, blocked_user_id)
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_messages (
+        message_id BIGSERIAL PRIMARY KEY,
+        from_user_id BIGINT NOT NULL,
+        to_user_id BIGINT NOT NULL,
+        from_nickname TEXT,
+        to_nickname TEXT,
+        message_text TEXT NOT NULL,
+        is_anonymous BOOLEAN NOT NULL DEFAULT FALSE,
+        coin_cost INTEGER NOT NULL DEFAULT 0,
+        refund_done BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        fail_reason TEXT,
+        reported BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        delivered_at TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_reports (
+        report_id BIGSERIAL PRIMARY KEY,
+        message_id BIGINT NOT NULL,
+        reporter_user_id BIGINT NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_from_created
+    ON user_messages (from_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_to_created
+    ON user_messages (to_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_status
+    ON user_messages (status, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_message_blocks_user
+    ON user_message_blocks (user_id, blocked_user_id)
+    """)
+
+
+def ensure_message_settings_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_message_settings (user_id, created_at, updated_at)
+        VALUES (%s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_message_settings(user_id: int) -> Dict[str, Any]:
+    ensure_message_settings_row(user_id)
+
+    row = _run(
+        """
+        SELECT user_id, allow_messages, allow_anonymous, created_at, updated_at
+        FROM user_message_settings
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {}
+
+    return row
+
+
+def set_message_allow_messages(user_id: int, value: bool):
+    ensure_message_settings_row(user_id)
+
+    _run(
+        """
+        UPDATE user_message_settings
+        SET allow_messages = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def set_message_allow_anonymous(user_id: int, value: bool):
+    ensure_message_settings_row(user_id)
+
+    _run(
+        """
+        UPDATE user_message_settings
+        SET allow_anonymous = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def get_user_id_by_nickname_for_messages(nickname: str) -> Optional[int]:
+    row = get_profile_settings_by_nickname(nickname)
+    if not row:
+        return None
+    return int(row["user_id"])
+
+
+def is_message_blocked(user_id: int, blocked_user_id: int) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM user_message_blocks
+        WHERE user_id = %s
+          AND blocked_user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id), int(blocked_user_id)),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def block_user_messages(user_id: int, blocked_user_id: int):
+    _run(
+        """
+        INSERT INTO user_message_blocks (user_id, blocked_user_id, created_at)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (user_id, blocked_user_id) DO NOTHING
+        """,
+        (int(user_id), int(blocked_user_id))
+    )
+
+
+def unblock_user_messages(user_id: int, blocked_user_id: int):
+    _run(
+        """
+        DELETE FROM user_message_blocks
+        WHERE user_id = %s
+          AND blocked_user_id = %s
+        """,
+        (int(user_id), int(blocked_user_id))
+    )
+
+
+def get_last_sent_message_at(user_id: int) -> Optional[datetime]:
+    row = _run(
+        """
+        SELECT created_at
+        FROM user_messages
+        WHERE from_user_id = %s
+          AND status IN ('pending', 'delivered')
+        ORDER BY message_id DESC
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return None
+
+    return row.get("created_at")
+
+
+def get_message_cooldown_remaining(user_id: int, cooldown_seconds: int) -> int:
+    last_dt = get_last_sent_message_at(user_id)
+    if not last_dt:
+        return 0
+
+    now = _sp_now()
+    if getattr(last_dt, "tzinfo", None) is None:
+        elapsed = (datetime.utcnow() - last_dt).total_seconds()
+    else:
+        elapsed = (now.astimezone(last_dt.tzinfo) - last_dt).total_seconds()
+
+    remaining = int(max(0, cooldown_seconds - elapsed))
+    return remaining
+
+
+def enqueue_user_message(
+    from_user_id: int,
+    target_nickname: str,
+    message_text: str,
+    is_anonymous: bool,
+    anon_cost: int,
+    normal_cooldown_seconds: int,
+    anonymous_cooldown_seconds: int,
+) -> Dict[str, Any]:
+    from_user_id = int(from_user_id)
+    target_nickname = (target_nickname or "").strip()
+    message_text = (message_text or "").strip()
+    anon_cost = int(anon_cost)
+
+    if not target_nickname:
+        return {"ok": False, "error": "target_nickname_required"}
+
+    if not message_text:
+        return {"ok": False, "error": "empty_message"}
+
+    if len(message_text) > 500:
+        return {"ok": False, "error": "message_too_long"}
+
+    create_or_get_user(from_user_id)
+    ensure_profile_settings_row(from_user_id)
+    ensure_message_settings_row(from_user_id)
+
+    cooldown_seconds = int(anonymous_cooldown_seconds if is_anonymous else normal_cooldown_seconds)
+    cooldown_remaining = get_message_cooldown_remaining(from_user_id, cooldown_seconds)
+    if cooldown_remaining > 0:
+        return {
+            "ok": False,
+            "error": "cooldown_active",
+            "remaining_seconds": cooldown_remaining,
+        }
+
+    sender_profile = get_profile_settings(from_user_id) or {}
+    sender_nickname = (sender_profile.get("nickname") or "").strip()
+
+    if not sender_nickname:
+        return {"ok": False, "error": "sender_no_nickname"}
+
+    target_profile = get_profile_settings_by_nickname(target_nickname)
+    if not target_profile:
+        return {"ok": False, "error": "target_not_found"}
+
+    to_user_id = int(target_profile["user_id"])
+    to_nickname = (target_profile.get("nickname") or "").strip()
+
+    if from_user_id == to_user_id:
+        return {"ok": False, "error": "cannot_message_self"}
+
+    ensure_message_settings_row(to_user_id)
+    target_settings = get_message_settings(to_user_id)
+
+    if not bool(target_settings.get("allow_messages", True)):
+        return {"ok": False, "error": "target_messages_disabled"}
+
+    if is_anonymous and not bool(target_settings.get("allow_anonymous", True)):
+        return {"ok": False, "error": "target_anonymous_disabled"}
+
+    if is_message_blocked(to_user_id, from_user_id):
+        return {"ok": False, "error": "blocked_by_target"}
+
+    if is_message_blocked(from_user_id, to_user_id):
+        return {"ok": False, "error": "you_blocked_target"}
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                if is_anonymous:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = coins - %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                          AND COALESCE(coins, 0) >= %s
+                        RETURNING coins
+                        """,
+                        (anon_cost, from_user_id, anon_cost)
+                    )
+                    coin_row = cur.fetchone()
+
+                    if not coin_row:
+                        conn.rollback()
+                        return {"ok": False, "error": "insufficient_coins"}
+
+                cur.execute(
+                    """
+                    INSERT INTO user_messages
+                    (
+                        from_user_id,
+                        to_user_id,
+                        from_nickname,
+                        to_nickname,
+                        message_text,
+                        is_anonymous,
+                        coin_cost,
+                        refund_done,
+                        status,
+                        created_at
+                    )
+                    VALUES
+                    (
+                        %s, %s, %s, %s, %s, %s, %s, FALSE, 'pending', NOW()
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        from_user_id,
+                        to_user_id,
+                        sender_nickname,
+                        to_nickname,
+                        message_text,
+                        bool(is_anonymous),
+                        anon_cost if is_anonymous else 0,
+                    )
+                )
+                row = cur.fetchone()
+
+                conn.commit()
+
+                return {
+                    "ok": True,
+                    "message": row,
+                    "to_user_id": to_user_id,
+                    "to_nickname": to_nickname,
+                    "from_nickname": sender_nickname,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def mark_user_message_delivered(message_id: int):
+    _run(
+        """
+        UPDATE user_messages
+        SET status = 'delivered',
+            delivered_at = NOW()
+        WHERE message_id = %s
+        """,
+        (int(message_id),)
+    )
+
+
+def fail_user_message(message_id: int, reason: str = ""):
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT message_id, from_user_id, coin_cost, refund_done, status, is_anonymous
+                    FROM user_messages
+                    WHERE message_id = %s
+                    FOR UPDATE
+                    """,
+                    (int(message_id),)
+                )
+                row = cur.fetchone()
+
+                if not row:
+                    conn.rollback()
+                    return
+
+                if str(row.get("status") or "") == "failed":
+                    conn.rollback()
+                    return
+
+                do_refund = bool(row.get("is_anonymous")) and int(row.get("coin_cost") or 0) > 0 and not bool(row.get("refund_done"))
+
+                if do_refund:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = COALESCE(coins, 0) + %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (int(row["coin_cost"]), int(row["from_user_id"]))
+                    )
+
+                cur.execute(
+                    """
+                    UPDATE user_messages
+                    SET status = 'failed',
+                        fail_reason = %s,
+                        refund_done = %s
+                    WHERE message_id = %s
+                    """,
+                    ((reason or "").strip()[:300], do_refund, int(message_id))
+                )
+
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def get_received_message_by_id(user_id: int, message_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM user_messages
+        WHERE message_id = %s
+          AND to_user_id = %s
+        LIMIT 1
+        """,
+        (int(message_id), int(user_id)),
+        fetch="one"
+    )
+
+
+def report_user_message(reporter_user_id: int, message_id: int, reason: str = "") -> Dict[str, Any]:
+    msg = get_received_message_by_id(reporter_user_id, message_id)
+    if not msg:
+        return {"ok": False, "error": "message_not_found"}
+
+    _run(
+        """
+        INSERT INTO user_message_reports (message_id, reporter_user_id, reason, created_at)
+        VALUES (%s, %s, %s, NOW())
+        """,
+        (int(message_id), int(reporter_user_id), (reason or "").strip()[:500])
+    )
+
+    _run(
+        """
+        UPDATE user_messages
+        SET reported = TRUE
+        WHERE message_id = %s
+        """,
+        (int(message_id),)
+    )
+
+    return {"ok": True}
+
+
+def get_user_message_count() -> int:
+    row = _run(
+        "SELECT COUNT(*) AS total FROM user_messages",
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
