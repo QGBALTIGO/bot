@@ -294,6 +294,8 @@ def create_users_table():
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT NOT NULL DEFAULT -1;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified_at TIMESTAMPTZ;""")
 
     _run("""
     CREATE INDEX IF NOT EXISTS idx_users_dado_balance
@@ -2659,3 +2661,54 @@ def delete_user_account(user_id: int):
     _run("DELETE FROM user_collection_profile WHERE user_id = %s", (user_id,))
     _run("DELETE FROM user_profile_settings WHERE user_id = %s", (user_id,))
     _run("DELETE FROM users WHERE user_id = %s", (user_id,))
+
+# =========================================================
+# DADO NOTIFICATIONS
+# =========================================================
+
+def get_users_with_dado_notifications_enabled() -> List[int]:
+    rows = _run(
+        """
+        SELECT ups.user_id
+        FROM user_profile_settings ups
+        INNER JOIN users u
+                ON u.user_id = ups.user_id
+        WHERE ups.notifications_enabled = TRUE
+        ORDER BY ups.user_id ASC
+        """,
+        fetch="all"
+    ) or []
+
+    return [int(r["user_id"]) for r in rows]
+
+
+def has_dado_full_notified(user_id: int) -> bool:
+    ensure_profile_settings_row(user_id)
+
+    row = _run(
+        """
+        SELECT dado_full_notified
+        FROM user_profile_settings
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {}
+
+    return bool(row.get("dado_full_notified"))
+
+
+def set_dado_full_notified(user_id: int, value: bool):
+    ensure_profile_settings_row(user_id)
+
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET dado_full_notified = %s,
+            dado_full_notified_at = CASE WHEN %s THEN NOW() ELSE NULL END,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), bool(value), int(user_id))
+    )
