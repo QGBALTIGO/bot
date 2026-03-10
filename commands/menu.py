@@ -21,7 +21,7 @@ if not BOT_USERNAME:
 
 MENU_BANNER_URL = os.getenv(
     "MENU_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
+    "https://carder.top/imagens/1773141172659-711153369.jpg",
 ).strip()
 
 MENU_WEBAPP_URL = f"{BASE_URL}/menu"
