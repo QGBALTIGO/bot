@@ -220,7 +220,7 @@ def _pick_daily_word(user_id: int) -> Dict[str, str]:
     words = _load_words()
     available = [w for w in words if not has_user_used_termo_word(user_id, w["word"])]
     pool = available if available else words
-    rng = random.Random(f"{user_id}:{_sp_today().isoformat()}")
+    rng = random.Random(_sp_today().isoformat())
     return rng.choice(pool)
 
 
