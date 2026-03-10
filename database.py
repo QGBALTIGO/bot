@@ -3395,3 +3395,105 @@ def save_weekly_ranking_post(week_key: date, payload: Dict[str, Any]) -> bool:
         fetch="one"
     )
     return bool(row)
+
+# =========================================================
+# CARD TRADES
+# =========================================================
+
+def create_trades_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_trades (
+        trade_id SERIAL PRIMARY KEY,
+        from_user BIGINT NOT NULL,
+        to_user BIGINT NOT NULL,
+        from_character_id INT NOT NULL,
+        to_character_id INT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
+
+def create_trade(from_user, to_user, from_char, to_char):
+
+    row = _run("""
+        INSERT INTO card_trades
+        (from_user, to_user, from_character_id, to_character_id)
+        VALUES (%s,%s,%s,%s)
+        RETURNING trade_id
+    """,(from_user,to_user,from_char,to_char),"one")
+
+    return row["trade_id"]
+
+
+def get_trade(trade_id):
+
+    return _run("""
+        SELECT *
+        FROM card_trades
+        WHERE trade_id=%s
+    """,(trade_id,),"one")
+
+
+def set_trade_status(trade_id,status):
+
+    _run("""
+        UPDATE card_trades
+        SET status=%s
+        WHERE trade_id=%s
+    """,(status,trade_id))
+
+
+def swap_characters_atomic(trade_id):
+
+    trade = get_trade(trade_id)
+
+    if not trade:
+        return False
+
+    from_user = trade["from_user"]
+    to_user = trade["to_user"]
+
+    from_char = trade["from_character_id"]
+    to_char = trade["to_character_id"]
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("BEGIN")
+
+            cur.execute("""
+            UPDATE user_cards
+            SET quantity = quantity - 1
+            WHERE user_id=%s AND character_id=%s
+            """,(from_user,from_char))
+
+            cur.execute("""
+            UPDATE user_cards
+            SET quantity = quantity - 1
+            WHERE user_id=%s AND character_id=%s
+            """,(to_user,to_char))
+
+            cur.execute("""
+            INSERT INTO user_cards(user_id,character_id,quantity)
+            VALUES(%s,%s,1)
+            ON CONFLICT(user_id,character_id)
+            DO UPDATE SET quantity = user_cards.quantity + 1
+            """,(from_user,to_char))
+
+            cur.execute("""
+            INSERT INTO user_cards(user_id,character_id,quantity)
+            VALUES(%s,%s,1)
+            ON CONFLICT(user_id,character_id)
+            DO UPDATE SET quantity = user_cards.quantity + 1
+            """,(to_user,from_char))
+
+            cur.execute("""
+            UPDATE card_trades
+            SET status='completed'
+            WHERE trade_id=%s
+            """,(trade_id,))
+
+            conn.commit()
+
+    return True
