@@ -1,8 +1,10 @@
 import os
 import asyncio
 import time
+from typing import Optional, Tuple
 
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 import database as db
@@ -11,8 +13,8 @@ from utils.gatekeeper import gatekeeper
 
 
 ANTIFLOOD = 2.0
-_profile_locks = {}
-_last_profile = {}
+_profile_locks: dict[int, asyncio.Lock] = {}
+_last_profile: dict[int, float] = {}
 
 
 # =========================================================
@@ -25,7 +27,6 @@ def _load_admins() -> set[int]:
         return set()
 
     out = set()
-
     for part in raw.replace(";", ",").split(","):
         part = part.strip()
         if not part:
@@ -34,7 +35,6 @@ def _load_admins() -> set[int]:
             out.add(int(part))
         except Exception:
             pass
-
     return out
 
 
@@ -69,12 +69,14 @@ def _anti_spam(user_id: int) -> bool:
 
 
 # =========================================================
-# HELPERS
+# CHAT / LANG HELPERS
 # =========================================================
 
 def _is_group(update: Update) -> bool:
     chat = update.effective_chat
-    return bool(chat and chat.type in ("group", "supergroup"))
+    if not chat:
+        return False
+    return str(chat.type) in ("group", "supergroup")
 
 
 def _country_flag(code: str) -> str:
@@ -136,6 +138,10 @@ def _lang_pack(lang: str) -> dict:
     return packs.get(lang, packs["pt"])
 
 
+# =========================================================
+# DATA HELPERS
+# =========================================================
+
 def _safe_display_name(user_id: int, user_row: dict, settings_row: dict) -> str:
     nickname = str((settings_row or {}).get("nickname") or "").strip()
     if nickname:
@@ -188,7 +194,32 @@ def _get_favorite_from_settings(settings_row: dict):
         return None
 
 
-def _get_user_by_nickname(nickname: str):
+def _ensure_viewer_user(update: Update) -> Optional[int]:
+    user = update.effective_user
+    if not user:
+        return None
+
+    user_id = int(user.id)
+    db.create_or_get_user(user_id)
+
+    try:
+        db.touch_user_identity(
+            user_id,
+            user.username or "",
+            user.full_name or "",
+        )
+    except Exception:
+        pass
+
+    try:
+        db.ensure_profile_settings_row(user_id)
+    except Exception:
+        pass
+
+    return user_id
+
+
+def _get_user_by_nickname(nickname: str) -> Tuple[Optional[dict], Optional[dict]]:
     nickname = str(nickname or "").strip()
     if not nickname:
         return None, None
@@ -215,40 +246,29 @@ def _get_user_by_nickname(nickname: str):
     )
 
 
-def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    viewer = update.effective_user
-    if not viewer:
+def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Tuple[Optional[dict], Optional[dict]]:
+    viewer_id = _ensure_viewer_user(update)
+    if viewer_id is None:
         return None, None
 
-    # próprio perfil
     if not context.args:
-        user_id = int(viewer.id)
-
-        db.create_or_get_user(user_id)
-        try:
-            db.touch_user_identity(
-                user_id,
-                viewer.username or "",
-                viewer.full_name or "",
-            )
-        except Exception:
-            pass
-
-        user_row = db.get_user_status(user_id) or {}
-        settings_row = db.get_profile_settings(user_id) or {}
-
+        user_row = db.get_user_status(viewer_id) or {}
+        settings_row = db.get_profile_settings(viewer_id) or {}
         return (
             {
-                "user_id": user_id,
+                "user_id": viewer_id,
                 **dict(user_row),
             },
             dict(settings_row),
         )
 
-    # perfil por nickname
-    raw_nick = str(context.args[0] or "").strip()
+    raw_nick = " ".join(context.args).strip()
     return _get_user_by_nickname(raw_nick)
 
+
+# =========================================================
+# TEXT BUILDERS
+# =========================================================
 
 def _build_private_text(user_row: dict, settings_row: dict, favorite) -> str:
     user_id = int(user_row["user_id"])
@@ -258,21 +278,14 @@ def _build_private_text(user_row: dict, settings_row: dict, favorite) -> str:
     display_name = _safe_display_name(user_id, user_row, settings_row)
     role = t["role_admin"] if is_admin(user_id) else t["role_user"]
     flag = _country_flag(settings_row.get("country_code"))
-    title = f"👤 | <i>{role}</i>"
 
-    text = (
+    return (
         f"{flag} <b>{t['profile_title']}</b>\n\n"
-        f"{title}: <b>{display_name}</b>\n\n"
+        f"👤 | <i>{role}</i> <b>{display_name}</b>\n\n"
         f"🔐 | <b>{t['private_profile']}</b>\n\n"
         f"❤️ <b>{t['favorite']}:</b>\n"
+        + (f"🧧 <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
     )
-
-    if favorite:
-        text += f"🧧 <b>{favorite['name']}</b>"
-    else:
-        text += t["none_favorite"]
-
-    return text
 
 
 def _build_public_text(user_row: dict, settings_row: dict, level: int, total_collection: int, favorite) -> str:
@@ -284,38 +297,71 @@ def _build_public_text(user_row: dict, settings_row: dict, level: int, total_col
     coins = int(user_row.get("coins") or 0)
     role = t["role_admin"] if is_admin(user_id) else t["role_user"]
     flag = _country_flag(settings_row.get("country_code"))
-    title = f"👤 | <i>{role}</i>"
 
-    text = (
+    return (
         f"{flag} <b>{t['profile_title']}</b>\n\n"
-        f"{title}: <b>{display_name}</b>\n\n"
+        f"👤 | <i>{role}</i> <b>{display_name}</b>\n\n"
         f"📚 | <i>{t['collection']}:</i> <b>{total_collection}</b>\n"
         f"🪙 | <i>{t['coins']}:</i> <b>{coins}</b>\n"
         f"⭐️ | <i>{t['level']}:</i> <b>{level}</b>\n\n"
         f"❤️ <b>{t['favorite']}:</b>\n"
+        + (f"🧧 <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
     )
 
-    if favorite:
-        text += f"🧧 <b>{favorite['name']}</b>"
-    else:
-        text += t["none_favorite"]
 
-    return text
+# =========================================================
+# SEND HELPERS
+# =========================================================
 
+async def _send_text_fallback(update: Update, text: str):
+    msg = update.effective_message
+    chat = update.effective_chat
 
-async def _send_profile_message(msg, text: str, favorite):
-    if favorite and favorite.get("image"):
+    if msg:
         try:
-            await msg.reply_photo(
-                photo=favorite["image"],
-                caption=text,
-                parse_mode="HTML",
-            )
+            await msg.reply_text(text, parse_mode=ParseMode.HTML)
             return
         except Exception:
             pass
 
-    await msg.reply_html(text)
+    if chat:
+        await update.get_bot().send_message(
+            chat_id=chat.id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+        )
+
+
+async def _send_profile_message(update: Update, text: str, favorite):
+    msg = update.effective_message
+    chat = update.effective_chat
+    bot = update.get_bot()
+
+    if favorite and favorite.get("image"):
+        if msg:
+            try:
+                await msg.reply_photo(
+                    photo=favorite["image"],
+                    caption=text,
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+            except Exception:
+                pass
+
+        if chat:
+            try:
+                await bot.send_photo(
+                    chat_id=chat.id,
+                    photo=favorite["image"],
+                    caption=text,
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+            except Exception:
+                pass
+
+    await _send_text_fallback(update, text)
 
 
 # =========================================================
@@ -326,61 +372,78 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     user = update.effective_user
 
-    if not msg or not user:
+    if not msg and not update.effective_chat:
         return
 
-    if not _anti_spam(int(user.id)):
+    if user and not _anti_spam(int(user.id)):
         return
 
-    ok, bloqueio = await gatekeeper(update, context)
-    if not ok:
-        if bloqueio:
-            await msg.reply_html(bloqueio)
-        return
+    # no PV usa gatekeeper
+    if not _is_group(update):
+        ok, bloqueio = await gatekeeper(update, context)
+        if not ok:
+            if bloqueio:
+                await _send_text_fallback(update, bloqueio)
+            return
 
-    lock = _get_profile_lock(int(user.id))
+    lock_user_id = int(user.id) if user else 0
+    lock = _get_profile_lock(lock_user_id)
 
     async with lock:
-        user_row, settings_row = _resolve_target(update, context)
+        try:
+            user_row, settings_row = _resolve_target(update, context)
 
-        if not user_row:
-            # idioma do próprio viewer, se existir
-            viewer_settings = db.get_profile_settings(int(user.id)) or {}
-            lang = str(viewer_settings.get("language") or "pt").strip().lower()
-            t = _lang_pack(lang)
+            viewer_id = int(user.id) if user else 0
+            viewer_settings = db.get_profile_settings(viewer_id) or {}
+            viewer_lang = str(viewer_settings.get("language") or "pt").strip().lower()
+            viewer_texts = _lang_pack(viewer_lang)
 
-            await msg.reply_html(
-                f"❌ <b>{t['not_found_title']}</b>\n\n"
-                f"{t['not_found_help']}"
-            )
-            return
+            if not user_row:
+                await _send_text_fallback(
+                    update,
+                    f"❌ <b>{viewer_texts['not_found_title']}</b>\n\n{viewer_texts['not_found_help']}"
+                )
+                return
 
-        viewer_id = int(user.id)
-        target_id = int(user_row["user_id"])
-        private_on = bool((settings_row or {}).get("private_profile"))
-        favorite = _get_favorite_from_settings(settings_row)
+            target_id = int(user_row["user_id"])
+            private_on = bool((settings_row or {}).get("private_profile"))
+            favorite = _get_favorite_from_settings(settings_row)
 
-        # REGRA:
-        # - no PV do bot: sempre mostra normal
-        # - em grupo: se perfil do alvo estiver privado e não for o próprio alvo, mostra reduzido
-        if _is_group(update) and private_on and target_id != viewer_id:
-            text = _build_private_text(
+            # em grupo: perfil privado sempre mostra reduzido
+            if _is_group(update) and private_on:
+                text = _build_private_text(
+                    user_row=user_row,
+                    settings_row=settings_row,
+                    favorite=favorite,
+                )
+                await _send_profile_message(update, text, favorite)
+                return
+
+            level = _get_level(target_id)
+            total_collection = _get_collection_total(target_id)
+
+            text = _build_public_text(
                 user_row=user_row,
                 settings_row=settings_row,
+                level=level,
+                total_collection=total_collection,
                 favorite=favorite,
             )
-            await _send_profile_message(msg, text, favorite)
-            return
 
-        level = _get_level(target_id)
-        total_collection = _get_collection_total(target_id)
+            await _send_profile_message(update, text, favorite)
 
-        text = _build_public_text(
-            user_row=user_row,
-            settings_row=settings_row,
-            level=level,
-            total_collection=total_collection,
-            favorite=favorite,
-        )
+        except Exception:
+            # fallback final para não morrer silenciosamente em grupo
+            try:
+                viewer_id = int(user.id) if user else 0
+                viewer_settings = db.get_profile_settings(viewer_id) or {}
+                viewer_lang = str(viewer_settings.get("language") or "pt").strip().lower()
+                viewer_texts = _lang_pack(viewer_lang)
 
-        await _send_profile_message(msg, text, favorite)
+                await _send_text_fallback(
+                    update,
+                    f"❌ <b>{viewer_texts['not_found_title']}</b>"
+                )
+            except Exception:
+                pass
+            raise
