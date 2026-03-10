@@ -23,6 +23,16 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
+
+from commands.messages import (
+    bloquearmsg,
+    denunciarmsg,
+    msg,
+    msganon,
+    msgconfig,
+    desbloquearmsg,
+)
+
 from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
@@ -61,6 +71,14 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     tg_app.add_handler(CommandHandler("nivel", nivel))
+
+    # sms
+    tg_app.add_handler(CommandHandler("msg", msg))
+    tg_app.add_handler(CommandHandler("msganon", msganon))
+    tg_app.add_handler(CommandHandler("bloquearmsg", bloquearmsg))
+    tg_app.add_handler(CommandHandler("desbloquearmsg", desbloquearmsg))
+    tg_app.add_handler(CommandHandler("msgconfig", msgconfig))
+    tg_app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
 
     # admin cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
