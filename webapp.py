@@ -7769,152 +7769,227 @@ def api_menu_delete_account(payload: dict = Body(...)):
     return {"ok": True}
 
 # =========================================================
-# WEBAPP LOJA
+# WEBAPP — LOJA
+# =========================================================
+
+from fastapi import Header, Body
+from fastapi.responses import HTMLResponse
+
+from database import (
+    buy_dado,
+    buy_nickname_change,
+    sell_character,
+    get_user_shop_history
+)
+
+
+# =========================================================
+# UI LOJA
 # =========================================================
 
 @app.get("/shop", response_class=HTMLResponse)
-async def shop_page():
-    html = """
+async def webapp_shop(uid: int):
+
+    html = f"""
 <!doctype html>
 <html>
+
 <head>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Shop</title>
+<title>Loja</title>
 
 <style>
 
-body{
+body {{
 background:#0f0f0f;
 color:white;
 font-family:Arial;
 padding:20px;
-}
+}}
 
-.card{
+.card {{
 background:#1b1b1b;
 padding:16px;
 border-radius:12px;
-margin-bottom:12px;
-}
+margin-bottom:14px;
+}}
 
-button{
+button {{
 background:#2c6cff;
 border:none;
-padding:10px 14px;
+padding:10px 16px;
 border-radius:8px;
 color:white;
 cursor:pointer;
-}
+font-size:14px;
+}}
 
-button.red{
-background:#d94b4b;
-}
+button.red {{
+background:#e14c4c;
+}}
+
+#history p {{
+margin:4px 0;
+font-size:13px;
+}}
 
 </style>
 
 </head>
 
+
 <body>
 
-<h2>🛒 Shop</h2>
+<h2>🏪 Loja</h2>
+
 
 <div class="card">
 
-<h3>🎲 Comprar Dado</h3>
-<p>Custo: 2 coins</p>
+<h3>🎲 Comprar dado</h3>
+
+<p>Custo: <b>2 coins</b></p>
 
 <button onclick="buyDice()">Comprar</button>
 
 </div>
 
+
 <div class="card">
 
-<h3>🏷 Comprar Nickname</h3>
-<p>Custo: 3 coins</p>
+<h3>🏷 Comprar nickname</h3>
+
+<p>Custo: <b>3 coins</b></p>
 
 <button onclick="buyNick()">Comprar</button>
 
 </div>
 
+
 <div class="card">
 
 <h3>📜 Histórico</h3>
 
-<button onclick="loadHistory()">Ver histórico</button>
+<button onclick="loadHistory()">Carregar histórico</button>
 
 <div id="history"></div>
 
 </div>
 
+
+
 <script>
 
-async function buyDice(){
+const uid = {uid}
 
-let r = await fetch("/api/shop/buy_dado",{method:"POST"})
+
+async function buyDice(){{
+
+let r = await fetch("/api/shop/buy_dado", {{
+method:"POST",
+headers:{{"Content-Type":"application/json"}},
+body:JSON.stringify({{user_id:uid}})
+}})
+
 let j = await r.json()
 
-alert(j.ok ? "Dado comprado!" : "Coins insuficientes")
+alert(j.ok ? "🎲 Dado comprado!" : "❌ Coins insuficientes")
 
-}
+}}
 
-async function buyNick(){
 
-let r = await fetch("/api/shop/buy_nick",{method:"POST"})
+
+async function buyNick(){{
+
+let r = await fetch("/api/shop/buy_nick", {{
+method:"POST",
+headers:{{"Content-Type":"application/json"}},
+body:JSON.stringify({{user_id:uid}})
+}})
+
 let j = await r.json()
 
-alert(j.ok ? "Compra liberada!" : "Coins insuficientes")
+alert(j.ok ? "🏷 Nickname liberado!" : "❌ Coins insuficientes")
 
-}
+}}
 
-async function loadHistory(){
 
-let r = await fetch("/api/shop/history")
+
+async function loadHistory(){{
+
+let r = await fetch("/api/shop/history?uid="+uid)
+
 let j = await r.json()
 
 let html=""
 
-j.forEach(x=>{
+j.forEach(x=>{{
 
-html+= "<p>"+x.type+" "+x.amount+"</p>"
+html += "<p>"+x.type+" ("+x.amount+")</p>"
 
-})
+}})
 
-document.getElementById("history").innerHTML=html
+document.getElementById("history").innerHTML = html
 
-}
+}}
 
 </script>
 
 </body>
 </html>
 """
+
     return HTMLResponse(html)
 
-    @app.post("/api/shop/buy_dado")
-async def api_buy_dado(user_id: int = Header()):
 
-    from database import buy_dado
 
-    r = buy_dado(user_id)
+# =========================================================
+# API — COMPRAR DADO
+# =========================================================
 
-    return r
+@app.post("/api/shop/buy_dado")
+async def api_buy_dado(data: dict = Body(...)):
 
-    @app.get("/api/shop/history")
-async def api_history(user_id: int = Header()):
+    user_id = int(data.get("user_id"))
 
-    from database import get_user_shop_history
+    return buy_dado(user_id)
 
-    return get_user_shop_history(user_id)
 
-    @app.post("/api/shop/sell")
-async def api_sell(data: dict):
 
-    from database import sell_character
+# =========================================================
+# API — COMPRAR NICKNAME
+# =========================================================
 
-    user_id = int(data["user_id"])
-    character_id = int(data["character_id"])
+@app.post("/api/shop/buy_nick")
+async def api_buy_nick(data: dict = Body(...)):
 
-    return sell_character(user_id,character_id)
+    user_id = int(data.get("user_id"))
+
+    return buy_nickname_change(user_id)
+
+
+
+# =========================================================
+# API — HISTÓRICO
+# =========================================================
+
+@app.get("/api/shop/history")
+async def api_shop_history(uid: int):
+
+    return get_user_shop_history(uid)
+
+
+
+# =========================================================
+# API — VENDER PERSONAGEM
+# =========================================================
+
+@app.post("/api/shop/sell")
+async def api_shop_sell(data: dict = Body(...)):
+
+    user_id = int(data.get("user_id"))
+    character_id = int(data.get("character_id"))
+
+    return sell_character(user_id, character_id)
