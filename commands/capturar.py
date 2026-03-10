@@ -1,48 +1,34 @@
-import unicodedata
+import os
+import random
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers.capture_spawn import ACTIVE_SPAWNS
-from database import add_coin, add_progress_xp
+from handlers.capture_spawn import ALL_CHARACTERS, ACTIVE_SPAWNS
+
+ADMIN_IDS = set(
+    int(x.strip())
+    for x in os.getenv("ADMIN_IDS", "").split(",")
+    if x.strip()
+)
 
 
-def normalize(text):
-    text = text.lower()
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-    return text
+async def spawnpersonagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-
-async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
 
     chat_id = update.effective_chat.id
 
-    if chat_id not in ACTIVE_SPAWNS:
-        return
+    character = random.choice(ALL_CHARACTERS)
 
-    if not context.args:
-        return
-
-    guess = normalize(" ".join(context.args))
-
-    character = ACTIVE_SPAWNS[chat_id]["character"]
-
-    correct = normalize(character["name"])
-
-    if guess != correct:
-        return
-
-    user = update.effective_user
-
-    add_coin(user.id, 1)
-    add_progress_xp(user.id, 10)
+    ACTIVE_SPAWNS[chat_id] = {
+        "character": character
+    }
 
     text = (
-        "🎉 <b>CAPTURADO!</b>\n\n"
-        f"👤 <b>{character['name']}</b>\n"
-        f"📺 {character['anime']}\n\n"
-        "💰 +1 coin\n"
-        "⭐ +10 XP"
+        "🧪 <b>SPAWN DE TESTE</b>\n\n"
+        "Quem é esse personagem?\n\n"
+        "<code>/capturar nome</code>"
     )
 
     await update.message.reply_photo(
@@ -50,5 +36,3 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=text,
         parse_mode="HTML"
     )
-
-    del ACTIVE_SPAWNS[chat_id]
