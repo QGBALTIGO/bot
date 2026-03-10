@@ -72,6 +72,11 @@ def _anti_spam(user_id: int) -> bool:
 # HELPERS
 # =========================================================
 
+def _is_group(update: Update) -> bool:
+    chat = update.effective_chat
+    return bool(chat and chat.type in ("group", "supergroup"))
+
+
 def _country_flag(code: str) -> str:
     code = str(code or "").strip().upper()
     mapping = {
@@ -81,6 +86,54 @@ def _country_flag(code: str) -> str:
         "JP": "🇯🇵",
     }
     return mapping.get(code, "🏳️")
+
+
+def _lang_pack(lang: str) -> dict:
+    lang = str(lang or "pt").strip().lower()
+
+    packs = {
+        "pt": {
+            "profile_title": "PERFIL DO USUÁRIO",
+            "role_admin": "Admin",
+            "role_user": "User",
+            "collection": "Coleção",
+            "coins": "Coins",
+            "level": "Nível",
+            "favorite": "Favorito",
+            "none_favorite": "— Nenhum favorito",
+            "private_profile": "Perfil privado!",
+            "not_found_title": "Usuário não encontrado",
+            "not_found_help": "Use:\n<code>/perfil</code>\nou\n<code>/perfil Nickname</code>",
+        },
+        "en": {
+            "profile_title": "USER PROFILE",
+            "role_admin": "Admin",
+            "role_user": "User",
+            "collection": "Collection",
+            "coins": "Coins",
+            "level": "Level",
+            "favorite": "Favorite",
+            "none_favorite": "— No favorite",
+            "private_profile": "Private profile!",
+            "not_found_title": "User not found",
+            "not_found_help": "Use:\n<code>/perfil</code>\nor\n<code>/perfil Nickname</code>",
+        },
+        "es": {
+            "profile_title": "PERFIL DEL USUARIO",
+            "role_admin": "Admin",
+            "role_user": "User",
+            "collection": "Colección",
+            "coins": "Coins",
+            "level": "Nivel",
+            "favorite": "Favorito",
+            "none_favorite": "— Sin favorito",
+            "private_profile": "¡Perfil privado!",
+            "not_found_title": "Usuario no encontrado",
+            "not_found_help": "Usa:\n<code>/perfil</code>\no\n<code>/perfil Nickname</code>",
+        },
+    }
+
+    return packs.get(lang, packs["pt"])
 
 
 def _safe_display_name(user_id: int, user_row: dict, settings_row: dict) -> str:
@@ -135,6 +188,33 @@ def _get_favorite_from_settings(settings_row: dict):
         return None
 
 
+def _get_user_by_nickname(nickname: str):
+    nickname = str(nickname or "").strip()
+    if not nickname:
+        return None, None
+
+    try:
+        settings_row = db.get_profile_settings_by_nickname(nickname)
+    except Exception:
+        settings_row = None
+
+    if not settings_row:
+        return None, None
+
+    user_id = int(settings_row["user_id"])
+    user_row = db.get_user_status(user_id)
+    if not user_row:
+        return None, None
+
+    return (
+        {
+            "user_id": user_id,
+            **dict(user_row),
+        },
+        dict(settings_row),
+    )
+
+
 def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     viewer = update.effective_user
     if not viewer:
@@ -165,49 +245,77 @@ def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dict(settings_row),
         )
 
-    # por ID
-    raw = str(context.args[0] or "").strip()
-    if not raw.isdigit():
-        return None, None
-
-    target_id = int(raw)
-    user_row = db.get_user_status(target_id)
-    if not user_row:
-        return None, None
-
-    settings_row = db.get_profile_settings(target_id) or {}
-
-    return (
-        {
-            "user_id": target_id,
-            **dict(user_row),
-        },
-        dict(settings_row),
-    )
+    # perfil por nickname
+    raw_nick = str(context.args[0] or "").strip()
+    return _get_user_by_nickname(raw_nick)
 
 
-def _build_profile_text(user_row: dict, settings_row: dict, level: int, total_collection: int, favorite) -> str:
+def _build_private_text(user_row: dict, settings_row: dict, favorite) -> str:
     user_id = int(user_row["user_id"])
+    lang = str((settings_row or {}).get("language") or "pt").strip().lower()
+    t = _lang_pack(lang)
+
     display_name = _safe_display_name(user_id, user_row, settings_row)
-    coins = int(user_row.get("coins") or 0)
-    role = "Admin" if is_admin(user_id) else "User"
+    role = t["role_admin"] if is_admin(user_id) else t["role_user"]
     flag = _country_flag(settings_row.get("country_code"))
+    title = f"👤 | <i>{role}</i>"
 
     text = (
-        f"{flag} <b>PERFIL DO USUÁRIO</b>\n\n"
-        f"👤 | <i>{role}</i> <b>{display_name}</b>\n\n"
-        f"📚 | <i>Coleção:</i> <b>{total_collection}</b>\n"
-        f"🪙 | <i>Coins:</i> <b>{coins}</b>\n"
-        f"⭐️ | <i>Nível:</i> <b>{level}</b>\n\n"
-        "❤️ <b>Favorito:</b>\n"
+        f"{flag} <b>{t['profile_title']}</b>\n\n"
+        f"{title}: <b>{display_name}</b>\n\n"
+        f"🔐 | <b>{t['private_profile']}</b>\n\n"
+        f"❤️ <b>{t['favorite']}:</b>\n"
     )
 
     if favorite:
         text += f"🧧 <b>{favorite['name']}</b>"
     else:
-        text += "— Nenhum favorito"
+        text += t["none_favorite"]
 
     return text
+
+
+def _build_public_text(user_row: dict, settings_row: dict, level: int, total_collection: int, favorite) -> str:
+    user_id = int(user_row["user_id"])
+    lang = str((settings_row or {}).get("language") or "pt").strip().lower()
+    t = _lang_pack(lang)
+
+    display_name = _safe_display_name(user_id, user_row, settings_row)
+    coins = int(user_row.get("coins") or 0)
+    role = t["role_admin"] if is_admin(user_id) else t["role_user"]
+    flag = _country_flag(settings_row.get("country_code"))
+    title = f"👤 | <i>{role}</i>"
+
+    text = (
+        f"{flag} <b>{t['profile_title']}</b>\n\n"
+        f"{title}: <b>{display_name}</b>\n\n"
+        f"📚 | <i>{t['collection']}:</i> <b>{total_collection}</b>\n"
+        f"🪙 | <i>{t['coins']}:</i> <b>{coins}</b>\n"
+        f"⭐️ | <i>{t['level']}:</i> <b>{level}</b>\n\n"
+        f"❤️ <b>{t['favorite']}:</b>\n"
+    )
+
+    if favorite:
+        text += f"🧧 <b>{favorite['name']}</b>"
+    else:
+        text += t["none_favorite"]
+
+    return text
+
+
+async def _send_profile_message(msg, text: str, favorite):
+    if favorite and favorite.get("image"):
+        try:
+            await msg.reply_photo(
+                photo=favorite["image"],
+                caption=text,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+
+    await msg.reply_html(text)
 
 
 # =========================================================
@@ -236,56 +344,38 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_row, settings_row = _resolve_target(update, context)
 
         if not user_row:
+            # idioma do próprio viewer, se existir
+            viewer_settings = db.get_profile_settings(int(user.id)) or {}
+            lang = str(viewer_settings.get("language") or "pt").strip().lower()
+            t = _lang_pack(lang)
+
             await msg.reply_html(
-                "❌ <b>Usuário não encontrado</b>\n\n"
-                "Use:\n"
-                "<code>/perfil</code>\n"
-                "ou\n"
-                "<code>/perfil 123456789</code>"
+                f"❌ <b>{t['not_found_title']}</b>\n\n"
+                f"{t['not_found_help']}"
             )
             return
 
+        viewer_id = int(user.id)
         target_id = int(user_row["user_id"])
         private_on = bool((settings_row or {}).get("private_profile"))
+        favorite = _get_favorite_from_settings(settings_row)
 
-        # se for perfil de outra pessoa e estiver privado
-        if target_id != int(user.id) and private_on:
-            display_name = _safe_display_name(target_id, user_row, settings_row)
-            role = "Admin" if is_admin(target_id) else "User"
-            flag = _country_flag(settings_row.get("country_code"))
-            favorite = _get_favorite_from_settings(settings_row)
-
-            text = (
-                f"{flag} <b>PERFIL DO USUÁRIO</b>\n\n"
-                f"👤 | <i>{role}</i> <b>{display_name}</b>\n\n"
-                "🔐 | <b>Perfil privado!</b>\n\n"
-                "❤️ <b>Favorito:</b>\n"
+        # REGRA:
+        # - no PV do bot: sempre mostra normal
+        # - em grupo: se perfil do alvo estiver privado e não for o próprio alvo, mostra reduzido
+        if _is_group(update) and private_on and target_id != viewer_id:
+            text = _build_private_text(
+                user_row=user_row,
+                settings_row=settings_row,
+                favorite=favorite,
             )
-
-            if favorite:
-                text += f"🧧 <b>{favorite['name']}</b>"
-            else:
-                text += "— Nenhum favorito"
-
-            if favorite and favorite.get("image"):
-                try:
-                    await msg.reply_photo(
-                        photo=favorite["image"],
-                        caption=text,
-                        parse_mode="HTML",
-                    )
-                    return
-                except Exception:
-                    pass
-
-            await msg.reply_html(text)
+            await _send_profile_message(msg, text, favorite)
             return
 
         level = _get_level(target_id)
         total_collection = _get_collection_total(target_id)
-        favorite = _get_favorite_from_settings(settings_row)
 
-        text = _build_profile_text(
+        text = _build_public_text(
             user_row=user_row,
             settings_row=settings_row,
             level=level,
@@ -293,16 +383,4 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             favorite=favorite,
         )
 
-        # sem favorito = sem foto
-        if favorite and favorite.get("image"):
-            try:
-                await msg.reply_photo(
-                    photo=favorite["image"],
-                    caption=text,
-                    parse_mode="HTML",
-                )
-                return
-            except Exception:
-                pass
-
-        await msg.reply_html(text)
+        await _send_profile_message(msg, text, favorite)
