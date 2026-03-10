@@ -7768,241 +7768,50 @@ def api_menu_delete_account(payload: dict = Body(...)):
     delete_user_account(uid)
     return {"ok": True}
 
-```python
 # =========================================================
-# WEBAPP — LOJA
-# =========================================================
-
-from fastapi.responses import HTMLResponse
-from fastapi import Body
-
-# ================================
-# STATE
-# ================================
-
-@app.get("/api/shop/state")
-def api_shop_state(uid: int):
-
-    user = db._run(
-        "SELECT coins,dado_balance FROM users WHERE user_id=%s",
-        (uid,),
-        fetch="one"
-    )
-
-    sales = db._run(
-        """
-        SELECT id,character_id,repurchased,expires_at
-        FROM character_sales
-        WHERE user_id=%s
-        ORDER BY sold_at DESC
-        LIMIT 50
-        """,
-        (uid,),
-        fetch="all"
-    )
-
-    return {
-        "coins": user["coins"],
-        "dado": user["dado_balance"],
-        "sales": sales
-    }
-
-
-# ================================
-# BUY DICE
-# ================================
-
-@app.post("/api/shop/buy_dice")
-def api_shop_buy_dice(data: dict = Body(...)):
-
-    uid = data["uid"]
-
-    row = db._run(
-        "SELECT coins FROM users WHERE user_id=%s",
-        (uid,),
-        fetch="one"
-    )
-
-    if row["coins"] < 2:
-        return {"ok": False}
-
-    db._run(
-        "UPDATE users SET coins=coins-2 WHERE user_id=%s",
-        (uid,)
-    )
-
-    db.add_dado_balance(uid, 1)
-
-    return {"ok": True}
-
-
-# ================================
-# BUY ALL DICE
-# ================================
-
-@app.post("/api/shop/buy_all_dice")
-def api_shop_buy_all_dice(data: dict = Body(...)):
-
-    uid = data["uid"]
-
-    coins = db._run(
-        "SELECT coins FROM users WHERE user_id=%s",
-        (uid,),
-        fetch="one"
-    )["coins"]
-
-    amount = coins // 2
-
-    if amount <= 0:
-        return {"ok": False}
-
-    cost = amount * 2
-
-    db._run(
-        "UPDATE users SET coins=coins-%s WHERE user_id=%s",
-        (cost, uid)
-    )
-
-    db.add_dado_balance(uid, amount)
-
-    return {
-        "ok": True,
-        "amount": amount
-    }
-
-
-# ================================
-# SELL CHARACTER
-# ================================
-
-@app.post("/api/shop/sell_character")
-def api_shop_sell_character(data: dict = Body(...)):
-
-    uid = data["uid"]
-    character_id = data["character_id"]
-
-    qty = db.get_user_card_quantity(uid, character_id)
-
-    if qty <= 0:
-        return {"ok": False}
-
-    db.remove_card_copy(uid, character_id, 1)
-
-    db.add_user_coins(uid, 1)
-
-    db._run(
-        """
-        INSERT INTO character_sales
-        (user_id,character_id)
-        VALUES (%s,%s)
-        """,
-        (uid, character_id)
-    )
-
-    return {"ok": True}
-
-
-# ================================
-# REPURCHASE
-# ================================
-
-@app.post("/api/shop/repurchase")
-def api_shop_repurchase(data: dict = Body(...)):
-
-    uid = data["uid"]
-    sale_id = data["sale_id"]
-
-    sale = db._run(
-        """
-        SELECT *
-        FROM character_sales
-        WHERE id=%s
-        AND user_id=%s
-        AND repurchased=FALSE
-        AND expires_at>NOW()
-        """,
-        (sale_id, uid),
-        fetch="one"
-    )
-
-    if not sale:
-        return {"ok": False}
-
-    coins = db._run(
-        "SELECT coins FROM users WHERE user_id=%s",
-        (uid,),
-        fetch="one"
-    )["coins"]
-
-    if coins < 3:
-        return {"ok": False}
-
-    db._run(
-        "UPDATE users SET coins=coins-3 WHERE user_id=%s",
-        (uid,)
-    )
-
-    db.add_card_copy(uid, sale["character_id"], 1)
-
-    db._run(
-        "UPDATE character_sales SET repurchased=TRUE WHERE id=%s",
-        (sale_id,)
-    )
-
-    return {"ok": True}
-
-
-# =========================================================
-# PAGE
+# WEBAPP LOJA
 # =========================================================
 
-@app.get("/loja", response_class=HTMLResponse)
-def miniapp_loja():
-
-    return """
-<!DOCTYPE html>
+@app.get("/shop", response_class=HTMLResponse)
+async def shop_page():
+    html = """
+<!doctype html>
 <html>
-
 <head>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>Shop</title>
 
 <style>
 
 body{
 background:#0f0f0f;
 color:white;
-font-family:system-ui;
+font-family:Arial;
 padding:20px;
-margin:0
-}
-
-h1{
-font-size:22px;
-margin-bottom:10px
 }
 
 .card{
-background:#1a1a1a;
-padding:14px;
+background:#1b1b1b;
+padding:16px;
 border-radius:12px;
-margin-top:12px
+margin-bottom:12px;
 }
 
 button{
-width:100%;
-padding:14px;
-margin-top:10px;
+background:#2c6cff;
 border:none;
-border-radius:10px;
-font-size:15px;
-font-weight:600
+padding:10px 14px;
+border-radius:8px;
+color:white;
+cursor:pointer;
 }
 
-.buy{background:#3b82f6;color:white}
-.sell{background:#ef4444;color:white}
-.rebuy{background:#22c55e;color:white}
+button.red{
+background:#d94b4b;
+}
 
 </style>
 
@@ -8010,120 +7819,102 @@ font-weight:600
 
 <body>
 
-<h1>🏪 Loja</h1>
-
-<div class="card">
-<div id="coins"></div>
-<div id="dados"></div>
-</div>
+<h2>🛒 Shop</h2>
 
 <div class="card">
 
-<button class="buy" onclick="buyDice()">
-🎲 Comprar dado — 2 coins
-</button>
+<h3>🎲 Comprar Dado</h3>
+<p>Custo: 2 coins</p>
 
-<button class="buy" onclick="buyAllDice()">
-🎲 Comprar todos dados possíveis
-</button>
+<button onclick="buyDice()">Comprar</button>
 
 </div>
 
 <div class="card">
 
-<h3>♻️ Recomprar</h3>
+<h3>🏷 Comprar Nickname</h3>
+<p>Custo: 3 coins</p>
 
-<div id="repurchase"></div>
+<button onclick="buyNick()">Comprar</button>
+
+</div>
+
+<div class="card">
+
+<h3>📜 Histórico</h3>
+
+<button onclick="loadHistory()">Ver histórico</button>
+
+<div id="history"></div>
 
 </div>
 
 <script>
 
-const tg = window.Telegram.WebApp
-
-const uid = new URLSearchParams(location.search).get("uid")
-
-async function load(){
-
-let r = await fetch(`/api/shop/state?uid=${uid}`)
-let d = await r.json()
-
-document.getElementById("coins").innerHTML =
-"💰 Coins: <b>"+d.coins+"</b>"
-
-document.getElementById("dados").innerHTML =
-"🎲 Dados: <b>"+d.dado+"</b>"
-
-let rep=""
-
-d.sales.forEach(x=>{
-
-if(!x.repurchased){
-
-rep+=`
-<button class="rebuy"
-onclick="repurchase(${x.id})">
-Recomprar personagem ${x.character_id} (3 coins)
-</button>
-`
-
-}
-
-})
-
-document.getElementById("repurchase").innerHTML=rep
-
-}
-
-
 async function buyDice(){
 
-await fetch("/api/shop/buy_dice",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid})
-})
+let r = await fetch("/api/shop/buy_dado",{method:"POST"})
+let j = await r.json()
 
-load()
+alert(j.ok ? "Dado comprado!" : "Coins insuficientes")
 
 }
 
+async function buyNick(){
 
-async function buyAllDice(){
+let r = await fetch("/api/shop/buy_nick",{method:"POST"})
+let j = await r.json()
 
-await fetch("/api/shop/buy_all_dice",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid})
-})
-
-load()
+alert(j.ok ? "Compra liberada!" : "Coins insuficientes")
 
 }
 
+async function loadHistory(){
 
-async function repurchase(id){
+let r = await fetch("/api/shop/history")
+let j = await r.json()
 
-await fetch("/api/shop/repurchase",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-uid,
-sale_id:id
+let html=""
+
+j.forEach(x=>{
+
+html+= "<p>"+x.type+" "+x.amount+"</p>"
+
 })
-})
 
-load()
+document.getElementById("history").innerHTML=html
 
 }
-
-load()
 
 </script>
 
 </body>
-
 </html>
 """
-```
+    return HTMLResponse(html)
 
+    @app.post("/api/shop/buy_dado")
+async def api_buy_dado(user_id: int = Header()):
+
+    from database import buy_dado
+
+    r = buy_dado(user_id)
+
+    return r
+
+    @app.get("/api/shop/history")
+async def api_history(user_id: int = Header()):
+
+    from database import get_user_shop_history
+
+    return get_user_shop_history(user_id)
+
+    @app.post("/api/shop/sell")
+async def api_sell(data: dict):
+
+    from database import sell_character
+
+    user_id = int(data["user_id"])
+    character_id = int(data["character_id"])
+
+    return sell_character(user_id,character_id)
