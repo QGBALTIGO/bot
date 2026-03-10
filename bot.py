@@ -19,6 +19,7 @@ from telegram.ext import (
 from commands.start import start
 from commands.menu import menu
 from commands.perfil import perfil
+from commands.reset_users import reset_user, reset_all
 
 from commands.anime import anime
 from commands.manga import manga
@@ -136,6 +137,8 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("perfil", perfil))
+    app.add_handler(CommandHandler("resetuser", reset_user))
+    app.add_handler(CommandHandler("resetall", reset_all))
 
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
