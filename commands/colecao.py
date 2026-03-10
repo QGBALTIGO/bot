@@ -628,3 +628,34 @@ async def colecao_x_callback(update, context):
     await q.answer()
 
     await send_collection_gallery(update, context, anime, int(index), edit=True)
+
+def get_completed_anime_message(user_id: int, character_id: int):
+    data = cards_data()
+    ch = data["characters_by_id"].get(int(character_id))
+
+    if not ch:
+        return None
+
+    anime_id = int(ch.get("anime_id") or 0)
+    if anime_id <= 0:
+        return None
+
+    anime = find_anime(str(anime_id))
+    if not anime:
+        return None
+
+    anime_chars = data["characters_by_anime"].get(anime_id, []) or []
+    owned_ids = {c["character_id"] for c in get_user_cards(int(user_id))}
+
+    total_anime = len(anime_chars)
+    total_owned = sum(1 for c in anime_chars if int(c.get("id") or 0) in owned_ids)
+
+    if total_anime <= 0 or total_owned != total_anime:
+        return None
+
+    return (
+        "🎉 <b>PARABÉNS!</b>\n\n"
+        f"🏆 Você completou a coleção de <b>{anime['anime']}</b>!\n\n"
+        f"📚 <i>Total coletado:</i> <b>{total_owned}/{total_anime}</b>\n\n"
+        "Agora essa obra está 100% completa na sua coleção. 💖"
+    )
