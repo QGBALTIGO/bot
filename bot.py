@@ -1,36 +1,31 @@
 import os
 import threading
 import traceback
-from telegram.ext import MessageHandler, filters
 
 import uvicorn
+
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
+    CallbackQueryHandler,
     MessageHandler,
     filters,
 )
 
-from commands.trocar import (
-    trocar,
-    trade_accept,
-    trade_reject
-)
+# =========================================================
+# COMMANDS
+# =========================================================
 
 from commands.start import start
-from commands.ranking import ranking, callback_ranking
+from commands.menu import menu
 from commands.perfil import perfil
+
 from commands.anime import anime
 from commands.manga import manga
+
 from commands.cards import cards
-from commands.menu import menu
-from commands.loja import loja
-from commands.daily import daily
-from handlers.capture_spawn import capture_message_handler
-from commands.capturar import capturar
-from commands.spawn_personagem import spawn_personagem
 from commands.card import card, card_stats_callback
+
 from commands.colecao import (
     colecao,
     colecao_callback,
@@ -38,8 +33,24 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
+
+from commands.loja import loja
+from commands.daily import daily
+
+from commands.capturar import capturar
+from commands.spawn_personagem import spawn_personagem
+
+from commands.trocar import (
+    trocar,
+    trade_accept,
+    trade_reject,
+)
+
+from commands.ranking import ranking, callback_ranking
+
 from commands.pedido import pedido
 from commands.nivel import nivel
+
 from commands.dado import dado
 from commands.dado_admin import dadogive, dadogiveall
 
@@ -52,30 +63,34 @@ from commands.termo import (
 )
 
 from commands.cards_admin import (
-    card_addanime,
-    card_addchar,
-    card_addsubcat,
-    card_delanime,
-    card_delchar,
-    card_delsubcat,
     card_reload,
-    card_setanimebanner,
-    card_setanimecover,
+    card_delchar,
+    card_addchar,
     card_setcharimg,
     card_setcharname,
+    card_delanime,
+    card_addanime,
+    card_setanimebanner,
+    card_setanimecover,
+    card_addsubcat,
+    card_delsubcat,
     card_subadd,
     card_subremove,
 )
 
+from handlers.capture_spawn import capture_message_handler
+
 from database import create_tables
 
+# =========================================================
+# ENV
+# =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
 
 PORT = int(os.getenv("PORT", "8000"))
-
 
 # =========================================================
 # WEBAPP
@@ -91,6 +106,7 @@ def run_webapp():
             port=PORT,
             log_level="warning",
         )
+
     except Exception:
         print("[webapp-error]")
         traceback.print_exc()
@@ -101,42 +117,54 @@ def run_webapp():
 # =========================================================
 
 async def on_error(update, context):
-    try:
-        print("[telegram-error]", repr(context.error))
-        traceback.print_exc()
-    except:
-        pass
+    print("[telegram-error]", repr(context.error))
+    traceback.print_exc()
 
 
 # =========================================================
-# HANDLERS
+# COMMAND HANDLERS
 # =========================================================
 
 def register_commands(app: Application):
 
     # básicos
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("perfil", perfil))
+
+    # catálogo
     app.add_handler(CommandHandler("anime", anime))
     app.add_handler(CommandHandler("manga", manga))
+
+    # cards
     app.add_handler(CommandHandler("cards", cards))
     app.add_handler(CommandHandler("card", card))
-    app.add_handler(CommandHandler("menu", menu))
+
+    # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("pedido", pedido))
-    app.add_handler(CommandHandler("nivel", nivel))
-    app.add_handler(CommandHandler("dado", dado))
-    app.add_handler(CommandHandler("perfil", perfil))
+
+    # economia
     app.add_handler(CommandHandler("loja", loja))
     app.add_handler(CommandHandler("daily", daily))
+
+    # gacha
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
+
+    # troca
     app.add_handler(CommandHandler("trocar", trocar))
     app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
-    app.add_handler(CommandHandler("ranking", ranking))
-    app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
-    # admin dado
+    # ranking
+    app.add_handler(CommandHandler("ranking", ranking))
+
+    # misc
+    app.add_handler(CommandHandler("pedido", pedido))
+    app.add_handler(CommandHandler("nivel", nivel))
+
+    # dado
+    app.add_handler(CommandHandler("dado", dado))
     app.add_handler(CommandHandler("dadogive", dadogive))
     app.add_handler(CommandHandler("dadogiveall", dadogiveall))
 
@@ -144,11 +172,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("termo", termo_cmd))
     app.add_handler(CommandHandler("termostats", termo_stats_cmd))
     app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
-    app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
-    app.add_handler(CommandHandler("termorankingmes", termo_ranking_month_cmd))
     app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
-    app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
-    app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
 
     # admin cards
     app.add_handler(CommandHandler("card_reload", card_reload))
@@ -166,19 +190,38 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("card_subremove", card_subremove))
 
 
+# =========================================================
+# CALLBACK HANDLERS
+# =========================================================
+
+def register_callbacks(app: Application):
+
+    app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^card_stats"))
+    app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
+    app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
+    app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
+    app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+    app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
+
+
+# =========================================================
+# MESSAGE HANDLERS
+# =========================================================
+
 def register_messages(app: Application):
 
-    # Termo primeiro
+    # termo primeiro
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
         group=1,
     )
 
-    # Captura/spawn depois
+    # captura depois
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler),
         group=2,
     )
+
 
 # =========================================================
 # APPLICATION
@@ -208,13 +251,11 @@ def build_application():
 
 def main():
 
-    # cria tabelas uma vez
     create_tables()
 
-    # webapp em thread separada
     threading.Thread(
         target=run_webapp,
-        daemon=True
+        daemon=True,
     ).start()
 
     app = build_application()
