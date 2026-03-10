@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 import database as db
-from services.cards_service import get_character_by_id
+from cards_service import get_character_by_id
 
 
 ITENS_POR_PAGINA = 10
@@ -16,14 +16,14 @@ DEFAULT_COLLECTION_COVER = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nY
 
 
 # =========================
-# LOCKS
+# LOCK
 # =========================
 
 _user_locks = {}
 _last_click = {}
 
 
-def get_lock(uid: int):
+def get_lock(uid):
     lock = _user_locks.get(uid)
     if not lock:
         lock = asyncio.Lock()
@@ -31,7 +31,7 @@ def get_lock(uid: int):
     return lock
 
 
-def antiflood(uid: int) -> bool:
+def antiflood(uid):
 
     now = time.time()
     last = _last_click.get(uid, 0)
@@ -75,7 +75,7 @@ def set_collection_cache(user_id, cards):
 # DUPLICATE EMOJI
 # =========================
 
-def duplicate_emoji(qty: int):
+def duplicate_emoji(qty):
 
     if qty >= 20:
         return " 👑"
@@ -134,13 +134,19 @@ def sort_cards(cards):
 
 def get_cover(user_id, cards):
 
-    profile = db.get_collection_profile(user_id)
+    profile = None
+
+    try:
+        profile = db.get_collection_profile(user_id)
+    except:
+        pass
 
     fav_id = profile.get("favorite_character_id") if profile else None
 
     if fav_id:
 
         for c in cards:
+
             if c["character_id"] == fav_id:
 
                 if c.get("image"):
@@ -219,8 +225,13 @@ def build_text(user_id, cards, page):
 
     page_cards = cards[start:end]
 
-    profile = db.get_collection_profile(user_id)
-    fav_id = profile.get("favorite_character_id") if profile else None
+    fav_id = None
+
+    try:
+        profile = db.get_collection_profile(user_id)
+        fav_id = profile.get("favorite_character_id") if profile else None
+    except:
+        pass
 
     text = (
         "📚 <b>Minha Coleção</b>\n\n"
