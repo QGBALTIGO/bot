@@ -7768,267 +7768,343 @@ def api_menu_delete_account(payload: dict = Body(...)):
     delete_user_account(uid)
     return {"ok": True}
 
-# =========================================================
-# WEBAPP — LOJA BALTIGO
-# =========================================================
+# =========================
+# WEBAPP — LOJA
+# =========================
 
-from fastapi import Body
-from fastapi.responses import HTMLResponse
+@app.get("/loja", response_class=HTMLResponse)
+def loja_page(uid: int = Query(...)):
 
-from database import (
-    buy_dado,
-    buy_nickname_change,
-    sell_character,
-    get_user_shop_history,
-    get_user_card_collection
-)
-
-
-@app.get("/shop", response_class=HTMLResponse)
-async def webapp_shop(uid: int):
-
-    html = f"""
+    html = """
 <!doctype html>
-<html>
-
+<html lang="pt-br">
 <head>
-
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<title>Loja Baltigo</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>LOJA • Baltigo</title>
 
 <style>
 
-body {{
-background:#0b0b0b;
-color:white;
-font-family:Arial;
+:root{
+--bg0:#070b12;
+--bg1:#0a1220;
+--stroke:rgba(255,255,255,0.10);
+--stroke2:rgba(255,255,255,0.16);
+--txt:rgba(255,255,255,0.92);
+--muted:rgba(255,255,255,0.55);
+}
+
+body{
 margin:0;
-padding:20px;
-}}
+font-family:-apple-system,system-ui,Segoe UI,Roboto;
+background:linear-gradient(180deg,var(--bg0),var(--bg1));
+color:var(--txt);
+}
 
-h2 {{
-margin-bottom:20px;
-}}
-
-.section {{
-background:#151515;
-border-radius:14px;
+.wrap{
+max-width:900px;
+margin:auto;
 padding:18px;
-margin-bottom:18px;
-}}
+}
 
-.item {{
+.banner{
+width:100%;
+border-radius:22px;
+overflow:hidden;
+border:1px solid var(--stroke);
+margin-bottom:16px;
+}
+
+.banner img{
+width:100%;
+height:180px;
+object-fit:cover;
+}
+
+.tabs{
 display:flex;
-justify-content:space-between;
-align-items:center;
-margin-top:10px;
-}}
+gap:10px;
+margin-bottom:16px;
+}
 
-button {{
-background:#5865F2;
-border:none;
-color:white;
-padding:8px 14px;
-border-radius:8px;
+.tab{
+flex:1;
+padding:12px;
+border-radius:14px;
+border:1px solid var(--stroke);
+background:rgba(255,255,255,0.03);
+text-align:center;
+font-weight:900;
 cursor:pointer;
-}}
+}
 
-button.sell {{
-background:#e04f4f;
-}}
+.tab.active{
+background:rgba(90,168,255,0.18);
+border-color:rgba(90,168,255,0.42);
+}
 
-.card {{
-background:#1d1d1d;
+.section{
+display:none;
+}
+
+.section.active{
+display:block;
+}
+
+.cards{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:12px;
+}
+
+.card{
+border-radius:22px;
+overflow:hidden;
+border:1px solid var(--stroke);
+background:rgba(255,255,255,0.04);
+}
+
+.cover{
+height:200px;
+}
+
+.cover img{
+width:100%;
+height:100%;
+object-fit:cover;
+}
+
+.meta{
+padding:12px;
+}
+
+.name{
+font-weight:900;
+font-size:14px;
+}
+
+.sub{
+font-size:12px;
+color:var(--muted);
+margin-top:4px;
+}
+
+.btn{
+margin-top:10px;
+width:100%;
 padding:10px;
-border-radius:10px;
-margin-top:8px;
-}}
+border-radius:12px;
+border:0;
+font-weight:900;
+cursor:pointer;
+}
+
+.sell{
+background:#ff4d4d;
+color:white;
+}
+
+.buy{
+background:#4ade80;
+color:#052e16;
+}
+
+.shop-item{
+border:1px solid var(--stroke);
+border-radius:18px;
+padding:16px;
+margin-bottom:12px;
+background:rgba(255,255,255,0.04);
+}
+
+.shop-title{
+font-weight:900;
+font-size:16px;
+}
+
+.shop-desc{
+color:var(--muted);
+font-size:13px;
+margin:6px 0 10px;
+}
 
 </style>
-
 </head>
 
 <body>
 
-<h2>🛒 Loja Baltigo</h2>
+<div class="wrap">
+
+<div class="banner">
+<img src="https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg">
+</div>
 
 
-<div class="section">
+<div class="tabs">
 
-<h3>🎲 Comprar Dado</h3>
+<div class="tab active" data-tab="dados">
+🎲 Dados
+</div>
 
-<div class="item">
-<span>Custo: 2 coins</span>
-<button onclick="buyDice()">Comprar</button>
+<div class="tab" data-tab="nick">
+✏️ Nickname
+</div>
+
+<div class="tab" data-tab="vender">
+📦 Vender
 </div>
 
 </div>
 
 
-<div class="section">
+<!-- DADOS -->
 
-<h3>🏷 Comprar Nickname</h3>
+<div class="section active" id="dados">
 
-<div class="item">
-<span>Custo: 3 coins</span>
-<button onclick="buyNick()">Comprar</button>
+<div class="shop-item">
+<div class="shop-title">Comprar 1 Dado</div>
+<div class="shop-desc">Custa 2 coins</div>
+<button class="btn buy" onclick="buyDice(1)">
+Comprar
+</button>
+</div>
+
+<div class="shop-item">
+<div class="shop-title">Comprar Máximo</div>
+<div class="shop-desc">Usa todas suas coins</div>
+<button class="btn buy" onclick="buyDiceMax()">
+Comprar Tudo
+</button>
 </div>
 
 </div>
 
 
-<div class="section">
+<!-- NICKNAME -->
 
-<h3>🧧 Vender Personagens</h3>
+<div class="section" id="nick">
 
-<div id="characters"></div>
+<div class="shop-item">
+<div class="shop-title">Alterar Nickname</div>
+<div class="shop-desc">Custa 3 coins</div>
+<button class="btn buy" onclick="buyNick()">
+Comprar
+</button>
+</div>
 
 </div>
 
 
-<div class="section">
+<!-- VENDER -->
 
-<h3>📜 Histórico</h3>
+<div class="section" id="vender">
 
-<button onclick="loadHistory()">Carregar</button>
+<div class="cards" id="cards"></div>
 
-<div id="history"></div>
+</div>
+
 
 </div>
 
 
 <script>
 
-const uid = {uid}
+const uid = __UID__
 
 
-// ==========================
-// comprar dado
-// ==========================
+document.querySelectorAll(".tab").forEach(tab=>{
+tab.onclick=()=>{
 
-async function buyDice(){{
+document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"))
+document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"))
 
-let r = await fetch("/api/shop/buy_dado",{{
-method:"POST",
-headers:{{"Content-Type":"application/json"}},
-body:JSON.stringify({{user_id:uid}})
-}})
+tab.classList.add("active")
 
-let j = await r.json()
+document.getElementById(tab.dataset.tab).classList.add("active")
 
-alert(j.ok ? "🎲 Dado comprado!" : "Coins insuficientes")
-
-}}
+}
+})
 
 
+async function loadCharacters(){
 
-// ==========================
-// comprar nickname
-// ==========================
+let res = await fetch(`/api/loja/personagens?uid=${uid}`)
+let data = await res.json()
 
-async function buyNick(){{
+let el = document.getElementById("cards")
 
-let r = await fetch("/api/shop/buy_nick",{{
-method:"POST",
-headers:{{"Content-Type":"application/json"}},
-body:JSON.stringify({{user_id:uid}})
-}})
+el.innerHTML=""
 
-let j = await r.json()
+for (let c of data.items){
 
-alert(j.ok ? "🏷 Compra liberada!" : "Coins insuficientes")
+let card = document.createElement("div")
+card.className="card"
 
-}}
-
-
-
-// ==========================
-// carregar personagens
-// ==========================
-
-async function loadCharacters(){{
-
-let r = await fetch("/api/shop/characters?uid="+uid)
-
-let data = await r.json()
-
-let html=""
-
-data.forEach(c=>{{
-
-html += `
-<div class="card">
-
-<div class="item">
-
-<span>${{c.character_id}} (x${{c.quantity}})</span>
-
-<button class="sell" onclick="sellChar(${{c.character_id}})">
-Vender
-</button>
-
+card.innerHTML=`
+<div class="cover">
+<img src="${c.image}">
 </div>
+
+<div class="meta">
+
+<div class="name">${c.name}</div>
+
+<div class="sub">${c.anime}</div>
+
+<button class="btn sell" onclick="sell(${c.id})">
+VENDER
+</button>
 
 </div>
 `
 
-}})
+el.appendChild(card)
 
-document.getElementById("characters").innerHTML = html
+}
 
-}}
+}
 
+async function sell(id){
 
-
-// ==========================
-// vender personagem
-// ==========================
-
-async function sellChar(id){{
-
-let r = await fetch("/api/shop/sell",{{
+await fetch("/api/loja/vender",{
 method:"POST",
-headers:{{"Content-Type":"application/json"}},
-body:JSON.stringify({{
-user_id:uid,
-character_id:id
-}})
-}})
-
-let j = await r.json()
-
-alert(j.ok ? "Personagem vendido!" : "Erro")
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({uid:uid,char_id:id})
+})
 
 loadCharacters()
 
-}}
+}
 
+async function buyDice(q){
 
+await fetch("/api/loja/comprar_dado",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({uid:uid,q:q})
+})
 
-// ==========================
-// histórico
-// ==========================
+}
 
-async function loadHistory(){{
+async function buyDiceMax(){
 
-let r = await fetch("/api/shop/history?uid="+uid)
+await fetch("/api/loja/comprar_dado_max",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({uid:uid})
+})
 
-let data = await r.json()
+}
 
-let html=""
+async function buyNick(){
 
-data.forEach(h=>{{
+await fetch("/api/loja/comprar_nick",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({uid:uid})
+})
 
-html += "<div class='card'>"+h.type+" ("+h.amount+")</div>"
-
-}})
-
-document.getElementById("history").innerHTML = html
-
-}}
-
+}
 
 loadCharacters()
 
@@ -8038,62 +8114,6 @@ loadCharacters()
 </html>
 """
 
+    html = html.replace("__UID__", str(uid))
+
     return HTMLResponse(html)
-
-
-
-# =========================================================
-# API — COMPRAR DADO
-# =========================================================
-
-@app.post("/api/shop/buy_dado")
-async def api_buy_dado(data: dict = Body(...)):
-
-    return buy_dado(int(data["user_id"]))
-
-
-
-# =========================================================
-# API — COMPRAR NICKNAME
-# =========================================================
-
-@app.post("/api/shop/buy_nick")
-async def api_buy_nick(data: dict = Body(...)):
-
-    return buy_nickname_change(int(data["user_id"]))
-
-
-
-# =========================================================
-# API — HISTÓRICO
-# =========================================================
-
-@app.get("/api/shop/history")
-async def api_shop_history(uid: int):
-
-    return get_user_shop_history(uid)
-
-
-
-# =========================================================
-# API — PERSONAGENS
-# =========================================================
-
-@app.get("/api/shop/characters")
-async def api_shop_characters(uid: int):
-
-    return get_user_card_collection(uid)
-
-
-
-# =========================================================
-# API — VENDER PERSONAGEM
-# =========================================================
-
-@app.post("/api/shop/sell")
-async def api_shop_sell(data: dict = Body(...)):
-
-    return sell_character(
-        int(data["user_id"]),
-        int(data["character_id"])
-    )
