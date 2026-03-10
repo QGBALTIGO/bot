@@ -3463,7 +3463,6 @@ def swap_characters_atomic(trade_id: int) -> bool:
             try:
                 cur.execute("BEGIN")
 
-                # trava as linhas envolvidas para evitar corrida
                 cur.execute(
                     """
                     SELECT quantity
@@ -3486,8 +3485,17 @@ def swap_characters_atomic(trade_id: int) -> bool:
                 )
                 row_b = cur.fetchone()
 
-                qty_a = int(row_a["quantity"]) if row_a and row_a.get("quantity") is not None else 0
-                qty_b = int(row_b["quantity"]) if row_b and row_b.get("quantity") is not None else 0
+                def _qty(row):
+                    if not row:
+                        return 0
+                    if isinstance(row, dict):
+                        value = row.get("quantity", 0)
+                    else:
+                        value = row[0] if len(row) > 0 else 0
+                    return int(value or 0)
+
+                qty_a = _qty(row_a)
+                qty_b = _qty(row_b)
 
                 if qty_a <= 0 or qty_b <= 0:
                     cur.execute(
@@ -3501,7 +3509,6 @@ def swap_characters_atomic(trade_id: int) -> bool:
                     conn.commit()
                     return False
 
-                # remove 1 cópia do usuário A
                 if qty_a == 1:
                     cur.execute(
                         """
@@ -3521,7 +3528,6 @@ def swap_characters_atomic(trade_id: int) -> bool:
                         (from_user, from_char)
                     )
 
-                # remove 1 cópia do usuário B
                 if qty_b == 1:
                     cur.execute(
                         """
@@ -3541,7 +3547,6 @@ def swap_characters_atomic(trade_id: int) -> bool:
                         (to_user, to_char)
                     )
 
-                # entrega para A o personagem do B
                 cur.execute(
                     """
                     INSERT INTO user_card_collection (
@@ -3560,7 +3565,6 @@ def swap_characters_atomic(trade_id: int) -> bool:
                     (from_user, to_char)
                 )
 
-                # entrega para B o personagem do A
                 cur.execute(
                     """
                     INSERT INTO user_card_collection (
@@ -3597,6 +3601,3 @@ def swap_characters_atomic(trade_id: int) -> bool:
                 except Exception:
                     pass
                 raise
-            conn.commit()
-
-    return True
