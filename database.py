@@ -3445,56 +3445,158 @@ def set_trade_status(trade_id,status):
     """,(status,trade_id))
 
 
-def swap_characters_atomic(trade_id):
-
+def swap_characters_atomic(trade_id: int) -> bool:
     trade = get_trade(trade_id)
-
     if not trade:
         return False
 
-    from_user = trade["from_user"]
-    to_user = trade["to_user"]
+    if str(trade.get("status")) != "pending":
+        return False
 
-    from_char = trade["from_character_id"]
-    to_char = trade["to_character_id"]
+    from_user = int(trade["from_user"])
+    to_user = int(trade["to_user"])
+    from_char = int(trade["from_character_id"])
+    to_char = int(trade["to_character_id"])
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
+            try:
+                cur.execute("BEGIN")
 
-            cur.execute("BEGIN")
+                # trava as linhas envolvidas para evitar corrida
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM user_card_collection
+                    WHERE user_id = %s AND character_id = %s
+                    FOR UPDATE
+                    """,
+                    (from_user, from_char)
+                )
+                row_a = cur.fetchone()
 
-            cur.execute("""
-            UPDATE user_cards
-            SET quantity = quantity - 1
-            WHERE user_id=%s AND character_id=%s
-            """,(from_user,from_char))
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM user_card_collection
+                    WHERE user_id = %s AND character_id = %s
+                    FOR UPDATE
+                    """,
+                    (to_user, to_char)
+                )
+                row_b = cur.fetchone()
 
-            cur.execute("""
-            UPDATE user_cards
-            SET quantity = quantity - 1
-            WHERE user_id=%s AND character_id=%s
-            """,(to_user,to_char))
+                qty_a = int(row_a["quantity"]) if row_a and row_a.get("quantity") is not None else 0
+                qty_b = int(row_b["quantity"]) if row_b and row_b.get("quantity") is not None else 0
 
-            cur.execute("""
-            INSERT INTO user_cards(user_id,character_id,quantity)
-            VALUES(%s,%s,1)
-            ON CONFLICT(user_id,character_id)
-            DO UPDATE SET quantity = user_cards.quantity + 1
-            """,(from_user,to_char))
+                if qty_a <= 0 or qty_b <= 0:
+                    cur.execute(
+                        """
+                        UPDATE card_trades
+                        SET status = 'failed'
+                        WHERE trade_id = %s
+                        """,
+                        (trade_id,)
+                    )
+                    conn.commit()
+                    return False
 
-            cur.execute("""
-            INSERT INTO user_cards(user_id,character_id,quantity)
-            VALUES(%s,%s,1)
-            ON CONFLICT(user_id,character_id)
-            DO UPDATE SET quantity = user_cards.quantity + 1
-            """,(to_user,from_char))
+                # remove 1 cópia do usuário A
+                if qty_a == 1:
+                    cur.execute(
+                        """
+                        DELETE FROM user_card_collection
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (from_user, from_char)
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE user_card_collection
+                        SET quantity = quantity - 1,
+                            updated_at = NOW()
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (from_user, from_char)
+                    )
 
-            cur.execute("""
-            UPDATE card_trades
-            SET status='completed'
-            WHERE trade_id=%s
-            """,(trade_id,))
+                # remove 1 cópia do usuário B
+                if qty_b == 1:
+                    cur.execute(
+                        """
+                        DELETE FROM user_card_collection
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (to_user, to_char)
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE user_card_collection
+                        SET quantity = quantity - 1,
+                            updated_at = NOW()
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (to_user, to_char)
+                    )
 
+                # entrega para A o personagem do B
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (
+                        user_id,
+                        character_id,
+                        quantity,
+                        first_obtained_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, 1, NOW(), NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    """,
+                    (from_user, to_char)
+                )
+
+                # entrega para B o personagem do A
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (
+                        user_id,
+                        character_id,
+                        quantity,
+                        first_obtained_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, 1, NOW(), NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    """,
+                    (to_user, from_char)
+                )
+
+                cur.execute(
+                    """
+                    UPDATE card_trades
+                    SET status = 'completed'
+                    WHERE trade_id = %s
+                    """,
+                    (trade_id,)
+                )
+
+                conn.commit()
+                return True
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
             conn.commit()
 
     return True
