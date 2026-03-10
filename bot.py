@@ -126,6 +126,8 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("loja",loja))
     app.add_handler(CommandHandler("daily", daily))
+    app.add_handler(CommandHandler("infoanime", infoanime))
+    app.add_handler(CallbackQueryHandler(callback_info_anime, pattern=r"^info_anime:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler))
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
