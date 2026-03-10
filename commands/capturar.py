@@ -1,4 +1,5 @@
 import unicodedata
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -6,20 +7,15 @@ from handlers.capture_spawn import ACTIVE_SPAWNS
 from database import add_coin, add_progress_xp
 
 
-def normalize(text):
-
+def normalize(text: str) -> str:
     text = text.lower()
-
     text = unicodedata.normalize("NFD", text)
-
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-
     return text.strip()
 
 
 async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not update.message:
+    if not update.message or not update.effective_chat or not update.effective_user:
         return
 
     chat_id = update.effective_chat.id
@@ -31,9 +27,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     guess = normalize(" ".join(context.args))
-
     character = ACTIVE_SPAWNS[chat_id]["character"]
-
     correct = normalize(character["name"])
 
     if guess != correct:
@@ -55,7 +49,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
         photo=character["image"],
         caption=text,
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
     del ACTIVE_SPAWNS[chat_id]
