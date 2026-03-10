@@ -3621,17 +3621,7 @@ def swap_characters_atomic(trade_id: int) -> bool:
 # ADMIN RESET SYSTEM
 # =========================================================
 
-def admin_delete_user(user_id: int):
-
-    delete_user_account(user_id)
-
-    return {
-        "ok": True,
-        "user_id": user_id
-    }
-
-
-def admin_delete_all_users():
+def delete_all_users():
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -3650,7 +3640,3 @@ def admin_delete_all_users():
             cur.execute("TRUNCATE TABLE users CASCADE")
 
         conn.commit()
-
-    return {
-        "ok": True
-    }
