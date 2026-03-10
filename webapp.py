@@ -7769,11 +7769,11 @@ def api_menu_delete_account(payload: dict = Body(...)):
     return {"ok": True}
 
 # =========================
-# WEBAPP — LOJA
+# UI: /shop — Loja
 # =========================
-
 @app.get("/shop", response_class=HTMLResponse)
 def miniapp_shop():
+
     html = (
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1, viewport-fit=cover'>"
@@ -7862,7 +7862,7 @@ LOJA
 
         "<div id='sellView'>"
         "<div class='search'><input class='input glass' id='q' placeholder='Buscar personagem ou anime...' /></div>"
-        "<div id='sellSections'></div>"
+        "<div id='sellSections' class='grid'></div>"
         "</div>"
 
         "<div id='buyView' style='display:none;'>"
@@ -8012,4 +8012,13 @@ await loadSell()
 
 """ + _fx_js() + "</div></body></html>"
     )
+
     return HTMLResponse(content=html)
+
+
+# =========================
+# Alias /loja
+# =========================
+@app.get("/loja", response_class=HTMLResponse)
+def loja_alias():
+    return miniapp_shop()
