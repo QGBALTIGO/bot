@@ -8539,7 +8539,7 @@ def shop_page():
     }
     state.items = Array.isArray(r.data.items) ? r.data.items : [];
     renderSell();
-    setToast("✅ Loja pronta.");
+    setToast("✅ Loja Baltigo.");
   }
 
   document.getElementById("q").addEventListener("input", async (e) => {
