@@ -6,8 +6,8 @@ import uvicorn
 
 from telegram.ext import (
     Application,
-    CommandHandler,
     CallbackQueryHandler,
+    CommandHandler,
     MessageHandler,
     filters,
 )
@@ -87,6 +87,7 @@ from handlers.capture_spawn import capture_message_handler
 
 from database import create_tables
 
+
 # =========================================================
 # ENV
 # =========================================================
@@ -96,6 +97,7 @@ if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN não encontrado nas variáveis de ambiente.")
 
 PORT = int(os.getenv("PORT", "8000"))
+
 
 # =========================================================
 # WEBAPP
@@ -111,7 +113,6 @@ def run_webapp():
             port=PORT,
             log_level="warning",
         )
-
     except Exception:
         print("[webapp-error]")
         traceback.print_exc()
@@ -131,7 +132,6 @@ async def on_error(update, context):
 # =========================================================
 
 def register_commands(app: Application):
-
     # básicos
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
@@ -158,8 +158,6 @@ def register_commands(app: Application):
 
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
-    app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
-    app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
     # ranking
     app.add_handler(CommandHandler("ranking", ranking))
@@ -175,10 +173,13 @@ def register_commands(app: Application):
 
     # termo
     app.add_handler(CommandHandler("termo", termo_cmd))
-    app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
     app.add_handler(CommandHandler("termostats", termo_stats_cmd))
     app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
+    app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
+    app.add_handler(CommandHandler("termorankingmes", termo_ranking_month_cmd))
     app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
+    app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
+    app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
 
     # admin cards
     app.add_handler(CommandHandler("card_reload", card_reload))
@@ -201,13 +202,24 @@ def register_commands(app: Application):
 # =========================================================
 
 def register_callbacks(app: Application):
+    # trocas
+    app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
+    app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
+    # card
     app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^card_stats"))
+
+    # coleção
     app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
     app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
     app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
     app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+
+    # ranking
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
+
+    # termo
+    app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
 
 
 # =========================================================
@@ -215,14 +227,13 @@ def register_callbacks(app: Application):
 # =========================================================
 
 def register_messages(app: Application):
-
-    # termo primeiro
+    # termo primeiro para tentar consumir palavras do jogo antes do sistema de captura
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
         group=1,
     )
 
-    # captura depois
+    # captura/spawn depois
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler),
         group=2,
@@ -234,7 +245,6 @@ def register_messages(app: Application):
 # =========================================================
 
 def build_application():
-
     app = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -256,7 +266,6 @@ def build_application():
 # =========================================================
 
 def main():
-
     create_tables()
 
     threading.Thread(
