@@ -59,7 +59,12 @@ from commands.termo import (
     termo_guess,
     termo_stats_cmd,
     termo_ranking_cmd,
+    termo_ranking_week_cmd,
+    termo_ranking_month_cmd,
     termo_treino_cmd,
+    termo_treino_stats_cmd,
+    termo_treino_stop_cmd,
+    termo_callback,
 )
 
 from commands.cards_admin import (
@@ -170,6 +175,7 @@ def register_commands(app: Application):
 
     # termo
     app.add_handler(CommandHandler("termo", termo_cmd))
+    app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
     app.add_handler(CommandHandler("termostats", termo_stats_cmd))
     app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
     app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
