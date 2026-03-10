@@ -9,6 +9,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from zoneinfo import ZoneInfo
 
+from datetime import date, datetime, timedelta, time as dt_time
+
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
@@ -262,6 +264,7 @@ def create_tables():
     create_profile_settings_table()
     create_shop_tables()
     create_daily_tables()
+    create_weekly_ranking_tables()
 
 
 def create_users_table():
@@ -3225,3 +3228,170 @@ def claim_daily_reward(
                 except Exception:
                     pass
                 raise
+
+# =========================================================
+# WEEKLY COMPOSITE RANKING
+# =========================================================
+
+def create_weekly_ranking_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS weekly_ranking_posts (
+        week_key DATE PRIMARY KEY,
+        posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_weekly_ranking_posts_posted_at
+    ON weekly_ranking_posts (posted_at DESC)
+    """)
+
+
+def get_display_name_parts(user_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT
+            u.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname
+        FROM users u
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = u.user_id
+        WHERE u.user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def get_all_coin_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            u.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(u.coins, 0) AS coins
+        FROM users u
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = u.user_id
+        WHERE COALESCE(u.coins, 0) > 0
+        ORDER BY COALESCE(u.coins, 0) DESC, u.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_level_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            up.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(up.level, 1) AS level,
+            COALESCE(up.xp, 0) AS xp,
+            COALESCE(up.total_actions, 0) AS total_actions
+        FROM user_progress up
+        LEFT JOIN users u
+               ON u.user_id = up.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = up.user_id
+        WHERE COALESCE(up.xp, 0) > 0 OR COALESCE(up.level, 1) > 1
+        ORDER BY COALESCE(up.level, 1) DESC,
+                 COALESCE(up.xp, 0) DESC,
+                 COALESCE(up.total_actions, 0) DESC,
+                 up.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_collection_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            c.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(SUM(c.quantity), 0) AS total_cards
+        FROM user_card_collection c
+        LEFT JOIN users u
+               ON u.user_id = c.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = c.user_id
+        WHERE c.quantity > 0
+        GROUP BY c.user_id, u.username, u.full_name, ups.nickname
+        HAVING COALESCE(SUM(c.quantity), 0) > 0
+        ORDER BY total_cards DESC, c.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_termo_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            ts.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(ts.wins, 0) AS wins,
+            COALESCE(ts.best_streak, 0) AS best_streak,
+            COALESCE(ts.best_score, 0) AS best_score
+        FROM termo_stats ts
+        LEFT JOIN users u
+               ON u.user_id = ts.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = ts.user_id
+        WHERE COALESCE(ts.games_played, 0) > 0
+        ORDER BY COALESCE(ts.wins, 0) DESC,
+                 COALESCE(ts.best_streak, 0) DESC,
+                 COALESCE(ts.best_score, 0) ASC,
+                 ts.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def has_weekly_ranking_post_for_week(week_key: date) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM weekly_ranking_posts
+        WHERE week_key = %s
+        LIMIT 1
+        """,
+        (week_key,),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def save_weekly_ranking_post(week_key: date, payload: Dict[str, Any]) -> bool:
+    """
+    Retorna True se salvou agora.
+    Retorna False se essa semana já foi postada.
+    """
+    row = _run(
+        """
+        INSERT INTO weekly_ranking_posts (week_key, payload_json)
+        VALUES (%s, %s::jsonb)
+        ON CONFLICT (week_key) DO NOTHING
+        RETURNING week_key
+        """,
+        (week_key, json.dumps(payload, ensure_ascii=False)),
+        fetch="one"
+    )
+    return bool(row)
