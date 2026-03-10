@@ -182,6 +182,46 @@ def _clean_roll_options(options: List[Dict[str, Any]], expected_len: Optional[in
     return clean_options
 
 
+def _coerce_roll_options(raw: Any) -> List[Dict[str, Any]]:
+    """
+    Normaliza options_json vindo do banco.
+    Aceita:
+    - list[dict]
+    - string JSON
+    - qualquer outro formato -> []
+    """
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            items = parsed if isinstance(parsed, list) else []
+        except Exception:
+            items = []
+    else:
+        items = []
+
+    clean: List[Dict[str, Any]] = []
+    seen = set()
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0 or anime_id in seen:
+            continue
+        seen.add(anime_id)
+
+        clean.append({
+            "id": anime_id,
+            "title": str(item.get("title") or "").strip(),
+            "cover": str(item.get("cover") or "").strip(),
+        })
+
+    return clean
+
+
 def _is_valid_roll_options(options: Any, dice_value: int) -> bool:
     if not isinstance(options, list):
         return False
@@ -199,6 +239,18 @@ def _is_valid_roll_options(options: Any, dice_value: int) -> bool:
             return False
         seen.add(anime_id)
     return True
+
+
+def _roll_expired(row: Dict[str, Any]) -> bool:
+    expires_at = row.get("expires_at")
+    if not expires_at:
+        return False
+
+    try:
+        now = datetime.now(expires_at.tzinfo) if getattr(expires_at, "tzinfo", None) else datetime.utcnow()
+        return expires_at <= now
+    except Exception:
+        return False
 
 
 # =========================================================
@@ -1279,7 +1331,7 @@ def get_next_dado_recharge_info(user_id: int) -> Dict[str, Any]:
 
 
 def get_active_dice_roll(user_id: int) -> Optional[Dict[str, Any]]:
-    return _run(
+    row = _run(
         """
         SELECT
             roll_id,
@@ -1303,10 +1355,16 @@ def get_active_dice_roll(user_id: int) -> Optional[Dict[str, Any]]:
         fetch="one"
     )
 
+    if not row:
+        return None
+
+    row["options_json"] = _coerce_roll_options(row.get("options_json"))
+    return row
+
 
 def get_dice_roll(roll_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     if user_id is None:
-        return _run(
+        row = _run(
             """
             SELECT *
             FROM dice_rolls
@@ -1316,18 +1374,22 @@ def get_dice_roll(roll_id: int, user_id: Optional[int] = None) -> Optional[Dict[
             (int(roll_id),),
             fetch="one"
         )
+    else:
+        row = _run(
+            """
+            SELECT *
+            FROM dice_rolls
+            WHERE roll_id = %s
+              AND user_id = %s
+            LIMIT 1
+            """,
+            (int(roll_id), int(user_id)),
+            fetch="one"
+        )
 
-    return _run(
-        """
-        SELECT *
-        FROM dice_rolls
-        WHERE roll_id = %s
-          AND user_id = %s
-        LIMIT 1
-        """,
-        (int(roll_id), int(user_id)),
-        fetch="one"
-    )
+    if row:
+        row["options_json"] = _coerce_roll_options(row.get("options_json"))
+    return row
 
 
 def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
@@ -1427,33 +1489,73 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                 active = cur.fetchone()
 
                 if active:
-                    existing_options = active.get("options_json") or []
-                    existing_dice = int(active.get("dice_value") or 0)
+                    active["options_json"] = _coerce_roll_options(active.get("options_json"))
+                    active_dice = int(active.get("dice_value") or 0)
 
-                    if _is_valid_roll_options(existing_options, existing_dice):
+                    if _roll_expired(active):
+                        old_status = str(active.get("status") or "")
+                        cur.execute(
+                            """
+                            UPDATE dice_rolls
+                            SET status = 'expired'
+                            WHERE roll_id = %s
+                              AND status IN ('pending', 'picked')
+                            """,
+                            (int(active["roll_id"]),)
+                        )
+
+                        if old_status == "pending":
+                            state = _refresh_dado_locked(cur, user_id)
+                            new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                            cur.execute(
+                                """
+                                UPDATE users
+                                SET dado_balance = %s,
+                                    updated_at = NOW()
+                                WHERE user_id = %s
+                                """,
+                                (new_balance, int(user_id))
+                            )
+
+                    elif _is_valid_roll_options(active["options_json"], active_dice):
                         cur.execute(
                             "SELECT * FROM dice_rolls WHERE roll_id = %s",
                             (int(active["roll_id"]),)
                         )
                         existing = cur.fetchone()
+                        if existing:
+                            existing["options_json"] = _coerce_roll_options(existing.get("options_json"))
                         conn.commit()
                         return {
                             "ok": True,
                             "reused": True,
                             "roll": existing,
-                            "options": existing_options,
+                            "options": active["options_json"],
                         }
 
-                    # roll ativo quebrado: cancela antes de criar novo
-                    cur.execute(
-                        """
-                        UPDATE dice_rolls
-                        SET status = 'cancelled'
-                        WHERE roll_id = %s
-                          AND status IN ('pending', 'picked')
-                        """,
-                        (int(active["roll_id"]),)
-                    )
+                    else:
+                        cur.execute(
+                            """
+                            UPDATE dice_rolls
+                            SET status = 'cancelled'
+                            WHERE roll_id = %s
+                              AND status IN ('pending', 'picked')
+                            """,
+                            (int(active["roll_id"]),)
+                        )
+
+                        if str(active.get("status") or "") == "pending":
+                            state = _refresh_dado_locked(cur, user_id)
+                            new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                            cur.execute(
+                                """
+                                UPDATE users
+                                SET dado_balance = %s,
+                                    updated_at = NOW()
+                                WHERE user_id = %s
+                                """,
+                                (new_balance, int(user_id))
+                            )
 
                 state = _refresh_dado_locked(cur, user_id)
                 balance = int(state["balance"])
@@ -1519,6 +1621,8 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                     )
                 )
                 created = cur.fetchone()
+                if created:
+                    created["options_json"] = _coerce_roll_options(created.get("options_json"))
 
                 conn.commit()
                 return {
@@ -1563,6 +1667,8 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                     conn.rollback()
                     return {"ok": False, "error": "roll_not_found"}
 
+                row["options_json"] = _coerce_roll_options(row.get("options_json"))
+
                 status = str(row.get("status") or "")
                 if status == "resolved":
                     conn.commit()
@@ -1572,7 +1678,7 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                     conn.rollback()
                     return {"ok": False, "error": "invalid_status", "status": status}
 
-                if row.get("expires_at") and row["expires_at"] <= datetime.now(row["expires_at"].tzinfo):
+                if _roll_expired(row):
                     cur.execute(
                         """
                         UPDATE dice_rolls
@@ -1581,6 +1687,7 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                         """,
                         (roll_id,)
                     )
+
                     state = _refresh_dado_locked(cur, user_id)
                     new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                     cur.execute(
@@ -1592,15 +1699,47 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                         """,
                         (new_balance, user_id)
                     )
+
                     conn.commit()
                     return {"ok": False, "error": "expired"}
 
                 options = row.get("options_json") or []
-                allowed_ids = {int(item.get("id")) for item in options if isinstance(item, dict) and item.get("id") is not None}
+                allowed_ids = {int(item["id"]) for item in options if isinstance(item, dict) and int(item.get("id") or 0) > 0}
+
+                if not allowed_ids:
+                    cur.execute(
+                        """
+                        UPDATE dice_rolls
+                        SET status = 'cancelled'
+                        WHERE roll_id = %s
+                          AND user_id = %s
+                          AND status = 'pending'
+                        """,
+                        (roll_id, user_id)
+                    )
+
+                    state = _refresh_dado_locked(cur, user_id)
+                    new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, user_id)
+                    )
+
+                    conn.commit()
+                    return {"ok": False, "error": "roll_invalid"}
 
                 if anime_id not in allowed_ids:
                     conn.rollback()
-                    return {"ok": False, "error": "anime_not_in_roll"}
+                    return {
+                        "ok": False,
+                        "error": "anime_not_in_roll",
+                        "allowed_ids": sorted(list(allowed_ids)),
+                    }
 
                 cur.execute(
                     """
@@ -1619,6 +1758,8 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                 if not updated:
                     conn.rollback()
                     return {"ok": False, "error": "pick_failed"}
+
+                updated["options_json"] = _coerce_roll_options(updated.get("options_json"))
 
                 conn.commit()
                 return {"ok": True, "roll": updated}
@@ -1787,6 +1928,10 @@ def get_user_dice_roll_history(user_id: int, limit: int = 20) -> List[Dict[str, 
         (int(user_id), int(limit)),
         fetch="all"
     )
+
+    for row in rows or []:
+        row["options_json"] = _coerce_roll_options(row.get("options_json"))
+
     return rows or []
 
 
