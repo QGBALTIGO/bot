@@ -629,6 +629,12 @@ def create_profile_settings_table():
     ON user_profile_settings (notifications_enabled, dado_full_notified)
     """)
 
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_profile_settings_nickname_lower
+    ON user_profile_settings (LOWER(nickname))
+    WHERE nickname IS NOT NULL
+    """)
+
 
 # =========================================================
 # USERS
@@ -2574,6 +2580,31 @@ def get_profile_settings(user_id: int):
         LIMIT 1
         """,
         (int(user_id),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_profile_settings_by_nickname(nickname: str):
+    row = _run(
+        """
+        SELECT
+            user_id,
+            nickname,
+            favorite_character_id,
+            country_code,
+            language,
+            private_profile,
+            notifications_enabled,
+            dado_full_notified,
+            dado_full_notified_at,
+            created_at,
+            updated_at
+        FROM user_profile_settings
+        WHERE LOWER(nickname) = LOWER(%s)
+        LIMIT 1
+        """,
+        ((nickname or "").strip(),),
         fetch="one"
     )
     return row or None
