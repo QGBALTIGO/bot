@@ -1,6 +1,7 @@
 import os
 import threading
 import traceback
+from telegram.ext import MessageHandler, filters
 
 import uvicorn
 from telegram.ext import (
@@ -18,6 +19,9 @@ from commands.manga import manga
 from commands.cards import cards
 from commands.menu import menu
 from commands.loja import loja
+from handlers.capture_spawn import capture_message_handler
+from commands.capturar import capturar
+from commands.spawn_personagem import spawn_personagem
 from commands.card import card, card_stats_callback
 from commands.colecao import (
     colecao,
@@ -120,6 +124,9 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("dado", dado))
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("loja",loja))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler))
+    app.add_handler(CommandHandler("capturar", capturar))
+    app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
 
     # admin dado
     app.add_handler(CommandHandler("dadogive", dadogive))
