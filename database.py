@@ -25,6 +25,13 @@ pool = ConnectionPool(
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
+def _sp_now() -> datetime:
+    return datetime.now(SP_TZ)
+
+
+def _sp_today() -> date:
+    return _sp_now().date()
+
 DADO_INITIAL_BALANCE = 4
 DADO_MAX_BALANCE = 24
 DADO_ROLL_TTL_MINUTES = int(os.getenv("DADO_ROLL_TTL_MINUTES", "15"))
