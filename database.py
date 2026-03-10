@@ -2165,7 +2165,7 @@ def create_termo_game(
 
 
 def update_termo_game_progress(
-    user_id: int,
+    game_id: int,
     attempts: int,
     guesses_json: str,
     used_letters: str,
@@ -2177,17 +2177,15 @@ def update_termo_game_progress(
             guesses = %s::jsonb,
             used_letters = %s,
             updated_at = NOW()
-        WHERE user_id = %s
-          AND status = 'playing'
+        WHERE id = %s
         """,
         (
             int(attempts),
             guesses_json,
             (used_letters or "").strip().upper(),
-            int(user_id),
+            int(game_id),
         )
     )
-
 
 def finish_termo_game(
     user_id: int,
