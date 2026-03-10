@@ -85,6 +85,15 @@ from commands.cards_admin import (
     card_subremove,
 )
 
+from commands.messages import (
+    bloquearmsg,
+    denunciarmsg,
+    msg,
+    msganon,
+    msgconfig,
+    desbloquearmsg,
+)
+
 from handlers.capture_spawn import capture_message_handler
 
 from database import create_tables
@@ -141,6 +150,14 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("resetuser", reset_user))
     app.add_handler(CommandHandler("resetall", reset_all))
     app.add_handler(CommandHandler("avisar", avisar))
+
+    # msg
+    app.add_handler(CommandHandler("msg", msg))
+    app.add_handler(CommandHandler("msganon", msganon))
+    app.add_handler(CommandHandler("bloquearmsg", bloquearmsg))
+    app.add_handler(CommandHandler("desbloquearmsg", desbloquearmsg))
+    app.add_handler(CommandHandler("msgconfig", msgconfig))
+    app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
 
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
