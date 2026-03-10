@@ -265,6 +265,7 @@ def create_tables():
     create_shop_tables()
     create_daily_tables()
     create_weekly_ranking_tables()
+    create_trades_table()
 
 
 def create_users_table():
