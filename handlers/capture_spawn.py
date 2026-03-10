@@ -1,24 +1,52 @@
 import os
-import json
 import random
-import asyncio
 import time
+import asyncio
 from pathlib import Path
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from database import add_progress_xp, add_coin
+DATA_PATH = Path("bot/data/personagens_anilist.txt")
 
-DATA_PATH = Path("bot/data/perosnagsn_clean.json")
+CHARACTERS = []
 
-with open(DATA_PATH, "r", encoding="utf-8") as f:
-    DATA = json.load(f)
+# ---------------------------------------------------------
+# LOAD CHARACTERS
+# ---------------------------------------------------------
 
-ALL_CHARACTERS = []
-for anime in DATA["items"]:
-    for c in anime["characters"]:
-        ALL_CHARACTERS.append(c)
+if DATA_PATH.exists():
+
+    with open(DATA_PATH, "r", encoding="utf-8") as f:
+
+        for line in f:
+
+            line = line.strip()
+
+            if not line or "|" not in line:
+                continue
+
+            parts = line.split("|")
+
+            if len(parts) < 4:
+                continue
+
+            char_id = parts[0]
+            name = parts[1]
+            anime = parts[2]
+
+            CHARACTERS.append({
+                "id": char_id,
+                "name": name,
+                "anime": anime,
+                "image": f"https://img.anili.st/character/{char_id}"
+            })
+
+print(f"[CAPTURE] personagens carregados: {len(CHARACTERS)}")
+
+# ---------------------------------------------------------
+# CONFIG
+# ---------------------------------------------------------
 
 ENABLED_CHATS = set(
     int(x.strip())
@@ -27,13 +55,19 @@ ENABLED_CHATS = set(
 )
 
 MESSAGE_COUNTER = {}
+
 ACTIVE_SPAWNS = {}
 
 SPAWN_EVERY = 100
+
 ESCAPE_TIME = 300
 
+# ---------------------------------------------------------
+# MESSAGE HANDLER
+# ---------------------------------------------------------
 
 async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not update.message:
         return
 
@@ -43,6 +77,7 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
         return
 
     MESSAGE_COUNTER.setdefault(chat_id, 0)
+
     MESSAGE_COUNTER[chat_id] += 1
 
     if MESSAGE_COUNTER[chat_id] < SPAWN_EVERY:
@@ -53,11 +88,11 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if chat_id in ACTIVE_SPAWNS:
         return
 
-    character = random.choice(ALL_CHARACTERS)
+    character = random.choice(CHARACTERS)
 
     ACTIVE_SPAWNS[chat_id] = {
         "character": character,
-        "time": time.time(),
+        "time": time.time()
     }
 
     caption = (
@@ -71,13 +106,17 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_photo(
         photo=character["image"],
         caption=caption,
-        parse_mode="HTML",
+        parse_mode="HTML"
     )
 
     asyncio.create_task(escape_character(chat_id, context))
 
+# ---------------------------------------------------------
+# ESCAPE
+# ---------------------------------------------------------
 
 async def escape_character(chat_id, context):
+
     await asyncio.sleep(ESCAPE_TIME)
 
     if chat_id not in ACTIVE_SPAWNS:
@@ -91,4 +130,8 @@ async def escape_character(chat_id, context):
         f"📺 {char['anime']}"
     )
 
-    await context.bot.send_message(chat_id, text, parse_mode="HTML")
+    await context.bot.send_message(
+        chat_id,
+        text,
+        parse_mode="HTML"
+    )
