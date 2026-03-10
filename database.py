@@ -2266,7 +2266,7 @@ def record_termo_result(user_id: int, win: bool, attempts: int):
         fetch="one"
     ) or {}
 
-    today = date.today()
+    today = _sp_today()
     yesterday = today - timedelta(days=1)
 
     games_played = int(row.get("games_played") or 0) + 1
