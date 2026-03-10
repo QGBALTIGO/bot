@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import (
@@ -14,7 +14,6 @@ from database import (
     finish_termo_game,
     record_termo_result,
     get_termo_stats,
-    get_termo_user_rank,
     get_termo_global_ranking,
     add_user_coins,
     add_progress_xp,
@@ -22,9 +21,8 @@ from database import (
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
-WORD_LENGTH = 6
+WORD_SIZE = 6
 MAX_ATTEMPTS = 6
-TIME_LIMIT = 300
 
 WORDS_FILE = "data/anime_words_365.json"
 
@@ -38,6 +36,10 @@ def sp_today():
     return datetime.now(SP_TZ).date()
 
 
+# =========================================================
+# WORDS
+# =========================================================
+
 def load_words():
 
     global WORDS, VALID_WORDS
@@ -46,31 +48,29 @@ def load_words():
         return WORDS
 
     with open(WORDS_FILE, encoding="utf-8") as f:
-        raw = json.load(f)
+        data = json.load(f)
 
-    cleaned = []
     seen = set()
 
-    for w in raw:
+    for row in data:
 
-        word = w["word"].lower().strip()
+        w = row["word"].lower().strip()
 
-        if len(word) != WORD_LENGTH:
+        if len(w) != WORD_SIZE:
             continue
 
-        if word in seen:
+        if w in seen:
             continue
 
-        seen.add(word)
+        seen.add(w)
 
-        cleaned.append({
-            "word": word,
-            "category": w.get("category","Anime"),
-            "source": w.get("source","Anime")
+        WORDS.append({
+            "word": w,
+            "category": row.get("category","Anime"),
+            "source": row.get("source","Anime")
         })
 
-    WORDS = cleaned
-    VALID_WORDS = {x["word"] for x in cleaned}
+    VALID_WORDS = {x["word"] for x in WORDS}
 
     return WORDS
 
@@ -88,33 +88,93 @@ def daily_word():
 
 def random_word():
 
-    words = load_words()
+    return random.choice(load_words())
 
-    return random.choice(words)
 
+# =========================================================
+# WORDLE ENGINE
+# =========================================================
 
 def evaluate(secret, guess):
 
-    result = ["⬛"] * WORD_LENGTH
-    remaining = {}
+    result = ["⬛"] * WORD_SIZE
 
-    for i in range(WORD_LENGTH):
+    secret_letters = {}
+    guess = guess.lower()
+
+    for i in range(WORD_SIZE):
 
         if guess[i] == secret[i]:
             result[i] = "🟩"
         else:
-            remaining[secret[i]] = remaining.get(secret[i],0)+1
+            secret_letters[secret[i]] = secret_letters.get(secret[i],0)+1
 
-    for i in range(WORD_LENGTH):
+    for i in range(WORD_SIZE):
 
-        if result[i] != "⬛":
+        if result[i] == "🟩":
             continue
 
-        if guess[i] in remaining and remaining[guess[i]] > 0:
+        letter = guess[i]
+
+        if letter in secret_letters and secret_letters[letter] > 0:
             result[i] = "🟨"
-            remaining[guess[i]] -= 1
+            secret_letters[letter] -= 1
 
     return "".join(result)
+
+
+def keyboard_state(secret, guesses):
+
+    state = {}
+
+    for guess in guesses:
+
+        result = evaluate(secret, guess)
+
+        for i,letter in enumerate(guess):
+
+            r = result[i]
+
+            prev = state.get(letter)
+
+            if prev == "🟩":
+                continue
+
+            if r == "🟩":
+                state[letter] = "🟩"
+            elif r == "🟨":
+                if prev != "🟩":
+                    state[letter] = "🟨"
+            else:
+                if letter not in state:
+                    state[letter] = "⬛"
+
+    return state
+
+
+def render_keyboard(state):
+
+    rows = [
+        "QWERTYUIOP",
+        "ASDFGHJKL",
+        "ZXCVBNM"
+    ]
+
+    out = []
+
+    for row in rows:
+
+        line = []
+
+        for c in row.lower():
+
+            emoji = state.get(c,"⬜")
+
+            line.append(emoji)
+
+        out.append("".join(line))
+
+    return "\n".join(out)
 
 
 def grid(game):
@@ -122,23 +182,27 @@ def grid(game):
     lines = []
 
     for g in game["guesses"]:
-        lines.append(evaluate(game["word"], g) + f" {g.upper()}")
+        lines.append(evaluate(game["word"], g) + " " + g.upper())
 
     return "\n".join(lines)
 
 
+# =========================================================
+# GAME
+# =========================================================
+
 def start_game(user_id, mode):
 
     if mode == "daily":
-        word_data = daily_word()
+        word = daily_word()
     else:
-        word_data = random_word()
+        word = random_word()
 
     game = {
-        "user_id": user_id,
-        "word": word_data["word"],
-        "category": word_data["category"],
-        "source": word_data["source"],
+        "user": user_id,
+        "word": word["word"],
+        "category": word["category"],
+        "source": word["source"],
         "mode": mode,
         "guesses": [],
         "start": int(time.time())
@@ -151,9 +215,9 @@ def start_game(user_id, mode):
         create_termo_game(
             user_id=user_id,
             game_date=sp_today(),
-            word=word_data["word"],
-            category=word_data["category"],
-            source=word_data["source"],
+            word=word["word"],
+            category=word["category"],
+            source=word["source"],
             start_time=game["start"],
             mode="daily",
         )
@@ -161,12 +225,15 @@ def start_game(user_id, mode):
     return game
 
 
+# =========================================================
+# COMMANDS
+# =========================================================
+
 async def termo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user = update.effective_user
-    user_id = user.id
+    user = update.effective_user.id
 
-    if user_id in ACTIVE_GAMES:
+    if user in ACTIVE_GAMES:
 
         await update.message.reply_text(
             "🎮 Você já tem um jogo ativo.\n"
@@ -174,12 +241,12 @@ async def termo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    db_game = get_termo_active_game(user_id)
+    db_game = get_termo_active_game(user)
 
     if db_game:
 
-        ACTIVE_GAMES[user_id] = {
-            "user_id": user_id,
+        ACTIVE_GAMES[user] = {
+            "user": user,
             "word": db_game["word"],
             "category": db_game["category"],
             "source": db_game["source"],
@@ -189,114 +256,126 @@ async def termo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         await update.message.reply_text(
-            "🎮 Você já iniciou o jogo hoje.\n"
-            "Continue tentando!"
+            "🎮 Continue seu jogo do dia!"
         )
         return
 
-    game = start_game(user_id, "daily")
+    start_game(user, "daily")
 
     await update.message.reply_text(
-        "🎮 <b>TERMO</b>\n\n"
-        "Adivinhe a palavra de 6 letras.\n"
-        "Você tem 6 tentativas.",
+        "🎮 <b>TERMO ANIME</b>\n\n"
+        "Adivinhe a palavra de <b>6 letras</b>.\n\n"
+        "🟩 letra correta\n"
+        "🟨 letra existe\n"
+        "⬛ letra não existe\n\n"
+        "Envie sua tentativa.",
         parse_mode="HTML"
     )
 
 
 async def termo_treino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_id = update.effective_user.id
+    user = update.effective_user.id
 
-    game = start_game(user_id, "train")
+    start_game(user, "train")
 
     await update.message.reply_text(
-        "🎯 <b>Modo Treino</b>\n\n"
-        "Adivinhe a palavra.",
+        "🎯 <b>MODO TREINO</b>\n\n"
+        "Nova palavra escolhida.\n"
+        "Boa sorte!",
         parse_mode="HTML"
     )
 
+
+# =========================================================
+# GUESS
+# =========================================================
 
 async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
 
-    text = update.message.text.lower().strip()
+    guess = update.message.text.lower().strip()
 
-    if len(text) != WORD_LENGTH:
+    if len(guess) != WORD_SIZE:
         return
 
-    user_id = update.effective_user.id
+    user = update.effective_user.id
 
-    if user_id not in ACTIVE_GAMES:
+    if user not in ACTIVE_GAMES:
         return
 
-    if text not in VALID_WORDS:
+    if guess not in VALID_WORDS:
         return
 
-    game = ACTIVE_GAMES[user_id]
+    game = ACTIVE_GAMES[user]
 
-    if len(game["guesses"]) >= MAX_ATTEMPTS:
-        return
+    game["guesses"].append(guess)
 
-    game["guesses"].append(text)
+    board = grid(game)
 
-    result = evaluate(game["word"], text)
+    kb = render_keyboard(
+        keyboard_state(game["word"], game["guesses"])
+    )
 
-    msg = result
-
-    if text == game["word"]:
+    if guess == game["word"]:
 
         if game["mode"] == "daily":
 
-            add_user_coins(user_id, 10)
-            add_progress_xp(user_id, 15)
+            add_user_coins(user, 10)
+            add_progress_xp(user, 15)
 
-            record_termo_result(user_id, True, len(game["guesses"]))
+            record_termo_result(user, True, len(game["guesses"]))
 
-        ACTIVE_GAMES.pop(user_id)
+        ACTIVE_GAMES.pop(user)
 
         await update.message.reply_text(
-            f"{grid(game)}\n\n"
-            f"🎉 Você acertou!\n"
-            f"Palavra: <b>{game['word']}</b>",
+            f"{board}\n\n"
+            f"🎉 <b>VOCÊ ACERTOU!</b>\n"
+            f"Palavra: <b>{game['word'].upper()}</b>\n\n"
+            f"{kb}",
             parse_mode="HTML"
         )
-
         return
 
     if len(game["guesses"]) >= MAX_ATTEMPTS:
 
         if game["mode"] == "daily":
-            record_termo_result(user_id, False, MAX_ATTEMPTS)
+            record_termo_result(user, False, MAX_ATTEMPTS)
 
-        ACTIVE_GAMES.pop(user_id)
+        ACTIVE_GAMES.pop(user)
 
         await update.message.reply_text(
-            f"{grid(game)}\n\n"
-            f"❌ Você perdeu.\n"
-            f"Palavra: <b>{game['word']}</b>",
+            f"{board}\n\n"
+            f"💀 <b>Fim de jogo</b>\n"
+            f"Palavra: <b>{game['word'].upper()}</b>\n\n"
+            f"{kb}",
             parse_mode="HTML"
         )
-
         return
 
-    await update.message.reply_text(msg)
+    await update.message.reply_text(
+        f"{board}\n\n{kb}"
+    )
 
+
+# =========================================================
+# STATS
+# =========================================================
 
 async def termo_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_id = update.effective_user.id
+    user = update.effective_user.id
 
-    stats = get_termo_stats(user_id)
+    stats = get_termo_stats(user)
 
     if not stats:
-        await update.message.reply_text("Nenhuma estatística ainda.")
+        await update.message.reply_text("Sem estatísticas ainda.")
         return
 
     msg = (
-        "📊 <b>Estatísticas</b>\n\n"
+        "📊 <b>ESTATÍSTICAS</b>\n\n"
         f"Jogos: {stats['games']}\n"
         f"Vitórias: {stats['wins']}\n"
         f"Derrotas: {stats['losses']}\n"
@@ -306,28 +385,27 @@ async def termo_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="HTML")
 
 
+# =========================================================
+# RANKING
+# =========================================================
+
 async def termo_ranking_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ranking = get_termo_global_ranking()
 
     lines = []
 
-    for i,row in enumerate(ranking[:10],1):
+    medals = ["🥇","🥈","🥉"]
 
-        medal = ""
+    for i,row in enumerate(ranking[:10]):
 
-        if i == 1:
-            medal = "🥇"
-        elif i == 2:
-            medal = "🥈"
-        elif i == 3:
-            medal = "🥉"
+        medal = medals[i] if i < 3 else "▫️"
 
         lines.append(
-            f"{medal}{i}. {row['username']} — {row['wins']} vitórias"
+            f"{medal} {i+1}. {row['username']} — {row['wins']} vitórias"
         )
 
     await update.message.reply_text(
-        "🏆 <b>Ranking Termo</b>\n\n" + "\n".join(lines),
+        "🏆 <b>RANKING TERMO</b>\n\n" + "\n".join(lines),
         parse_mode="HTML"
     )
