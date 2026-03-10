@@ -261,6 +261,7 @@ def create_tables():
     create_dado_tables()
     create_profile_settings_table()
     create_shop_tables()
+    create_daily_tables()
 
 
 def create_users_table():
@@ -3055,3 +3056,172 @@ def get_user_coins(user_id: int) -> int:
         return 0
 
     return int(row.get("coins") or 0)
+
+import random
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+SP_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+# =========================================================
+# DAILY REWARD
+# =========================================================
+
+def create_daily_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS daily_rewards (
+        user_id BIGINT NOT NULL,
+        day_start_ts BIGINT NOT NULL,
+        reward_type TEXT NOT NULL,
+        reward_amount BIGINT NOT NULL DEFAULT 0,
+        claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, day_start_ts)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_daily_rewards_user_claimed
+    ON daily_rewards (user_id, claimed_at DESC)
+    """)
+
+
+def _daily_day_start_ts_sp() -> int:
+    """
+    Timestamp do começo do dia no fuso de São Paulo.
+    """
+    now = datetime.now(tz=SP_TZ)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
+
+
+def ensure_daily_support():
+    create_daily_tables()
+
+
+def has_claimed_daily(user_id: int, day_start_ts: int) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM daily_rewards
+        WHERE user_id = %s
+          AND day_start_ts = %s
+        LIMIT 1
+        """,
+        (int(user_id), int(day_start_ts)),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def get_extra_dado(user_id: int) -> int:
+    """
+    Compatibilidade com sistema antigo.
+    Se você ainda não tiver giros extras separados no banco,
+    retorna 0 por enquanto.
+    """
+    return 0
+
+
+def add_extra_dado(user_id: int, amount: int = 1):
+    """
+    Compatibilidade com sistema antigo.
+    Aqui você pode plugar depois no seu sistema real de giros extras.
+    Por enquanto não quebra nada.
+    """
+    amount = int(amount)
+    if amount <= 0:
+        return
+    # implementar depois se quiser saldo separado de giros extras
+    return
+
+
+def claim_daily_reward(
+    user_id: int,
+    day_start_ts: int,
+    coins_min: int,
+    coins_max: int,
+    giro_chance: float,
+):
+    """
+    Resgata o daily uma vez por dia no horário de São Paulo.
+
+    Retorna:
+      None -> já resgatou hoje
+      {"type": "giro", "amount": 1}
+      {"type": "coins", "amount": X}
+    """
+
+    user_id = int(user_id)
+    day_start_ts = int(day_start_ts)
+    coins_min = int(coins_min)
+    coins_max = int(coins_max)
+    giro_chance = float(giro_chance)
+
+    ensure_daily_support()
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM daily_rewards
+                    WHERE user_id = %s
+                      AND day_start_ts = %s
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (user_id, day_start_ts)
+                )
+                already = cur.fetchone()
+
+                if already:
+                    conn.rollback()
+                    return None
+
+                roll = random.random()
+
+                if roll < giro_chance:
+                    reward_type = "giro"
+                    reward_amount = 1
+
+                    # compatível com sistema antigo
+                    add_extra_dado(user_id, 1)
+                else:
+                    reward_type = "coins"
+                    reward_amount = random.randint(coins_min, coins_max)
+
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = COALESCE(coins, 0) + %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (reward_amount, user_id)
+                    )
+
+                cur.execute(
+                    """
+                    INSERT INTO daily_rewards
+                    (user_id, day_start_ts, reward_type, reward_amount, claimed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    """,
+                    (user_id, day_start_ts, reward_type, reward_amount)
+                )
+
+                conn.commit()
+
+                return {
+                    "type": reward_type,
+                    "amount": reward_amount,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
