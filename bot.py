@@ -16,6 +16,7 @@ from commands.perfil import perfil
 from commands.anime import anime
 from commands.manga import manga
 from commands.cards import cards
+from commands.menu import menu
 from commands.card import card, card_stats_callback
 from commands.colecao import (
     colecao,
@@ -111,6 +112,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("manga", manga))
     app.add_handler(CommandHandler("cards", cards))
     app.add_handler(CommandHandler("card", card))
+    app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("colecao", colecao))
     app.add_handler(CommandHandler("pedido", pedido))
     app.add_handler(CommandHandler("nivel", nivel))
