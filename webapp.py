@@ -5239,11 +5239,37 @@ loadLimit();
     return HTMLResponse(html.replace("__PEDIDO_BANNER__", PEDIDO_BANNER_URL))
 
 # =========================================================
-# CONFIG — DADO / GACHA WEBAPP
+# DADO / GACHA WEBAPP — BLOCO COMPLETO
 # =========================================================
 
 from pathlib import Path
+from urllib.parse import parse_qsl
+import hashlib
+import hmac
+import json
+import random
 import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import Body, Header, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
+
+from database import (
+    cancel_dice_roll,
+    create_dice_roll,
+    create_or_get_user,
+    expire_stale_dice_rolls,
+    get_active_dice_roll,
+    get_dado_state,
+    get_next_dado_recharge_info,
+    pick_dice_roll_anime,
+    resolve_dice_roll,
+)
+
+# =========================================================
+# CONFIG — DADO / GACHA WEBAPP
+# =========================================================
 
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
@@ -5252,7 +5278,7 @@ DADO_BANNER_URL = os.getenv(
 
 CARDS_LOCAL_PATH = os.getenv(
     "CARDS_LOCAL_PATH",
-    "data/personagens_anilist.txt",
+    "bot/data/personagens_anilist.txt",
 ).strip()
 
 DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
@@ -5328,18 +5354,18 @@ def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
 
 
 # =========================================================
-# DADO — BASE LOCAL (adaptado ao personagens_anilist.txt real)
+# DADO — BASE LOCAL
 # =========================================================
 
-def _safe_int(v, default=0):
+def _safe_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
     except Exception:
         return default
 
 
-def _norm_text(s: Any) -> str:
-    return str(s or "").strip()
+def _norm_text(v: Any) -> str:
+    return str(v or "").strip()
 
 
 def _build_cover_from_anilist(anime_id: int) -> str:
@@ -5359,10 +5385,10 @@ def _build_char_image_from_anilist(char_id: int) -> str:
 def _resolve_local_cards_path() -> Optional[Path]:
     candidates = [
         CARDS_LOCAL_PATH,
-        "data/personagens_anilist.txt",
         "bot/data/personagens_anilist.txt",
-        "/app/data/personagens_anilist.txt",
+        "data/personagens_anilist.txt",
         "/app/bot/data/personagens_anilist.txt",
+        "/app/data/personagens_anilist.txt",
     ]
 
     seen = set()
@@ -5380,11 +5406,6 @@ def _resolve_local_cards_path() -> Optional[Path]:
 
 
 def _repair_loose_json_text(raw: str) -> str:
-    """
-    Corrige erros comuns do arquivo:
-    - linha de valor sem vírgula antes da próxima chave
-    - mistura de quebras entre propriedades
-    """
     if not raw:
         return "[]"
 
@@ -5413,10 +5434,7 @@ def _repair_loose_json_text(raw: str) -> str:
         fixed.append(line)
 
     txt = "\n".join(fixed)
-
-    # remove vírgula sobrando antes de ] ou }
     txt = re.sub(r",(\s*[\]\}])", r"\1", txt)
-
     return txt
 
 
@@ -5484,7 +5502,7 @@ def _load_local_dado_pool() -> Dict[str, Any]:
             animes_by_id[anime_id] = {
                 "anime_id": anime_id,
                 "anime": anime_name,
-                "cover_image": cover_image or _build_cover_from_anilist(anime_id),
+                "cover_image": cover_image or banner_image or _build_cover_from_anilist(anime_id),
                 "banner_image": banner_image or cover_image or _build_cover_from_anilist(anime_id),
                 "characters_count": 0,
             }
@@ -5514,14 +5532,14 @@ def _load_local_dado_pool() -> Dict[str, Any]:
 
     for anime_id, meta in animes_by_id.items():
         chars = characters_by_anime.get(anime_id, [])
-        seen_char_ids = set()
+        seen_ids = set()
         clean_chars = []
 
         for c in chars:
             cid = int(c["id"])
-            if cid in seen_char_ids:
+            if cid in seen_ids:
                 continue
-            seen_char_ids.add(cid)
+            seen_ids.add(cid)
             clean_chars.append(c)
 
         clean_chars.sort(key=lambda x: (x["name"] or "").lower())
@@ -5636,14 +5654,24 @@ def api_dado_state(x_telegram_init_data: str = Header(default="")):
 
     roll_payload = None
     if active:
-        roll_payload = {
-            "roll_id": int(active["roll_id"]),
-            "dice_value": int(active["dice_value"]),
-            "options": active.get("options_json") or [],
-            "status": active.get("status"),
-            "selected_anime_id": active.get("selected_anime_id"),
-            "rewarded_character_id": active.get("rewarded_character_id"),
-        }
+        options = active.get("options_json") or []
+        dice_value = int(active.get("dice_value") or 0)
+
+        if isinstance(options, str):
+            try:
+                options = json.loads(options)
+            except Exception:
+                options = []
+
+        if isinstance(options, list) and options:
+            roll_payload = {
+                "roll_id": int(active["roll_id"]),
+                "dice_value": dice_value,
+                "options": options,
+                "status": active.get("status"),
+                "selected_anime_id": active.get("selected_anime_id"),
+                "rewarded_character_id": active.get("rewarded_character_id"),
+            }
 
     return JSONResponse({
         "ok": True,
@@ -5675,11 +5703,13 @@ async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
         active_options = active.get("options_json") or []
         active_dice = int(active.get("dice_value") or 0)
 
-        if (
-            isinstance(active_options, list)
-            and 1 <= active_dice <= 6
-            and len(active_options) == active_dice
-        ):
+        if isinstance(active_options, str):
+            try:
+                active_options = json.loads(active_options)
+            except Exception:
+                active_options = []
+
+        if isinstance(active_options, list) and active_options and len(active_options) == active_dice:
             return JSONResponse({
                 "ok": True,
                 "reused": True,
@@ -5730,12 +5760,20 @@ async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
     roll = created["roll"]
     balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
 
+    response_options = created.get("options") or options or roll.get("options_json") or []
+
+    if isinstance(response_options, str):
+        try:
+            response_options = json.loads(response_options)
+        except Exception:
+            response_options = []
+
     return JSONResponse({
         "ok": True,
         "reused": bool(created.get("reused")),
         "roll_id": int(roll["roll_id"]),
         "dice_value": int(roll["dice_value"]),
-        "options": roll.get("options_json") or [],
+        "options": response_options,
         "status": roll.get("status"),
         "balance": balance,
     })
@@ -6543,7 +6581,7 @@ def dado_page():
       });
     }
 
-    async function chooseAnime(opt, cardEl){
+    async function chooseAnime(opt){
       if (!state.currentRollId || state.choosing) return;
       state.choosing = true;
 
@@ -6659,7 +6697,7 @@ def dado_page():
         await animateDiceResult(state.currentDice);
 
         if (!state.options.length) {
-          throw new Error("A rolagem foi criada, mas veio sem opções de anime.");
+          throw new Error("A rolagem veio sem opções de anime.");
         }
 
         renderAnimeOptions(state.options);
