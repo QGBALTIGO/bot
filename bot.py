@@ -131,9 +131,8 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("nivel", nivel))
     app.add_handler(CommandHandler("dado", dado))
     app.add_handler(CommandHandler("perfil", perfil))
-    app.add_handler(CommandHandler("loja",loja))
+    app.add_handler(CommandHandler("loja", loja))
     app.add_handler(CommandHandler("daily", daily))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler))
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
     app.add_handler(CommandHandler("trocar", trocar))
@@ -172,28 +171,19 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("card_subremove", card_subremove))
 
 
-def register_callbacks(app: Application):
-
-    # coleção (ordem importa)
-    app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
-    app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
-    app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
-    app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
-
-    # cards
-    app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
-
-    # termo
-    app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
-
-
 def register_messages(app: Application):
 
-    # guesses do termo
+    # Termo primeiro
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
+        group=1,
     )
 
+    # Captura/spawn depois
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler),
+        group=2,
+    )
 
 # =========================================================
 # APPLICATION
