@@ -22,12 +22,12 @@ from commands.colecao import (
     colecao_s_callback,
     colecao_f_callback,
     colecao_x_callback,
-    get_completed_anime_message,
 )
 from commands.pedido import pedido
 from commands.nivel import nivel
 from commands.dado import dado
 from commands.dado_admin import dadogive, dadogiveall
+
 from commands.termo import (
     termo_cmd,
     termo_stats_cmd,
@@ -40,6 +40,7 @@ from commands.termo import (
     termo_guess,
     termo_callback,
 )
+
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -55,6 +56,7 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
+
 from database import create_tables
 
 
@@ -69,7 +71,7 @@ PORT = int(os.getenv("PORT", "8000"))
 # WEBAPP
 # =========================================================
 
-def run_webapp() -> None:
+def run_webapp():
     try:
         from webapp import app as web_app
 
@@ -77,10 +79,10 @@ def run_webapp() -> None:
             web_app,
             host="0.0.0.0",
             port=PORT,
-            log_level="info",
+            log_level="warning",
         )
     except Exception:
-        print("[webapp-error] Falha ao iniciar a WebApp", flush=True)
+        print("[webapp-error]")
         traceback.print_exc()
 
 
@@ -88,113 +90,126 @@ def run_webapp() -> None:
 # ERROR HANDLER
 # =========================================================
 
-async def on_error(update, context) -> None:
+async def on_error(update, context):
     try:
-        print("[telegram-error]", repr(getattr(context, "error", None)), flush=True)
+        print("[telegram-error]", repr(context.error))
         traceback.print_exc()
-    except Exception:
+    except:
         pass
 
 
 # =========================================================
-# REGISTER HELPERS
+# HANDLERS
 # =========================================================
 
-def register_main_commands(tg_app: Application) -> None:
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(CommandHandler("anime", anime))
-    tg_app.add_handler(CommandHandler("manga", manga))
-    tg_app.add_handler(CommandHandler("cards", cards))
-    tg_app.add_handler(CommandHandler("card", card))
-    tg_app.add_handler(CommandHandler("colecao", colecao))
-    tg_app.add_handler(CommandHandler("pedido", pedido))
-    tg_app.add_handler(CommandHandler("nivel", nivel))
-    tg_app.add_handler(CommandHandler("dado", dado))
+def register_commands(app: Application):
 
+    # básicos
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("anime", anime))
+    app.add_handler(CommandHandler("manga", manga))
+    app.add_handler(CommandHandler("cards", cards))
+    app.add_handler(CommandHandler("card", card))
+    app.add_handler(CommandHandler("colecao", colecao))
+    app.add_handler(CommandHandler("pedido", pedido))
+    app.add_handler(CommandHandler("nivel", nivel))
+    app.add_handler(CommandHandler("dado", dado))
 
-def register_dado_admin_commands(tg_app: Application) -> None:
-    tg_app.add_handler(CommandHandler("dadogive", dadogive))
-    tg_app.add_handler(CommandHandler("dadogiveall", dadogiveall))
-
-
-def register_termo_commands(tg_app: Application) -> None:
-    tg_app.add_handler(CommandHandler("termo", termo_cmd))
-    tg_app.add_handler(CommandHandler("termostats", termo_stats_cmd))
-    tg_app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
-    tg_app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
-    tg_app.add_handler(CommandHandler("termorankingmes", termo_ranking_month_cmd))
-    tg_app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
-    tg_app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
-    tg_app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
-
-
-def register_cards_admin_commands(tg_app: Application) -> None:
-    tg_app.add_handler(CommandHandler("card_reload", card_reload))
-    tg_app.add_handler(CommandHandler("card_delchar", card_delchar))
-    tg_app.add_handler(CommandHandler("card_addchar", card_addchar))
-    tg_app.add_handler(CommandHandler("card_setcharimg", card_setcharimg))
-    tg_app.add_handler(CommandHandler("card_setcharname", card_setcharname))
-    tg_app.add_handler(CommandHandler("card_delanime", card_delanime))
-    tg_app.add_handler(CommandHandler("card_addanime", card_addanime))
-    tg_app.add_handler(CommandHandler("card_setanimebanner", card_setanimebanner))
-    tg_app.add_handler(CommandHandler("card_setanimecover", card_setanimecover))
-    tg_app.add_handler(CommandHandler("card_addsubcat", card_addsubcat))
-    tg_app.add_handler(CommandHandler("card_delsubcat", card_delsubcat))
-    tg_app.add_handler(CommandHandler("card_subadd", card_subadd))
-    tg_app.add_handler(CommandHandler("card_subremove", card_subremove))
-
-
-def register_callbacks(tg_app: Application) -> None:
-    # coleção por foto primeiro (mais específico)
-    tg_app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
-    tg_app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
-
-    # card
-    tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
+    # admin dado
+    app.add_handler(CommandHandler("dadogive", dadogive))
+    app.add_handler(CommandHandler("dadogiveall", dadogiveall))
 
     # termo
-    tg_app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
+    app.add_handler(CommandHandler("termo", termo_cmd))
+    app.add_handler(CommandHandler("termostats", termo_stats_cmd))
+    app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
+    app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
+    app.add_handler(CommandHandler("termorankingmes", termo_ranking_month_cmd))
+    app.add_handler(CommandHandler("termotreino", termo_treino_cmd))
+    app.add_handler(CommandHandler("termotreinostats", termo_treino_stats_cmd))
+    app.add_handler(CommandHandler("termotreinostop", termo_treino_stop_cmd))
+
+    # admin cards
+    app.add_handler(CommandHandler("card_reload", card_reload))
+    app.add_handler(CommandHandler("card_delchar", card_delchar))
+    app.add_handler(CommandHandler("card_addchar", card_addchar))
+    app.add_handler(CommandHandler("card_setcharimg", card_setcharimg))
+    app.add_handler(CommandHandler("card_setcharname", card_setcharname))
+    app.add_handler(CommandHandler("card_delanime", card_delanime))
+    app.add_handler(CommandHandler("card_addanime", card_addanime))
+    app.add_handler(CommandHandler("card_setanimebanner", card_setanimebanner))
+    app.add_handler(CommandHandler("card_setanimecover", card_setanimecover))
+    app.add_handler(CommandHandler("card_addsubcat", card_addsubcat))
+    app.add_handler(CommandHandler("card_delsubcat", card_delsubcat))
+    app.add_handler(CommandHandler("card_subadd", card_subadd))
+    app.add_handler(CommandHandler("card_subremove", card_subremove))
 
 
-def register_message_handlers(tg_app: Application) -> None:
-    # guesses do termo: texto normal, sem barra
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess))
+def register_callbacks(app: Application):
+
+    # coleção (ordem importa)
+    app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+    app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
+    app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
+    app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
+
+    # cards
+    app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
+
+    # termo
+    app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
+
+
+def register_messages(app: Application):
+
+    # guesses do termo
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess)
+    )
 
 
 # =========================================================
-# APP BUILDER
+# APPLICATION
 # =========================================================
 
-def build_application() -> Application:
-    tg_app = Application.builder().token(BOT_TOKEN).build()
+def build_application():
 
-    register_main_commands(tg_app)
-    register_dado_admin_commands(tg_app)
-    register_termo_commands(tg_app)
-    register_cards_admin_commands(tg_app)
-    register_callbacks(tg_app)
-    register_message_handlers(tg_app)
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)
+        .build()
+    )
 
-    tg_app.add_error_handler(on_error)
-    return tg_app
+    register_commands(app)
+    register_callbacks(app)
+    register_messages(app)
+
+    app.add_error_handler(on_error)
+
+    return app
 
 
 # =========================================================
 # MAIN
 # =========================================================
 
-def main() -> None:
+def main():
+
+    # cria tabelas uma vez
     create_tables()
 
-    web_thread = threading.Thread(target=run_webapp, daemon=True)
-    web_thread.start()
+    # webapp em thread separada
+    threading.Thread(
+        target=run_webapp,
+        daemon=True
+    ).start()
 
-    tg_app = build_application()
+    app = build_application()
 
-    print("Bot + WebApp iniciado", flush=True)
-    tg_app.run_polling(
+    print("Bot iniciado", flush=True)
+
+    app.run_polling(
         drop_pending_updates=True,
         allowed_updates=["message", "callback_query"],
     )
