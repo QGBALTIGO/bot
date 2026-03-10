@@ -11648,7 +11648,7 @@
           "id": 170266,
           "name": "Pochita",
           "anime": "Chainsaw Man",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b170266-bBXPkNJnd3mg.png"
+          "image": "https://carder.top/imagens/1773104243168-589667616.jpg"
         },
         {
           "id": 137079,
