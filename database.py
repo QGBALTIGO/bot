@@ -152,6 +152,55 @@ def _get_recharge_info() -> Dict[str, Any]:
     }
 
 
+def _clean_roll_options(options: List[Dict[str, Any]], expected_len: Optional[int] = None) -> List[Dict[str, Any]]:
+    clean_options: List[Dict[str, Any]] = []
+    seen_ids = set()
+
+    if not isinstance(options, list):
+        raise ValueError("options inválidas")
+
+    for item in options:
+        if not isinstance(item, dict):
+            raise ValueError("option inválida")
+
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0:
+            raise ValueError("anime_id inválido nas options")
+        if anime_id in seen_ids:
+            raise ValueError("options contém anime duplicado")
+        seen_ids.add(anime_id)
+
+        clean_options.append({
+            "id": anime_id,
+            "title": str(item.get("title") or "").strip(),
+            "cover": str(item.get("cover") or "").strip(),
+        })
+
+    if expected_len is not None and len(clean_options) != int(expected_len):
+        raise ValueError("options deve ter exatamente a quantidade do valor do dado")
+
+    return clean_options
+
+
+def _is_valid_roll_options(options: Any, dice_value: int) -> bool:
+    if not isinstance(options, list):
+        return False
+    if dice_value < 1 or dice_value > 6:
+        return False
+    if len(options) != dice_value:
+        return False
+
+    seen = set()
+    for item in options:
+        if not isinstance(item, dict):
+            return False
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0 or anime_id in seen:
+            return False
+        seen.add(anime_id)
+    return True
+
+
 # =========================================================
 # INIT / MIGRATIONS
 # =========================================================
@@ -428,7 +477,6 @@ def create_dado_tables():
     _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;""")
     _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes');""")
 
-    # migração defensiva: se created_at existir como timestamptz, converte para epoch bigint
     _run("""
     DO $$
     DECLARE
@@ -485,7 +533,6 @@ def create_dado_tables():
 
 def create_or_get_user(user_id: int):
     initial_slot = _slot_number_from_dt(_now_sp())
-
     _run(
         """
         INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
@@ -1195,9 +1242,14 @@ def consume_dado(user_id: int, amount: int = 1) -> bool:
                     SET dado_balance = dado_balance - %s,
                         updated_at = NOW()
                     WHERE user_id = %s
+                      AND dado_balance >= %s
                     """,
-                    (amount, int(user_id))
+                    (amount, int(user_id), amount)
                 )
+                if cur.rowcount != 1:
+                    conn.rollback()
+                    return False
+
                 conn.commit()
                 return True
             except Exception:
@@ -1346,29 +1398,13 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
     - atualiza saldo por slot
     - consome 1 dado
     - grava created_at como BIGINT (epoch)
+    - retorna options limpas para o backend não depender do roundtrip do banco
     """
     dice_value = int(dice_value)
     if dice_value < 1 or dice_value > 6:
         raise ValueError("dice_value deve ser entre 1 e 6")
 
-    if not isinstance(options, list) or len(options) != dice_value:
-        raise ValueError("options deve ter exatamente a quantidade do valor do dado")
-
-    clean_options: List[Dict[str, Any]] = []
-    seen_ids = set()
-
-    for item in options:
-        anime_id = int(item.get("id"))
-        if anime_id in seen_ids:
-            raise ValueError("options contém anime duplicado")
-        seen_ids.add(anime_id)
-
-        clean_options.append({
-            "id": anime_id,
-            "title": str(item.get("title") or "").strip(),
-            "cover": str(item.get("cover") or "").strip(),
-        })
-
+    clean_options = _clean_roll_options(options, expected_len=dice_value)
     create_or_get_user(user_id)
 
     with pool.connection() as conn:
@@ -1378,7 +1414,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
 
                 cur.execute(
                     """
-                    SELECT roll_id, status, expires_at
+                    SELECT roll_id, status, expires_at, options_json, dice_value
                     FROM dice_rolls
                     WHERE user_id = %s
                       AND status IN ('pending', 'picked')
@@ -1391,21 +1427,33 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                 active = cur.fetchone()
 
                 if active:
+                    existing_options = active.get("options_json") or []
+                    existing_dice = int(active.get("dice_value") or 0)
+
+                    if _is_valid_roll_options(existing_options, existing_dice):
+                        cur.execute(
+                            "SELECT * FROM dice_rolls WHERE roll_id = %s",
+                            (int(active["roll_id"]),)
+                        )
+                        existing = cur.fetchone()
+                        conn.commit()
+                        return {
+                            "ok": True,
+                            "reused": True,
+                            "roll": existing,
+                            "options": existing_options,
+                        }
+
+                    # roll ativo quebrado: cancela antes de criar novo
                     cur.execute(
                         """
-                        SELECT *
-                        FROM dice_rolls
+                        UPDATE dice_rolls
+                        SET status = 'cancelled'
                         WHERE roll_id = %s
+                          AND status IN ('pending', 'picked')
                         """,
                         (int(active["roll_id"]),)
                     )
-                    existing = cur.fetchone()
-                    conn.commit()
-                    return {
-                        "ok": True,
-                        "reused": True,
-                        "roll": existing,
-                    }
 
                 state = _refresh_dado_locked(cur, user_id)
                 balance = int(state["balance"])
@@ -1477,6 +1525,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                     "ok": True,
                     "reused": False,
                     "roll": created,
+                    "options": clean_options,
                 }
 
             except Exception:
@@ -1547,7 +1596,7 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                     return {"ok": False, "error": "expired"}
 
                 options = row.get("options_json") or []
-                allowed_ids = {int(item.get("id")) for item in options if item.get("id") is not None}
+                allowed_ids = {int(item.get("id")) for item in options if isinstance(item, dict) and item.get("id") is not None}
 
                 if anime_id not in allowed_ids:
                     conn.rollback()
