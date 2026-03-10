@@ -153,7 +153,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         texto = (
             "🇧🇷 <b>PERFIL DO USUÁRIO</b>\n\n"
-            f"👤 | <i>{role}</i> <b>{name}</b>\n\n"
+            f"👤 | <i>{role}:</i> <b>{name}</b>\n\n"
             f"📚 | <i>Coleção:</i> <b>{total}</b>\n"
             f"🪙 | <i>Coins:</i> <b>{coins}</b>\n"
             f"⭐️ | <i>Nível:</i> <b>{level}</b>\n\n"
