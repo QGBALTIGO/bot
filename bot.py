@@ -12,6 +12,7 @@ from telegram.ext import (
 )
 
 from commands.start import start
+from commands.perfil import perfil
 from commands.anime import anime
 from commands.manga import manga
 from commands.cards import cards
@@ -114,6 +115,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("pedido", pedido))
     app.add_handler(CommandHandler("nivel", nivel))
     app.add_handler(CommandHandler("dado", dado))
+    app.add_handler(CommandHandler("perfil", perfil))
 
     # admin dado
     app.add_handler(CommandHandler("dadogive", dadogive))
