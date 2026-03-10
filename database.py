@@ -260,6 +260,7 @@ def create_tables():
     create_termo_tables()
     create_dado_tables()
     create_profile_settings_table()
+    create_shop_tables()
 
 
 def create_users_table():
@@ -2778,3 +2779,200 @@ def set_dado_full_notified(user_id: int, value: bool):
         """,
         (bool(value), bool(value), int(user_id))
     )
+
+# =========================================================
+# SHOP / ECONOMY
+# =========================================================
+
+def create_shop_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS shop_transactions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER,
+        reference_id BIGINT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_shop_transactions_user
+    ON shop_transactions (user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS shop_card_sales (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        price INTEGER NOT NULL DEFAULT 1,
+        sold_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        buyback_available_until TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_shop_card_sales_user
+    ON shop_card_sales (user_id, sold_at DESC)
+    """)
+
+def record_coin_transaction(user_id: int, tx_type: str, amount: int, metadata=None):
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (int(user_id),),
+        fetch="one"
+    )
+
+    balance = int((row or {}).get("coins") or 0)
+
+    _run(
+        """
+        INSERT INTO shop_transactions
+        (user_id, type, amount, balance_after, metadata)
+        VALUES (%s,%s,%s,%s,%s)
+        """,
+        (
+            int(user_id),
+            tx_type,
+            int(amount),
+            balance,
+            json.dumps(metadata or {})
+        )
+    )
+
+def sell_character(user_id: int, character_id: int):
+    qty = get_user_card_quantity(user_id, character_id)
+
+    if qty <= 0:
+        return {"ok": False, "error": "no_card"}
+
+    remove_card_copy(user_id, character_id, 1)
+
+    add_user_coins(user_id, 1)
+
+    record_coin_transaction(
+        user_id,
+        "sell_character",
+        1,
+        {"character_id": character_id}
+    )
+
+    _run(
+        """
+        INSERT INTO shop_card_sales
+        (user_id, character_id, price, buyback_available_until)
+        VALUES (%s,%s,1,NOW() + INTERVAL '72 hours')
+        """,
+        (user_id, character_id)
+    )
+
+    return {"ok": True}
+
+def buyback_character(user_id: int, sale_id: int):
+    sale = _run(
+        """
+        SELECT *
+        FROM shop_card_sales
+        WHERE id = %s
+          AND user_id = %s
+        """,
+        (sale_id, user_id),
+        fetch="one"
+    )
+
+    if not sale:
+        return {"ok": False}
+
+    price = 3
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False, "error": "no_coins"}
+
+    add_user_coins(user_id, -price)
+
+    add_card_copy(user_id, sale["character_id"], 1)
+
+    record_coin_transaction(
+        user_id,
+        "buyback_character",
+        -price,
+        {"sale_id": sale_id}
+    )
+
+    return {"ok": True}
+
+def buy_dado(user_id: int):
+    price = 2
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False}
+
+    add_user_coins(user_id, -price)
+
+    add_dado_balance(user_id, 1)
+
+    record_coin_transaction(
+        user_id,
+        "buy_dado",
+        -price
+    )
+
+    return {"ok": True}
+
+def buy_nickname_change(user_id: int):
+    price = 3
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False}
+
+    add_user_coins(user_id, -price)
+
+    record_coin_transaction(
+        user_id,
+        "buy_nickname",
+        -price
+    )
+
+    return {"ok": True}
+
+def get_user_shop_history(user_id: int, limit: int = 20):
+    rows = _run(
+        """
+        SELECT *
+        FROM shop_transactions
+        WHERE user_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (user_id, limit),
+        fetch="all"
+    )
+
+    return rows or []
