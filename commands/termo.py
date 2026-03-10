@@ -419,6 +419,7 @@ def _cache_from_db_row(row: Dict[str, Any]) -> Dict[str, Any]:
             guesses = []
 
     game = {
+        "id": int(row["id"]),
         "user_id": int(row["user_id"]),
         "date": row["date"],
         "word": str(row["word"]).lower(),
