@@ -141,10 +141,12 @@ def get_user_cards(uid):
 
 
 def get_favorite(uid):
-
     try:
-        prof = db.get_collection_profile(uid)
-        return prof.get("favorite_character_id")
+        prof = db.get_profile_settings(uid)
+        if not prof:
+            return None
+        fav_id = prof.get("favorite_character_id")
+        return int(fav_id) if fav_id else None
     except:
         return None
 
