@@ -19,7 +19,6 @@ from commands.manga import manga
 from commands.cards import cards
 from commands.menu import menu
 from commands.loja import loja
-from commands.infoanime import infoanime
 from commands.daily import daily
 from handlers.capture_spawn import capture_message_handler
 from commands.capturar import capturar
@@ -127,8 +126,6 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("loja",loja))
     app.add_handler(CommandHandler("daily", daily))
-    app.add_handler(CommandHandler("infoanime", infoanime))
-    app.add_handler(CallbackQueryHandler(callback_info_anime, pattern=r"^info_anime:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler))
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
