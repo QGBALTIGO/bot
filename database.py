@@ -183,13 +183,6 @@ def _clean_roll_options(options: List[Dict[str, Any]], expected_len: Optional[in
 
 
 def _coerce_roll_options(raw: Any) -> List[Dict[str, Any]]:
-    """
-    Normaliza options_json vindo do banco.
-    Aceita:
-    - list[dict]
-    - string JSON
-    - qualquer outro formato -> []
-    """
     if isinstance(raw, list):
         items = raw
     elif isinstance(raw, str):
@@ -261,10 +254,10 @@ def create_tables():
     create_users_table()
     create_media_request_tables()
     create_cards_tables()
+    create_collection_tables()
     create_level_tables()
     create_termo_tables()
     create_dado_tables()
-    create_tables()
 
 
 def create_users_table():
@@ -378,6 +371,21 @@ def create_cards_tables():
     CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
     ON user_card_collection (user_id)
     """)
+
+
+def create_collection_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_collection_profile (
+        user_id BIGINT PRIMARY KEY,
+        favorite_character_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS favorite_character_id BIGINT;""")
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
 
 
 def create_level_tables():
@@ -847,6 +855,45 @@ def save_webapp_report(
 # CARDS / COLLECTION
 # =========================================================
 
+def ensure_collection_profile_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_collection_profile (user_id, created_at, updated_at)
+        VALUES (%s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_collection_profile(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_collection_profile_row(user_id)
+    row = _run(
+        """
+        SELECT user_id, favorite_character_id, created_at, updated_at
+        FROM user_collection_profile
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return row or None
+
+
+def set_favorite_character_id(user_id: int, character_id: Optional[int]):
+    ensure_collection_profile_row(user_id)
+    _run(
+        """
+        UPDATE user_collection_profile
+        SET favorite_character_id = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(character_id) if character_id else None, int(user_id))
+    )
+
+
 def get_user_card_quantity(user_id: int, character_id: int) -> int:
     row = _run(
         """
@@ -980,7 +1027,8 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
         SELECT user_id, character_id, quantity, first_obtained_at, updated_at
         FROM user_card_collection
         WHERE user_id = %s
-        ORDER BY quantity DESC, updated_at DESC
+          AND quantity > 0
+        ORDER BY quantity DESC, updated_at DESC, character_id ASC
         """,
         (int(user_id),),
         fetch="all"
@@ -1126,10 +1174,6 @@ def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
 # =========================================================
 
 def _refresh_dado_locked(cur, user_id: int) -> Dict[str, Any]:
-    """
-    Atualiza o saldo de dados do usuário com lock de linha.
-    Use apenas dentro de transação aberta.
-    """
     cur.execute(
         """
         SELECT user_id, dado_balance, dado_slot
@@ -1394,10 +1438,6 @@ def get_dice_roll(roll_id: int, user_id: Optional[int] = None) -> Optional[Dict[
 
 
 def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
-    """
-    Expira rolls vencidos.
-    Se refund_pending=True, devolve 1 dado para rolls ainda em 'pending'.
-    """
     expired_count = 0
 
     with pool.connection() as conn:
@@ -1455,14 +1495,6 @@ def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
 
 
 def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Cria um roll de forma atômica:
-    - garante 1 roll ativo por usuário
-    - atualiza saldo por slot
-    - consome 1 dado
-    - grava created_at como BIGINT (epoch)
-    - retorna options limpas para o backend não depender do roundtrip do banco
-    """
     dice_value = int(dice_value)
     if dice_value < 1 or dice_value > 6:
         raise ValueError("dice_value deve ser entre 1 e 6")
@@ -1642,10 +1674,6 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
 
 
 def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str, Any]:
-    """
-    Marca a escolha do anime uma única vez.
-    Não deixa selecionar anime fora da lista do roll.
-    """
     user_id = int(user_id)
     roll_id = int(roll_id)
     anime_id = int(anime_id)
@@ -1774,12 +1802,6 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
 
 
 def resolve_dice_roll(user_id: int, roll_id: int, character_id: int) -> Dict[str, Any]:
-    """
-    Finaliza o roll e entrega o personagem.
-    Só funciona uma vez.
-    Só funciona após pick.
-    Faz UPSERT na coleção.
-    """
     user_id = int(user_id)
     roll_id = int(roll_id)
     character_id = int(character_id)
@@ -2352,9 +2374,6 @@ def get_termo_user_rank(user_id: int) -> int:
 # =========================================================
 
 def admin_give_dado_to_user(user_id: int, amount: int) -> Dict[str, Any]:
-    """
-    Dá dados manualmente para 1 usuário, respeitando o teto.
-    """
     user_id = int(user_id)
     amount = int(amount)
 
@@ -2398,9 +2417,6 @@ def admin_give_dado_to_user(user_id: int, amount: int) -> Dict[str, Any]:
 
 
 def admin_give_dado_to_all(amount: int) -> Dict[str, Any]:
-    """
-    Dá dados manualmente para todos os usuários, respeitando o teto.
-    """
     amount = int(amount)
 
     if amount <= 0:
