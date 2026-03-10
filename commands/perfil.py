@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 import database as db
 from cards_service import get_character_by_id
-from utils.gatekeeper import checar_canal
+from utils.gatekeeper import gatekeeper
 
 
 ANTIFLOOD = 2.0
