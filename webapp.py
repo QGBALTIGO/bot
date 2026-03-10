@@ -6262,7 +6262,7 @@ def dado_page():
         </div>
         <div class="stat">
           <div class="k">Recargas</div>
-          <div class="v" style="font-size:16px;line-height:1.5">01h • 04h • 07h<br>10h • 13h • 16h<br>19h • 22h</div>
+          <div class="v" style="font-size:16px;line-height:1.5">01h • 04h • 07h • 10h • 13h • 16h • 19h • 22h</div>
         </div>
       </div>
 
