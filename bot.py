@@ -12,6 +12,12 @@ from telegram.ext import (
     filters,
 )
 
+from commands.trocar import (
+    trocar,
+    trade_accept,
+    trade_reject
+)
+
 from commands.start import start
 from commands.perfil import perfil
 from commands.anime import anime
@@ -129,6 +135,9 @@ def register_commands(app: Application):
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler))
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
+    app.add_handler(CommandHandler("trocar", trocar))
+    app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
+    app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
     # admin dado
     app.add_handler(CommandHandler("dadogive", dadogive))
