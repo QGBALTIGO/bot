@@ -7769,10 +7769,258 @@ def api_menu_delete_account(payload: dict = Body(...)):
     return {"ok": True}
 
 # =========================
-# UI: /shop — Loja
+
+# THEME CSS (necessário para a loja)
+
 # =========================
+
+def _theme_css():
+return """
+body{
+background:#0a1220;
+color:white;
+font-family:system-ui;
+margin:0;
+}
+
+.wrap{
+max-width:900px;
+margin:auto;
+padding:18px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:12px;
+}
+
+.card{
+border-radius:22px;
+overflow:hidden;
+background:rgba(255,255,255,.05);
+border:1px solid rgba(255,255,255,.1);
+position:relative;
+}
+
+.card img{
+width:100%;
+height:220px;
+object-fit:cover;
+}
+
+.overlay{
+position:absolute;
+bottom:0;
+left:0;
+right:0;
+padding:12px;
+background:linear-gradient(transparent,rgba(0,0,0,.9));
+}
+
+.name{
+font-weight:900;
+font-size:14px;
+}
+
+.meta{
+font-size:12px;
+opacity:.7;
+}
+
+.pillTag{
+position:absolute;
+top:10px;
+left:10px;
+background:#000;
+padding:4px 8px;
+border-radius:8px;
+font-size:11px;
+}
+
+.tabs{
+display:flex;
+gap:8px;
+margin-bottom:16px;
+}
+
+.tab{
+flex:1;
+padding:10px;
+border-radius:12px;
+background:rgba(255,255,255,.06);
+border:1px solid rgba(255,255,255,.1);
+cursor:pointer;
+font-weight:800;
+}
+
+.tab.active{
+background:rgba(255,255,255,.18);
+}
+
+.actions{
+margin-top:10px;
+}
+
+.smallBtn{
+width:100%;
+padding:10px;
+border-radius:10px;
+border:0;
+font-weight:800;
+cursor:pointer;
+}
+
+.smallBtn.primary{
+background:#ff3c7c;
+color:white;
+}
+
+.buyGrid{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:12px;
+}
+
+.shopCard{
+border-radius:18px;
+padding:14px;
+background:rgba(255,255,255,.05);
+border:1px solid rgba(255,255,255,.1);
+}
+
+.price{
+font-weight:900;
+margin-top:6px;
+}
+"""
+
+# =========================
+
+# WEBAPP LOJA
+
+# =========================
+
 @app.get("/shop", response_class=HTMLResponse)
 def miniapp_shop():
+
+```
+html = (
+    "<!doctype html><html><head><meta charset='utf-8'>"
+    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+    "<title>Baltigo • Loja</title>"
+    "<style>" + _theme_css() + "</style>"
+    "</head><body>"
+    "<div class='wrap'>"
+
+    "<h2>🛒 Loja</h2>"
+
+    "<div class='tabs'>"
+    "<div class='tab active' id='tab_sell'>📦 Vender</div>"
+    "<div class='tab' id='tab_buy'>🎲 Comprar</div>"
+    "</div>"
+
+    "<div id='sellView'>"
+    "<div id='chars' class='grid'></div>"
+    "</div>"
+
+    "<div id='buyView' style='display:none'>"
+
+    "<div class='buyGrid'>"
+
+    "<div class='shopCard'>"
+    "<h3>🎲 Comprar dado</h3>"
+    "<p>Use coins para comprar dados extras.</p>"
+    "<div class='price'>2 coins</div>"
+    "<button class='smallBtn primary' onclick='buyDice()'>Comprar</button>"
+    "</div>"
+
+    "<div class='shopCard'>"
+    "<h3>✏️ Trocar nickname</h3>"
+    "<p>Permite alterar o nickname novamente.</p>"
+    "<div class='price'>3 coins</div>"
+    "<button class='smallBtn primary' onclick='buyNick()'>Comprar</button>"
+    "</div>"
+
+    "</div>"
+    "</div>"
+
+    "<script>"
+
+    "async function load(){"
+    "const r=await fetch('/api/shop/sell/all');"
+    "const d=await r.json();"
+    "const root=document.getElementById('chars');"
+    "root.innerHTML='';"
+
+    "for(const c of d.items){"
+
+    "const div=document.createElement('div');"
+    "div.className='card';"
+
+    "div.innerHTML=`"
+    "<img src='${c.image}'>"
+    "<div class='pillTag'>ID ${c.character_id}</div>"
+    "<div class='overlay'>"
+    "<div class='name'>${c.character_name}</div>"
+    "<div class='meta'>${c.anime_title}</div>"
+    "<div class='actions'>"
+    "<button class='smallBtn primary' onclick='sell(${c.character_id})'>Vender +1 coin</button>"
+    "</div>"
+    "</div>"
+    "`;"
+
+    "root.appendChild(div);"
+    "}"
+
+    "}"
+
+    "async function sell(id){"
+    "await fetch('/api/shop/sell/confirm',{"
+    "method:'POST',"
+    "headers:{'Content-Type':'application/json'},"
+    "body:JSON.stringify({character_id:id})"
+    "});"
+    "load();"
+    "}"
+
+    "async function buyDice(){"
+    "await fetch('/api/shop/buy/giro',{method:'POST'});"
+    "}"
+
+    "async function buyNick(){"
+    "await fetch('/api/shop/buy/nick',{method:'POST'});"
+    "}"
+
+    "document.getElementById('tab_sell').onclick=()=>{"
+    "document.getElementById('sellView').style.display='';"
+    "document.getElementById('buyView').style.display='none';"
+    "};"
+
+    "document.getElementById('tab_buy').onclick=()=>{"
+    "document.getElementById('sellView').style.display='none';"
+    "document.getElementById('buyView').style.display='';"
+    "};"
+
+    "load();"
+
+    "</script>"
+    "</div></body></html>"
+)
+
+return HTMLResponse(html)
+```
+
+# =========================
+
+# ALIAS /loja (evita Not Found)
+
+# =========================
+
+@app.get("/loja", response_class=HTMLResponse)
+def loja_alias():
+return miniapp_shop()
+
 
     html = (
         "<!doctype html><html><head><meta charset='utf-8'>"
