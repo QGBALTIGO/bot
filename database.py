@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from zoneinfo import ZoneInfo
 
+
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
@@ -294,8 +295,6 @@ def create_users_table():
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT NOT NULL DEFAULT -1;""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
     _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified_at TIMESTAMPTZ;""")
 
     _run("""
     CREATE INDEX IF NOT EXISTS idx_users_dado_balance
@@ -588,6 +587,46 @@ def create_dado_tables():
     CREATE UNIQUE INDEX IF NOT EXISTS uq_dice_rolls_one_active_per_user
     ON dice_rolls (user_id)
     WHERE status IN ('pending', 'picked')
+    """)
+
+
+def create_profile_settings_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_profile_settings (
+        user_id BIGINT PRIMARY KEY,
+        nickname TEXT UNIQUE,
+        favorite_character_id BIGINT,
+        country_code TEXT NOT NULL DEFAULT 'BR',
+        language TEXT NOT NULL DEFAULT 'pt',
+        private_profile BOOLEAN NOT NULL DEFAULT FALSE,
+        notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE,
+        dado_full_notified_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS nickname TEXT;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS favorite_character_id BIGINT;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS country_code TEXT NOT NULL DEFAULT 'BR';""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'pt';""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS private_profile BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_user_profile_settings_nickname
+    ON user_profile_settings (nickname)
+    WHERE nickname IS NOT NULL
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_profile_settings_notifications
+    ON user_profile_settings (notifications_enabled, dado_full_notified)
     """)
 
 
@@ -1319,12 +1358,26 @@ def add_dado_balance(user_id: int, amount: int):
                 raise
 
 
+def _reset_dado_full_notification_in_tx(cur, user_id: int):
+    cur.execute(
+        """
+        UPDATE user_profile_settings
+        SET dado_full_notified = FALSE,
+            dado_full_notified_at = NULL,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(user_id),)
+    )
+
+
 def consume_dado(user_id: int, amount: int = 1) -> bool:
     amount = int(amount)
     if amount <= 0:
         return True
 
     create_or_get_user(user_id)
+    ensure_profile_settings_row(user_id)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -1349,6 +1402,8 @@ def consume_dado(user_id: int, amount: int = 1) -> bool:
                 if cur.rowcount != 1:
                     conn.rollback()
                     return False
+
+                _reset_dado_full_notification_in_tx(cur, user_id)
 
                 conn.commit()
                 return True
@@ -1504,6 +1559,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
 
     clean_options = _clean_roll_options(options, expected_len=dice_value)
     create_or_get_user(user_id)
+    ensure_profile_settings_row(user_id)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -1624,6 +1680,8 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                         "balance": 0,
                     }
 
+                _reset_dado_full_notification_in_tx(cur, user_id)
+
                 created_ts = int(time.time())
 
                 cur.execute(
@@ -1736,7 +1794,11 @@ def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str,
                     return {"ok": False, "error": "expired"}
 
                 options = row.get("options_json") or []
-                allowed_ids = {int(item["id"]) for item in options if isinstance(item, dict) and int(item.get("id") or 0) > 0}
+                allowed_ids = {
+                    int(item["id"])
+                    for item in options
+                    if isinstance(item, dict) and int(item.get("id") or 0) > 0
+                }
 
                 if not allowed_ids:
                     cur.execute(
@@ -2475,40 +2537,10 @@ def admin_give_dado_to_all(amount: int) -> Dict[str, Any]:
                     pass
                 raise
 
+
 # =========================================================
 # MENU / PROFILE SETTINGS
 # =========================================================
-
-def create_profile_settings_table():
-    _run("""
-    CREATE TABLE IF NOT EXISTS user_profile_settings (
-        user_id BIGINT PRIMARY KEY,
-        nickname TEXT UNIQUE,
-        favorite_character_id BIGINT,
-        country_code TEXT NOT NULL DEFAULT 'BR',
-        language TEXT NOT NULL DEFAULT 'pt',
-        private_profile BOOLEAN NOT NULL DEFAULT FALSE,
-        notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """)
-
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS nickname TEXT;""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS favorite_character_id BIGINT;""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS country_code TEXT NOT NULL DEFAULT 'BR';""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'pt';""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS private_profile BOOLEAN NOT NULL DEFAULT FALSE;""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE;""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
-    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
-
-    _run("""
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_user_profile_settings_nickname
-    ON user_profile_settings (nickname)
-    WHERE nickname IS NOT NULL
-    """)
-
 
 def ensure_profile_settings_row(user_id: int):
     _run(
@@ -2533,6 +2565,8 @@ def get_profile_settings(user_id: int):
             language,
             private_profile,
             notifications_enabled,
+            dado_full_notified,
+            dado_full_notified_at,
             created_at,
             updated_at
         FROM user_profile_settings
@@ -2661,6 +2695,7 @@ def delete_user_account(user_id: int):
     _run("DELETE FROM user_collection_profile WHERE user_id = %s", (user_id,))
     _run("DELETE FROM user_profile_settings WHERE user_id = %s", (user_id,))
     _run("DELETE FROM users WHERE user_id = %s", (user_id,))
+
 
 # =========================================================
 # DADO NOTIFICATIONS
