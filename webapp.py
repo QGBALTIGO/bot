@@ -7768,9 +7768,9 @@ def api_menu_delete_account(payload: dict = Body(...)):
     delete_user_account(uid)
     return {"ok": True}
 
-# ======================================
-# LOJA
-# ======================================
+# =========================
+# WEBAPP — LOJA
+# =========================
 
 @app.get("/loja", response_class=HTMLResponse)
 def loja_page(uid: int = Query(...)):
@@ -7779,291 +7779,95 @@ def loja_page(uid: int = Query(...)):
 <!doctype html>
 <html>
 <head>
-
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-
-<title>Loja Baltigo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 
 <style>
 
-:root{
---bg0:#070b12;
---bg1:#0a1220;
---stroke:rgba(255,255,255,0.10);
---stroke2:rgba(255,255,255,0.16);
---txt:rgba(255,255,255,0.92);
---muted:rgba(255,255,255,0.55);
-}
-
 body{
+background:#0a1220;
+color:white;
+font-family:system-ui;
 margin:0;
-font-family:-apple-system,system-ui,Segoe UI,Roboto;
-background:linear-gradient(180deg,var(--bg0),var(--bg1));
-color:var(--txt);
-}
-
-.wrap{
-max-width:900px;
-margin:auto;
-padding:18px;
-}
-
-.banner{
-width:100%;
-border-radius:24px;
-overflow:hidden;
-border:1px solid var(--stroke);
-margin-bottom:18px;
-}
-
-.banner img{
-width:100%;
-height:190px;
-object-fit:cover;
-}
-
-.tabs{
-display:flex;
-gap:10px;
-margin-bottom:16px;
-}
-
-.tab{
-flex:1;
-padding:12px;
-border-radius:16px;
-border:1px solid var(--stroke);
-background:rgba(255,255,255,0.03);
-text-align:center;
-font-weight:900;
-cursor:pointer;
-}
-
-.tab.active{
-background:rgba(90,168,255,0.18);
-border-color:rgba(90,168,255,0.42);
-}
-
-.section{
-display:none;
-}
-
-.section.active{
-display:block;
-}
-
-.cards{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:12px;
+padding:20px;
 }
 
 .card{
-border-radius:22px;
-overflow:hidden;
-border:1px solid var(--stroke);
-background:rgba(255,255,255,0.04);
+background:#111;
+border-radius:14px;
+padding:20px;
+margin-bottom:15px;
 }
 
-.cover{
-height:200px;
-}
-
-.cover img{
-width:100%;
-height:100%;
-object-fit:cover;
-}
-
-.meta{
-padding:12px;
-}
-
-.name{
-font-weight:900;
-font-size:14px;
-}
-
-.sub{
-font-size:12px;
-color:var(--muted);
-margin-top:4px;
-}
-
-.btn{
-margin-top:10px;
-width:100%;
+button{
 padding:10px;
-border-radius:12px;
+border-radius:8px;
 border:0;
-font-weight:900;
 cursor:pointer;
+font-weight:700;
 }
 
 .sell{
-background:#ff4d4d;
+background:#ff4444;
 color:white;
 }
 
 .buy{
 background:#4ade80;
-color:#052e16;
-}
-
-.shop-item{
-border:1px solid var(--stroke);
-border-radius:18px;
-padding:16px;
-margin-bottom:12px;
-background:rgba(255,255,255,0.04);
-}
-
-.shop-title{
-font-weight:900;
-font-size:16px;
-}
-
-.shop-desc{
-color:var(--muted);
-font-size:13px;
-margin:6px 0 10px;
 }
 
 </style>
 
 </head>
 
-
 <body>
 
-<div class="wrap">
+<h2>🛒 Loja</h2>
 
-<div class="banner">
-<img src="https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg">
+<div class="card">
+<h3>🎲 Comprar dado</h3>
+<p>Custo: 2 coins</p>
+<button class="buy" onclick="buyDice()">Comprar</button>
 </div>
 
-
-<div class="tabs">
-
-<div class="tab active" data-tab="dados">
-🎲 Dados
+<div class="card">
+<h3>✏️ Trocar nickname</h3>
+<p>Custo: 3 coins</p>
+<button class="buy" onclick="buyNick()">Comprar</button>
 </div>
 
-<div class="tab" data-tab="nick">
-✏️ Nickname
+<div class="card">
+<h3>📦 Vender personagens</h3>
+<div id="chars"></div>
 </div>
-
-<div class="tab" data-tab="vender">
-📦 Vender
-</div>
-
-</div>
-
-
-
-<div class="section active" id="dados">
-
-<div class="shop-item">
-<div class="shop-title">Comprar 1 Dado</div>
-<div class="shop-desc">Custa 2 coins</div>
-
-<button class="btn buy" onclick="buyDice()">
-Comprar
-</button>
-
-</div>
-
-</div>
-
-
-
-<div class="section" id="nick">
-
-<div class="shop-item">
-<div class="shop-title">Alterar Nickname</div>
-<div class="shop-desc">Custa 3 coins</div>
-
-<button class="btn buy" onclick="buyNick()">
-Comprar
-</button>
-
-</div>
-
-</div>
-
-
-
-<div class="section" id="vender">
-
-<div class="cards" id="cards"></div>
-
-</div>
-
-</div>
-
-
 
 <script>
 
 const uid = __UID__
 
-
-document.querySelectorAll(".tab").forEach(tab=>{
-
-tab.onclick=()=>{
-
-document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"))
-document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"))
-
-tab.classList.add("active")
-
-document.getElementById(tab.dataset.tab).classList.add("active")
-
-}
-
-})
-
-
-async function loadCharacters(){
+async function loadChars(){
 
 let res = await fetch(`/api/loja/personagens?uid=${uid}`)
 let data = await res.json()
 
-let el = document.getElementById("cards")
+let el = document.getElementById("chars")
 
 el.innerHTML=""
 
-for (let c of data.items){
+for(let c of data.items){
 
-let card = document.createElement("div")
-card.className="card"
+let div=document.createElement("div")
 
-card.innerHTML=`
-<div class="cover">
-<img src="${c.image}">
-</div>
-
-<div class="meta">
-
-<div class="name">${c.name}</div>
-
-<div class="sub">${c.anime}</div>
-
-<button class="btn sell" onclick="sell(${c.id})">
-VENDER
-</button>
-
-</div>
+div.innerHTML=`
+<p><b>${c.name}</b> — ${c.anime}</p>
+<button class="sell" onclick="sell(${c.id})">Vender</button>
 `
 
-el.appendChild(card)
+el.appendChild(div)
 
 }
 
 }
-
-
 
 async function sell(id){
 
@@ -8073,11 +7877,9 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({uid:uid,char_id:id})
 })
 
-loadCharacters()
+loadChars()
 
 }
-
-
 
 async function buyDice(){
 
@@ -8089,8 +7891,6 @@ body:JSON.stringify({uid:uid})
 
 }
 
-
-
 async function buyNick(){
 
 await fetch("/api/loja/comprar_nick",{
@@ -8101,9 +7901,7 @@ body:JSON.stringify({uid:uid})
 
 }
 
-
-
-loadCharacters()
+loadChars()
 
 </script>
 
@@ -8112,26 +7910,26 @@ loadCharacters()
 """
 
     html = html.replace("__UID__", str(uid))
-
     return HTMLResponse(html)
 
-
-# ======================================
-# API PERSONAGENS
-# ======================================
+    # =========================
+# API LOJA
+# =========================
 
 @app.get("/api/loja/personagens")
-def api_personagens(uid: int):
+def loja_personagens(uid: int):
+
+    from database import get_user_characters
 
     chars = get_user_characters(uid)
 
-    return {
-        "items": chars
-    }
+    return {"items": chars}
 
 
 @app.post("/api/loja/vender")
-def api_vender(payload: dict = Body(...)):
+def loja_vender(payload: dict = Body(...)):
+
+    from database import sell_character
 
     uid = int(payload["uid"])
     char_id = int(payload["char_id"])
@@ -8142,7 +7940,9 @@ def api_vender(payload: dict = Body(...)):
 
 
 @app.post("/api/loja/comprar_dado")
-def api_buy_dado(payload: dict = Body(...)):
+def loja_buy_dado(payload: dict = Body(...)):
+
+    from database import buy_dado
 
     uid = int(payload["uid"])
 
@@ -8152,7 +7952,9 @@ def api_buy_dado(payload: dict = Body(...)):
 
 
 @app.post("/api/loja/comprar_nick")
-def api_buy_nick(payload: dict = Body(...)):
+def loja_buy_nick(payload: dict = Body(...)):
+
+    from database import buy_nickname_change
 
     uid = int(payload["uid"])
 
