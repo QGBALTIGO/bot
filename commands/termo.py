@@ -342,6 +342,8 @@ def _board_text(game: Dict[str, Any]) -> str:
 
 
 def _stats_text(user_id: int) -> str:
+    ensure_termo_stats_row(user_id)
+
     stats = get_termo_stats(user_id) or {}
     rank = get_termo_user_rank(user_id)
 
@@ -371,7 +373,7 @@ def _stats_text(user_id: int) -> str:
         f"🔥 Streak atual: <b>{current_streak}</b>\n"
         f"🏆 Melhor streak: <b>{best_streak}</b>\n"
         f"🎯 Melhor score: <b>{best_score_text}</b>\n"
-        f"🌍 Ranking global: <b>{rank if rank > 0 else '-'}</b>\n\n"
+        f"🌍 Ranking global: <b>{rank if rank and rank > 0 else '-'}</b>\n\n"
         "📦 <b>Distribuição</b>\n"
         f"1 tentativa: <b>{one_try}</b>\n"
         f"2 tentativas: <b>{two_try}</b>\n"
@@ -447,6 +449,9 @@ def _get_active_game(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 def _persist_progress(game: Dict[str, Any]) -> None:
+    if game.get("mode") == "train":
+        return
+
     update_termo_game_progress(
         user_id=int(game["user_id"]),
         attempts=len(game["guesses"]),
@@ -456,6 +461,10 @@ def _persist_progress(game: Dict[str, Any]) -> None:
 
 
 def _finish_game(game: Dict[str, Any], status: str, reward_coins: int = 0, reward_xp: int = 0) -> None:
+    if game.get("mode") == "train":
+        ACTIVE_GAMES.pop(int(game["user_id"]), None)
+        return
+
     spent = max(0, int(time.time()) - int(game["start_time"]))
     finish_termo_game(
         user_id=int(game["user_id"]),
@@ -502,6 +511,7 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
         return
 
     word_data = _pick_daily_word(user_id)
+    start_ts = int(time.time())
 
     create_termo_game(
         user_id=user_id,
@@ -509,7 +519,7 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
         word=word_data["word"],
         category=word_data["category"],
         source=word_data["source"],
-        start_time=int(time.time()),
+        start_time=start_ts,
         mode="daily",
     )
     mark_termo_word_used(user_id, word_data["word"])
@@ -523,7 +533,7 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
         "guesses": [],
         "mode": "daily",
         "status": "playing",
-        "start_time": int(time.time()),
+        "start_time": start_ts,
     }
 
     text = (
@@ -789,7 +799,6 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     })
     _persist_progress(game)
 
-    # vitória
     if guess == game["word"]:
         training = game["mode"] == "train"
         current_streak = 0
@@ -837,7 +846,6 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
         return
 
-    # derrota
     if len(game["guesses"]) >= MAX_ATTEMPTS:
         training = game["mode"] == "train"
         old_stats = get_termo_stats(user_id) or {}
