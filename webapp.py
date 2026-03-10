@@ -7769,23 +7769,20 @@ def api_menu_delete_account(payload: dict = Body(...)):
     return {"ok": True}
 
 # =========================================================
-# WEBAPP — LOJA
+# WEBAPP — LOJA BALTIGO
 # =========================================================
 
-from fastapi import Header, Body
+from fastapi import Body
 from fastapi.responses import HTMLResponse
 
 from database import (
     buy_dado,
     buy_nickname_change,
     sell_character,
-    get_user_shop_history
+    get_user_shop_history,
+    get_user_card_collection
 )
 
-
-# =========================================================
-# UI LOJA
-# =========================================================
 
 @app.get("/shop", response_class=HTMLResponse)
 async def webapp_shop(uid: int):
@@ -7799,85 +7796,107 @@ async def webapp_shop(uid: int):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Loja</title>
+<title>Loja Baltigo</title>
 
 <style>
 
 body {{
-background:#0f0f0f;
+background:#0b0b0b;
 color:white;
 font-family:Arial;
+margin:0;
 padding:20px;
 }}
 
-.card {{
-background:#1b1b1b;
-padding:16px;
-border-radius:12px;
-margin-bottom:14px;
+h2 {{
+margin-bottom:20px;
+}}
+
+.section {{
+background:#151515;
+border-radius:14px;
+padding:18px;
+margin-bottom:18px;
+}}
+
+.item {{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-top:10px;
 }}
 
 button {{
-background:#2c6cff;
+background:#5865F2;
 border:none;
-padding:10px 16px;
-border-radius:8px;
 color:white;
+padding:8px 14px;
+border-radius:8px;
 cursor:pointer;
-font-size:14px;
 }}
 
-button.red {{
-background:#e14c4c;
+button.sell {{
+background:#e04f4f;
 }}
 
-#history p {{
-margin:4px 0;
-font-size:13px;
+.card {{
+background:#1d1d1d;
+padding:10px;
+border-radius:10px;
+margin-top:8px;
 }}
 
 </style>
 
 </head>
 
-
 <body>
 
-<h2>🏪 Loja</h2>
+<h2>🛒 Loja Baltigo</h2>
 
 
-<div class="card">
+<div class="section">
 
-<h3>🎲 Comprar dado</h3>
+<h3>🎲 Comprar Dado</h3>
 
-<p>Custo: <b>2 coins</b></p>
-
+<div class="item">
+<span>Custo: 2 coins</span>
 <button onclick="buyDice()">Comprar</button>
+</div>
 
 </div>
 
 
-<div class="card">
+<div class="section">
 
-<h3>🏷 Comprar nickname</h3>
+<h3>🏷 Comprar Nickname</h3>
 
-<p>Custo: <b>3 coins</b></p>
-
+<div class="item">
+<span>Custo: 3 coins</span>
 <button onclick="buyNick()">Comprar</button>
+</div>
 
 </div>
 
 
-<div class="card">
+<div class="section">
+
+<h3>🧧 Vender Personagens</h3>
+
+<div id="characters"></div>
+
+</div>
+
+
+<div class="section">
 
 <h3>📜 Histórico</h3>
 
-<button onclick="loadHistory()">Carregar histórico</button>
+<button onclick="loadHistory()">Carregar</button>
 
 <div id="history"></div>
 
 </div>
-
 
 
 <script>
@@ -7885,9 +7904,13 @@ font-size:13px;
 const uid = {uid}
 
 
+// ==========================
+// comprar dado
+// ==========================
+
 async function buyDice(){{
 
-let r = await fetch("/api/shop/buy_dado", {{
+let r = await fetch("/api/shop/buy_dado",{{
 method:"POST",
 headers:{{"Content-Type":"application/json"}},
 body:JSON.stringify({{user_id:uid}})
@@ -7895,15 +7918,19 @@ body:JSON.stringify({{user_id:uid}})
 
 let j = await r.json()
 
-alert(j.ok ? "🎲 Dado comprado!" : "❌ Coins insuficientes")
+alert(j.ok ? "🎲 Dado comprado!" : "Coins insuficientes")
 
 }}
 
 
+
+// ==========================
+// comprar nickname
+// ==========================
 
 async function buyNick(){{
 
-let r = await fetch("/api/shop/buy_nick", {{
+let r = await fetch("/api/shop/buy_nick",{{
 method:"POST",
 headers:{{"Content-Type":"application/json"}},
 body:JSON.stringify({{user_id:uid}})
@@ -7911,29 +7938,99 @@ body:JSON.stringify({{user_id:uid}})
 
 let j = await r.json()
 
-alert(j.ok ? "🏷 Nickname liberado!" : "❌ Coins insuficientes")
+alert(j.ok ? "🏷 Compra liberada!" : "Coins insuficientes")
 
 }}
 
 
+
+// ==========================
+// carregar personagens
+// ==========================
+
+async function loadCharacters(){{
+
+let r = await fetch("/api/shop/characters?uid="+uid)
+
+let data = await r.json()
+
+let html=""
+
+data.forEach(c=>{{
+
+html += `
+<div class="card">
+
+<div class="item">
+
+<span>${{c.character_id}} (x${{c.quantity}})</span>
+
+<button class="sell" onclick="sellChar(${{c.character_id}})">
+Vender
+</button>
+
+</div>
+
+</div>
+`
+
+}})
+
+document.getElementById("characters").innerHTML = html
+
+}}
+
+
+
+// ==========================
+// vender personagem
+// ==========================
+
+async function sellChar(id){{
+
+let r = await fetch("/api/shop/sell",{{
+method:"POST",
+headers:{{"Content-Type":"application/json"}},
+body:JSON.stringify({{
+user_id:uid,
+character_id:id
+}})
+}})
+
+let j = await r.json()
+
+alert(j.ok ? "Personagem vendido!" : "Erro")
+
+loadCharacters()
+
+}}
+
+
+
+// ==========================
+// histórico
+// ==========================
 
 async function loadHistory(){{
 
 let r = await fetch("/api/shop/history?uid="+uid)
 
-let j = await r.json()
+let data = await r.json()
 
 let html=""
 
-j.forEach(x=>{{
+data.forEach(h=>{{
 
-html += "<p>"+x.type+" ("+x.amount+")</p>"
+html += "<div class='card'>"+h.type+" ("+h.amount+")</div>"
 
 }})
 
 document.getElementById("history").innerHTML = html
 
 }}
+
+
+loadCharacters()
 
 </script>
 
@@ -7952,9 +8049,7 @@ document.getElementById("history").innerHTML = html
 @app.post("/api/shop/buy_dado")
 async def api_buy_dado(data: dict = Body(...)):
 
-    user_id = int(data.get("user_id"))
-
-    return buy_dado(user_id)
+    return buy_dado(int(data["user_id"]))
 
 
 
@@ -7965,9 +8060,7 @@ async def api_buy_dado(data: dict = Body(...)):
 @app.post("/api/shop/buy_nick")
 async def api_buy_nick(data: dict = Body(...)):
 
-    user_id = int(data.get("user_id"))
-
-    return buy_nickname_change(user_id)
+    return buy_nickname_change(int(data["user_id"]))
 
 
 
@@ -7983,13 +8076,24 @@ async def api_shop_history(uid: int):
 
 
 # =========================================================
+# API — PERSONAGENS
+# =========================================================
+
+@app.get("/api/shop/characters")
+async def api_shop_characters(uid: int):
+
+    return get_user_card_collection(uid)
+
+
+
+# =========================================================
 # API — VENDER PERSONAGEM
 # =========================================================
 
 @app.post("/api/shop/sell")
 async def api_shop_sell(data: dict = Body(...)):
 
-    user_id = int(data.get("user_id"))
-    character_id = int(data.get("character_id"))
-
-    return sell_character(user_id, character_id)
+    return sell_character(
+        int(data["user_id"]),
+        int(data["character_id"])
+    )
