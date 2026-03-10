@@ -140,7 +140,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("resetuser", reset_user))
     app.add_handler(CommandHandler("resetall", reset_all))
-    app.on_message(filters.command("avisar"))(avisar)
+    app.add_handler(CommandHandler("avisar", avisar))
 
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
