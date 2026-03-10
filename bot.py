@@ -23,6 +23,7 @@ from commands.reset_users import reset_user, reset_all
 
 from commands.anime import anime
 from commands.manga import manga
+from commands.avisar import avisar
 
 from commands.cards import cards
 from commands.card import card, card_stats_callback
@@ -139,6 +140,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("perfil", perfil))
     app.add_handler(CommandHandler("resetuser", reset_user))
     app.add_handler(CommandHandler("resetall", reset_all))
+    app.on_message(filters.command("avisar"))(avisar)
 
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
