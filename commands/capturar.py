@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from handlers.capture_spawn import ACTIVE_SPAWNS
-from database import add_progress_xp, add_coin
+from database import add_coin, add_progress_xp
 
 
 def normalize(text):
@@ -14,6 +14,7 @@ def normalize(text):
 
 
 async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     chat_id = update.effective_chat.id
 
     if chat_id not in ACTIVE_SPAWNS:
@@ -28,7 +29,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     correct = normalize(character["name"])
 
-    if guess not in correct:
+    if guess != correct:
         return
 
     user = update.effective_user
@@ -47,7 +48,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
         photo=character["image"],
         caption=text,
-        parse_mode="HTML",
+        parse_mode="HTML"
     )
 
     del ACTIVE_SPAWNS[chat_id]
