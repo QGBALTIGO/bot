@@ -45,15 +45,10 @@ from commands.dado_admin import dadogive, dadogiveall
 
 from commands.termo import (
     termo_cmd,
+    termo_guess,
     termo_stats_cmd,
     termo_ranking_cmd,
-    termo_ranking_week_cmd,
-    termo_ranking_month_cmd,
     termo_treino_cmd,
-    termo_treino_stats_cmd,
-    termo_treino_stop_cmd,
-    termo_guess,
-    termo_callback,
 )
 
 from commands.cards_admin import (
