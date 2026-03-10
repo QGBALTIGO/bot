@@ -27,6 +27,7 @@ from commands.cards import cards
 from commands.menu import menu
 from commands.loja import loja
 from commands.daily import daily
+from handlers.capture_spawn import capture_message_handler
 from commands.capturar import capturar
 from commands.spawn_personagem import spawn_personagem
 from commands.card import card, card_stats_callback
@@ -51,6 +52,7 @@ from commands.termo import (
     termo_treino_cmd,
     termo_treino_stats_cmd,
     termo_treino_stop_cmd,
+    termo_guess,
     termo_callback,
 )
 
@@ -70,20 +72,6 @@ from commands.cards_admin import (
     card_subremove,
 )
 
-def register_messages(app):
-
-    # grupo 1 → termo
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
-        group=1
-    )
-
-    # grupo 2 → captura normal
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler),
-        group=2
-    )
-    
 from database import create_tables
 
 
