@@ -5,13 +5,6 @@ from telegram.ext import ContextTypes
 
 WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip().rstrip("/")
 
-
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await checar_canal(update, context):
-        return
-    if not update.effective_user or not update.message:
-        return
-
     if not WEBAPP_BASE_URL:
         await update.message.reply_html(
             "❌ <b>WEBAPP_BASE_URL não configurado.</b>"
