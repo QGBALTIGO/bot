@@ -5274,7 +5274,7 @@ from database import (
 
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
+    "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
 CARDS_LOCAL_PATH = os.getenv(
