@@ -3656,3 +3656,15 @@ def get_all_started_user_ids() -> List[int]:
     ) or []
 
     return [int(r["user_id"]) for r in rows if r.get("user_id") is not None]
+
+def get_all_user_ids() -> List[int]:
+    rows = _run(
+        """
+        SELECT user_id
+        FROM users
+        ORDER BY user_id ASC
+        """,
+        fetch="all"
+    ) or []
+
+    return [int(row["user_id"]) for row in rows if row.get("user_id") is not None]
