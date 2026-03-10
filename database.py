@@ -258,6 +258,7 @@ def create_tables():
     create_level_tables()
     create_termo_tables()
     create_dado_tables()
+    create_profile_settings_table()
 
 
 def create_users_table():
