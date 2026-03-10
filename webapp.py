@@ -7768,20 +7768,22 @@ def api_menu_delete_account(payload: dict = Body(...)):
     delete_user_account(uid)
     return {"ok": True}
 
-# =========================
-# WEBAPP — LOJA
-# =========================
+# ======================================
+# LOJA
+# ======================================
 
 @app.get("/loja", response_class=HTMLResponse)
 def loja_page(uid: int = Query(...)):
 
     html = """
 <!doctype html>
-<html lang="pt-br">
+<html>
 <head>
+
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>LOJA • Baltigo</title>
+
+<title>Loja Baltigo</title>
 
 <style>
 
@@ -7809,15 +7811,15 @@ padding:18px;
 
 .banner{
 width:100%;
-border-radius:22px;
+border-radius:24px;
 overflow:hidden;
 border:1px solid var(--stroke);
-margin-bottom:16px;
+margin-bottom:18px;
 }
 
 .banner img{
 width:100%;
-height:180px;
+height:190px;
 object-fit:cover;
 }
 
@@ -7830,7 +7832,7 @@ margin-bottom:16px;
 .tab{
 flex:1;
 padding:12px;
-border-radius:14px;
+border-radius:16px;
 border:1px solid var(--stroke);
 background:rgba(255,255,255,0.03);
 text-align:center;
@@ -7929,7 +7931,9 @@ margin:6px 0 10px;
 }
 
 </style>
+
 </head>
+
 
 <body>
 
@@ -7957,45 +7961,38 @@ margin:6px 0 10px;
 </div>
 
 
-<!-- DADOS -->
 
 <div class="section active" id="dados">
 
 <div class="shop-item">
 <div class="shop-title">Comprar 1 Dado</div>
 <div class="shop-desc">Custa 2 coins</div>
-<button class="btn buy" onclick="buyDice(1)">
+
+<button class="btn buy" onclick="buyDice()">
 Comprar
 </button>
-</div>
 
-<div class="shop-item">
-<div class="shop-title">Comprar Máximo</div>
-<div class="shop-desc">Usa todas suas coins</div>
-<button class="btn buy" onclick="buyDiceMax()">
-Comprar Tudo
-</button>
 </div>
 
 </div>
 
 
-<!-- NICKNAME -->
 
 <div class="section" id="nick">
 
 <div class="shop-item">
 <div class="shop-title">Alterar Nickname</div>
 <div class="shop-desc">Custa 3 coins</div>
+
 <button class="btn buy" onclick="buyNick()">
 Comprar
 </button>
-</div>
 
 </div>
 
+</div>
 
-<!-- VENDER -->
+
 
 <div class="section" id="vender">
 
@@ -8003,8 +8000,8 @@ Comprar
 
 </div>
 
-
 </div>
+
 
 
 <script>
@@ -8013,6 +8010,7 @@ const uid = __UID__
 
 
 document.querySelectorAll(".tab").forEach(tab=>{
+
 tab.onclick=()=>{
 
 document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"))
@@ -8023,6 +8021,7 @@ tab.classList.add("active")
 document.getElementById(tab.dataset.tab).classList.add("active")
 
 }
+
 })
 
 
@@ -8064,6 +8063,8 @@ el.appendChild(card)
 
 }
 
+
+
 async function sell(id){
 
 await fetch("/api/loja/vender",{
@@ -8076,25 +8077,19 @@ loadCharacters()
 
 }
 
-async function buyDice(q){
+
+
+async function buyDice(){
 
 await fetch("/api/loja/comprar_dado",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid:uid,q:q})
-})
-
-}
-
-async function buyDiceMax(){
-
-await fetch("/api/loja/comprar_dado_max",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({uid:uid})
 })
 
 }
+
+
 
 async function buyNick(){
 
@@ -8105,6 +8100,8 @@ body:JSON.stringify({uid:uid})
 })
 
 }
+
+
 
 loadCharacters()
 
@@ -8117,3 +8114,48 @@ loadCharacters()
     html = html.replace("__UID__", str(uid))
 
     return HTMLResponse(html)
+
+
+# ======================================
+# API PERSONAGENS
+# ======================================
+
+@app.get("/api/loja/personagens")
+def api_personagens(uid: int):
+
+    chars = get_user_characters(uid)
+
+    return {
+        "items": chars
+    }
+
+
+@app.post("/api/loja/vender")
+def api_vender(payload: dict = Body(...)):
+
+    uid = int(payload["uid"])
+    char_id = int(payload["char_id"])
+
+    sell_character(uid, char_id)
+
+    return {"ok": True}
+
+
+@app.post("/api/loja/comprar_dado")
+def api_buy_dado(payload: dict = Body(...)):
+
+    uid = int(payload["uid"])
+
+    buy_dado(uid)
+
+    return {"ok": True}
+
+
+@app.post("/api/loja/comprar_nick")
+def api_buy_nick(payload: dict = Body(...)):
+
+    uid = int(payload["uid"])
+
+    buy_nickname_change(uid)
+
+    return {"ok": True}
