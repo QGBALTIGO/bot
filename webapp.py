@@ -7292,7 +7292,7 @@ MENU_HTML = """<!doctype html>
         <div class="rowSub">Único, começa com maiúscula e não pode ser alterado depois.</div>
       </div>
       <div class="nicknameBox">
-        <input id="nicknameInput" placeholder="Ex: Kayky" maxlength="17" />
+        <input id="nicknameInput" placeholder="Ex: Zoro" maxlength="17" />
         <button class="btn btnAccent" id="saveNicknameBtn">Salvar</button>
       </div>
     </div>
