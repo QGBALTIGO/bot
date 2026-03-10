@@ -251,41 +251,17 @@ def _evaluate(secret: str, guess: str) -> str:
 
 
 def _used_letters(guesses: List[Dict[str, Any]]) -> str:
-    correct: Set[str] = set()
-    present: Set[str] = set()
-    absent: Set[str] = set()
+    ordered: List[str] = []
+    seen: Set[str] = set()
 
     for item in guesses:
-        guess = str(item.get("guess", "")).lower()
-        result = str(item.get("result", ""))
+        guess = str(item.get("guess", "")).upper()
+        for ch in guess:
+            if ch.isalpha() and ch not in seen:
+                seen.add(ch)
+                ordered.append(ch)
 
-        for i, ch in enumerate(guess):
-            if not ch.isalpha():
-                continue
-
-            marker = result[i] if i < len(result) else "⬛"
-
-            if marker == "🟩":
-                correct.add(ch.upper())
-                present.discard(ch.upper())
-                absent.discard(ch.upper())
-            elif marker == "🟨":
-                if ch.upper() not in correct:
-                    present.add(ch.upper())
-                    absent.discard(ch.upper())
-            else:
-                if ch.upper() not in correct and ch.upper() not in present:
-                    absent.add(ch.upper())
-
-    lines = []
-    if correct:
-        lines.append("🟩 " + " ".join(sorted(correct)))
-    if present:
-        lines.append("🟨 " + " ".join(sorted(present)))
-    if absent:
-        lines.append("⬛ " + " ".join(sorted(absent)))
-
-    return "\n".join(lines) if lines else "-"
+    return " ".join(ordered)
 
 
 def _history_text(guesses: List[Dict[str, Any]]) -> str:
@@ -398,7 +374,7 @@ def _stats_text(user_id: int) -> str:
         f"🔥 Streak atual: <b>{current_streak}</b>\n"
         f"🏆 Melhor streak: <b>{best_streak}</b>\n"
         f"🎯 Melhor score: <b>{best_score_text}</b>\n"
-        f"🌍 Ranking global: <b>{rank if rank and rank > 0 else '-'}</b>\n\n"
+        f"🌍 Ranking global: <b>{rank if rank > 0 else '-'}</b>\n\n"
         "📦 <b>Distribuição</b>\n"
         f"1 tentativa: <b>{one_try}</b>\n"
         f"2 tentativas: <b>{two_try}</b>\n"
@@ -446,6 +422,7 @@ def _cache_from_db_row(row: Dict[str, Any]) -> Dict[str, Any]:
             guesses = []
 
     game = {
+        "id": int(row["id"]),
         "user_id": int(row["user_id"]),
         "date": row["date"],
         "word": str(row["word"]).lower(),
@@ -477,8 +454,12 @@ def _persist_progress(game: Dict[str, Any]) -> None:
     if game.get("mode") == "train":
         return
 
+    game_id = int(game.get("id") or 0)
+    if game_id <= 0:
+        return
+
     update_termo_game_progress(
-        user_id=int(game["user_id"]),
+        game_id=game_id,
         attempts=len(game["guesses"]),
         guesses_json=json.dumps(game["guesses"], ensure_ascii=False),
         used_letters=_used_letters(game["guesses"]),
@@ -486,13 +467,20 @@ def _persist_progress(game: Dict[str, Any]) -> None:
 
 
 def _finish_game(game: Dict[str, Any], status: str, reward_coins: int = 0, reward_xp: int = 0) -> None:
+    user_id = int(game["user_id"])
+
     if game.get("mode") == "train":
-        ACTIVE_GAMES.pop(int(game["user_id"]), None)
+        ACTIVE_GAMES.pop(user_id, None)
+        return
+
+    game_id = int(game.get("id") or 0)
+    if game_id <= 0:
+        ACTIVE_GAMES.pop(user_id, None)
         return
 
     spent = max(0, int(time.time()) - int(game["start_time"]))
     finish_termo_game(
-        user_id=int(game["user_id"]),
+        game_id=game_id,
         status=status,
         attempts=len(game["guesses"]),
         guesses_json=json.dumps(game["guesses"], ensure_ascii=False),
@@ -502,7 +490,7 @@ def _finish_game(game: Dict[str, Any], status: str, reward_coins: int = 0, rewar
         reward_xp=reward_xp,
         won_at_attempt=len(game["guesses"]) if status == "win" else 0,
     )
-    ACTIVE_GAMES.pop(int(game["user_id"]), None)
+    ACTIVE_GAMES.pop(user_id, None)
 
 
 # =========================================================
@@ -549,7 +537,10 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
     )
     mark_termo_word_used(user_id, word_data["word"])
 
+    created = get_termo_daily_game(user_id, today)
+
     ACTIVE_GAMES[user_id] = {
+        "id": int(created["id"]) if created and created.get("id") else 0,
         "user_id": user_id,
         "date": today,
         "word": word_data["word"],
@@ -591,6 +582,7 @@ async def _start_train(update: Update, use_edit: bool = False) -> None:
 
     word_data = _pick_train_word()
     ACTIVE_GAMES[user_id] = {
+        "id": 0,
         "user_id": user_id,
         "date": _sp_today(),
         "word": word_data["word"],
