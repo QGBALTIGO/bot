@@ -1212,9 +1212,20 @@ def get_user_level_rank(user_id: int) -> int:
 def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
     rows = _run(
         """
-        SELECT user_id, xp, level, total_actions
-        FROM user_progress
-        ORDER BY level DESC, xp DESC, total_actions DESC, user_id ASC
+        SELECT
+            up.user_id,
+            up.xp,
+            up.level,
+            up.total_actions,
+            u.username,
+            u.full_name,
+            ups.nickname
+        FROM user_progress up
+        LEFT JOIN users u
+               ON u.user_id = up.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = up.user_id
+        ORDER BY up.level DESC, up.xp DESC, up.total_actions DESC, up.user_id ASC
         LIMIT %s
         """,
         (int(limit),),
