@@ -7772,98 +7772,194 @@ def api_menu_delete_account(payload: dict = Body(...)):
 # WEBAPP — LOJA
 # =========================
 
-@app.get("/loja", response_class=HTMLResponse)
-def loja_page(uid: int = Query(...)):
+@app.get("/shop", response_class=HTMLResponse)
+def miniapp_shop():
+    html = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1, viewport-fit=cover'>"
+        "<title>Baltigo • Loja</title>"
+        "<style>" + _theme_css() + r"""
 
-    html = """
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+/* =========================
+LOJA
+========================= */
 
-<style>
+.search{margin:10px 0 14px;}
 
-body{
-background:#0a1220;
-color:white;
-font-family:system-ui;
-margin:0;
-padding:20px;
+.actions{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
 }
 
-.card{
-background:#111;
-border-radius:14px;
-padding:20px;
-margin-bottom:15px;
+.buyGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:12px;
 }
 
-button{
-padding:10px;
-border-radius:8px;
-border:0;
-cursor:pointer;
-font-weight:700;
+.shopCard{
+  border-radius:22px;
+  padding:14px;
+  position:relative;
+  overflow:hidden;
 }
 
-.sell{
-background:#ff4444;
-color:white;
+.shopCard h3{
+  margin:0;
+  font-size:14px;
+  font-weight:1000;
 }
 
-.buy{
-background:#4ade80;
+.shopCard p{
+  margin:8px 0 12px;
+  font-size:12px;
+  color:rgba(255,255,255,.72);
 }
 
-</style>
+.price{
+  font-weight:1000;
+  font-size:12px;
+}
 
-</head>
+.smallBtn{
+  width:100%;
+  padding:12px;
+  border-radius:16px;
+  font-weight:1000;
+  font-size:14px;
+}
 
-<body>
+.smallBtn.primary{
+  background: linear-gradient(90deg, rgba(255,43,74,.92), rgba(176,108,255,.70));
+  border:0;
+  color:#fff;
+}
 
-<h2>🛒 Loja</h2>
+.smallBtn.ghost{
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.05);
+  color:#fff;
+}
 
-<div class="card">
-<h3>🎲 Comprar dado</h3>
-<p>Custo: 2 coins</p>
-<button class="buy" onclick="buyDice()">Comprar</button>
-</div>
+""" + "</style></head><body>"
+        "<canvas id='fx'></canvas>"
+        "<div class='wrap'>"
 
-<div class="card">
-<h3>✏️ Trocar nickname</h3>
-<p>Custo: 3 coins</p>
-<button class="buy" onclick="buyNick()">Comprar</button>
-</div>
+        "<div class='top'>"
+        "<div class='title'><h1>🛒 Loja</h1><div class='sub'>Venda personagens ou compre recursos</div></div>"
+        "<div class='pills'><div class='pill'>🪙 <span id='coins'>-</span></div><div class='sep'></div>"
+        "<div class='pill'>🎡 <span id='giros'>-</span></div></div>"
+        "</div>"
 
-<div class="card">
-<h3>📦 Vender personagens</h3>
-<div id="chars"></div>
-</div>
+        "<div class='tabs glass'>"
+        "<button class='tab active' id='tab_sell'>📦 Vender</button>"
+        "<button class='tab' id='tab_buy'>🎲 Comprar</button>"
+        "</div>"
+
+        "<div class='toast' id='toast'>Carregando...</div>"
+
+        "<div id='sellView'>"
+        "<div class='search'><input class='input glass' id='q' placeholder='Buscar personagem ou anime...' /></div>"
+        "<div id='sellSections'></div>"
+        "</div>"
+
+        "<div id='buyView' style='display:none;'>"
+
+        "<div class='buyGrid'>"
+
+        "<div class='shopCard glass'>"
+        "<h3>🎲 Comprar Dado</h3>"
+        "<p>Use coins para comprar dados extras.</p>"
+        "<div class='price'>Preço: 2 coins</div>"
+        "<button class='smallBtn primary' id='buyDice'>Comprar</button>"
+        "</div>"
+
+        "<div class='shopCard glass'>"
+        "<h3>✏️ Trocar Nickname</h3>"
+        "<p>Permite alterar seu nome novamente.</p>"
+        "<div class='price'>Preço: 3 coins</div>"
+        "<button class='smallBtn primary' id='buyNick'>Comprar</button>"
+        "</div>"
+
+        "</div>"
+        "</div>"
+
+        + _tg_js_init()
+        + r"""
 
 <script>
 
-const uid = __UID__
+let coins=0
+let giros=0
+let allItems=[]
 
-async function loadChars(){
+function setToast(t){
+ document.getElementById("toast").textContent=t
+}
 
-let res = await fetch(`/api/loja/personagens?uid=${uid}`)
-let data = await res.json()
+async function loadState(){
 
-let el = document.getElementById("chars")
+const r = await apiGet("/api/shop/state")
 
-el.innerHTML=""
+coins = r.data.coins
+giros = r.data.giros
 
-for(let c of data.items){
+document.getElementById("coins").textContent=coins
+document.getElementById("giros").textContent=giros
 
-let div=document.createElement("div")
+}
 
-div.innerHTML=`
-<p><b>${c.name}</b> — ${c.anime}</p>
-<button class="sell" onclick="sell(${c.id})">Vender</button>
+async function loadSell(){
+
+const r = await apiGet("/api/shop/sell/all")
+
+allItems=r.data.items||[]
+
+renderSell()
+
+}
+
+function renderSell(){
+
+const root=document.getElementById("sellSections")
+root.innerHTML=""
+
+for(const c of allItems){
+
+const img=c.image||""
+
+const card=document.createElement("div")
+card.className="card"
+
+card.innerHTML=`
+
+<div class="shine"></div>
+
+<img src="${img}">
+
+<div class="pillTag">x${c.quantity} • ID ${c.character_id}</div>
+
+<div class="overlay">
+
+<div class="name">${c.character_name}</div>
+
+<div class="meta">${c.anime_title}</div>
+
+<div class="actions">
+
+<button class="smallBtn primary" onclick="sell(${c.character_id})">
+Vender +1 coin
+</button>
+
+</div>
+
+</div>
+
 `
 
-el.appendChild(div)
+root.appendChild(card)
 
 }
 
@@ -7871,93 +7967,49 @@ el.appendChild(div)
 
 async function sell(id){
 
-await fetch("/api/loja/vender",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid:uid,char_id:id})
-})
+const r = await apiPost("/api/shop/sell/confirm",{character_id:id})
 
-loadChars()
+coins=r.data.coins
 
-}
+document.getElementById("coins").textContent=coins
 
-async function buyDice(){
-
-await fetch("/api/loja/comprar_dado",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid:uid})
-})
+await loadSell()
 
 }
 
-async function buyNick(){
+document.getElementById("buyDice").onclick=async()=>{
 
-await fetch("/api/loja/comprar_nick",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({uid:uid})
-})
+await apiPost("/api/shop/buy/giro")
+
+await loadState()
 
 }
 
-loadChars()
+document.getElementById("buyNick").onclick=async()=>{
+
+await apiPost("/api/shop/buy/nickname")
+
+await loadState()
+
+}
+
+document.getElementById("tab_sell").onclick=()=>{
+document.getElementById("sellView").style.display=""
+document.getElementById("buyView").style.display="none"
+}
+
+document.getElementById("tab_buy").onclick=()=>{
+document.getElementById("sellView").style.display="none"
+document.getElementById("buyView").style.display=""
+}
+
+(async()=>{
+await loadState()
+await loadSell()
+})()
 
 </script>
 
-</body>
-</html>
-"""
-
-    html = html.replace("__UID__", str(uid))
-    return HTMLResponse(html)
-
-    # =========================
-# API LOJA
-# =========================
-
-@app.get("/api/loja/personagens")
-def loja_personagens(uid: int):
-
-    from database import get_user_characters
-
-    chars = get_user_characters(uid)
-
-    return {"items": chars}
-
-
-@app.post("/api/loja/vender")
-def loja_vender(payload: dict = Body(...)):
-
-    from database import sell_character
-
-    uid = int(payload["uid"])
-    char_id = int(payload["char_id"])
-
-    sell_character(uid, char_id)
-
-    return {"ok": True}
-
-
-@app.post("/api/loja/comprar_dado")
-def loja_buy_dado(payload: dict = Body(...)):
-
-    from database import buy_dado
-
-    uid = int(payload["uid"])
-
-    buy_dado(uid)
-
-    return {"ok": True}
-
-
-@app.post("/api/loja/comprar_nick")
-def loja_buy_nick(payload: dict = Body(...)):
-
-    from database import buy_nickname_change
-
-    uid = int(payload["uid"])
-
-    buy_nickname_change(uid)
-
-    return {"ok": True}
+""" + _fx_js() + "</div></body></html>"
+    )
+    return HTMLResponse(content=html)
