@@ -57,3 +57,24 @@ font-size:18px;
 """
 
     return HTMLResponse(html)
+
+<h2>Regras para imagens</h2>
+
+<ul>
+
+<li>Formato obrigatório 2:3</li>
+<li>Imagem deve ser fiel ao personagem</li>
+<li>Não pode conter outros personagens</li>
+<li>Sem texto ou marca d'água</li>
+<li>Imagem limpa e bem centralizada</li>
+<li>Boa qualidade</li>
+
+</ul>
+
+<p>
+Se aprovada, a nova imagem substituirá a atual em todo o sistema.
+</p>
+
+<p>
+Recompensa: <b>+1 coin</b>
+</p>
