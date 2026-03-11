@@ -4141,3 +4141,68 @@ def report_user_message(reporter_user_id: int, message_id: int, reason: str = ""
     )
 
     return {"ok": True}
+
+# =========================================================
+# CARD CONTRIBUTIONS
+# =========================================================
+
+def create_card_contrib_tables():
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_image_suggestions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+
+        character_id BIGINT NOT NULL,
+        character_name TEXT,
+        anime_id BIGINT,
+        anime_title TEXT,
+
+        old_image_url TEXT,
+        suggested_image_url TEXT,
+
+        telegram_file_id TEXT,
+        telegram_file_unique_id TEXT,
+
+        note TEXT,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        reviewed_by BIGINT,
+        reviewed_at TIMESTAMPTZ,
+        review_note TEXT,
+
+        channel_message_id BIGINT,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_work_requests (
+        id BIGSERIAL PRIMARY KEY,
+
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+
+        media_type TEXT,
+        anilist_id BIGINT,
+
+        title TEXT,
+        title_norm TEXT,
+
+        cover_url TEXT,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        reviewed_by BIGINT,
+        reviewed_at TIMESTAMPTZ,
+
+        channel_message_id BIGINT,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
