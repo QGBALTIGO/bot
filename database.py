@@ -4882,41 +4882,57 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
     save_cards_overrides(data)
 
 
-def override_subcategory_remove_character(name: str, character_id: int) -> None:
-    data = _get_overrides_copy()
-    key = str(name).strip()
-    cid = int(character_id)
+def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO character_image_overrides (character_id, image_url, updated_by)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (character_id)
+                DO UPDATE SET
+                    image_url = EXCLUDED.image_url,
+                    updated_by = EXCLUDED.updated_by
+                """,
+                (int(character_id), str(image_url).strip(), int(updated_by)),
+            )
+        conn.commit()
 
-    if key in data["subcategories"]:
-        data["subcategories"][key] = [x for x in data["subcategories"][key] if int(x) != cid]
 
-    save_cards_overrides(data)
+def get_global_character_image(character_id: int):
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT image_url
+                FROM character_image_overrides
+                WHERE character_id = %s
+                LIMIT 1
+                """,
+                (int(character_id),),
+            )
+            row = cur.fetchone()
 
-def get_character_by_id(character_id: int):
-    data = build_cards_final_data()
-    ch = data["characters_by_id"].get(int(character_id))
+            if not row:
+                return None
 
-    if not ch:
-        return None
+            if isinstance(row, dict):
+                return row.get("image_url")
 
-    return {
-        "id": ch["id"],
-        "name": ch["name"],
-        "anime": ch["anime"],
-        "image": ch.get("image", "")
-    }
+            try:
+                return row["image_url"]
+            except Exception:
+                return row[0]
 
-def get_character_by_id(character_id: int):
-    data = build_cards_final_data()
-    ch = data["characters_by_id"].get(int(character_id))
 
-    if not ch:
-        return None
-
-    return {
-        "id": int(ch["id"]),
-        "name": str(ch.get("name") or "").strip(),
-        "anime": str(ch.get("anime") or "").strip(),
-        "image": str(ch.get("image") or "").strip(),
-        "anime_id": int(ch.get("anime_id") or 0),
-    }
+def delete_global_character_image(character_id: int) -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM character_image_overrides
+                WHERE character_id = %s
+                """,
+                (int(character_id),),
+            )
+        conn.commit()
