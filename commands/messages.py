@@ -186,8 +186,8 @@ async def _deliver_message(
             f"🆔 <b>ID:</b> <code>#{message_id}</code>\n"
             f"👤 <b>De:</b> {from_nickname}\n"
             f"💬 <b>Mensagem:</b>\n{text}\n\n"
-            "🚨 <b>Denunciar</b>\n"
-            f"<code>/denunciarmsg {message_id} motivo</code>"
+           "📖 <b>Ajuda</b>\n"
+"Use <code>/msgtutorial</code> para ver como responder, bloquear, configurar e denunciar mensagens."
         )
 
     try:
