@@ -1,4 +1,6 @@
+import asyncio
 import unicodedata
+from typing import Dict
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -7,11 +9,22 @@ from handlers.capture_spawn import ACTIVE_SPAWNS
 from database import add_coin, add_progress_xp
 
 
+_capture_locks: Dict[int, asyncio.Lock] = {}
+
+
+def _get_capture_lock(chat_id: int) -> asyncio.Lock:
+    lock = _capture_locks.get(chat_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _capture_locks[chat_id] = lock
+    return lock
+
+
 def normalize(text: str) -> str:
-    text = text.lower()
+    text = str(text or "").lower()
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-    return text.strip()
+    return " ".join(text.strip().split())
 
 
 async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -20,36 +33,53 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    if chat_id not in ACTIVE_SPAWNS:
-        return
-
     if not context.args:
         return
 
-    guess = normalize(" ".join(context.args))
-    character = ACTIVE_SPAWNS[chat_id]["character"]
-    correct = normalize(character["name"])
+    lock = _get_capture_lock(chat_id)
 
-    if guess != correct:
-        return
+    async with lock:
+        spawn = ACTIVE_SPAWNS.get(chat_id)
+        if not spawn:
+            return
 
-    user = update.effective_user
+        character = spawn.get("character") or {}
+        correct_name = normalize(character.get("name", ""))
+        guess = normalize(" ".join(context.args))
 
-    add_coin(user.id, 1)
-    add_progress_xp(user.id, 10)
+        if not correct_name or guess != correct_name:
+            return
 
-    text = (
-        "🎉 <b>CAPTURADO!</b>\n\n"
-        f"👤 <b>{character['name']}</b>\n"
-        f"📺 {character['anime']}\n\n"
-        "💰 +1 coin\n"
-        "⭐ +10 XP"
-    )
+        user = update.effective_user
 
-    await update.message.reply_photo(
-        photo=character["image"],
-        caption=text,
-        parse_mode="HTML",
-    )
+        try:
+            add_coin(user.id, 1)
+        except Exception:
+            pass
 
-    del ACTIVE_SPAWNS[chat_id]
+        try:
+            add_progress_xp(user.id, 10)
+        except Exception:
+            pass
+
+        text = (
+            "🎉 <b>CAPTURADO!</b>\n\n"
+            f"👤 <b>{character.get('name', 'Sem nome')}</b>\n"
+            f"📺 {character.get('anime', 'Obra desconhecida')}\n\n"
+            "💰 +1 coin\n"
+            "⭐ +10 XP"
+        )
+
+        image = str(character.get("image") or "").strip()
+
+        try:
+            if image:
+                await update.message.reply_photo(
+                    photo=image,
+                    caption=text,
+                    parse_mode="HTML",
+                )
+            else:
+                await update.message.reply_html(text)
+        finally:
+            ACTIVE_SPAWNS.pop(chat_id, None)
