@@ -531,7 +531,23 @@ def create_termo_tables():
     _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS last_play_date DATE;""")
     _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
 
-
+def set_global_character_image(character_id: int, image_url: str, updated_by: int):
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO character_image_overrides (character_id, image_url, updated_by)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (character_id)
+                DO UPDATE SET
+                    image_url = EXCLUDED.image_url,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()
+                """,
+                (character_id, image_url, updated_by),
+            )
+        conn.commit()
+        
 def create_dado_tables():
     _run("""
     CREATE TABLE IF NOT EXISTS dice_rolls (
