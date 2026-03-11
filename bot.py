@@ -84,6 +84,7 @@ from commands.cards_admin import (
     card_delsubcat,
     card_subadd,
     card_subremove,
+    setfoto,
 )
 
 from commands.messages import (
@@ -221,6 +222,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("card_delsubcat", card_delsubcat))
     app.add_handler(CommandHandler("card_subadd", card_subadd))
     app.add_handler(CommandHandler("card_subremove", card_subremove))
+    app.add_handler(CommandHandler("setfoto", setfoto))
 
 
 # =========================================================
