@@ -274,6 +274,7 @@ def create_tables():
     create_weekly_ranking_tables()
     create_trades_table()
     create_message_tables()
+    create_card_contrib_tables()
 
 
 def create_users_table():
