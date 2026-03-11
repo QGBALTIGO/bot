@@ -4207,3 +4207,87 @@ def create_card_contrib_tables():
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """)
+
+def create_card_image_suggestion(data):
+
+    return _run(
+        """
+        INSERT INTO card_image_suggestions
+        (
+            user_id,
+            username,
+            full_name,
+
+            character_id,
+            character_name,
+            anime_id,
+            anime_title,
+
+            old_image_url,
+            suggested_image_url,
+
+            telegram_file_id,
+            telegram_file_unique_id,
+
+            note
+        )
+        VALUES
+        (
+            %(user_id)s,
+            %(username)s,
+            %(full_name)s,
+
+            %(character_id)s,
+            %(character_name)s,
+            %(anime_id)s,
+            %(anime_title)s,
+
+            %(old_image_url)s,
+            %(suggested_image_url)s,
+
+            %(telegram_file_id)s,
+            %(telegram_file_unique_id)s,
+
+            %(note)s
+        )
+        RETURNING *
+        """,
+        data,
+        fetch="one",
+    )
+
+def approve_card_image_suggestion(suggestion_id, admin_id):
+
+    row = _run(
+        """
+        SELECT *
+        FROM card_image_suggestions
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (suggestion_id,),
+        fetch="one"
+    )
+
+    if not row:
+        return None
+
+    character_id = row["character_id"]
+    new_image = row["suggested_image_url"]
+
+    override_set_character_image(character_id, new_image)
+
+    _run(
+        """
+        UPDATE card_image_suggestions
+        SET status='approved',
+            reviewed_by=%s,
+            reviewed_at=NOW()
+        WHERE id=%s
+        """,
+        (admin_id, suggestion_id)
+    )
+
+    add_user_coins(row["user_id"], int(os.getenv("CARD_IMAGE_APPROVED_REWARD", "1")))
+
+    return row
