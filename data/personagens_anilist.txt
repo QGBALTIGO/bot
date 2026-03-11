@@ -572,13 +572,13 @@
           "id": 237576,
           "name": "Abiko Samejima",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b237576-BxJO6g6mfKlE.png"
+          "image": "https://carder.top/imagens/1773165108821-967446599.jpg"
         },
         {
           "id": 172759,
           "name": "Ai Hoshino",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b172759-cccVhJ2fQA92.png"
+          "image": "https://carder.top/imagens/1773165184286-762637107.jpg"
         },
         {
           "id": 344774,
@@ -590,25 +590,25 @@
           "id": 203384,
           "name": "Akane Kurokawa",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b203384-YuSppFDMw2wn.png"
+          "image": "https://carder.top/imagens/1773165299454-202898859.jpg"
         },
         {
           "id": 282774,
           "name": "Anemone Monemone",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b282774-DPG4qTAoct1N.png"
+          "image": "https://carder.top/imagens/1773165411235-514172004.jpg"
         },
         {
           "id": 183885,
           "name": "Aquamarine Hoshino",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b183885-HOmw8CqcJdv3.jpg"
+          "image": "https://carder.top/imagens/1773165596209-925948617.jpg"
         },
         {
           "id": 223871,
           "name": "Frill Shiranui",
           "anime": "[Oshi no Ko] 2nd Season",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/large/b223871-Yg32oIQlRkwH.png"
+          "image": "https://carder.top/imagens/1773165679607-948856256.jpg"
         },
         {
           "id": 245516,
