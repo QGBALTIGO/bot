@@ -93,6 +93,7 @@ from commands.messages import (
     msgconfig,
     desbloquearmsg,
 )
+from commands.messages_help import msgtutorial
 
 from handlers.capture_spawn import capture_message_handler
 
@@ -158,7 +159,8 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("desbloquearmsg", desbloquearmsg))
     app.add_handler(CommandHandler("msgconfig", msgconfig))
     app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
-
+    app.add_handler(CommandHandler("msgtutorial", msgtutorial))
+    
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
     app.add_handler(CommandHandler("manga", manga))
