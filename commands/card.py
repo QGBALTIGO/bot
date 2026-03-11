@@ -15,6 +15,7 @@ from database import (
 )
 
 from cards_service import (
+    build_cards_final_data,
     get_character_by_id,
     search_characters,
 )
@@ -23,6 +24,8 @@ CARD_CALLBACK_RATE_LIMIT = int(os.getenv("CARD_CALLBACK_RATE_LIMIT", "4"))
 CARD_CALLBACK_RATE_WINDOW_SECONDS = float(
     os.getenv("CARD_CALLBACK_RATE_WINDOW_SECONDS", "3")
 )
+
+_chars_cache: Optional[Dict[int, Dict[str, Any]]] = None
 
 
 def get_dup_emoji(qty: int) -> str:
@@ -60,6 +63,78 @@ def fmt_num(n: int) -> str:
     return f"{int(n):,}".replace(",", ".")
 
 
+# =========================================================
+# COMPATIBILIDADE COM COMANDOS ANTIGOS
+# =========================================================
+
+def _rebuild_chars_cache() -> Dict[int, Dict[str, Any]]:
+    global _chars_cache
+
+    data = build_cards_final_data()
+    chars: Dict[int, Dict[str, Any]] = {}
+
+    for anime in data:
+        if not isinstance(anime, dict):
+            continue
+
+        anime_name = str(anime.get("anime") or "Obra desconhecida")
+
+        for c in anime.get("characters", []) or []:
+            if not isinstance(c, dict):
+                continue
+
+            try:
+                cid = int(c.get("id"))
+            except Exception:
+                continue
+
+            chars[cid] = {
+                "id": cid,
+                "name": str(c.get("name") or "Sem nome"),
+                "image": c.get("image"),
+                "anime": anime_name,
+                "anime_id": anime.get("anime_id"),
+                "banner_image": anime.get("banner_image"),
+                "cover_image": anime.get("cover_image"),
+                "rarity": c.get("rarity"),
+            }
+
+    _chars_cache = chars
+    return chars
+
+
+def load_characters() -> Dict[int, Dict[str, Any]]:
+    # Mantém compatibilidade com imports antigos,
+    # mas sempre lê do sistema novo já com overrides/admin aplicados.
+    return _rebuild_chars_cache()
+
+
+def find_character_by_name(name: str) -> Optional[Dict[str, Any]]:
+    query = _normalize_text(name)
+    if not query:
+        return None
+
+    chars = load_characters()
+
+    for c in chars.values():
+        if _normalize_text(c.get("name")) == query:
+            return c
+
+    for c in chars.values():
+        if _normalize_text(c.get("name")).startswith(query):
+            return c
+
+    for c in chars.values():
+        if query in _normalize_text(c.get("name")):
+            return c
+
+    return None
+
+
+# =========================================================
+# BUSCA PRINCIPAL DO /card
+# =========================================================
+
 def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
     query = str(query or "").strip()
     if not query:
@@ -69,18 +144,40 @@ def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
     if cid is not None:
         ch = get_character_by_id(cid)
         if ch:
-            return ch
+            anime_name = ch.get("anime") or ch.get("anime_name") or "Obra desconhecida"
+            return {
+                "id": int(ch["id"]),
+                "name": str(ch.get("name") or "Sem nome"),
+                "image": ch.get("image"),
+                "anime": str(anime_name),
+            }
 
     if query.isdigit():
         ch = get_character_by_id(int(query))
         if ch:
-            return ch
+            anime_name = ch.get("anime") or ch.get("anime_name") or "Obra desconhecida"
+            return {
+                "id": int(ch["id"]),
+                "name": str(ch.get("name") or "Sem nome"),
+                "image": ch.get("image"),
+                "anime": str(anime_name),
+            }
 
     results = search_characters(query, limit=25)
     if not results:
-        return None
+        return find_character_by_name(query)
 
     nq = _normalize_text(query)
+
+    normalized_results = []
+    for item in results:
+        anime_name = item.get("anime") or item.get("anime_name") or "Obra desconhecida"
+        normalized_results.append({
+            "id": int(item["id"]),
+            "name": str(item.get("name") or "Sem nome"),
+            "image": item.get("image"),
+            "anime": str(anime_name),
+        })
 
     def score(item: Dict[str, Any]):
         name = _normalize_text(item.get("name"))
@@ -101,8 +198,8 @@ def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
             return (5, len(name), len(anime))
         return (6, len(name), len(anime))
 
-    results.sort(key=score)
-    return results[0]
+    normalized_results.sort(key=score)
+    return normalized_results[0] if normalized_results else None
 
 
 async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
