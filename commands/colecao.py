@@ -1,8 +1,14 @@
 import asyncio
 import math
 import time
+from typing import Any, Dict, List, Optional
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto,
+)
 from telegram.ext import ContextTypes
 
 import database as db
@@ -25,21 +31,23 @@ CACHE_TTL = 20
 # CACHE / LOCKS
 # =========================================================
 
-_locks = {}
-_last_click = {}
-_cache = {}
-_cards_cache = None
+_locks: Dict[int, asyncio.Lock] = {}
+_last_click: Dict[int, float] = {}
+
+# cache apenas da coleção bruta do usuário (id/quantidade)
+# para não congelar nome/imagem/anime após override admin
+_raw_collection_cache: Dict[int, Any] = {}
 
 
-def get_lock(uid):
+def get_lock(uid: int) -> asyncio.Lock:
     if uid not in _locks:
         _locks[uid] = asyncio.Lock()
     return _locks[uid]
 
 
-def antiflood(uid):
+def antiflood(uid: int) -> bool:
     now = time.time()
-    last = _last_click.get(uid, 0)
+    last = _last_click.get(uid, 0.0)
 
     if now - last < ANTIFLOOD:
         return False
@@ -49,38 +57,41 @@ def antiflood(uid):
 
 
 def cards_data():
-    global _cards_cache
+    # Sem cache local persistente aqui.
+    # Sempre pega do cards_service para refletir imediatamente:
+    # - /card_setcharimg
+    # - /card_setcharname
+    # - /card_addchar
+    # - /card_delchar
+    # - alterações de anime/banner/cover
+    return build_cards_final_data()
 
-    if _cards_cache is None:
-        _cards_cache = build_cards_final_data()
 
-    return _cards_cache
-
-
-def get_cache(uid):
-    data = _cache.get(uid)
-
-    if not data:
+def get_cached_raw_collection(uid: int):
+    item = _raw_collection_cache.get(uid)
+    if not item:
         return None
 
-    ts, cards = data
-
+    ts, rows = item
     if time.time() - ts > CACHE_TTL:
         return None
 
-    return cards
+    return rows
 
 
-def set_cache(uid, cards):
-    _cache[uid] = (time.time(), cards)
+def set_cached_raw_collection(uid: int, rows):
+    _raw_collection_cache[uid] = (time.time(), rows)
+
+
+def clear_user_collection_cache(uid: int):
+    _raw_collection_cache.pop(uid, None)
 
 
 # =========================================================
 # UTILS
 # =========================================================
 
-def duplicate_emoji(qty):
-
+def duplicate_emoji(qty: int) -> str:
     if qty >= 20:
         return " 👑"
     elif qty >= 15:
@@ -91,63 +102,73 @@ def duplicate_emoji(qty):
         return " 💫"
     elif qty >= 2:
         return " ✨"
-
     return ""
 
 
-def get_user_cards(uid):
+def _extract_characters_by_id(data) -> Dict[int, Dict[str, Any]]:
+    if isinstance(data, dict):
+        return data.get("characters_by_id", {}) or {}
+    return {}
 
-    cached = get_cache(uid)
-    if cached:
-        return cached
 
-    raw = db.get_user_card_collection(uid) or []
+def _extract_characters_by_anime(data) -> Dict[int, List[Dict[str, Any]]]:
+    if isinstance(data, dict):
+        return data.get("characters_by_anime", {}) or {}
+    return {}
+
+
+def get_user_cards(uid: int):
+    raw = get_cached_raw_collection(uid)
+    if raw is None:
+        raw = db.get_user_card_collection(uid) or []
+        set_cached_raw_collection(uid, raw)
 
     data = cards_data()
-    chars = data["characters_by_id"]
+    chars = _extract_characters_by_id(data)
 
     out = []
 
     for r in raw:
-
-        cid = int(r["character_id"])
-        qty = int(r["quantity"])
+        try:
+            cid = int(r["character_id"])
+            qty = int(r["quantity"])
+        except Exception:
+            continue
 
         ch = chars.get(cid)
-
         if not ch:
             continue
 
-        out.append({
-            "character_id": cid,
-            "quantity": qty,
-            "name": ch["name"],
-            "anime": ch["anime"],
-            "anime_id": ch["anime_id"],
-            "image": ch["image"]
-        })
+        out.append(
+            {
+                "character_id": cid,
+                "quantity": qty,
+                "name": ch.get("name", "Sem nome"),
+                "anime": ch.get("anime", "Obra desconhecida"),
+                "anime_id": ch.get("anime_id"),
+                "image": ch.get("image"),
+            }
+        )
 
     out.sort(
         key=lambda x: (
-            x["anime"].lower(),
-            x["name"].lower(),
-            x["character_id"]
+            str(x["anime"]).lower(),
+            str(x["name"]).lower(),
+            x["character_id"],
         )
     )
-
-    set_cache(uid, out)
 
     return out
 
 
-def get_favorite(uid):
+def get_favorite(uid: int) -> Optional[int]:
     try:
         prof = db.get_profile_settings(uid)
         if not prof:
             return None
         fav_id = prof.get("favorite_character_id")
         return int(fav_id) if fav_id else None
-    except:
+    except Exception:
         return None
 
 
@@ -156,7 +177,6 @@ def get_favorite(uid):
 # =========================================================
 
 def paginate(items, page):
-
     total = len(items)
     total_pages = max(1, math.ceil(total / ITENS_POR_PAGINA))
 
@@ -173,7 +193,6 @@ def paginate(items, page):
 # =========================================================
 
 def build_keyboard(prefix, page, total_pages, uid, extra=None):
-
     if total_pages <= 1:
         return None
 
@@ -183,19 +202,25 @@ def build_keyboard(prefix, page, total_pages, uid, extra=None):
         btn.append(
             InlineKeyboardButton(
                 "◀️",
-                callback_data=f"{prefix}:{uid}:{extra}:{page-1}" if extra else f"{prefix}:{uid}:{page-1}"
+                callback_data=(
+                    f"{prefix}:{uid}:{extra}:{page-1}"
+                    if extra is not None
+                    else f"{prefix}:{uid}:{page-1}"
+                ),
             )
         )
 
-    btn.append(
-        InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop")
-    )
+    btn.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
 
     if page < total_pages:
         btn.append(
             InlineKeyboardButton(
                 "▶️",
-                callback_data=f"{prefix}:{uid}:{extra}:{page+1}" if extra else f"{prefix}:{uid}:{page+1}"
+                callback_data=(
+                    f"{prefix}:{uid}:{extra}:{page+1}"
+                    if extra is not None
+                    else f"{prefix}:{uid}:{page+1}"
+                ),
             )
         )
 
@@ -207,7 +232,6 @@ def build_keyboard(prefix, page, total_pages, uid, extra=None):
 # =========================================================
 
 def build_collection_text(uid, cards, page):
-
     items, total, total_pages, page = paginate(cards, page)
 
     fav = get_favorite(uid)
@@ -219,12 +243,9 @@ def build_collection_text(uid, cards, page):
     )
 
     if fav:
-
         for c in cards:
             if c["character_id"] == fav:
-
                 emoji = duplicate_emoji(c["quantity"])
-
                 text += (
                     f"❤️ <code>{fav}</code>. "
                     f"<b>{c['name']}</b>{emoji} — "
@@ -233,7 +254,6 @@ def build_collection_text(uid, cards, page):
                 break
 
     for c in items:
-
         cid = c["character_id"]
 
         if cid == fav:
@@ -255,26 +275,23 @@ def build_collection_text(uid, cards, page):
 # =========================================================
 
 async def send_collection(update, context, page, edit=False):
-
     uid = update.effective_user.id
-
     cards = get_user_cards(uid)
 
     text, total_pages, page = build_collection_text(uid, cards, page)
 
     cover = DEFAULT_COVER
-
     fav = get_favorite(uid)
 
     if fav:
         for c in cards:
-            if c["character_id"] == fav and c["image"]:
+            if c["character_id"] == fav and c.get("image"):
                 cover = c["image"]
+                break
 
     kb = build_keyboard("colecao", page, total_pages, uid)
 
     if edit:
-
         msg = update.callback_query.message
 
         try:
@@ -282,28 +299,23 @@ async def send_collection(update, context, page, edit=False):
                 await msg.edit_caption(text, parse_mode="HTML", reply_markup=kb)
             else:
                 await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
-        except:
+        except Exception:
             pass
-
     else:
-
         await update.message.reply_photo(
             photo=cover,
             caption=text,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
 
 
 async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     uid = update.effective_user.id
     lock = get_lock(uid)
-
     args = context.args
 
     async with lock:
-
         if not args:
             await send_collection(update, context, 1)
             return
@@ -314,8 +326,7 @@ async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_collection(update, context, 1)
             return
 
-        anime_name = " ".join(args[1:])
-
+        anime_name = " ".join(args[1:]).strip()
         anime = find_anime(anime_name)
 
         if not anime:
@@ -324,10 +335,8 @@ async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if mode == "s":
             await send_collection_anime_owned(update, context, anime, 1)
-
         elif mode == "f":
             await send_collection_anime_missing(update, context, anime, 1)
-
         else:
             await send_collection_gallery(update, context, anime, 0)
 
@@ -337,23 +346,39 @@ async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def send_collection_anime_owned(update, context, anime, page, edit=False):
-
     uid = update.effective_user.id
+    anime_id = int(anime["anime_id"])
 
-    anime_id = anime["anime_id"]
-
-    all_chars = cards_data()["characters_by_anime"][anime_id]
-
-    owned = [c for c in get_user_cards(uid) if c["anime_id"] == anime_id]
+    all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
+    owned = [c for c in get_user_cards(uid) if int(c["anime_id"] or 0) == anime_id]
 
     banner = anime.get("banner_image") or anime.get("cover_image") or DEFAULT_COVER
 
     if not owned:
-        await update.message.reply_photo(
-            banner,
-            caption=f"Você ainda não tem personagens de <b>{anime['anime']}</b>.",
-            parse_mode="HTML"
-        )
+        if edit and update.callback_query:
+            try:
+                await update.callback_query.message.edit_media(
+                    InputMediaPhoto(
+                        media=banner,
+                        caption=f"Você ainda não tem personagens de <b>{anime['anime']}</b>.",
+                        parse_mode="HTML",
+                    )
+                )
+            except Exception:
+                try:
+                    await update.callback_query.message.edit_caption(
+                        caption=f"Você ainda não tem personagens de <b>{anime['anime']}</b>.",
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+        else:
+            await update.message.reply_photo(
+                banner,
+                caption=f"Você ainda não tem personagens de <b>{anime['anime']}</b>.",
+                parse_mode="HTML",
+            )
         return
 
     items, total, total_pages, page = paginate(owned, page)
@@ -364,9 +389,7 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False):
     )
 
     for c in items:
-
         emoji = duplicate_emoji(c["quantity"])
-
         text += (
             f"🧧 <code>{c['character_id']}</code>. "
             f"<b>{c['name']}</b>{emoji}\n"
@@ -375,21 +398,21 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False):
     kb = build_keyboard("colecao_s", page, total_pages, uid, anime_id)
 
     if edit:
-
         msg = update.callback_query.message
 
         try:
-            await msg.edit_caption(text, parse_mode="HTML", reply_markup=kb)
-        except:
+            if msg.photo:
+                await msg.edit_caption(text, parse_mode="HTML", reply_markup=kb)
+            else:
+                await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
             pass
-
     else:
-
         await update.message.reply_photo(
             banner,
             caption=text,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
 
 
@@ -398,47 +421,66 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False):
 # =========================================================
 
 async def send_collection_anime_missing(update, context, anime, page, edit=False):
-
     uid = update.effective_user.id
+    anime_id = int(anime["anime_id"])
 
-    anime_id = anime["anime_id"]
-
-    all_chars = cards_data()["characters_by_anime"][anime_id]
-
+    all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
     owned_ids = {c["character_id"] for c in get_user_cards(uid)}
 
     missing = []
 
     for ch in all_chars:
+        try:
+            cid = int(ch["id"])
+        except Exception:
+            continue
 
-        if ch["id"] not in owned_ids:
-
-            missing.append({
-                "character_id": ch["id"],
-                "name": ch["name"],
-                "image": ch["image"]
-            })
+        if cid not in owned_ids:
+            missing.append(
+                {
+                    "character_id": cid,
+                    "name": ch.get("name", "Sem nome"),
+                    "image": ch.get("image"),
+                }
+            )
 
     banner = anime.get("banner_image") or anime.get("cover_image") or DEFAULT_COVER
 
     if not missing:
-
-        await update.message.reply_photo(
-            banner,
-            caption=f"🎉 Você completou <b>{anime['anime']}</b>!",
-            parse_mode="HTML"
-        )
+        if edit and update.callback_query:
+            try:
+                await update.callback_query.message.edit_media(
+                    InputMediaPhoto(
+                        media=banner,
+                        caption=f"🎉 Você completou <b>{anime['anime']}</b>!",
+                        parse_mode="HTML",
+                    )
+                )
+            except Exception:
+                try:
+                    await update.callback_query.message.edit_caption(
+                        caption=f"🎉 Você completou <b>{anime['anime']}</b>!",
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+        else:
+            await update.message.reply_photo(
+                banner,
+                caption=f"🎉 Você completou <b>{anime['anime']}</b>!",
+                parse_mode="HTML",
+            )
         return
 
     items, total, total_pages, page = paginate(missing, page)
 
     text = (
         f"❔ <b>Faltam em {anime['anime']}</b>\n\n"
-        f"📦 <b>{len(all_chars)-len(missing)}/{len(all_chars)}</b>\n\n"
+        f"📦 <b>{len(all_chars) - len(missing)}/{len(all_chars)}</b>\n\n"
     )
 
     for c in items:
-
         text += (
             f"❔ <code>{c['character_id']}</code>. "
             f"<b>{c['name']}</b>\n"
@@ -447,21 +489,21 @@ async def send_collection_anime_missing(update, context, anime, page, edit=False
     kb = build_keyboard("colecao_f", page, total_pages, uid, anime_id)
 
     if edit:
-
         msg = update.callback_query.message
 
         try:
-            await msg.edit_caption(text, parse_mode="HTML", reply_markup=kb)
-        except:
+            if msg.photo:
+                await msg.edit_caption(text, parse_mode="HTML", reply_markup=kb)
+            else:
+                await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
             pass
-
     else:
-
         await update.message.reply_photo(
             banner,
             caption=text,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
 
 
@@ -470,67 +512,73 @@ async def send_collection_anime_missing(update, context, anime, page, edit=False
 # =========================================================
 
 async def send_collection_gallery(update, context, anime, index, edit=False):
-
     uid = update.effective_user.id
+    anime_id = int(anime["anime_id"])
 
-    anime_id = anime["anime_id"]
-
-    chars = cards_data()["characters_by_anime"][anime_id]
-
+    chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
     owned = {c["character_id"]: c["quantity"] for c in get_user_cards(uid)}
 
     total = len(chars)
+    if total <= 0:
+        text = f"Não encontrei personagens para <b>{anime['anime']}</b>."
+        if edit and update.callback_query:
+            try:
+                await update.callback_query.message.edit_caption(
+                    caption=text,
+                    parse_mode="HTML",
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+        else:
+            await update.message.reply_photo(
+                anime.get("cover_image") or DEFAULT_COVER,
+                caption=text,
+                parse_mode="HTML",
+            )
+        return
 
-    index = max(0, min(index, total-1))
-
+    index = max(0, min(index, total - 1))
     ch = chars[index]
 
-    cid = ch["id"]
-    qty = owned.get(cid, 0)
+    cid = int(ch["id"])
+    qty = int(owned.get(cid, 0))
 
-    owned_total = len(owned)
+    owned_total = sum(1 for c in chars if int(c.get("id") or 0) in owned)
 
     emoji = duplicate_emoji(qty)
-
     prefix = "🧧" if qty else "❔"
 
     caption = (
         f"🖼 <b>{anime['anime']}</b>\n\n"
         f"📦 <b>{owned_total}/{total}</b>\n"
-        f"📖 <b>{index+1}/{total}</b>\n\n"
+        f"📖 <b>{index + 1}/{total}</b>\n\n"
         f"{prefix} <code>{cid}</code>. "
-        f"<b>{ch['name']}</b>{emoji}"
+        f"<b>{ch.get('name', 'Sem nome')}</b>{emoji}"
     )
 
     kb = build_keyboard("colecao_x", index, total, uid, anime_id)
-
-    img = ch["image"] or anime.get("cover_image") or DEFAULT_COVER
+    img = ch.get("image") or anime.get("cover_image") or DEFAULT_COVER
 
     if edit:
-
         msg = update.callback_query.message
 
         try:
-
             await msg.edit_media(
                 InputMediaPhoto(img, caption=caption, parse_mode="HTML"),
-                reply_markup=kb
+                reply_markup=kb,
             )
-
-        except:
-
+        except Exception:
             try:
                 await msg.edit_caption(caption, parse_mode="HTML", reply_markup=kb)
-            except:
+            except Exception:
                 pass
-
     else:
-
         await update.message.reply_photo(
             img,
             caption=caption,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
 
 
@@ -539,8 +587,9 @@ async def send_collection_gallery(update, context, anime, index, edit=False):
 # =========================================================
 
 async def colecao_callback(update, context):
-
     q = update.callback_query
+    if not q:
+        return
 
     if q.data == "noop":
         await q.answer()
@@ -552,20 +601,24 @@ async def colecao_callback(update, context):
         await q.answer("Calma 🙂")
         return
 
-    _, owner, page = q.data.split(":")
+    try:
+        _, owner, page = q.data.split(":")
+    except Exception:
+        await q.answer()
+        return
 
     if uid != int(owner):
         await q.answer("Essa coleção não é sua.", show_alert=True)
         return
 
     await q.answer()
-
     await send_collection(update, context, int(page), edit=True)
 
 
 async def colecao_s_callback(update, context):
-
     q = update.callback_query
+    if not q:
+        return
 
     uid = q.from_user.id
 
@@ -573,22 +626,29 @@ async def colecao_s_callback(update, context):
         await q.answer("Calma 🙂")
         return
 
-    _, owner, anime_id, page = q.data.split(":")
+    try:
+        _, owner, anime_id, page = q.data.split(":")
+    except Exception:
+        await q.answer()
+        return
 
     if uid != int(owner):
         await q.answer("Essa coleção não é sua.", show_alert=True)
         return
 
     anime = find_anime(anime_id)
+    if not anime:
+        await q.answer("Anime não encontrado.", show_alert=True)
+        return
 
     await q.answer()
-
     await send_collection_anime_owned(update, context, anime, int(page), edit=True)
 
 
 async def colecao_f_callback(update, context):
-
     q = update.callback_query
+    if not q:
+        return
 
     uid = q.from_user.id
 
@@ -596,22 +656,29 @@ async def colecao_f_callback(update, context):
         await q.answer("Calma 🙂")
         return
 
-    _, owner, anime_id, page = q.data.split(":")
+    try:
+        _, owner, anime_id, page = q.data.split(":")
+    except Exception:
+        await q.answer()
+        return
 
     if uid != int(owner):
         await q.answer("Essa coleção não é sua.", show_alert=True)
         return
 
     anime = find_anime(anime_id)
+    if not anime:
+        await q.answer("Anime não encontrado.", show_alert=True)
+        return
 
     await q.answer()
-
     await send_collection_anime_missing(update, context, anime, int(page), edit=True)
 
 
 async def colecao_x_callback(update, context):
-
     q = update.callback_query
+    if not q:
+        return
 
     uid = q.from_user.id
 
@@ -619,21 +686,28 @@ async def colecao_x_callback(update, context):
         await q.answer("Calma 🙂")
         return
 
-    _, owner, anime_id, index = q.data.split(":")
+    try:
+        _, owner, anime_id, index = q.data.split(":")
+    except Exception:
+        await q.answer()
+        return
 
     if uid != int(owner):
         await q.answer("Essa coleção não é sua.", show_alert=True)
         return
 
     anime = find_anime(anime_id)
+    if not anime:
+        await q.answer("Anime não encontrado.", show_alert=True)
+        return
 
     await q.answer()
-
     await send_collection_gallery(update, context, anime, int(index), edit=True)
+
 
 def get_completed_anime_message(user_id: int, character_id: int):
     data = cards_data()
-    ch = data["characters_by_id"].get(int(character_id))
+    ch = _extract_characters_by_id(data).get(int(character_id))
 
     if not ch:
         return None
@@ -646,7 +720,7 @@ def get_completed_anime_message(user_id: int, character_id: int):
     if not anime:
         return None
 
-    anime_chars = data["characters_by_anime"].get(anime_id, []) or []
+    anime_chars = _extract_characters_by_anime(data).get(anime_id, []) or []
     owned_ids = {c["character_id"] for c in get_user_cards(int(user_id))}
 
     total_anime = len(anime_chars)
