@@ -375,3 +375,187 @@ async def card_subremove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _reply(update, f"✅ Personagem {cid} removido de {name}.")
     except Exception as e:
         await _reply(update, f"❌ Erro ao remover da subcategoria: {e}")
+
+import re
+from typing import List, Tuple
+
+from cards_service import (
+    override_set_character_image,
+    reload_cards_cache,
+)
+
+# =========================================================
+# /setfoto
+# - unitário: /setfoto ID LINK
+# - lote via reply: responder msg com várias linhas "ID - LINK"
+# =========================================================
+
+_SETFOTO_MAX_BATCH = 50
+_SETFOTO_LINE_RE = re.compile(
+    r"^\s*(\d+)\s*(?:[-|]|)\s*(https?://\S+)\s*$",
+    flags=re.IGNORECASE,
+)
+
+def _is_direct_image_url(url: str) -> bool:
+    url = str(url or "").strip().lower()
+    if not url.startswith(("http://", "https://")):
+        return False
+
+    base = url.split("?", 1)[0].split("#", 1)[0]
+    return base.endswith((".jpg", ".jpeg", ".png", ".webp"))
+
+def _parse_setfoto_lines(text: str) -> Tuple[List[Tuple[int, str]], List[str]]:
+    items: List[Tuple[int, str]] = []
+    errs: List[str] = []
+    seen = set()
+
+    for idx, raw_line in enumerate((text or "").splitlines(), start=1):
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        m = _SETFOTO_LINE_RE.match(line)
+        if not m:
+            errs.append(f"Linha {idx}: formato inválido")
+            continue
+
+        try:
+            cid = int(m.group(1))
+        except Exception:
+            errs.append(f"Linha {idx}: ID inválido")
+            continue
+
+        url = m.group(2).strip()
+
+        if not _is_direct_image_url(url):
+            errs.append(f"Linha {idx}: link inválido")
+            continue
+
+        if cid in seen:
+            errs.append(f"Linha {idx}: ID duplicado ({cid})")
+            continue
+
+        seen.add(cid)
+        items.append((cid, url))
+
+    return items, errs
+
+
+async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _allow_admin_command(update, "setfoto"):
+        return
+
+    msg = update.effective_message
+    if not msg:
+        return
+
+    try:
+        # =====================================================
+        # MODO 1: /setfoto ID LINK
+        # =====================================================
+        if len(context.args) >= 2 and str(context.args[0]).isdigit():
+            cid = int(context.args[0])
+            url = str(context.args[1]).strip()
+
+            if not _is_direct_image_url(url):
+                await _reply(
+                    update,
+                    "❌ Link inválido. Precisa terminar em .jpg, .jpeg, .png ou .webp",
+                )
+                return
+
+            lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+            try:
+                override_set_character_image(cid, url)
+                reload_cards_cache()
+            finally:
+                lock.release()
+
+            await _reply(
+                update,
+                f"✅ Foto global do personagem {cid} atualizada.",
+            )
+            return
+
+        # =====================================================
+        # MODO 2: /setfoto respondendo uma mensagem com linhas
+        # =====================================================
+        reply = msg.reply_to_message
+        if not context.args and reply:
+            base_text = (reply.text or reply.caption or "").strip()
+
+            if not base_text:
+                await _reply(
+                    update,
+                    "❌ A mensagem respondida não tem texto para processar.",
+                )
+                return
+
+            items, errs = _parse_setfoto_lines(base_text)
+
+            if not items:
+                detail = ""
+                if errs:
+                    detail = "\n" + "\n".join(f"• {e}" for e in errs[:15])
+
+                await _reply(
+                    update,
+                    "❌ Não consegui ler nenhuma linha válida.\n\n"
+                    "Use linhas assim:\n"
+                    "12345 - https://site.com/img.jpg\n"
+                    "12345 https://site.com/img.png"
+                    + detail
+                )
+                return
+
+            items = items[:_SETFOTO_MAX_BATCH]
+
+            global_lock = await lock_manager.acquire("cards-admin:setfoto:batch")
+            ok_count = 0
+            fail_count = 0
+
+            try:
+                for cid, url in items:
+                    try:
+                        override_set_character_image(cid, url)
+                        ok_count += 1
+                    except Exception:
+                        fail_count += 1
+
+                reload_cards_cache()
+            finally:
+                global_lock.release()
+
+            text = (
+                "✅ Lote aplicado.\n\n"
+                f"📌 Atualizados: {ok_count}\n"
+                f"⚠️ Falhas: {fail_count}"
+            )
+
+            if errs:
+                text += "\n\nLinhas ignoradas:\n" + "\n".join(f"• {e}" for e in errs[:15])
+
+            await _reply(update, text)
+            return
+
+        # =====================================================
+        # AJUDA
+        # =====================================================
+        await _reply(
+            update,
+            "🛠️ Admin — setar foto global\n\n"
+            "1) Um personagem:\n"
+            "/setfoto ID LINK\n"
+            "Ex:\n"
+            "/setfoto 12345 https://site.com/imagem.jpg\n\n"
+            "2) Vários de uma vez:\n"
+            "Responda uma mensagem com várias linhas:\n"
+            "123 - https://site.com/a.jpg\n"
+            "456 - https://site.com/b.png\n\n"
+            "e envie apenas:\n"
+            "/setfoto"
+        )
+
+    except Exception as e:
+        await _reply(update, f"❌ Erro no /setfoto: {e}")
