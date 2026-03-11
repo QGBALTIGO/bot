@@ -235,7 +235,7 @@ def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
     # card
-    app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^card_stats"))
+    app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
 
     # coleção
     app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
