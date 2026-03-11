@@ -1,8728 +1,4293 @@
-import os
 import json
+import os
 import re
-import traceback
-import asyncio
 import time
-import httpx
-import random
-import hashlib
-import hmac
-from urllib.parse import parse_qsl
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Query, Body, Header, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from zoneinfo import ZoneInfo
 
-from database import (
-    create_or_get_user,
-    accept_terms,
-    set_language,
-    get_dado_state,
-    get_next_dado_recharge_info,
-    expire_stale_dice_rolls,
-    get_active_dice_roll,
-    create_dice_roll,
-    pick_dice_roll_anime,
-    resolve_dice_roll,
+from datetime import date, datetime, timedelta, time as dt_time
+
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
+
+pool = ConnectionPool(
+    conninfo=DATABASE_URL,
+    min_size=1,
+    max_size=10,
+    timeout=10,
 )
 
-app = FastAPI()
+SP_TZ = ZoneInfo("America/Sao_Paulo")
 
-# =========================
-# CONFIG — TERMOS
-# =========================
-TERMS_VERSION = (os.getenv("TERMS_VERSION", "v1").strip() or "v1")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+def _sp_now() -> datetime:
+    return datetime.now(SP_TZ)
 
-REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
 
-TOP_BANNER_URL = os.getenv(
-    "TOP_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzS3wWmpl9pZVvh8mUyitl-u56VSkUmPAALrC2sb1ZFIRYO5j8ewhrZJAQADAgADeQADOgQ/photo.jpg",
-).strip()
+def _sp_today() -> date:
+    return _sp_now().date()
 
-BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # URL pública (pode ficar vazio)
-EMPTY_BG_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
+DADO_INITIAL_BALANCE = 4
+DADO_MAX_BALANCE = 24
+DADO_ROLL_TTL_MINUTES = int(os.getenv("DADO_ROLL_TTL_MINUTES", "15"))
 
+# horários fixos do sistema
+DADO_RECHARGE_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
 
-def pick_lang(lang: Optional[str]) -> str:
-    lang = (lang or "").lower().strip()
-    if lang.startswith("pt"):
-        return "pt"
-    if lang.startswith("es"):
-        return "es"
-    if lang.startswith("en"):
-        return "en"
-    return "en"
-
-
-TEXTS = {
-    "pt": {
-        "title": "Termos de Uso e Privacidade",
-        "subtitle": f"Revisão: {TERMS_VERSION}",
-        "intro": "Antes de continuar, você precisa ler e aceitar os termos abaixo.",
-        "check1": "Aceito a Política de Privacidade",
-        "check2": "Aceito os Termos de Uso",
-        "accept": "ACEITAR E CONTINUAR",
-        "decline": "Não aceito",
-        "done": "✅ Aceito com sucesso. Volte ao Telegram.",
-        "no": "❌ Sem aceitar os Termos, você não consegue usar a Source Baltigo. Se mudar de ideia, volte e aceite para continuar sua jornada.",
-        "error": "Erro. Tente novamente.",
-        "need_checks": "⚠️ Marque as duas opções para continuar.",
-        "join_needed": "📢 Antes de continuar, entre no canal e clique em “Verificar inscrição”.",
-        "saving": "⏳ Salvando...",
-        "processing": "⏳ Processando...",
-
-        "join_title": "CANAL OBRIGATÓRIO",
-        "join_text": "Para continuar, é obrigatório entrar no nosso canal oficial.",
-        "join_button": "📢 ENTRAR NO CANAL",
-        "verify_button": "✅ VERIFICAR INSCRIÇÃO",
-        "verify_ok": "✅ Inscrição confirmada. Você já pode continuar.",
-        "verify_fail": "❌ Ainda não foi possível confirmar. Entre no canal, aguarde alguns segundos e verifique novamente.",
-        "verify_confirmed": "✅ CONFIRMADO",
-    },
-    "en": {
-        "title": "Terms of Use & Privacy",
-        "subtitle": f"Revision: {TERMS_VERSION}",
-        "intro": "Before continuing, you must read and accept the terms below.",
-        "check1": "I accept the Privacy Policy",
-        "check2": "I accept the Terms of Use",
-        "accept": "ACCEPT & CONTINUE",
-        "decline": "I do not accept",
-        "done": "✅ Accepted successfully. Go back to Telegram.",
-        "no": "❌ Without accepting the Terms, you cannot use Source Baltigo. If you change your mind, come back and accept to continue.",
-        "error": "Error. Please try again.",
-        "need_checks": "⚠️ Check both boxes to continue.",
-        "join_needed": "📢 Before continuing, join the channel and tap “Verify membership”.",
-        "saving": "⏳ Saving...",
-        "processing": "⏳ Processing...",
-
-        "join_title": "REQUIRED CHANNEL",
-        "join_text": "To continue, you must join our official channel.",
-        "join_button": "📢 JOIN CHANNEL",
-        "verify_button": "✅ VERIFY MEMBERSHIP",
-        "verify_ok": "✅ Membership confirmed. You can continue.",
-        "verify_fail": "❌ Couldn't confirm yet. Join the channel, wait a few seconds, and try again.",
-        "verify_confirmed": "✅ CONFIRMED",
-    },
-    "es": {
-        "title": "Términos de Uso y Privacidad",
-        "subtitle": f"Revisión: {TERMS_VERSION}",
-        "intro": "Antes de continuar, debes leer y aceptar los términos a continuación.",
-        "check1": "Acepto la Política de Privacidad",
-        "check2": "Acepto los Términos de Uso",
-        "accept": "ACEPTAR Y CONTINUAR",
-        "decline": "No acepto",
-        "done": "✅ Aceptado con éxito. Vuelve a Telegram.",
-        "no": "❌ Sin aceptar los Términos, no puedes usar Source Baltigo. Si cambias de idea, vuelve y acepta para continuar.",
-        "error": "Error. Inténtalo de nuevo.",
-        "need_checks": "⚠️ Marca ambas casillas para continuar.",
-        "join_needed": "📢 Antes de continuar, entra al canal y toca “Verificar suscripción”.",
-        "saving": "⏳ Guardando...",
-        "processing": "⏳ Procesando...",
-
-        "join_title": "CANAL OBLIGATORIO",
-        "join_text": "Para continuar, es obligatorio unirte a nuestro canal oficial.",
-        "join_button": "📢 UNIRME AL CANAL",
-        "verify_button": "✅ VERIFICAR SUSCRIPCIÓN",
-        "verify_ok": "✅ Suscripción confirmada. Ya puedes continuar.",
-        "verify_fail": "❌ Aún no se pudo confirmar. Entra al canal, espera unos segundos y vuelve a verificar.",
-        "verify_confirmed": "✅ CONFIRMADO",
-    },
-}
-
-TERMS_LONG = {
-    "pt": """
-<div class="section">
-  <div class="sectionTitle">SUA PRIVACIDADE</div>
-  <div class="sectionText">
-    Coletamos apenas o seu ID numérico do Telegram e dados necessários para o funcionamento do bot
-    (ex.: idioma, registro de aceite e informações relacionadas ao uso dentro do bot).
-    Não temos acesso às suas conversas privadas fora do bot.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">CANAL OFICIAL (OBRIGATÓRIO)</div>
-  <div class="sectionText">
-    Para usar o bot, é obrigatório entrar e permanecer no nosso canal oficial.
-    Caso você saia do canal, o acesso aos comandos pode ser bloqueado até regularizar.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">USO JUSTO E SEGURANÇA</div>
-  <div class="sectionText">
-    Não é permitido spam, automação, exploração de falhas, tentativa de duplicação de recompensas,
-    abuso de botões/callbacks ou qualquer prática que prejudique a experiência de outros usuários.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">SUA RESPONSABILIDADE</div>
-  <div class="sectionText">
-    Ao aceitar, você confirma que leu e concorda com estas regras.
-    As funcionalidades podem mudar para manter equilíbrio e segurança.
-  </div>
-</div>
-""",
-    "en": """
-<div class="section">
-  <div class="sectionTitle">YOUR PRIVACY</div>
-  <div class="sectionText">
-    We only collect your Telegram numeric ID and what is required to operate the bot
-    (e.g., language, acceptance record, and usage-related data inside the bot).
-    We do not access your private chats outside the bot.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">OFFICIAL CHANNEL (REQUIRED)</div>
-  <div class="sectionText">
-    To use the bot, you must join and remain in our official channel.
-    If you leave the channel, access to commands may be blocked until you rejoin.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">FAIR USE & SECURITY</div>
-  <div class="sectionText">
-    Spam, automation, exploit attempts, reward duplication, or abusive button/callback usage is not allowed.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">YOUR RESPONSIBILITY</div>
-  <div class="sectionText">
-    By accepting, you confirm that you read and agree to these rules.
-    Features may change to maintain balance and security.
-  </div>
-</div>
-""",
-    "es": """
-<div class="section">
-  <div class="sectionTitle">TU PRIVACIDAD</div>
-  <div class="sectionText">
-    Solo recopilamos tu ID numérico de Telegram y lo necesario para operar el bot
-    (por ejemplo: idioma, registro de aceptación y datos de uso dentro del bot).
-    No accedemos a tus chats privados fuera del bot.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">CANAL OFICIAL (OBLIGATORIO)</div>
-  <div class="sectionText">
-    Para usar el bot, es obligatorio unirte y permanecer en nuestro canal oficial.
-    Si sales del canal, el acceso a los comandos puede bloquearse hasta que vuelvas a unirte.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">USO JUSTO Y SEGURIDAD</div>
-  <div class="sectionText">
-    No se permite spam, automatización, explotación de fallos, duplicación de recompensas ni abuso de botones/callbacks.
-  </div>
-</div>
-
-<div class="section">
-  <div class="sectionTitle">TU RESPONSABILIDAD</div>
-  <div class="sectionText">
-    Al aceptar, confirmas que leíste y aceptas estas reglas.
-    Las funciones pueden cambiar para mantener equilibrio y seguridad.
-  </div>
-</div>
-""",
-}
-
-TERMS_HTML = """<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>__TITLE__</title>
-<style>
-  :root {
-    --text: #e7eaf3;
-    --muted: rgba(231,234,243,0.75);
-    --glass: rgba(12, 16, 28, 0.62);
-    --stroke: rgba(255,255,255,0.10);
-    --stroke2: rgba(255,255,255,0.16);
-    --okbg: #4ade80;
-    --oktxt: #052e16;
-  }
-
-  body {
-    margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-    color:var(--text);
-    background:
-      linear-gradient(180deg, rgba(0,0,0,0.62), rgba(0,0,0,0.78)),
-      url("__BGURL__") center/cover no-repeat fixed,
-      radial-gradient(1200px 700px at 20% 10%, rgba(59,130,246,0.16), transparent 60%),
-      radial-gradient(900px 600px at 80% 30%, rgba(168,85,247,0.14), transparent 60%),
-      radial-gradient(900px 600px at 50% 90%, rgba(16,185,129,0.10), transparent 60%),
-      #050712;
-  }
-
-  body:before{
-    content:"";
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
-    background-size: 42px 42px;
-    opacity:0.18;
-    pointer-events:none;
-  }
-
-  .wrap { max-width:760px; margin:0 auto; padding:18px; position:relative; z-index:1; }
-
-  .card {
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:22px;
-    overflow:hidden;
-    box-shadow:0 18px 40px rgba(0,0,0,0.40);
-    backdrop-filter: blur(10px);
-  }
-
-  .banner {
-    width:100%;
-    height:160px;
-    background:
-      linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.62)),
-      url("__TOPBANNER__") center/cover no-repeat;
-    position:relative;
-  }
-  .banner:after{
-    content:"";
-    position:absolute; inset:0;
-    background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.80));
-  }
-
-  .content { padding:16px; }
-
-  .top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
-  .brand { display:flex; align-items:center; gap:10px; }
-  .badge {
-    width:38px; height:38px; border-radius:14px;
-    background:rgba(59,130,246,0.16);
-    border:1px solid rgba(59,130,246,0.26);
-    display:flex; align-items:center; justify-content:center;
-    font-weight:900;
-  }
-  .brandTitle { font-weight:900; letter-spacing:.6px; font-size:15px; line-height:1.1; }
-  .brandSub { opacity:.78; font-size:12px; margin-top:2px; letter-spacing:.3px; }
-
-  .langPill {
-    display:flex; align-items:center; gap:10px;
-    background:rgba(255,255,255,0.06);
-    border:1px solid var(--stroke);
-    padding:10px 14px; border-radius:14px;
-    cursor:pointer; user-select:none;
-  }
-  .langIcon { font-size:13px; opacity:.9; }
-  .langCode { font-size:13px; font-weight:900; letter-spacing:.4px; opacity:.95; }
-
-  .langMenu { display:none; justify-content:flex-end; gap:10px; margin:10px 0 14px 0; }
-  .langBtn {
-    width:56px; text-align:center;
-    background:rgba(255,255,255,0.06);
-    border:1px solid var(--stroke);
-    padding:10px 0; border-radius:14px;
-    font-size:13px; font-weight:900;
-    cursor:pointer;
-  }
-
-  h1 { font-size:20px; margin:6px 0 2px 0; }
-  .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
-
-  .section {
-    background:rgba(255,255,255,0.04);
-    border:1px solid rgba(255,255,255,0.08);
-    border-radius:18px;
-    padding:14px;
-    margin:12px 0;
-  }
-  .sectionTitle { font-weight:900; letter-spacing:.5px; font-size:14px; margin-bottom:8px; }
-  .sectionText { color:rgba(231,234,243,0.86); line-height:1.48; font-size:13.5px; }
-
-  .divider { height:1px; background:rgba(255,255,255,0.10); margin:14px 0; }
-
-  label { display:flex; gap:12px; align-items:flex-start; font-size:14px; margin:12px 0; color:rgba(231,234,243,0.92); }
-  input[type="checkbox"] { margin-top:3px; transform:scale(1.15); }
-
-  .actions { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
-  button { border:0; border-radius:18px; padding:14px 12px; font-weight:900; cursor:pointer; letter-spacing:.6px; }
-
-  .accept { background:var(--okbg); color:var(--oktxt); opacity:0.45; cursor:not-allowed; }
-  .decline { background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--stroke2); }
-
-  .msg { margin-top:10px; font-size:14px; color:rgba(231,234,243,0.92); min-height:18px; }
-
-  .colBlock {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px;
-    padding: 14px;
-    margin: 12px 0;
-  }
-  .colTitle { font-weight: 900; letter-spacing: .5px; font-size: 14px; margin-bottom: 8px; }
-  .colText { color: rgba(231,234,243,0.86); line-height: 1.48; font-size: 13.5px; margin-bottom: 12px; }
-  .rowBtns { display:flex; gap: 10px; flex-wrap: wrap; }
-
-  .smallBtn {
-    border: 0;
-    border-radius: 16px;
-    padding: 12px 14px;
-    font-weight: 900;
-    cursor: pointer;
-    letter-spacing: .4px;
-    background: rgba(255,255,255,0.06);
-    color: var(--text);
-    border: 1px solid rgba(255,255,255,0.14);
-    text-decoration: none;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-  }
-  .smallBtnPrimary {
-    background: rgba(74,222,128,0.18);
-    border: 1px solid rgba(74,222,128,0.35);
-  }
-  .smallBtnOk {
-    background: rgba(74,222,128,0.24);
-    border: 1px solid rgba(74,222,128,0.45);
-    color: rgba(231,234,243,0.98);
-  }
-
-  .footer { margin-top:14px; text-align:center; font-size:12px; color:rgba(231,234,243,0.45); letter-spacing:2px; padding-bottom:8px; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="card">
-    <div class="banner"></div>
-    <div class="content">
-
-      <div class="top">
-        <div class="brand">
-          <div class="badge">🛡️</div>
-          <div>
-            <div class="brandTitle">SOURCE BALTIGO</div>
-            <div class="brandSub">LEGAL & PRIVACY</div>
-          </div>
-        </div>
-        <div class="langPill" id="langPill" title="Change language">
-          <span class="langIcon">文A</span>
-          <span class="langCode">__LANGCODE__</span>
-        </div>
-      </div>
-
-      <div class="langMenu" id="langMenu">
-        <div class="langBtn" data-lang="pt">PT</div>
-        <div class="langBtn" data-lang="en">EN</div>
-        <div class="langBtn" data-lang="es">ES</div>
-      </div>
-
-      <h1>__TITLE__</h1>
-      <div class="sub">__SUBTITLE__ • __INTRO__</div>
-
-      __BODY__
-
-      __JOINBLOCK__
-
-      <div class="divider"></div>
-
-      <label>
-        <input id="c1" type="checkbox" />
-        <span>__CHECK1__</span>
-      </label>
-
-      <label>
-        <input id="c2" type="checkbox" />
-        <span>__CHECK2__</span>
-      </label>
-
-      <div class="actions">
-        <button type="button" class="accept" id="acceptBtn">__ACCEPT__</button>
-        <button type="button" class="decline" id="declineBtn">__DECLINE__</button>
-      </div>
-
-      <div class="msg" id="msg"></div>
-      <div class="footer">REVISÃO • __TVERSION__</div>
-    </div>
-  </div>
-</div>
-
-<script>
-  const uid = __UID__;
-  let lang = "__LANG__";
-  let channel_ok = false;
-
-  const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-  if (tg) { try { tg.ready(); } catch (e) {} }
-
-  const langPill = document.getElementById("langPill");
-  const langMenu = document.getElementById("langMenu");
-  langPill.addEventListener("click", (e) => {
-    e.stopPropagation();
-    langMenu.style.display = (langMenu.style.display === "flex") ? "none" : "flex";
-    if (langMenu.style.display === "flex") langMenu.style.justifyContent = "flex-end";
-  });
-  document.addEventListener("click", () => { langMenu.style.display = "none"; });
-  document.querySelectorAll(".langBtn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const newLang = btn.getAttribute("data-lang");
-      const url = new URL(window.location.href);
-      url.searchParams.set("lang", newLang);
-      window.location.href = url.toString();
-    });
-  });
-
-  const c1 = document.getElementById("c1");
-  const c2 = document.getElementById("c2");
-  const acceptBtn = document.getElementById("acceptBtn");
-  const declineBtn = document.getElementById("declineBtn");
-  const msg = document.getElementById("msg");
-
-  function setMsg(text) { msg.textContent = text || ""; }
-
-  function updateAcceptButton() {
-    const ok = c1.checked && c2.checked && channel_ok;
-    acceptBtn.style.opacity = ok ? "1" : "0.45";
-    acceptBtn.style.cursor = ok ? "pointer" : "not-allowed";
-  }
-  c1.addEventListener("change", updateAcceptButton);
-  c2.addEventListener("change", updateAcceptButton);
-  updateAcceptButton();
-
-  async function postJson(url, payload) {
-    const u = new URL(url, window.location.origin);
-    u.searchParams.set("_ts", String(Date.now())); // cache-buster forte
-
-    const res = await fetch(u.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    let data = null;
-    try { data = await res.json(); } catch (e) {}
-    if (!res.ok) {
-      const m = (data && data.message) ? data.message : ("Erro HTTP " + res.status);
-      throw new Error(m);
-    }
-    return data || {};
-  }
-
-  const checkChannelBtn = document.getElementById("checkChannelBtn");
-  if (checkChannelBtn) {
-    checkChannelBtn.addEventListener("click", async () => {
-      setMsg("__PROCESSING__");
-      try {
-        const data = await postJson("/api/channel/check", { uid });
-        if (data && data.ok) {
-          channel_ok = true;
-          updateAcceptButton();
-          setMsg("__VERIFYOK__");
-
-          checkChannelBtn.textContent = "__VERIFYCONF__";
-          checkChannelBtn.classList.add("smallBtnOk");
-          checkChannelBtn.disabled = true;
-
-        } else {
-          channel_ok = false;
-          updateAcceptButton();
-          setMsg("__VERIFYFAIL__");
-        }
-      } catch (e) {
-        channel_ok = false;
-        updateAcceptButton();
-        setMsg("❌ " + (e.message || "__VERIFYFAIL__"));
-      }
-    });
-  }
-
-  acceptBtn.addEventListener("click", async () => {
-    if (!(c1.checked && c2.checked)) { setMsg("__NEEDCHECKS__"); return; }
-    if (!channel_ok) { setMsg("__JOINNEEDED__"); return; }
-
-    setMsg("__SAVING__");
-    acceptBtn.disabled = true; declineBtn.disabled = true;
-    try {
-      const data = await postJson("/api/terms/accept", { uid, lang });
-      setMsg(data.message || "__DONE__");
-      if (tg) { try { tg.close(); } catch (e) {} }
-    } catch (e) {
-      setMsg("❌ " + (e.message || "__ERROR__"));
-      acceptBtn.disabled = false; declineBtn.disabled = false;
-    }
-  });
-
-  declineBtn.addEventListener("click", async () => {
-    setMsg("__PROCESSING__");
-    acceptBtn.disabled = true; declineBtn.disabled = true;
-    try {
-      const data = await postJson("/api/terms/decline", { uid, lang });
-      setMsg(data.message || "__NO__");
-      if (tg) { try { tg.close(); } catch (e) {} }
-    } catch (e) {
-      setMsg("❌ " + (e.message || "__ERROR__"));
-      acceptBtn.disabled = false; declineBtn.disabled = false;
-    }
-  });
-</script>
-
-</body>
-</html>
-"""
-
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return HTMLResponse("OK - WebApp online. Use /terms e /catalogo")
-
-
-@app.get("/terms", response_class=HTMLResponse)
-def terms_page(uid: int = Query(...), lang: str = Query("en")):
-    L = pick_lang(lang)
-    t = TEXTS[L]
-    body = TERMS_LONG[L]
-
-    joinblock = f"""
-    <div class="colBlock">
-      <div class="colTitle">{t["join_title"]}</div>
-      <div class="colText">{t["join_text"]}</div>
-      <div class="rowBtns">
-        <a class="smallBtn" href="{REQUIRED_CHANNEL_URL}" target="_blank" rel="noopener noreferrer">{t["join_button"]}</a>
-        <button type="button" class="smallBtn smallBtnPrimary" id="checkChannelBtn">{t["verify_button"]}</button>
-      </div>
-    </div>
-    """
-
-    bg = BACKGROUND_URL if BACKGROUND_URL else EMPTY_BG_DATA_URI
-    html = (TERMS_HTML
-        .replace("__UID__", str(uid))
-        .replace("__LANG__", L)
-        .replace("__LANGCODE__", L.upper())
-        .replace("__TITLE__", t["title"])
-        .replace("__SUBTITLE__", t["subtitle"])
-        .replace("__INTRO__", t["intro"])
-        .replace("__CHECK1__", t["check1"])
-        .replace("__CHECK2__", t["check2"])
-        .replace("__ACCEPT__", t["accept"])
-        .replace("__DECLINE__", t["decline"])
-        .replace("__DONE__", t["done"])
-        .replace("__NO__", t["no"])
-        .replace("__ERROR__", t["error"])
-        .replace("__NEEDCHECKS__", t["need_checks"])
-        .replace("__JOINNEEDED__", t["join_needed"])
-        .replace("__SAVING__", t["saving"])
-        .replace("__PROCESSING__", t["processing"])
-        .replace("__VERIFYOK__", t["verify_ok"])
-        .replace("__VERIFYFAIL__", t["verify_fail"])
-        .replace("__VERIFYCONF__", t["verify_confirmed"])
-        .replace("__TVERSION__", TERMS_VERSION.upper())
-        .replace("__BODY__", body)
-        .replace("__JOINBLOCK__", joinblock)
-        .replace("__TOPBANNER__", TOP_BANNER_URL)
-        .replace("__BGURL__", bg)
-    )
-    return HTMLResponse(html)
-
-
-@app.post("/api/terms/accept")
-def api_accept(payload: dict = Body(...)):
-    try:
-        uid = int(payload.get("uid") or 0)
-        lang = pick_lang(payload.get("lang"))
-        if uid <= 0:
-            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-        create_or_get_user(uid)
-        set_language(uid, lang)
-        accept_terms(uid, TERMS_VERSION)
-        return {"ok": True, "message": TEXTS[lang]["done"]}
-
-    except Exception as e:
-        print("❌ ERROR /api/terms/accept:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse(
-            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
-            status_code=500
-        )
-
-
-@app.post("/api/terms/decline")
-def api_decline(payload: dict = Body(...)):
-    try:
-        uid = int(payload.get("uid") or 0)
-        lang = pick_lang(payload.get("lang"))
-        if uid <= 0:
-            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-        create_or_get_user(uid)
-        set_language(uid, lang)
-        return {"ok": True, "message": TEXTS[lang]["no"]}
-
-    except Exception as e:
-        print("❌ ERROR /api/terms/decline:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse(
-            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
-            status_code=500
-        )
-
-
-@app.post("/api/channel/check")
-def api_channel_check(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    if not REQUIRED_CHANNEL:
-        return {"ok": True}
-
-    if not BOT_TOKEN:
-        return JSONResponse({"ok": False, "message": "BOT_TOKEN ausente para verificação."}, status_code=500)
-
-    # Verificação via Telegram Bot API (sem requests)
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
-        params = {"chat_id": REQUIRED_CHANNEL, "user_id": uid}
-
-        with httpx.Client(timeout=8.0) as client:
-            r = client.get(url, params=params)
-            data = r.json()
-
-        if not data.get("ok"):
-            return {"ok": False}
-
-        result = data.get("result") or {}
-        status = (result.get("status") or "").lower()
-        is_member = bool(result.get("is_member", False))
-        ok = (status in ("creator", "administrator", "member")) or (status == "restricted" and is_member)
-        return {"ok": ok}
-
-    except Exception as e:
-        print("❌ ERROR /api/channel/check:", repr(e), flush=True)
-        return {"ok": False}
-
-
-# =========================
-# CONFIG — CATÁLOGO
-# =========================
-CATALOG_PATH = os.getenv("CATALOG_PATH", "data/catalogo_enriquecido.json").strip()
-
-CATALOG_BANNER_URL = os.getenv(
-    "CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-BACKGROUND_PATTERN_URL = os.getenv("BACKGROUND_PATTERN_URL", "").strip()
-CATALOG_TITLE = os.getenv("CATALOG_TITLE", "CATÁLOGO GERAL").strip()
-CATALOG_SUBTITLE = os.getenv("CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
-
-_CATALOG: List[Dict[str, Any]] = []
-_LETTER_COUNTS: Dict[str, int] = {}
-_TOTAL: int = 0
-
-
-def _normalize_title(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-
-def _first_letter(title: str) -> str:
-    if not title:
-        return "#"
-    ch = title.strip()[0].upper()
-    if "A" <= ch <= "Z":
-        return ch
-    if ch.isdigit():
-        return "#"
-    return "#"
-
-
-def _safe_int(v: Any) -> Optional[int]:
-    try:
-        if v is None:
-            return None
-        if isinstance(v, bool):
-            return None
-        return int(v)
-    except Exception:
-        return None
-
-
-def _unwrap_records(data: Any) -> List[Dict[str, Any]]:
-    """
-    Aceita:
-      - list[dict]
-      - {"records": list[dict], ...}
-      - {"items": list[dict], ...}
-      - {"data": list[dict], ...}
-    """
-    if isinstance(data, list):
-        return [d for d in data if isinstance(d, dict)]
-
-    if isinstance(data, dict):
-        for key in ("records", "items", "data", "animes", "catalogo", "results"):
-            v = data.get(key)
-            if isinstance(v, list):
-                return [d for d in v if isinstance(d, dict)]
-        for v in data.values():
-            if isinstance(v, list):
-                return [d for d in v if isinstance(d, dict)]
-
-    return []
-
-
-def _coerce_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
-    post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
-
-    if not title_raw:
-        raw_text = str(it.get("raw_text") or "").strip()
-        if raw_text:
-            title_raw = _normalize_title(raw_text.splitlines()[0])
-
-    if not title_raw or not post_url:
-        return None
-
-    anilist = it.get("anilist")
-    if not isinstance(anilist, dict):
-        anilist = None
-
-    title_display = title_raw
-    cover = ""
-    fmt = ""
-    score = None
-    year = None
-
-    if anilist:
-        if anilist.get("title_display"):
-            title_display = str(anilist.get("title_display")).strip() or title_display
-        cover = str(anilist.get("cover") or "").strip()
-        fmt = str(anilist.get("format") or "").strip()
-        score = anilist.get("averageScore")
-        year = anilist.get("seasonYear")
-
-    if year is None:
-        year = it.get("year_post")
-
-    badge = fmt.upper() if fmt else "ANIME"
-
-    status_post = str(it.get("status_post") or "").strip()
-    if status_post.lower() == "restrito":
-        return None
-
-    return {
-        "message_id": _safe_int(it.get("message_id")),
-        "titulo": _normalize_title(title_display),
-        "letter": _first_letter(title_display),
-        "link_post": post_url,
-        "cover_url": cover,
-        "format": fmt,
-        "badge": badge,
-        "score": score,
-        "year": year,
-    }
-
-
-def _load_catalog() -> Tuple[int, str]:
-    global _CATALOG, _LETTER_COUNTS, _TOTAL
-
-    _CATALOG = []
-    _LETTER_COUNTS = {}
-    _TOTAL = 0
-
-    path = CATALOG_PATH
-    if not path:
-        print("[catalog] CATALOG_PATH vazio. Catálogo ficará vazio.", flush=True)
-        return 0, "CATALOG_PATH vazio"
-
-    candidates = [path]
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[catalog] Arquivo não encontrado: {path} (testados: {candidates})", flush=True)
-        return 0, "arquivo não encontrado"
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        records = _unwrap_records(data)
-        if not records:
-            print(f"[catalog] Nenhum registro encontrado. Tipo JSON: {type(data).__name__}", flush=True)
-            return 0, "sem registros"
-
-        items: List[Dict[str, Any]] = []
-        for rec in records:
-            if not isinstance(rec, dict):
-                continue
-            coerced = _coerce_item(rec)
-            if coerced:
-                items.append(coerced)
-
-        items.sort(key=lambda x: x["titulo"].lower())
-
-        counts: Dict[str, int] = {}
-        for x in items:
-            counts[x["letter"]] = counts.get(x["letter"], 0) + 1
-
-        _CATALOG = items
-        _LETTER_COUNTS = counts
-        _TOTAL = len(items)
-
-        print(f"[catalog] Carregado OK: {_TOTAL} itens (de {real_path})", flush=True)
-        return _TOTAL, "ok"
-
-    except Exception as e:
-        print(f"[catalog] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
-        traceback.print_exc()
-        return 0, f"erro: {type(e).__name__}"
-
-
-def _filter_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
-    q = (q or "").strip().lower()
-    letter = (letter or "").strip().upper()
-
-    data = _CATALOG
-
-    if letter and letter != "ALL":
-        data = [x for x in data if x["letter"] == letter]
-
-    if q:
-        data = [x for x in data if q in x["titulo"].lower()]
-
-    total = len(data)
-
-    if offset < 0:
-        offset = 0
-    if limit < 1:
-        limit = 1
-    if limit > 200:
-        limit = 200
-
-    return data[offset : offset + limit], total
-
-
-# carrega no boot (sem crash)
-try:
-    _load_catalog()
-except Exception as e:
-    print("[catalog] ERRO inesperado no startup:", repr(e), flush=True)
-
-
-@app.get("/api/letters")
-def api_letters():
-    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
-    payload = {
-        "total": _TOTAL,
-        "counts": {k: _LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
-        "all_count": _TOTAL,
-    }
-    return JSONResponse(payload)
-
-
-@app.get("/api/catalogo")
-def api_catalogo(
-    q: str = Query(default="", max_length=80),
-    letter: str = Query(default="ALL", max_length=3),
-    limit: int = Query(default=60, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    items, total = _filter_catalog(q=q, letter=letter, limit=limit, offset=offset)
-    return JSONResponse({"total": total, "items": items})
-
-
-@app.get("/catalogo", response_class=HTMLResponse)
-def catalogo_page():
-    # IMPORTANTE: aqui NÃO usa f-string com ${} do JS.
-    # A gente usa placeholders e replace, pra nunca mais quebrar.
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>__CTITLE__ — Source Baltigo</title>
-
-  <style>
-    :root {
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.16);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-                  linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }
-
-    .bg-pattern {
-      position: fixed;
-      inset: 0;
-      background-image: url("__BPATTERN__");
-      background-size: 520px;
-      background-repeat: repeat;
-      opacity: 0.10;
-      filter: grayscale(1) contrast(1.1);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 18px 14px 40px;
-    }
-
-    .top-banner {
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }
-    .top-banner img {
-      width: 100%;
-      height: 190px;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-    }
-    .top-banner::after{
-      content:"";
-      position:absolute; inset:0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events:none;
-    }
-
-    .head {
-      padding: 16px 10px 8px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .title {
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }
-    .subtitle {
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }
-
-    .search {
-      flex: 1;
-      min-width: 220px;
-      max-width: 420px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--stroke);
-      border-radius: 18px;
-      padding: 12px 14px;
-      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }
-    .search input {
-      width: 100%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: var(--txt);
-      font-size: 14px;
-    }
-    .search input::placeholder{
-      color: rgba(255,255,255,0.35);
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    .letters {
-      margin-top: 14px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid var(--stroke);
-      border-radius: 26px;
-      padding: 14px;
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }
-    .letters-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-    }
-    @media (min-width: 720px){
-      .letters-grid { grid-template-columns: repeat(10, 1fr); }
-      .top-banner img { height: 220px; }
-    }
-
-    .letter {
-      user-select: none;
-      cursor: pointer;
-      border-radius: 16px;
-      padding: 12px 10px;
-      text-align: center;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }
-    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
-    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
-    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
-    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
-
-    .cards {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    @media (min-width: 720px){
-      .cards { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    .card {
-      cursor: pointer;
-      border-radius: 26px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
-      transition: transform .10s ease, border-color .12s ease;
-      position: relative;
-    }
-    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
-
-    .cover {
-      width: 100%;
-      height: 220px;
-      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
-      position: relative;
-    }
-    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-    .badge {
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(90,168,255,0.24);
-      border: 1px solid rgba(90,168,255,0.40);
-      color: rgba(255,255,255,0.90);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-      text-transform: uppercase;
-    }
-
-    .meta { padding: 12px 14px 14px; }
-    .meta .name {
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      font-size: 14px;
-      text-transform: uppercase;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .meta .sub {
-      margin-top: 8px;
-      color: rgba(255,255,255,0.50);
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      text-transform: uppercase;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .pill {
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      padding: 6px 10px;
-      border-radius: 999px;
-    }
-
-    .footer {
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }
-
-    .loadmore {
-      margin: 14px auto 0;
-      width: 100%;
-      max-width: 320px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.86);
-      border-radius: 16px;
-      padding: 12px 14px;
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }
-    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
-  </style>
-</head>
-
-<body>
-  <div class="bg-pattern"></div>
-
-  <div class="wrap">
-    <div class="top-banner">
-      <img src="__CBANNER__" alt="Banner"/>
-    </div>
-
-    <div class="head">
-      <div>
-        <div class="title">__CTITLE__</div>
-        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
-      </div>
-
-      <div class="search" title="Buscar anime">
-        <span style="opacity:.6;font-weight:900;">🔎</span>
-        <input id="q" type="text" placeholder="BUSCAR ANIME..." />
-      </div>
-    </div>
-
-    <div class="letters">
-      <div class="letters-grid" id="lettersGrid"></div>
-    </div>
-
-    <div class="cards" id="cards"></div>
-    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
-
-    <div class="footer">Source Baltigo • Catálogo do canal</div>
-  </div>
-
-  <script>
-    const apiLetters = "/api/letters";
-    const apiCatalogo = "/api/catalogo";
-
-    let state = {
-      letter: "ALL",
-      q: "",
-      limit: 60,
-      offset: 0,
-      total: 0,
-      loading: false,
-    };
-
-    function esc(s) {
-      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
-    }
-
-    function openLink(link) {
-      try {
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink(link);
-          return;
-        }
-      } catch (e) {}
-      window.open(link, "_blank");
-    }
-
-    function makeLetterButton(key, count) {
-      const el = document.createElement("div");
-      el.className = "letter" + (state.letter === key ? " active" : "");
-      el.innerHTML = `
-        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
-        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
-      `;
-      el.onclick = () => {
-        state.letter = key;
-        state.offset = 0;
-        document.getElementById("cards").innerHTML = "";
-        renderLetters();
-        loadCatalog(true);
-      };
-      return el;
-    }
-
-    async function renderLetters() {
-      const grid = document.getElementById("lettersGrid");
-      grid.innerHTML = "";
-
-      const res = await fetch(apiLetters + "?_ts=" + Date.now());
-      const data = await res.json();
-
-      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
-
-      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
-      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
-
-      for (let c = 65; c <= 90; c++) {
-        const k = String.fromCharCode(c);
-        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
-        grid.appendChild(makeLetterButton(k, n));
-      }
-    }
-
-    function badgeText(item) {
-      const b = (item.badge || item.format || "").toString().trim();
-      return b ? b.toUpperCase() : "ANIME";
-    }
-
-    function pillLine(item) {
-      let parts = [];
-      if (item.year) parts.push(String(item.year));
-      if (item.score) parts.push("★ " + String(item.score));
-      if (item.format) parts.push(String(item.format).toUpperCase());
-      return parts;
-    }
-
-    function makeCard(item) {
-      const card = document.createElement("div");
-      card.className = "card";
-
-      const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
-      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
-
-      card.innerHTML = `
-        <div class="cover">
-          ${coverHtml}
-          <div class="badge">${esc(badgeText(item))}</div>
-        </div>
-        <div class="meta">
-          <p class="name">${esc(item.titulo)}</p>
-          <div class="sub">
-            <span class="pill">CANAL</span>
-            ${pills}
-          </div>
-        </div>
-      `;
-
-      card.onclick = () => openLink(item.link_post);
-      return card;
-    }
-
-    async function loadCatalog(reset=false) {
-      if (state.loading) return;
-      state.loading = true;
-
-      const btn = document.getElementById("btnMore");
-      btn.disabled = true;
-      btn.textContent = "CARREGANDO...";
-
-      const params = new URLSearchParams();
-      params.set("letter", state.letter);
-      params.set("q", state.q);
-      params.set("limit", state.limit);
-      params.set("offset", state.offset);
-      params.set("_ts", String(Date.now()));
-
-      const res = await fetch(apiCatalogo + "?" + params.toString());
-      const data = await res.json();
-
-      state.total = data.total || 0;
-
-      const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {
-        cards.appendChild(makeCard(it));
-      }
-
-      state.offset += (data.items || []).length;
-
-      if (state.offset >= state.total) {
-        btn.disabled = true;
-        btn.textContent = "FIM DA LISTA";
-      } else {
-        btn.disabled = false;
-        btn.textContent = "CARREGAR MAIS";
-      }
-
-      state.loading = false;
-    }
-
-    function debounce(fn, ms) {
-      let t = null;
-      return (...args) => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      };
-    }
-
-    const onSearch = debounce(() => {
-      state.q = (document.getElementById("q").value || "").trim();
-      state.offset = 0;
-      document.getElementById("cards").innerHTML = "";
-      loadCatalog(true);
-    }, 250);
-
-    document.getElementById("q").addEventListener("input", onSearch);
-    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
-
-    (async () => {
-      await renderLetters();
-      await loadCatalog(true);
-    })();
-  </script>
-</body>
-</html>
-"""
-
-    # Placeholders
-    pattern = BACKGROUND_PATTERN_URL if BACKGROUND_PATTERN_URL else EMPTY_BG_DATA_URI
-    html = (html
-        .replace("__CBANNER__", CATALOG_BANNER_URL)
-        .replace("__BPATTERN__", pattern)
-        .replace("__CTITLE__", CATALOG_TITLE)
-        .replace("__CSUB__", CATALOG_SUBTITLE)
-    )
-    return HTMLResponse(html)
-
-
-# =========================
-# CONFIG — CATÁLOGO (MANGÁS)
-# =========================
-
-MANGA_CATALOG_PATH = os.getenv("MANGA_CATALOG_PATH", "data/catalogo_mangas_enriquecido.json").strip()
-
-MANGA_CATALOG_BANNER_URL = os.getenv(
-    "MANGA_CATALOG_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZzguBWmp1rAsEzc6la-5rpAwuyD7vdm0AAL8C2sb1ZFIRYepX3uNQGYyAQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-MANGA_BACKGROUND_PATTERN_URL = os.getenv("MANGA_BACKGROUND_PATTERN_URL", "").strip()
-MANGA_CATALOG_TITLE = os.getenv("MANGA_CATALOG_TITLE", "CATÁLOGO MANGÁS").strip()
-MANGA_CATALOG_SUBTITLE = os.getenv("MANGA_CATALOG_SUBTITLE", "TOTAL NA SEÇÃO").strip()
-
-_MANGA_CATALOG: List[Dict[str, Any]] = []
-_MANGA_LETTER_COUNTS: Dict[str, int] = {}
-_MANGA_TOTAL: int = 0
-
-
-def _detect_manga_badge(it: Dict[str, Any], anilist: Optional[Dict[str, Any]]) -> str:
-    """
-    Decide o badge do card:
-    - se vier format do AniList (MANGA/NOVEL/ONE_SHOT etc), usa isso
-    - tenta detectar pelo raw_text: "Formato: Manhwa/Manhua/Mangá"
-    - fallback: MANGA
-    """
-    if anilist and isinstance(anilist, dict):
-        fmt = str(anilist.get("format") or "").strip()
-        if fmt:
-            # aniList costuma ser MANGA / NOVEL / ONE_SHOT
-            if fmt.upper() == "MANGA":
-                return "MANGA"
-            if fmt.upper() == "NOVEL":
-                return "NOVEL"
-            if fmt.upper() == "ONE_SHOT":
-                return "ONE-SHOT"
-            return fmt.upper()
-
-    raw = str(it.get("raw_text") or "").lower()
-
-    # procura por "formato:"
-    if "formato" in raw:
-        # heurística simples
-        if "manhwa" in raw:
-            return "MANHWA"
-        if "manhua" in raw:
-            return "MANHUA"
-        if "mangá" in raw or "manga" in raw:
-            return "MANGA"
-
-    # fallback
-    return "MANGA"
-
-
-def _coerce_manga_item(it: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    title_raw = _normalize_title(str(it.get("title_raw") or it.get("titulo") or it.get("title") or ""))
-    post_url = str(it.get("post_url") or it.get("link_post") or it.get("link") or "").strip()
-
-    if not title_raw:
-        raw_text = str(it.get("raw_text") or "").strip()
-        if raw_text:
-            title_raw = _normalize_title(raw_text.splitlines()[0])
-
-    if not title_raw or not post_url:
-        return None
-
-    anilist = it.get("anilist")
-    if not isinstance(anilist, dict):
-        anilist = None
-
-    title_display = title_raw
-    cover = ""
-    fmt = ""
-    score = None
-    year = None
-
-    if anilist:
-        if anilist.get("title_display"):
-            title_display = str(anilist.get("title_display")).strip() or title_display
-        cover = str(anilist.get("cover") or "").strip()
-        fmt = str(anilist.get("format") or "").strip()
-        score = anilist.get("averageScore")
-        year = anilist.get("seasonYear")
-
-    if year is None:
-        year = it.get("year_post")
-
-    badge = _detect_manga_badge(it, anilist)
-
-    status_post = str(it.get("status_post") or "").strip()
-    if status_post.lower() == "restrito":
-        return None
-
-    return {
-        "message_id": _safe_int(it.get("message_id")),
-        "titulo": _normalize_title(title_display),
-        "letter": _first_letter(title_display),
-        "link_post": post_url,         # abre o post do canal
-        "cover_url": cover,
-        "format": fmt,
-        "badge": badge,
-        "score": score,
-        "year": year,
-    }
-
-
-def _load_manga_catalog() -> Tuple[int, str]:
-    global _MANGA_CATALOG, _MANGA_LETTER_COUNTS, _MANGA_TOTAL
-
-    _MANGA_CATALOG = []
-    _MANGA_LETTER_COUNTS = {}
-    _MANGA_TOTAL = 0
-
-    path = MANGA_CATALOG_PATH
-    if not path:
-        print("[mangas] MANGA_CATALOG_PATH vazio. Catálogo ficará vazio.", flush=True)
-        return 0, "MANGA_CATALOG_PATH vazio"
-
-    candidates = [path]
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[mangas] Arquivo não encontrado: {path} (testados: {candidates})", flush=True)
-        return 0, "arquivo não encontrado"
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        records = _unwrap_records(data)
-        if not records:
-            print(f"[mangas] Nenhum registro encontrado. Tipo JSON: {type(data).__name__}", flush=True)
-            return 0, "sem registros"
-
-        items: List[Dict[str, Any]] = []
-        for rec in records:
-            if not isinstance(rec, dict):
-                continue
-            coerced = _coerce_manga_item(rec)
-            if coerced:
-                items.append(coerced)
-
-        items.sort(key=lambda x: x["titulo"].lower())
-
-        counts: Dict[str, int] = {}
-        for x in items:
-            counts[x["letter"]] = counts.get(x["letter"], 0) + 1
-
-        _MANGA_CATALOG = items
-        _MANGA_LETTER_COUNTS = counts
-        _MANGA_TOTAL = len(items)
-
-        print(f"[mangas] Carregado OK: {_MANGA_TOTAL} itens (de {real_path})", flush=True)
-        return _MANGA_TOTAL, "ok"
-
-    except Exception as e:
-        print(f"[mangas] Falha ao carregar catálogo ({real_path}): {repr(e)}", flush=True)
-        traceback.print_exc()
-        return 0, f"erro: {type(e).__name__}"
-
-
-def _filter_manga_catalog(q: str, letter: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
-    q = (q or "").strip().lower()
-    letter = (letter or "").strip().upper()
-
-    data = _MANGA_CATALOG
-
-    if letter and letter != "ALL":
-        data = [x for x in data if x["letter"] == letter]
-
-    if q:
-        data = [x for x in data if q in x["titulo"].lower()]
-
-    total = len(data)
-
-    if offset < 0:
-        offset = 0
-    if limit < 1:
-        limit = 1
-    if limit > 200:
-        limit = 200
-
-    return data[offset : offset + limit], total
-
-
-# carrega no boot (sem crash)
-try:
-    _load_manga_catalog()
-except Exception as e:
-    print("[mangas] ERRO inesperado no startup:", repr(e), flush=True)
-
-
-@app.get("/api/mangas/letters")
-def api_mangas_letters():
-    letters = ["ALL", "#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
-    payload = {
-        "total": _MANGA_TOTAL,
-        "counts": {k: _MANGA_LETTER_COUNTS.get(k, 0) for k in letters if k not in ("ALL")},
-        "all_count": _MANGA_TOTAL,
-    }
-    return JSONResponse(payload)
-
-
-@app.get("/api/mangas/catalogo")
-def api_mangas_catalogo(
-    q: str = Query(default="", max_length=80),
-    letter: str = Query(default="ALL", max_length=3),
-    limit: int = Query(default=60, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    items, total = _filter_manga_catalog(q=q, letter=letter, limit=limit, offset=offset)
-    return JSONResponse({"total": total, "items": items})
-
-
-@app.get("/mangas", response_class=HTMLResponse)
-def mangas_page():
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>__CTITLE__ — Source Baltigo</title>
-
-  <style>
-    :root {
-      --bg0: #070b12;
-      --bg1: #0a1220;
-      --stroke: rgba(255,255,255,0.10);
-      --stroke2: rgba(255,255,255,0.16);
-      --txt: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.58);
-      --shadow: 0 14px 30px rgba(0,0,0,0.55);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--txt);
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(90,168,255,0.18), transparent 55%),
-                  linear-gradient(180deg, var(--bg0), var(--bg1));
-      overflow-x: hidden;
-    }
-
-    .bg-pattern {
-      position: fixed;
-      inset: 0;
-      background-image: url("__BPATTERN__");
-      background-size: 520px;
-      background-repeat: repeat;
-      opacity: 0.10;
-      filter: grayscale(1) contrast(1.1);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 18px 14px 40px;
-    }
-
-    .top-banner {
-      width: 100%;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      box-shadow: var(--shadow);
-      position: relative;
-      background: #000;
-    }
-    .top-banner img {
-      width: 100%;
-      height: 190px;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-    }
-    .top-banner::after{
-      content:"";
-      position:absolute; inset:0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.68));
-      pointer-events:none;
-    }
-
-    .head {
-      padding: 16px 10px 8px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .title {
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 22px;
-      line-height: 1.15;
-    }
-    .subtitle {
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }
-
-    .search {
-      flex: 1;
-      min-width: 220px;
-      max-width: 420px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--stroke);
-      border-radius: 18px;
-      padding: 12px 14px;
-      box-shadow: 0 10px 18px rgba(0,0,0,0.35);
-    }
-    .search input {
-      width: 100%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: var(--txt);
-      font-size: 14px;
-    }
-    .search input::placeholder{
-      color: rgba(255,255,255,0.35);
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    .letters {
-      margin-top: 14px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid var(--stroke);
-      border-radius: 26px;
-      padding: 14px;
-      box-shadow: 0 16px 26px rgba(0,0,0,0.36);
-    }
-    .letters-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-    }
-    @media (min-width: 720px){
-      .letters-grid { grid-template-columns: repeat(10, 1fr); }
-      .top-banner img { height: 220px; }
-    }
-
-    .letter {
-      user-select: none;
-      cursor: pointer;
-      border-radius: 16px;
-      padding: 12px 10px;
-      text-align: center;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
-    }
-    .letter:hover { transform: translateY(-1px); border-color: var(--stroke2); }
-    .letter .k { font-weight: 900; letter-spacing: 0.10em; font-size: 13px; text-transform: uppercase; }
-    .letter .n { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 800; letter-spacing: 0.08em; }
-    .letter.active { background: rgba(90,168,255,0.18); border-color: rgba(90,168,255,0.42); }
-
-    .cards {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    @media (min-width: 720px){
-      .cards { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    .card {
-      cursor: pointer;
-      border-radius: 26px;
-      overflow: hidden;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.03);
-      box-shadow: 0 18px 30px rgba(0,0,0,0.44);
-      transition: transform .10s ease, border-color .12s ease;
-      position: relative;
-    }
-    .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
-
-    .cover {
-      width: 100%;
-      height: 220px;
-      background: linear-gradient(135deg, rgba(90,168,255,0.18), rgba(255,255,255,0.03));
-      position: relative;
-    }
-    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-    .badge {
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(90,168,255,0.24);
-      border: 1px solid rgba(90,168,255,0.40);
-      color: rgba(255,255,255,0.90);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-      text-transform: uppercase;
-    }
-
-    .meta { padding: 12px 14px 14px; }
-    .meta .name {
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      font-size: 14px;
-      text-transform: uppercase;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .meta .sub {
-      margin-top: 8px;
-      color: rgba(255,255,255,0.50);
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      font-size: 11px;
-      text-transform: uppercase;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .pill {
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      padding: 6px 10px;
-      border-radius: 999px;
-    }
-
-    .footer {
-      margin-top: 14px;
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }
-
-    .loadmore {
-      margin: 14px auto 0;
-      width: 100%;
-      max-width: 320px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.86);
-      border-radius: 16px;
-      padding: 12px 14px;
-      font-weight: 900;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 14px 24px rgba(0,0,0,0.35);
-    }
-    .loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
-  </style>
-</head>
-
-<body>
-  <div class="bg-pattern"></div>
-
-  <div class="wrap">
-    <div class="top-banner">
-      <img src="__CBANNER__" alt="Banner"/>
-    </div>
-
-    <div class="head">
-      <div>
-        <div class="title">__CTITLE__</div>
-        <div class="subtitle"><span id="totalTxt">__CSUB__: ...</span></div>
-      </div>
-
-      <div class="search" title="Buscar mangá">
-        <span style="opacity:.6;font-weight:900;">🔎</span>
-        <input id="q" type="text" placeholder="BUSCAR MANGÁ..." />
-      </div>
-    </div>
-
-    <div class="letters">
-      <div class="letters-grid" id="lettersGrid"></div>
-    </div>
-
-    <div class="cards" id="cards"></div>
-    <button class="loadmore" id="btnMore">CARREGAR MAIS</button>
-
-    <div class="footer">Source Baltigo • Catálogo do canal</div>
-  </div>
-
-  <script>
-    const apiLetters = "/api/mangas/letters";
-    const apiCatalogo = "/api/mangas/catalogo";
-
-    let state = {
-      letter: "ALL",
-      q: "",
-      limit: 60,
-      offset: 0,
-      total: 0,
-      loading: false,
-    };
-
-    function esc(s) {
-      return (s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
-    }
-
-    function openLink(link) {
-      try {
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink(link);
-          return;
-        }
-      } catch (e) {}
-      window.open(link, "_blank");
-    }
-
-    function makeLetterButton(key, count) {
-      const el = document.createElement("div");
-      el.className = "letter" + (state.letter === key ? " active" : "");
-      el.innerHTML = `
-        <div class="k">${esc(key === "ALL" ? "TODOS" : key)}</div>
-        <div class="n">${key === "ALL" ? (count > 999 ? "999+" : count) : count}</div>
-      `;
-      el.onclick = () => {
-        state.letter = key;
-        state.offset = 0;
-        document.getElementById("cards").innerHTML = "";
-        renderLetters();
-        loadCatalog(true);
-      };
-      return el;
-    }
-
-    async function renderLetters() {
-      const grid = document.getElementById("lettersGrid");
-      grid.innerHTML = "";
-
-      const res = await fetch(apiLetters + "?_ts=" + Date.now());
-      const data = await res.json();
-
-      document.getElementById("totalTxt").textContent = "__CSUB__: " + (data.total ?? 0);
-
-      grid.appendChild(makeLetterButton("ALL", data.all_count || data.total || 0));
-      grid.appendChild(makeLetterButton("#", (data.counts && data.counts["#"]) ? data.counts["#"] : 0));
-
-      for (let c = 65; c <= 90; c++) {
-        const k = String.fromCharCode(c);
-        const n = (data.counts && data.counts[k]) ? data.counts[k] : 0;
-        grid.appendChild(makeLetterButton(k, n));
-      }
-    }
-
-    function badgeText(item) {
-      const b = (item.badge || item.format || "").toString().trim();
-      return b ? b.toUpperCase() : "MANGA";
-    }
-
-    function pillLine(item) {
-      let parts = [];
-      if (item.year) parts.push(String(item.year));
-      if (item.score) parts.push("★ " + String(item.score));
-      if (item.format) parts.push(String(item.format).toUpperCase());
-      return parts;
-    }
-
-    function makeCard(item) {
-      const card = document.createElement("div");
-      card.className = "card";
-
-      const hasCover = item.cover_url && item.cover_url.length > 5;
-      const coverHtml = hasCover ? `<img src="${esc(item.cover_url)}" alt="${esc(item.titulo)}"/>` : ``;
-      const pills = pillLine(item).map(p => `<span class="pill">${esc(p)}</span>`).join("");
-
-      card.innerHTML = `
-        <div class="cover">
-          ${coverHtml}
-          <div class="badge">${esc(badgeText(item))}</div>
-        </div>
-        <div class="meta">
-          <p class="name">${esc(item.titulo)}</p>
-          <div class="sub">
-            <span class="pill">CANAL</span>
-            ${pills}
-          </div>
-        </div>
-      `;
-
-      card.onclick = () => openLink(item.link_post);
-      return card;
-    }
-
-    async function loadCatalog(reset=false) {
-      if (state.loading) return;
-      state.loading = true;
-
-      const btn = document.getElementById("btnMore");
-      btn.disabled = true;
-      btn.textContent = "CARREGANDO...";
-
-      const params = new URLSearchParams();
-      params.set("letter", state.letter);
-      params.set("q", state.q);
-      params.set("limit", state.limit);
-      params.set("offset", state.offset);
-      params.set("_ts", String(Date.now()));
-
-      const res = await fetch(apiCatalogo + "?" + params.toString());
-      const data = await res.json();
-
-      state.total = data.total || 0;
-
-      const cards = document.getElementById("cards");
-      for (const it of (data.items || [])) {
-        cards.appendChild(makeCard(it));
-      }
-
-      state.offset += (data.items || []).length;
-
-      if (state.offset >= state.total) {
-        btn.disabled = true;
-        btn.textContent = "FIM DA LISTA";
-      } else {
-        btn.disabled = false;
-        btn.textContent = "CARREGAR MAIS";
-      }
-
-      state.loading = false;
-    }
-
-    function debounce(fn, ms) {
-      let t = null;
-      return (...args) => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      };
-    }
-
-    const onSearch = debounce(() => {
-      state.q = (document.getElementById("q").value || "").trim();
-      state.offset = 0;
-      document.getElementById("cards").innerHTML = "";
-      loadCatalog(true);
-    }, 250);
-
-    document.getElementById("q").addEventListener("input", onSearch);
-    document.getElementById("btnMore").addEventListener("click", () => loadCatalog(false));
-
-    (async () => {
-      await renderLetters();
-      await loadCatalog(true);
-    })();
-  </script>
-</body>
-</html>
-"""
-
-    pattern = MANGA_BACKGROUND_PATTERN_URL if MANGA_BACKGROUND_PATTERN_URL else EMPTY_BG_DATA_URI
-    html = (html
-        .replace("__CBANNER__", MANGA_CATALOG_BANNER_URL)
-        .replace("__BPATTERN__", pattern)
-        .replace("__CTITLE__", MANGA_CATALOG_TITLE)
-        .replace("__CSUB__", MANGA_CATALOG_SUBTITLE)
-    )
-    return HTMLResponse(html)
 
 # =========================================================
-# CARDS SYSTEM — JSON ASSETS
-# Lê: data/cards_assets.json
+# CORE SQL
 # =========================================================
 
-import json
-import os
-from typing import Any, Dict, List
-from fastapi import Query
-from fastapi.responses import HTMLResponse, JSONResponse
+def _run(sql: str, params: Tuple[Any, ...] = (), fetch: str = "none"):
+    """
+    Executa SQL usando pool.
 
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
-CARDS_TOP_BANNER_URL = os.getenv(
-    "CARDS_TOP_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZ0sajmmrHXRy1AZxkfEGC2Lx4yC6A80MAAJOC2sb1ZFYRQ5kxLI09cC2AQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-_CARDS_DATA: List[Dict[str, Any]] = []
-_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
-_CARDS_TOTAL: int = 0
-
-
-def _load_cards_assets() -> int:
-    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
-
-    _CARDS_DATA = []
-    _CARDS_INDEX = {}
-    _CARDS_TOTAL = 0
-
-    path = CARDS_ASSETS_PATH
-    candidates = [path]
-
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
-        return 0
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        items = raw.get("items") if isinstance(raw, dict) else raw
-        if not isinstance(items, list):
-            print(f"[cards] Formato inválido em {real_path}", flush=True)
-            return 0
-
-        cleaned: List[Dict[str, Any]] = []
-
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-
-            anime_id = item.get("anime_id")
-            anime = str(item.get("anime") or "").strip()
-            banner_image = str(item.get("banner_image") or "").strip()
-            cover_image = str(item.get("cover_image") or "").strip()
-            chars_raw = item.get("characters") or []
-
+    fetch:
+      - "none" -> None
+      - "one"  -> dict | None
+      - "all"  -> list[dict]
+    """
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
             try:
-                anime_id = int(anime_id)
+                cur.execute(sql, params)
+
+                if fetch == "one":
+                    row = cur.fetchone()
+                    conn.commit()
+                    return row
+
+                if fetch == "all":
+                    rows = cur.fetchall() or []
+                    conn.commit()
+                    return rows
+
+                conn.commit()
+                return None
+
             except Exception:
-                continue
-
-            if not anime:
-                continue
-
-            chars: List[Dict[str, Any]] = []
-            seen_char_ids = set()
-
-            if isinstance(chars_raw, list):
-                for c in chars_raw:
-                    if not isinstance(c, dict):
-                        continue
-
-                    cid = c.get("id")
-                    cname = str(c.get("name") or "").strip()
-                    canime = str(c.get("anime") or anime).strip()
-                    cimg = str(c.get("image") or "").strip()
-
-                    try:
-                        cid = int(cid)
-                    except Exception:
-                        continue
-
-                    if not cname or cid in seen_char_ids:
-                        continue
-
-                    seen_char_ids.add(cid)
-
-                    chars.append({
-                        "id": cid,
-                        "name": cname,
-                        "anime": canime or anime,
-                        "image": cimg,
-                    })
-
-            chars.sort(key=lambda x: x["name"].lower())
-
-            payload = {
-                "anime_id": anime_id,
-                "anime": anime,
-                "banner_image": banner_image,
-                "cover_image": cover_image,
-                "characters": chars,
-                "characters_count": len(chars),
-            }
-
-            cleaned.append(payload)
-            _CARDS_INDEX[anime_id] = payload
-
-        cleaned.sort(key=lambda x: x["anime"].lower())
-
-        _CARDS_DATA = cleaned
-        _CARDS_TOTAL = len(cleaned)
-
-        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
-        return _CARDS_TOTAL
-
-    except Exception as e:
-        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
-        return 0
-
-
-def _ensure_cards_loaded():
-    if not _CARDS_DATA:
-        _load_cards_assets()
-
-
-# carrega no boot sem derrubar app
-try:
-    _load_cards_assets()
-except Exception as e:
-    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
-
-
-@app.get("/api/cards/reload")
-def api_cards_reload():
-    total = _load_cards_assets()
-    return JSONResponse({"ok": True, "total": total})
-
-
-@app.get("/api/cards/animes")
-def api_cards_animes(
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    _ensure_cards_loaded()
-
-    q = (q or "").strip().lower()
-    data = _CARDS_DATA
-
-    if q:
-        data = [x for x in data if q in x["anime"].lower()]
-
-    total = len(data)
-    items = data[offset: offset + limit]
-
-    payload = []
-    for a in items:
-        payload.append({
-            "anime_id": a["anime_id"],
-            "anime": a["anime"],
-            "banner_image": a["banner_image"],
-            "cover_image": a["cover_image"],
-            "characters_count": a["characters_count"],
-        })
-
-    return JSONResponse({
-        "total": total,
-        "items": payload,
-    })
-
-
-@app.get("/api/cards/characters")
-def api_cards_characters(
-    anime_id: int = Query(...),
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    _ensure_cards_loaded()
-
-    anime = _CARDS_INDEX.get(anime_id)
-    if not anime:
-        return JSONResponse({
-            "ok": False,
-            "anime": None,
-            "total": 0,
-            "items": [],
-        })
-
-    chars = anime["characters"]
-    q = (q or "").strip().lower()
-
-    if q:
-        chars = [c for c in chars if q in c["name"].lower()]
-
-    total = len(chars)
-    items = chars[offset: offset + limit]
-
-    return JSONResponse({
-        "ok": True,
-        "anime": {
-            "anime_id": anime["anime_id"],
-            "anime": anime["anime"],
-            "banner_image": anime["banner_image"],
-            "cover_image": anime["cover_image"],
-            "characters_count": anime["characters_count"],
-        },
-        "total": total,
-        "items": items,
-    })
-
-
-@app.get("/cards", response_class=HTMLResponse)
-def cards_page():
-    html = """
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Cards • Source Baltigo</title>
-
-<style>
-  :root{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(255,255,255,.16);
-    --glass:rgba(255,255,255,.04);
-    --shadow:0 16px 30px rgba(0,0,0,.44);
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-
-  body{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-    overflow-x:hidden;
-  }
-
-  .bg{
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-    background-size: 36px 36px;
-    opacity:.16;
-    pointer-events:none;
-    z-index:0;
-  }
-
-  .wrap{
-    position:relative;
-    z-index:1;
-    max-width:980px;
-    margin:0 auto;
-    padding:18px 14px 42px;
-  }
-
-  .top-banner{
-    width:100%;
-    border-radius:26px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    box-shadow:var(--shadow);
-    position:relative;
-    background:#000;
-    min-height:220px;
-  }
-
-  .top-banner img{
-    width:100%;
-    height:220px;
-    object-fit:cover;
-    display:block;
-  }
-
-  .top-banner:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
-    pointer-events:none;
-  }
-
-  .top-copy{
-    position:absolute;
-    left:18px;
-    right:18px;
-    bottom:16px;
-    z-index:2;
-  }
-
-  .eyebrow{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    border:1px solid rgba(255,255,255,.16);
-    background:rgba(0,0,0,.26);
-    backdrop-filter: blur(8px);
-    border-radius:999px;
-    padding:8px 12px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-  }
-
-  .title{
-    margin-top:12px;
-    font-size:28px;
-    line-height:1.05;
-    font-weight:900;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    text-shadow:0 6px 20px rgba(0,0,0,.45);
-  }
-
-  .subtitle{
-    margin-top:8px;
-    color:rgba(255,255,255,.78);
-    font-weight:700;
-    letter-spacing:.10em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .head{
-    padding:18px 4px 8px;
-    display:flex;
-    align-items:flex-end;
-    justify-content:space-between;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-
-  .stats{
-    color:var(--muted);
-    font-weight:800;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .search{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:18px;
-    padding:13px 14px;
-    box-shadow:0 10px 18px rgba(0,0,0,.32);
-  }
-
-  .search input{
-    width:100%;
-    border:0;
-    outline:none;
-    background:transparent;
-    color:var(--txt);
-    font-size:14px;
-  }
-
-  .search input::placeholder{
-    color:rgba(255,255,255,.38);
-    font-weight:800;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-  }
-
-  .cards{
-    margin-top:16px;
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:12px;
-  }
-
-  @media (min-width:720px){
-    .top-banner img{ height:250px; }
-    .cards{ grid-template-columns:repeat(3,1fr); }
-  }
-
-  .card{
-    cursor:pointer;
-    border-radius:24px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    box-shadow:0 18px 30px rgba(0,0,0,.42);
-    transition:transform .10s ease, border-color .12s ease, box-shadow .12s ease;
-    position:relative;
-  }
-
-  .card:hover{
-    transform:translateY(-2px);
-    border-color:var(--stroke2);
-    box-shadow:0 20px 34px rgba(0,0,0,.5);
-  }
-
-  .cover{
-    width:100%;
-    height:250px;
-    position:relative;
-    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
-  }
-
-  .cover img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .cover:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
-    pointer-events:none;
-  }
-
-  .count-pill{
-    position:absolute;
-    right:12px;
-    bottom:12px;
-    z-index:2;
-    border-radius:999px;
-    padding:8px 10px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.95);
-    background:rgba(0,0,0,.32);
-    border:1px solid rgba(255,255,255,.18);
-    backdrop-filter:blur(8px);
-  }
-
-  .meta{
-    padding:13px 14px 15px;
-  }
-
-  .name{
-    font-weight:900;
-    letter-spacing:.04em;
-    font-size:14px;
-    line-height:1.2;
-    text-transform:uppercase;
-    margin:0;
-  }
-
-  .sub{
-    margin-top:8px;
-    color:rgba(255,255,255,.52);
-    font-weight:800;
-    letter-spacing:.12em;
-    font-size:11px;
-    text-transform:uppercase;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .pill{
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);
-    padding:6px 10px;
-    border-radius:999px;
-  }
-
-  .empty{
-    margin-top:16px;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    border-radius:22px;
-    padding:18px;
-    color:rgba(255,255,255,.70);
-    font-weight:700;
-    text-align:center;
-  }
-
-  .footer{
-    margin-top:16px;
-    color:rgba(255,255,255,.40);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:.08em;
-    text-align:center;
-  }
-</style>
-</head>
-<body>
-<div class="bg"></div>
-
-<div class="wrap">
-
-  <div class="top-banner">
-    <img src="__TOP_BANNER__" alt="Cards banner"/>
-    <div class="top-copy">
-      <div class="eyebrow">🃏 Cards • Source Baltigo</div>
-      <div class="title">Coleção de Personagens</div>
-      <div class="subtitle">Obras, personagens e artes já preparadas</div>
-    </div>
-  </div>
-
-  <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
-  </div>
-
-  <div class="search">
-    <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar obra..." />
-  </div>
-
-  <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhuma obra encontrada.</div>
-
-  <div class="footer">Source Baltigo • Cards</div>
-</div>
-
-<script>
-  const api = "/api/cards/animes";
-  let fullData = [];
-  let filteredData = [];
-
-  function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#039;"
-    }[m]));
-  }
-
-  function pickCover(item){
-    if (item.cover_image && item.cover_image.length > 5) return item.cover_image;
-    if (item.banner_image && item.banner_image.length > 5) return item.banner_image;
-    return "__TOP_BANNER__";
-  }
-
-  function render(){
-    const box = document.getElementById("cards");
-    const empty = document.getElementById("emptyBox");
-    const stats = document.getElementById("statsTxt");
-
-    stats.textContent = "TOTAL DE OBRAS: " + filteredData.length;
-
-    if (!filteredData.length){
-      box.innerHTML = "";
-      empty.style.display = "block";
-      return;
-    }
-
-    empty.style.display = "none";
-
-    let html = "";
-    for (const item of filteredData){
-      html += `
-        <div class="card" onclick="openAnime(${item.anime_id})">
-          <div class="cover">
-            <img src="${esc(pickCover(item))}" alt="${esc(item.anime)}" loading="lazy"/>
-            <div class="count-pill">${item.characters_count || 0} chars</div>
-          </div>
-          <div class="meta">
-            <p class="name">${esc(item.anime)}</p>
-            <div class="sub">
-              <span class="pill">ID ${item.anime_id}</span>
-              <span class="pill">CARDS</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    box.innerHTML = html;
-  }
-
-  function applySearch(){
-    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
-
-    if (!q){
-      filteredData = [...fullData];
-      render();
-      return;
-    }
-
-    filteredData = fullData.filter(x => x.anime.toLowerCase().includes(q));
-    render();
-  }
-
-  function openAnime(id){
-    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id);
-  }
-
-  async function load(){
-    const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
-    const data = await res.json();
-    fullData = (data.items || []).sort((a,b) => a.anime.localeCompare(b.anime));
-    filteredData = [...fullData];
-    render();
-  }
-
-  document.getElementById("searchInput").addEventListener("input", applySearch);
-  load();
-</script>
-</body>
-</html>
-"""
-    html = html.replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
-    return HTMLResponse(html)
-
-
-@app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime_id: int = Query(...)):
-    html = """
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Cards Anime • Source Baltigo</title>
-
-<style>
-  :root{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(255,255,255,.16);
-    --glass:rgba(255,255,255,.04);
-    --shadow:0 16px 30px rgba(0,0,0,.44);
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-
-  body{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-    overflow-x:hidden;
-  }
-
-  .bg{
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-    background-size: 36px 36px;
-    opacity:.16;
-    pointer-events:none;
-    z-index:0;
-  }
-
-  .wrap{
-    position:relative;
-    z-index:1;
-    max-width:980px;
-    margin:0 auto;
-    padding:18px 14px 42px;
-  }
-
-  .hero{
-    width:100%;
-    min-height:230px;
-    border-radius:26px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    box-shadow:var(--shadow);
-    position:relative;
-    background:#101827;
-  }
-
-  .hero img{
-    width:100%;
-    height:230px;
-    object-fit:cover;
-    display:block;
-  }
-
-  .hero:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.80));
-    pointer-events:none;
-  }
-
-  .hero-copy{
-    position:absolute;
-    left:18px;
-    right:18px;
-    bottom:16px;
-    z-index:2;
-  }
-
-  .back{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    border:1px solid rgba(255,255,255,.16);
-    background:rgba(0,0,0,.28);
-    color:rgba(255,255,255,.95);
-    text-decoration:none;
-    backdrop-filter:blur(8px);
-    border-radius:999px;
-    padding:8px 12px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-  }
-
-  .title{
-    margin-top:12px;
-    font-size:28px;
-    line-height:1.05;
-    font-weight:900;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    text-shadow:0 6px 20px rgba(0,0,0,.45);
-  }
-
-  .subtitle{
-    margin-top:8px;
-    color:rgba(255,255,255,.78);
-    font-weight:700;
-    letter-spacing:.10em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .head{
-    padding:18px 4px 8px;
-  }
-
-  .stats{
-    color:var(--muted);
-    font-weight:800;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .search{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:18px;
-    padding:13px 14px;
-    box-shadow:0 10px 18px rgba(0,0,0,.32);
-  }
-
-  .search input{
-    width:100%;
-    border:0;
-    outline:none;
-    background:transparent;
-    color:var(--txt);
-    font-size:14px;
-  }
-
-  .search input::placeholder{
-    color:rgba(255,255,255,.38);
-    font-weight:800;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-  }
-
-  .cards{
-    margin-top:16px;
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:12px;
-  }
-
-  @media (min-width:720px){
-    .hero img{ height:260px; }
-    .cards{ grid-template-columns:repeat(3,1fr); }
-  }
-
-  .card{
-    border-radius:24px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    box-shadow:0 18px 30px rgba(0,0,0,.42);
-    transition:transform .10s ease, border-color .12s ease;
-    position:relative;
-  }
-
-  .card:hover{
-    transform:translateY(-2px);
-    border-color:var(--stroke2);
-  }
-
-  .char-image{
-    width:100%;
-    height:280px;
-    position:relative;
-    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
-  }
-
-  .char-image img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .char-image:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.58));
-    pointer-events:none;
-  }
-
-  .id-pill{
-    position:absolute;
-    right:12px;
-    bottom:12px;
-    z-index:2;
-    border-radius:999px;
-    padding:8px 10px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.95);
-    background:rgba(0,0,0,.32);
-    border:1px solid rgba(255,255,255,.18);
-    backdrop-filter:blur(8px);
-  }
-
-  .meta{
-    padding:13px 14px 15px;
-  }
-
-  .name{
-    font-weight:900;
-    letter-spacing:.04em;
-    font-size:14px;
-    line-height:1.2;
-    text-transform:uppercase;
-    margin:0;
-  }
-
-  .sub{
-    margin-top:8px;
-    color:rgba(255,255,255,.52);
-    font-weight:800;
-    letter-spacing:.12em;
-    font-size:11px;
-    text-transform:uppercase;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .pill{
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);
-    padding:6px 10px;
-    border-radius:999px;
-  }
-
-  .empty{
-    margin-top:16px;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    border-radius:22px;
-    padding:18px;
-    color:rgba(255,255,255,.70);
-    font-weight:700;
-    text-align:center;
-  }
-
-  .footer{
-    margin-top:16px;
-    color:rgba(255,255,255,.40);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:.08em;
-    text-align:center;
-  }
-</style>
-</head>
-<body>
-<div class="bg"></div>
-
-<div class="wrap">
-
-  <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner"/>
-    <div class="hero-copy">
-      <a class="back" href="/cards">← Voltar</a>
-      <div class="title" id="animeTitle">Carregando...</div>
-      <div class="subtitle" id="animeSub">Personagens</div>
-    </div>
-  </div>
-
-  <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
-  </div>
-
-  <div class="search">
-    <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar personagem..." />
-  </div>
-
-  <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhum personagem encontrado.</div>
-
-  <div class="footer">Source Baltigo • Cards</div>
-</div>
-
-<script>
-  const animeId = __ANIME_ID__;
-  const api = "/api/cards/characters?anime_id=" + animeId + "&limit=5000";
-  const fallbackTop = "__TOP_BANNER__";
-
-  let animeMeta = null;
-  let fullData = [];
-  let filteredData = [];
-
-  function esc(s){
-    return (s || "").replace(/[&<>\"']/g, (m) => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#039;"
-    }[m]));
-  }
-
-  function pickHero(meta){
-    if (meta.banner_image && meta.banner_image.length > 5) return meta.banner_image;
-    if (meta.cover_image && meta.cover_image.length > 5) return meta.cover_image;
-    return fallbackTop;
-  }
-
-  function pickCharImage(item){
-    if (item.image && item.image.length > 5) return item.image;
-    return fallbackTop;
-  }
-
-  function render(){
-    const box = document.getElementById("cards");
-    const empty = document.getElementById("emptyBox");
-    const stats = document.getElementById("statsTxt");
-
-    stats.textContent = "TOTAL DE PERSONAGENS: " + filteredData.length;
-
-    if (!filteredData.length){
-      box.innerHTML = "";
-      empty.style.display = "block";
-      return;
-    }
-
-    empty.style.display = "none";
-
-    let html = "";
-    for (const item of filteredData){
-      html += `
-        <div class="card">
-          <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
-            <div class="id-pill">ID ${item.id}</div>
-          </div>
-          <div class="meta">
-            <p class="name">${esc(item.name)}</p>
-            <div class="sub">
-              <span class="pill">${esc(item.anime)}</span>
-              <span class="pill">CARD</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    box.innerHTML = html;
-  }
-
-  function applySearch(){
-    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
-
-    if (!q){
-      filteredData = [...fullData];
-      render();
-      return;
-    }
-
-    filteredData = fullData.filter(x => x.name.toLowerCase().includes(q));
-    render();
-  }
-
-  async function load(){
-    const res = await fetch(api + "&_ts=" + Date.now());
-    const data = await res.json();
-
-    animeMeta = data.anime || null;
-    fullData = (data.items || []).sort((a,b) => a.name.localeCompare(b.name));
-    filteredData = [...fullData];
-
-    if (animeMeta){
-      document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
-      document.getElementById("animeSub").textContent = "ID " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " personagens";
-      document.getElementById("heroImg").src = pickHero(animeMeta);
-    }
-
-    render();
-  }
-
-  document.getElementById("searchInput").addEventListener("input", applySearch);
-  load();
-</script>
-</body>
-</html>
-"""
-    html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
-    return HTMLResponse(html)
-
-
-
-# =========================
-# SISTEMA DE PEDIDOS (WEBAPP)
-# =========================
-import time
-
-MAX_PEDIDOS = 3
-WINDOW_PEDIDOS = 24 * 60 * 60
-_PEDIDOS_CACHE = {}
-
-def _pode_pedir(uid:int):
-    now = int(time.time())
-    lst = _PEDIDOS_CACHE.get(uid, [])
-    lst = [t for t in lst if now - t < WINDOW_PEDIDOS]
-    _PEDIDOS_CACHE[uid] = lst
-    return len(lst) < MAX_PEDIDOS
-
-def _registrar_pedido(uid:int):
-    _PEDIDOS_CACHE.setdefault(uid, []).append(int(time.time()))
-
-@app.post("/api/pedido")
-async def api_pedido(payload: dict = Body(...)):
-    try:
-        uid = int(payload.get("uid") or 0)
-        nome = str(payload.get("nome") or "").strip()
-        tipo = str(payload.get("tipo") or "anime")
-
-        if uid <= 0 or not nome:
-            return {"ok": False, "msg": "Dados inválidos."}
-
-        if not _pode_pedir(uid):
-            return {"ok": False, "msg": "Limite de 3 pedidos a cada 24h."}
-
-        _registrar_pedido(uid)
-
-        canal = os.getenv("CANAL_PEDIDOS")
-        if canal and BOT_TOKEN:
-            texto = f"""📥 NOVO PEDIDO
-
-Usuário: {uid}
-Tipo: {tipo}
-
-Pedido:
-{nome}
-"""
-
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(url, json={
-                    "chat_id": canal,
-                    "text": texto
-                })
-
-        return {"ok": True}
-
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)}, status_code=500)
-
-
-# =========================================================
-# CARDS SYSTEM — WEBAPP FINAL
-# Base: data/personagens_anilist.txt
-# Overrides: data/cards_overrides.json
-# =========================================================
-
-from fastapi import Query
-from fastapi.responses import HTMLResponse, JSONResponse
-
-from cards_service import (
-    build_cards_final_data,
-    find_anime,
-    list_subcategories,
-    reload_cards_cache,
-    search_characters,
-)
-
-CARDS_TOP_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZ0sajmmrHXRy1AZxkfEGC2Lx4yC6A80MAAJOC2sb1ZFYRQ5kxLI09cC2AQADAgADeQADOgQ/photo.jpg"
-
-
-@app.get("/api/cards/reload")
-def api_cards_reload():
-    reload_cards_cache()
-    data = build_cards_final_data(force_reload=True)
-    return JSONResponse({
-        "ok": True,
-        "total_animes": len(data["animes_list"]),
-        "total_characters": len(data["characters_by_id"]),
-    })
-
-
-@app.get("/api/cards/animes")
-def api_cards_animes(
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    data = build_cards_final_data()
-    items = list(data["animes_list"])
-
-    qn = q.strip().lower()
-    if qn:
-        items = [x for x in items if qn in x["anime"].lower()]
-
-    total = len(items)
-    items = items[offset: offset + limit]
-
-    return JSONResponse({
-        "ok": True,
-        "total": total,
-        "items": items,
-    })
-
-
-@app.get("/api/cards/characters")
-def api_cards_characters(
-    anime_id: int = Query(...),
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    data = build_cards_final_data()
-    anime = data["animes_by_id"].get(anime_id)
-
-    if not anime:
-        return JSONResponse({
-            "ok": False,
-            "anime": None,
-            "total": 0,
-            "items": [],
-        })
-
-    chars = list(data["characters_by_anime"].get(anime_id, []))
-
-    qn = q.strip().lower()
-    if qn:
-        chars = [x for x in chars if qn in x["name"].lower()]
-
-    total = len(chars)
-    items = chars[offset: offset + limit]
-
-    return JSONResponse({
-        "ok": True,
-        "anime": anime,
-        "total": total,
-        "items": items,
-    })
-
-
-@app.get("/api/cards/search")
-def api_cards_search(
-    q: str = Query(..., min_length=1, max_length=120),
-    limit: int = Query(default=100, ge=1, le=500),
-):
-    items = search_characters(q, limit=limit)
-    return JSONResponse({
-        "ok": True,
-        "total": len(items),
-        "items": items,
-    })
-
-
-@app.get("/api/cards/find-anime")
-def api_cards_find_anime(q: str = Query(..., min_length=1, max_length=120)):
-    anime = find_anime(q)
-    return JSONResponse({
-        "ok": bool(anime),
-        "anime": anime,
-    })
-
-
-@app.get("/api/cards/subcategories")
-def api_cards_subcategories():
-    return JSONResponse({
-        "ok": True,
-        "items": list_subcategories(),
-    })
-
-
-@app.get("/api/cards/subcategory")
-def api_cards_subcategory(
-    name: str = Query(..., min_length=1, max_length=120),
-    q: str = Query(default="", max_length=120),
-    limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
-):
-    data = build_cards_final_data()
-    chars = list(data["subcategories"].get(name, []))
-
-    qn = q.strip().lower()
-    if qn:
-        chars = [x for x in chars if qn in x["name"].lower()]
-
-    total = len(chars)
-    items = chars[offset: offset + limit]
-
-    return JSONResponse({
-        "ok": True,
-        "subcategory": name,
-        "total": total,
-        "items": items,
-    })
-
-
-@app.get("/cards", response_class=HTMLResponse)
-def cards_page():
-    html = """
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Cards • Source Baltigo</title>
-
-<style>
-  :root{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(255,255,255,.16);
-    --glass:rgba(255,255,255,.04);
-    --shadow:0 16px 30px rgba(0,0,0,.44);
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-
-  body{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-    overflow-x:hidden;
-  }
-
-  .bg{
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-    background-size: 36px 36px;
-    opacity:.16;
-    pointer-events:none;
-    z-index:0;
-  }
-
-  .wrap{
-    position:relative;
-    z-index:1;
-    max-width:1080px;
-    margin:0 auto;
-    padding:18px 14px 42px;
-  }
-
-  .top-banner{
-    width:100%;
-    border-radius:26px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    box-shadow:var(--shadow);
-    position:relative;
-    background:#000;
-    min-height:220px;
-  }
-
-  .top-banner img{
-    width:100%;
-    height:220px;
-    object-fit:cover;
-    display:block;
-  }
-
-  .top-banner:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
-    pointer-events:none;
-  }
-
-  .top-copy{
-    position:absolute;
-    left:18px;
-    right:18px;
-    bottom:16px;
-    z-index:2;
-  }
-
-  .eyebrow{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    border:1px solid rgba(255,255,255,.16);
-    background:rgba(0,0,0,.26);
-    backdrop-filter: blur(8px);
-    border-radius:999px;
-    padding:8px 12px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-  }
-
-  .title{
-    margin-top:12px;
-    font-size:28px;
-    line-height:1.05;
-    font-weight:900;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    text-shadow:0 6px 20px rgba(0,0,0,.45);
-  }
-
-  .subtitle{
-    margin-top:8px;
-    color:rgba(255,255,255,.78);
-    font-weight:700;
-    letter-spacing:.10em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .head{
-    padding:18px 4px 8px;
-    display:flex;
-    align-items:flex-end;
-    justify-content:space-between;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-
-  .stats{
-    color:var(--muted);
-    font-weight:800;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .search-stack{
-    display:grid;
-    gap:12px;
-    margin-top:2px;
-  }
-
-  .search{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:18px;
-    padding:13px 14px;
-    box-shadow:0 10px 18px rgba(0,0,0,.32);
-  }
-
-  .search input{
-    width:100%;
-    border:0;
-    outline:none;
-    background:transparent;
-    color:var(--txt);
-    font-size:14px;
-  }
-
-  .search input::placeholder{
-    color:rgba(255,255,255,.38);
-    font-weight:800;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-  }
-
-  .section-title{
-    margin-top:22px;
-    margin-bottom:10px;
-    font-size:15px;
-    font-weight:900;
-    letter-spacing:.10em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.78);
-  }
-
-  .subs{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-
-  .sub-btn{
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);
-    color:#fff;
-    padding:10px 14px;
-    border-radius:999px;
-    cursor:pointer;
-    font-size:12px;
-    font-weight:800;
-    letter-spacing:.06em;
-  }
-
-  .cards{
-    margin-top:16px;
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:12px;
-  }
-
-  @media (min-width:720px){
-    .top-banner img{ height:250px; }
-    .cards{ grid-template-columns:repeat(3,1fr); }
-  }
-
-  .card{
-    cursor:pointer;
-    border-radius:24px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    box-shadow:0 18px 30px rgba(0,0,0,.42);
-    transition:transform .10s ease, border-color .12s ease, box-shadow .12s ease;
-    position:relative;
-  }
-
-  .card:hover{
-    transform:translateY(-2px);
-    border-color:var(--stroke2);
-    box-shadow:0 20px 34px rgba(0,0,0,.5);
-  }
-
-  .cover{
-    width:100%;
-    height:250px;
-    position:relative;
-    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
-  }
-
-  .cover img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .cover:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
-    pointer-events:none;
-  }
-
-  .count-pill{
-    position:absolute;
-    right:12px;
-    bottom:12px;
-    z-index:2;
-    border-radius:999px;
-    padding:8px 10px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.95);
-    background:rgba(0,0,0,.32);
-    border:1px solid rgba(255,255,255,.18);
-    backdrop-filter:blur(8px);
-  }
-
-  .meta{
-    padding:13px 14px 15px;
-  }
-
-  .name{
-    font-weight:900;
-    letter-spacing:.04em;
-    font-size:14px;
-    line-height:1.2;
-    text-transform:uppercase;
-    margin:0;
-  }
-
-  .sub{
-    margin-top:8px;
-    color:rgba(255,255,255,.52);
-    font-weight:800;
-    letter-spacing:.12em;
-    font-size:11px;
-    text-transform:uppercase;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .pill{
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);
-    padding:6px 10px;
-    border-radius:999px;
-  }
-
-  .empty{
-    margin-top:16px;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    border-radius:22px;
-    padding:18px;
-    color:rgba(255,255,255,.70);
-    font-weight:700;
-    text-align:center;
-  }
-
-  .footer{
-    margin-top:16px;
-    color:rgba(255,255,255,.40);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:.08em;
-    text-align:center;
-  }
-</style>
-</head>
-<body>
-<div class="bg"></div>
-
-<div class="wrap">
-
-  <div class="top-banner">
-    <img src="__TOP_BANNER__" alt="Cards banner"/>
-    <div class="top-copy">
-      <div class="eyebrow">🃏 Cards • Source Baltigo</div>
-      <div class="title">Coleção de Personagens</div>
-      <div class="subtitle">Obras, subcategorias e personagens</div>
-    </div>
-  </div>
-
-  <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
-  </div>
-
-  <div class="search-stack">
-    <div class="search">
-      <span style="opacity:.62;font-weight:900;">🎬</span>
-      <input id="searchInput" type="text" placeholder="Buscar obra..." />
-    </div>
-
-    <div class="search">
-      <span style="opacity:.62;font-weight:900;">🧍</span>
-      <input id="charSearchInput" type="text" placeholder="Buscar personagem e apertar Enter..." />
-    </div>
-  </div>
-
-  <div class="section-title">Subcategorias</div>
-  <div class="subs" id="subsBox"></div>
-
-  <div class="section-title">Obras</div>
-  <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhuma obra encontrada.</div>
-
-  <div class="footer">Source Baltigo • Cards</div>
-</div>
-
-<script>
-  const api = "/api/cards/animes";
-  let fullData = [];
-  let filteredData = [];
-
-  function esc(s){
-    return String(s || "").replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#039;"
-    }[m]));
-  }
-
-  function pickCover(item){
-    if (item.cover_image && item.cover_image.length > 5) return item.cover_image;
-    if (item.banner_image && item.banner_image.length > 5) return item.banner_image;
-    return "__TOP_BANNER__";
-  }
-
-  function render(){
-    const box = document.getElementById("cards");
-    const empty = document.getElementById("emptyBox");
-    const stats = document.getElementById("statsTxt");
-
-    stats.textContent = "TOTAL DE OBRAS: " + filteredData.length;
-
-    if (!filteredData.length){
-      box.innerHTML = "";
-      empty.style.display = "block";
-      return;
-    }
-
-    empty.style.display = "none";
-
-    let html = "";
-    for (const item of filteredData){
-      html += `
-        <div class="card" onclick="openAnime(${item.anime_id})">
-          <div class="cover">
-            <img src="${esc(pickCover(item))}" alt="${esc(item.anime)}" loading="lazy"/>
-            <div class="count-pill">${item.characters_count || 0} chars</div>
-          </div>
-          <div class="meta">
-            <p class="name">${esc(item.anime)}</p>
-            <div class="sub">
-              <span class="pill">ID ${item.anime_id}</span>
-              <span class="pill">CARDS</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    box.innerHTML = html;
-  }
-
-  function applySearch(){
-    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
-
-    if (!q){
-      filteredData = [...fullData];
-      render();
-      return;
-    }
-
-    filteredData = fullData.filter(x => String(x.anime || "").toLowerCase().includes(q));
-    render();
-  }
-
-  function openAnime(id){
-    window.location.href = "/cards/anime?anime_id=" + encodeURIComponent(id);
-  }
-
-  async function loadSubs(){
-    const subsBox = document.getElementById("subsBox");
-    const res = await fetch("/api/cards/subcategories?_ts=" + Date.now());
-    const data = await res.json();
-    const items = data.items || [];
-
-    if (!items.length){
-      subsBox.innerHTML = '<div style="color:rgba(255,255,255,.45);font-weight:700;">Nenhuma subcategoria criada.</div>';
-      return;
-    }
-
-    let html = "";
-    for (const item of items){
-      html += `<button class="sub-btn" onclick="openSubcategory('${esc(item.name)}')">${esc(item.name)} (${item.count || 0})</button>`;
-    }
-    subsBox.innerHTML = html;
-  }
-
-  function openSubcategory(name){
-    window.location.href = "/cards/subcategory?name=" + encodeURIComponent(name);
-  }
-
-  async function load(){
-    const res = await fetch(api + "?limit=5000&_ts=" + Date.now());
-    const data = await res.json();
-    fullData = (data.items || []).sort((a,b) => String(a.anime || "").localeCompare(String(b.anime || "")));
-    filteredData = [...fullData];
-    render();
-  }
-
-  document.getElementById("searchInput").addEventListener("input", applySearch);
-
-  document.getElementById("charSearchInput").addEventListener("keydown", function(e){
-    if (e.key !== "Enter") return;
-    const q = (this.value || "").trim();
-    if (!q) return;
-    window.location.href = "/cards/search?q=" + encodeURIComponent(q);
-  });
-
-  load();
-  loadSubs();
-</script>
-</body>
-</html>
-"""
-    html = html.replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
-    return HTMLResponse(html)
-
-
-@app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime_id: int = Query(...)):
-    html = """
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Cards Anime • Source Baltigo</title>
-
-<style>
-  :root{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(255,255,255,.16);
-    --glass:rgba(255,255,255,.04);
-    --shadow:0 16px 30px rgba(0,0,0,.44);
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-
-  body{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-    overflow-x:hidden;
-  }
-
-  .bg{
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-    background-size: 36px 36px;
-    opacity:.16;
-    pointer-events:none;
-    z-index:0;
-  }
-
-  .wrap{
-    position:relative;
-    z-index:1;
-    max-width:980px;
-    margin:0 auto;
-    padding:18px 14px 42px;
-  }
-
-  .hero{
-    width:100%;
-    min-height:230px;
-    border-radius:26px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    box-shadow:var(--shadow);
-    position:relative;
-    background:#101827;
-  }
-
-  .hero img{
-    width:100%;
-    height:230px;
-    object-fit:cover;
-    display:block;
-  }
-
-  .hero:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.80));
-    pointer-events:none;
-  }
-
-  .hero-copy{
-    position:absolute;
-    left:18px;
-    right:18px;
-    bottom:16px;
-    z-index:2;
-  }
-
-  .back{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    border:1px solid rgba(255,255,255,.16);
-    background:rgba(0,0,0,.28);
-    color:rgba(255,255,255,.95);
-    text-decoration:none;
-    backdrop-filter:blur(8px);
-    border-radius:999px;
-    padding:8px 12px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-  }
-
-  .title{
-    margin-top:12px;
-    font-size:28px;
-    line-height:1.05;
-    font-weight:900;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    text-shadow:0 6px 20px rgba(0,0,0,.45);
-  }
-
-  .subtitle{
-    margin-top:8px;
-    color:rgba(255,255,255,.78);
-    font-weight:700;
-    letter-spacing:.10em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .head{
-    padding:18px 4px 8px;
-  }
-
-  .stats{
-    color:var(--muted);
-    font-weight:800;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    font-size:12px;
-  }
-
-  .search{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:18px;
-    padding:13px 14px;
-    box-shadow:0 10px 18px rgba(0,0,0,.32);
-  }
-
-  .search input{
-    width:100%;
-    border:0;
-    outline:none;
-    background:transparent;
-    color:var(--txt);
-    font-size:14px;
-  }
-
-  .search input::placeholder{
-    color:rgba(255,255,255,.38);
-    font-weight:800;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-  }
-
-  .cards{
-    margin-top:16px;
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:12px;
-  }
-
-  @media (min-width:720px){
-    .hero img{ height:260px; }
-    .cards{ grid-template-columns:repeat(3,1fr); }
-  }
-
-  .card{
-    border-radius:24px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    box-shadow:0 18px 30px rgba(0,0,0,.42);
-    transition:transform .10s ease, border-color .12s ease;
-    position:relative;
-  }
-
-  .card:hover{
-    transform:translateY(-2px);
-    border-color:var(--stroke2);
-  }
-
-  .char-image{
-    width:100%;
-    height:280px;
-    position:relative;
-    background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
-  }
-
-  .char-image img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .char-image:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.58));
-    pointer-events:none;
-  }
-
-  .id-pill{
-    position:absolute;
-    right:12px;
-    bottom:12px;
-    z-index:2;
-    border-radius:999px;
-    padding:8px 10px;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.95);
-    background:rgba(0,0,0,.32);
-    border:1px solid rgba(255,255,255,.18);
-    backdrop-filter:blur(8px);
-  }
-
-  .meta{
-    padding:13px 14px 15px;
-  }
-
-  .name{
-    font-weight:900;
-    letter-spacing:.04em;
-    font-size:14px;
-    line-height:1.2;
-    text-transform:uppercase;
-    margin:0;
-  }
-
-  .sub{
-    margin-top:8px;
-    color:rgba(255,255,255,.52);
-    font-weight:800;
-    letter-spacing:.12em;
-    font-size:11px;
-    text-transform:uppercase;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .pill{
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);
-    padding:6px 10px;
-    border-radius:999px;
-  }
-
-  .empty{
-    margin-top:16px;
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.03);
-    border-radius:22px;
-    padding:18px;
-    color:rgba(255,255,255,.70);
-    font-weight:700;
-    text-align:center;
-  }
-
-  .footer{
-    margin-top:16px;
-    color:rgba(255,255,255,.40);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:.08em;
-    text-align:center;
-  }
-</style>
-</head>
-<body>
-<div class="bg"></div>
-
-<div class="wrap">
-
-  <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner"/>
-    <div class="hero-copy">
-      <a class="back" href="/cards">← Voltar</a>
-      <div class="title" id="animeTitle">Carregando...</div>
-      <div class="subtitle" id="animeSub">Personagens</div>
-    </div>
-  </div>
-
-  <div class="head">
-    <div class="stats" id="statsTxt">Carregando...</div>
-  </div>
-
-  <div class="search">
-    <span style="opacity:.62;font-weight:900;">🔎</span>
-    <input id="searchInput" type="text" placeholder="Buscar personagem..." />
-  </div>
-
-  <div class="cards" id="cards"></div>
-  <div class="empty" id="emptyBox" style="display:none;">Nenhum personagem encontrado.</div>
-
-  <div class="footer">Source Baltigo • Cards</div>
-</div>
-
-<script>
-  const animeId = __ANIME_ID__;
-  const api = "/api/cards/characters?anime_id=" + animeId + "&limit=5000";
-  const fallbackTop = "__TOP_BANNER__";
-
-  let animeMeta = null;
-  let fullData = [];
-  let filteredData = [];
-
-  function esc(s){
-    return String(s || "").replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#039;"
-    }[m]));
-  }
-
-  function pickHero(meta){
-    if (meta.banner_image && meta.banner_image.length > 5) return meta.banner_image;
-    if (meta.cover_image && meta.cover_image.length > 5) return meta.cover_image;
-    return fallbackTop;
-  }
-
-  function pickCharImage(item){
-    if (item.image && item.image.length > 5) return item.image;
-    return fallbackTop;
-  }
-
-  function render(){
-    const box = document.getElementById("cards");
-    const empty = document.getElementById("emptyBox");
-    const stats = document.getElementById("statsTxt");
-
-    stats.textContent = "TOTAL DE PERSONAGENS: " + filteredData.length;
-
-    if (!filteredData.length){
-      box.innerHTML = "";
-      empty.style.display = "block";
-      return;
-    }
-
-    empty.style.display = "none";
-
-    let html = "";
-    for (const item of filteredData){
-      html += `
-        <div class="card">
-          <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
-            <div class="id-pill">ID ${item.id}</div>
-          </div>
-          <div class="meta">
-            <p class="name">${esc(item.name)}</p>
-            <div class="sub">
-              <span class="pill">${esc(item.anime)}</span>
-              <span class="pill">CARD</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    box.innerHTML = html;
-  }
-
-  function applySearch(){
-    const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
-
-    if (!q){
-      filteredData = [...fullData];
-      render();
-      return;
-    }
-
-    filteredData = fullData.filter(x => String(x.name || "").toLowerCase().includes(q));
-    render();
-  }
-
-  async function load(){
-    const res = await fetch(api + "&_ts=" + Date.now());
-    const data = await res.json();
-
-    animeMeta = data.anime || null;
-    fullData = (data.items || []).sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
-    filteredData = [...fullData];
-
-    if (animeMeta){
-      document.getElementById("animeTitle").textContent = animeMeta.anime || "Obra";
-      document.getElementById("animeSub").textContent = "ID " + animeMeta.anime_id + " • " + (animeMeta.characters_count || fullData.length) + " personagens";
-      document.getElementById("heroImg").src = pickHero(animeMeta);
-    } else {
-      document.getElementById("animeTitle").textContent = "Obra não encontrada";
-      document.getElementById("animeSub").textContent = "Verifique o anime_id";
-      document.getElementById("heroImg").src = fallbackTop;
-    }
-
-    render();
-  }
-
-  document.getElementById("searchInput").addEventListener("input", applySearch);
-  load();
-</script>
-</body>
-</html>
-"""
-    html = html.replace("__ANIME_ID__", str(anime_id)).replace("__TOP_BANNER__", CARDS_TOP_BANNER_URL)
-    return HTMLResponse(html)
-
-
-@app.get("/cards/subcategory", response_class=HTMLResponse)
-def cards_subcategory_page(name: str = Query(...)):
-    safe_name = str(name).replace("\\", "\\\\").replace("'", "\\'")
-    html = f"""
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Subcategoria • Source Baltigo</title>
-
-<style>
-  :root{{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(255,255,255,.16);
-    --shadow:0 16px 30px rgba(0,0,0,.44);
-  }}
-  *{{ box-sizing:border-box; }}
-  body{{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-  }}
-  .wrap{{max-width:980px;margin:0 auto;padding:18px 14px 42px;}}
-  .back{{
-    display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#fff;
-    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
-    border-radius:999px;padding:8px 12px;font-size:11px;font-weight:900;
-    letter-spacing:.12em;text-transform:uppercase;
-  }}
-  .title{{margin:18px 0 8px;font-size:28px;font-weight:900;text-transform:uppercase;}}
-  .meta{{color:var(--muted);font-weight:800;letter-spacing:.10em;text-transform:uppercase;font-size:12px;margin-bottom:16px;}}
-  .cards{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}}
-  @media (min-width:720px){{ .cards{{grid-template-columns:repeat(3,1fr);}} }}
-  .card{{border-radius:24px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
-  .char-image{{width:100%;height:280px;background:#111;}}
-  .char-image img{{width:100%;height:100%;object-fit:cover;display:block;}}
-  .meta2{{padding:13px 14px 15px;}}
-  .name{{font-weight:900;font-size:14px;text-transform:uppercase;margin:0;}}
-  .sub{{margin-top:8px;color:rgba(255,255,255,.52);font-weight:800;letter-spacing:.12em;font-size:11px;text-transform:uppercase;}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <a class="back" href="/cards">← Voltar</a>
-  <div class="title">Subcategoria: {name}</div>
-  <div id="meta" class="meta">Carregando...</div>
-  <div id="cards" class="cards"></div>
-</div>
-
-<script>
-const subName = '{safe_name}';
-const cards = document.getElementById("cards");
-const meta = document.getElementById("meta");
-const fallbackTop = "{CARDS_TOP_BANNER_URL}";
-
-function esc(s){{
-  return String(s || "").replace(/[&<>"']/g, (m) => ({{
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#039;"
-  }})[m]);
-}}
-
-async function load(){{
-  const res = await fetch("/api/cards/subcategory?name=" + encodeURIComponent(subName) + "&limit=5000&_ts=" + Date.now());
-  const data = await res.json();
-  const items = data.items || [];
-  meta.textContent = "TOTAL DE PERSONAGENS: " + items.length;
-
-  let html = "";
-  for (const item of items){{
-    html += `
-      <div class="card">
-        <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
-        </div>
-        <div class="meta2">
-          <p class="name">${{esc(item.name)}}</p>
-          <div class="sub">${{esc(item.anime)}}</div>
-        </div>
-      </div>
-    `;
-  }}
-  cards.innerHTML = html;
-}}
-
-load();
-</script>
-</body>
-</html>
-"""
-    return HTMLResponse(html)
-
-
-@app.get("/cards/search", response_class=HTMLResponse)
-def cards_search_page(q: str = Query(...)):
-    safe_q = str(q).replace("\\", "\\\\").replace("'", "\\'")
-    html = f"""
-<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Busca • Source Baltigo</title>
-
-<style>
-  :root{{
-    --bg0:#070b12;
-    --bg1:#0a1220;
-    --txt:rgba(255,255,255,.94);
-    --muted:rgba(255,255,255,.58);
-    --stroke:rgba(255,255,255,.10);
-  }}
-  *{{ box-sizing:border-box; }}
-  body{{
-    margin:0;
-    color:var(--txt);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));
-  }}
-  .wrap{{max-width:980px;margin:0 auto;padding:18px 14px 42px;}}
-  .back{{
-    display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#fff;
-    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
-    border-radius:999px;padding:8px 12px;font-size:11px;font-weight:900;
-    letter-spacing:.12em;text-transform:uppercase;
-  }}
-  .title{{margin:18px 0 8px;font-size:28px;font-weight:900;text-transform:uppercase;}}
-  .meta{{color:var(--muted);font-weight:800;letter-spacing:.10em;text-transform:uppercase;font-size:12px;margin-bottom:16px;}}
-  .cards{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}}
-  @media (min-width:720px){{ .cards{{grid-template-columns:repeat(3,1fr);}} }}
-  .card{{border-radius:24px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.03);}}
-  .char-image{{width:100%;height:280px;background:#111;}}
-  .char-image img{{width:100%;height:100%;object-fit:cover;display:block;}}
-  .meta2{{padding:13px 14px 15px;}}
-  .name{{font-weight:900;font-size:14px;text-transform:uppercase;margin:0;}}
-  .sub{{margin-top:8px;color:rgba(255,255,255,.52);font-weight:800;letter-spacing:.12em;font-size:11px;text-transform:uppercase;}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <a class="back" href="/cards">← Voltar</a>
-  <div class="title">Busca: {q}</div>
-  <div id="meta" class="meta">Carregando...</div>
-  <div id="cards" class="cards"></div>
-</div>
-
-<script>
-const searchQ = '{safe_q}';
-const cards = document.getElementById("cards");
-const meta = document.getElementById("meta");
-const fallbackTop = "{CARDS_TOP_BANNER_URL}";
-
-function esc(s){{
-  return String(s || "").replace(/[&<>"']/g, (m) => ({{
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#039;"
-  }})[m]);
-}}
-
-async function load(){{
-  const res = await fetch("/api/cards/search?q=" + encodeURIComponent(searchQ) + "&limit=500&_ts=" + Date.now());
-  const data = await res.json();
-  const items = data.items || [];
-  meta.textContent = "TOTAL DE RESULTADOS: " + items.length;
-
-  let html = "";
-  for (const item of items){{
-    html += `
-      <div class="card">
-        <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
-        </div>
-        <div class="meta2">
-          <p class="name">${{esc(item.name)}}</p>
-          <div class="sub">${{esc(item.anime)}}</div>
-        </div>
-      </div>
-    `;
-  }}
-  cards.innerHTML = html;
-}}
-
-load();
-</script>
-</body>
-</html>
-"""
-    return HTMLResponse(html)
-
-# =========================
-# CONFIG — PEDIDOS / REPORTS
-# =========================
-import html
-import traceback
-import httpx
-
-from fastapi import Body, Query
-from fastapi.responses import HTMLResponse, JSONResponse
-
-from database import (
-    create_media_request_tables,
-    count_user_media_requests_last_24h,
-    media_request_exists,
-    save_media_request,
-    save_webapp_report,
-    normalize_media_title,
-)
-
-CANAL_PEDIDOS = os.getenv("CANAL_PEDIDOS", "").strip()
-PEDIDO_BANNER_URL = os.getenv(
-    "PEDIDO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZ0w54WmrME4Fk9ObOXCy_CjgTb8IHF9cAAJRC2sb1ZFYRTRdgJDi4ysfAQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-create_media_request_tables()
-
-_PEDIDO_ANIME_INDEX = {"title_norm": set(), "anilist_ids": set()}
-_PEDIDO_MANGA_INDEX = {"title_norm": set(), "anilist_ids": set()}
-
-
-def _pedido_build_index(records: List[Dict[str, Any]]):
-    idx = {"title_norm": set(), "anilist_ids": set()}
-
-    for rec in records:
-        try:
-            if not isinstance(rec, dict):
-                continue
-
-            title = str(
-                rec.get("title_raw")
-                or rec.get("titulo")
-                or rec.get("title")
-                or ""
-            ).strip()
-
-            anilist_id = None
-            anilist = rec.get("anilist")
-            if isinstance(anilist, dict):
-                title = str(anilist.get("title_display") or title).strip()
-                anilist_id = anilist.get("anilist_id") or anilist.get("id")
-
-            if title:
-                idx["title_norm"].add(normalize_media_title(title))
-
-            if anilist_id:
                 try:
-                    idx["anilist_ids"].add(int(anilist_id))
+                    conn.rollback()
                 except Exception:
                     pass
-
-        except Exception:
-            continue
-
-    return idx
+                raise
 
 
-def _pedido_reload_indexes():
-    global _PEDIDO_ANIME_INDEX, _PEDIDO_MANGA_INDEX
+# =========================================================
+# DADO HELPERS (São Paulo / horários fixos)
+# =========================================================
 
-    try:
-        anime_records = _unwrap_records(load_json(CATALOG_PATH))
-    except Exception:
-        anime_records = []
-
-    try:
-        manga_records = _unwrap_records(load_json(MANGA_CATALOG_PATH))
-    except Exception:
-        manga_records = []
-
-    _PEDIDO_ANIME_INDEX = _pedido_build_index(anime_records)
-    _PEDIDO_MANGA_INDEX = _pedido_build_index(manga_records)
+def _now_sp() -> datetime:
+    return datetime.now(SP_TZ)
 
 
-try:
-    _pedido_reload_indexes()
-except Exception as e:
-    print("[pedido] falha ao montar índices:", repr(e), flush=True)
-
-
-def _pedido_catalog_contains(media_type: str, title: str, anilist_id=None) -> bool:
-    media_type = (media_type or "").strip().lower()
-    idx = _PEDIDO_ANIME_INDEX if media_type == "anime" else _PEDIDO_MANGA_INDEX
-
-    if anilist_id:
-        try:
-            if int(anilist_id) in idx["anilist_ids"]:
-                return True
-        except Exception:
-            pass
-
-    return normalize_media_title(title) in idx["title_norm"]
-
-
-async def _pedido_anilist_search(query_text: str, media_type: str):
-    gql = """
-    query ($search: String, $type: MediaType) {
-      Page(page: 1, perPage: 12) {
-        media(search: $search, type: $type, sort: POPULARITY_DESC) {
-          id
-          title { romaji english native }
-          coverImage { large }
-          averageScore
-          format
-          status
-          seasonYear
-          episodes
-          chapters
-        }
-      }
-    }
+def _slot_parts_from_dt(dt: datetime) -> Tuple[date, int]:
     """
+    Retorna (data_base, idx_slot_creditado).
 
-    variables = {
-        "search": query_text,
-        "type": "ANIME" if media_type == "anime" else "MANGA",
+    idx:
+      0 -> 01:00
+      1 -> 04:00
+      2 -> 07:00
+      3 -> 10:00
+      4 -> 13:00
+      5 -> 16:00
+      6 -> 19:00
+      7 -> 22:00
+
+    Antes de 01:00, considera o último slot do dia anterior (22:00).
+    """
+    dt = dt.astimezone(SP_TZ)
+    h = dt.hour
+
+    if h < 1:
+        return (dt.date() - timedelta(days=1), 7)
+
+    idx = min((h - 1) // 3, 7)
+    return (dt.date(), idx)
+
+
+def _slot_number_from_dt(dt: Optional[datetime] = None) -> int:
+    if dt is None:
+        dt = _now_sp()
+    base_date, idx = _slot_parts_from_dt(dt)
+    return base_date.toordinal() * 8 + idx
+
+
+def _slot_datetime_from_number(slot_number: int) -> datetime:
+    day_ord = int(slot_number) // 8
+    idx = int(slot_number) % 8
+    d = date.fromordinal(day_ord)
+    hour = DADO_RECHARGE_HOURS[idx]
+    return datetime(d.year, d.month, d.day, hour, 0, 0, tzinfo=SP_TZ)
+
+
+def _next_recharge_dt_from_dt(dt: Optional[datetime] = None) -> datetime:
+    if dt is None:
+        dt = _now_sp()
+    dt = dt.astimezone(SP_TZ)
+
+    for hour in DADO_RECHARGE_HOURS:
+        candidate = datetime(dt.year, dt.month, dt.day, hour, 0, 0, tzinfo=SP_TZ)
+        if dt < candidate:
+            return candidate
+
+    tomorrow = dt.date() + timedelta(days=1)
+    return datetime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+        DADO_RECHARGE_HOURS[0],
+        0,
+        0,
+        tzinfo=SP_TZ,
+    )
+
+
+def _get_recharge_info() -> Dict[str, Any]:
+    now = _now_sp()
+    next_dt = _next_recharge_dt_from_dt(now)
+    return {
+        "now_iso": now.isoformat(),
+        "next_recharge_iso": next_dt.isoformat(),
+        "next_recharge_hhmm": next_dt.strftime("%H:%M"),
+        "timezone": "America/Sao_Paulo",
+        "max_balance": DADO_MAX_BALANCE,
     }
 
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "SourceBaltigo/1.0",
-    }
 
-    last_error = None
+def _clean_roll_options(options: List[Dict[str, Any]], expected_len: Optional[int] = None) -> List[Dict[str, Any]]:
+    clean_options: List[Dict[str, Any]] = []
+    seen_ids = set()
 
-    for attempt in range(2):
+    if not isinstance(options, list):
+        raise ValueError("options inválidas")
+
+    for item in options:
+        if not isinstance(item, dict):
+            raise ValueError("option inválida")
+
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0:
+            raise ValueError("anime_id inválido nas options")
+        if anime_id in seen_ids:
+            raise ValueError("options contém anime duplicado")
+        seen_ids.add(anime_id)
+
+        clean_options.append({
+            "id": anime_id,
+            "title": str(item.get("title") or "").strip(),
+            "cover": str(item.get("cover") or "").strip(),
+        })
+
+    if expected_len is not None and len(clean_options) != int(expected_len):
+        raise ValueError("options deve ter exatamente a quantidade do valor do dado")
+
+    return clean_options
+
+
+def _coerce_roll_options(raw: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.post(
-                    "https://graphql.anilist.co",
-                    headers=headers,
-                    json={"query": gql, "variables": variables},
-                )
-
-            if response.status_code >= 400:
-                print(
-                    f"[pedido] AniList HTTP {response.status_code} attempt={attempt + 1}",
-                    flush=True,
-                )
-                last_error = RuntimeError(f"AniList HTTP {response.status_code}")
-                continue
-
-            data = response.json()
-            if not isinstance(data, dict):
-                last_error = RuntimeError("Resposta inválida do AniList")
-                continue
-
-            if data.get("errors"):
-                print("[pedido] AniList errors:", data.get("errors"), flush=True)
-                last_error = RuntimeError("AniList retornou erro")
-                continue
-
-            return ((data.get("data") or {}).get("Page") or {}).get("media", []) or []
-
-        except Exception as e:
-            last_error = e
-            print("[pedido] erro AniList:", repr(e), flush=True)
-
-    raise last_error or RuntimeError("Falha ao buscar no AniList")
-
-
-@app.get("/api/pedido/limit")
-def api_pedido_limit(uid: int = Query(...)):
-    used = count_user_media_requests_last_24h(uid)
-    remaining = max(0, 3 - used)
-    return JSONResponse({
-        "ok": True,
-        "used": used,
-        "remaining": remaining,
-        "limit": 3
-    })
-
-
-@app.get("/api/pedido/search")
-async def api_pedido_search(
-    q: str = Query(..., min_length=1, max_length=80),
-    media_type: str = Query(...)
-):
-    media_type = (media_type or "").strip().lower()
-
-    if media_type not in ("anime", "manga"):
-        return JSONResponse({"ok": False, "message": "media_type inválido"}, status_code=400)
-
-    try:
-        results = await _pedido_anilist_search(q.strip(), media_type)
+            parsed = json.loads(raw)
+            items = parsed if isinstance(parsed, list) else []
+        except Exception:
+            items = []
+    else:
         items = []
 
-        for x in results:
-            title = (
-                ((x.get("title") or {}).get("romaji"))
-                or ((x.get("title") or {}).get("english"))
-                or ((x.get("title") or {}).get("native"))
-                or ""
-            ).strip()
+    clean: List[Dict[str, Any]] = []
+    seen = set()
 
-            if not title:
-                continue
+    for item in items:
+        if not isinstance(item, dict):
+            continue
 
-            aid = x.get("id")
-            exists_catalog = _pedido_catalog_contains(media_type, title, aid)
-            exists_request = media_request_exists(media_type, title, aid)
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0 or anime_id in seen:
+            continue
+        seen.add(anime_id)
 
-            items.append({
-                "id": aid,
-                "title": title,
-                "cover": ((x.get("coverImage") or {}).get("large") or ""),
-                "score": x.get("averageScore"),
-                "format": x.get("format"),
-                "status": x.get("status"),
-                "year": x.get("seasonYear"),
-                "episodes": x.get("episodes"),
-                "chapters": x.get("chapters"),
-                "already_exists": bool(exists_catalog),
-                "already_requested": bool(exists_request),
-            })
-
-        return JSONResponse({"ok": True, "items": items})
-
-    except Exception as e:
-        print("[pedido] busca AniList falhou:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse(
-            {"ok": False, "message": "Não foi possível buscar agora."},
-            status_code=502
-        )
-
-
-async def _telegram_send_message(chat_id: str, text: str):
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": "true",
-            },
-        )
-    return resp
-
-
-async def _telegram_send_photo(chat_id: str, photo: str, caption: str):
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-            data={
-                "chat_id": chat_id,
-                "photo": photo,
-                "caption": caption,
-                "parse_mode": "HTML",
-            },
-        )
-    return resp
-
-
-@app.post("/api/pedido/send")
-async def api_pedido_send(payload: dict = Body(...)):
-    try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
-        media_type = str(payload.get("media_type") or "").strip().lower()
-        anilist_id = payload.get("anilist_id")
-        title = str(payload.get("title") or "").strip()
-        cover = str(payload.get("cover") or "").strip()
-
-        if user_id <= 0 or media_type not in ("anime", "manga") or not title:
-            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
-
-        used = count_user_media_requests_last_24h(user_id)
-        if used >= 3:
-            return JSONResponse({
-                "ok": False,
-                "code": "limit",
-                "message": "Você atingiu o limite de 3 pedidos nas últimas 24h."
-            }, status_code=429)
-
-        if _pedido_catalog_contains(media_type, title, anilist_id):
-            return JSONResponse({
-                "ok": False,
-                "code": "exists",
-                "message": "Esse título já está disponível no catálogo."
-            }, status_code=409)
-
-        if media_request_exists(media_type, title, anilist_id):
-            return JSONResponse({
-                "ok": False,
-                "code": "requested",
-                "message": "Esse título já foi pedido e está em análise."
-            }, status_code=409)
-
-        save_media_request(user_id, username, full_name, media_type, title, anilist_id, cover)
-
-        if not CANAL_PEDIDOS or not BOT_TOKEN:
-            return JSONResponse({
-                "ok": False,
-                "message": "CANAL_PEDIDOS ou BOT_TOKEN não configurado no webapp."
-            }, status_code=500)
-
-        safe_full_name = html.escape(full_name or "Sem nome")
-        safe_username = html.escape(username) if username else "sem_username"
-        safe_title = html.escape(title)
-        safe_type = html.escape(media_type.upper())
-        safe_anilist = html.escape(str(anilist_id or "-"))
-
-        caption = (
-            f"📥 <b>NOVO PEDIDO</b>\n\n"
-            f"👤 <b>Usuário:</b> {safe_full_name}\n"
-            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-            f"🔖 <b>Username:</b> @{safe_username}\n\n"
-            f"🎴 <b>Tipo:</b> {safe_type}\n"
-            f"📝 <b>Título:</b> <i>{safe_title}</i>\n"
-            f"🆔 <b>AniList ID:</b> <code>{safe_anilist}</code>"
-        )
-
-        resp = None
-        tg_json = None
-
-        if cover:
-            try:
-                resp = await _telegram_send_photo(CANAL_PEDIDOS, cover, caption)
-                tg_json = resp.json()
-            except Exception as e:
-                print("[pedido] sendPhoto exception:", repr(e), flush=True)
-                tg_json = {"ok": False, "description": repr(e)}
-
-        if not tg_json or not tg_json.get("ok"):
-            text_fallback = (
-                f"📥 <b>NOVO PEDIDO</b>\n\n"
-                f"👤 <b>Usuário:</b> {safe_full_name}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"🔖 <b>Username:</b> @{safe_username}\n\n"
-                f"🎴 <b>Tipo:</b> {safe_type}\n"
-                f"📝 <b>Título:</b> <i>{safe_title}</i>\n"
-                f"🆔 <b>AniList ID:</b> <code>{safe_anilist}</code>\n"
-                f"🖼 <b>Capa:</b> {html.escape(cover or '-')}"
-            )
-
-            resp = await _telegram_send_message(CANAL_PEDIDOS, text_fallback)
-            tg_json = resp.json()
-
-            if not tg_json.get("ok"):
-                print("[pedido] telegram falhou:", tg_json, flush=True)
-                return JSONResponse({
-                    "ok": False,
-                    "message": "O pedido foi salvo, mas o Telegram recusou o envio ao canal. Verifique se o bot está admin no canal."
-                }, status_code=502)
-
-        return JSONResponse({
-            "ok": True,
-            "message": "Pedido enviado com sucesso.",
-            "used": used + 1,
-            "remaining": max(0, 3 - (used + 1)),
+        clean.append({
+            "id": anime_id,
+            "title": str(item.get("title") or "").strip(),
+            "cover": str(item.get("cover") or "").strip(),
         })
 
-    except Exception as e:
-        print("[pedido] falha ao enviar pedido:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Não foi possível enviar seu pedido."}, status_code=500)
+    return clean
 
 
-@app.post("/api/pedido/report")
-async def api_pedido_report(payload: dict = Body(...)):
-    try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
-        report_type = str(payload.get("report_type") or "Outro").strip()
-        message = str(payload.get("message") or "").strip()
-
-        if user_id <= 0 or not message:
-            return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
-
-        save_webapp_report(user_id, username, full_name, report_type, message)
-
-        if not CANAL_PEDIDOS or not BOT_TOKEN:
-            return JSONResponse({
-                "ok": False,
-                "message": "CANAL_PEDIDOS ou BOT_TOKEN não configurado no webapp."
-            }, status_code=500)
-
-        safe_full_name = html.escape(full_name or "Sem nome")
-        safe_username = html.escape(username) if username else "sem_username"
-        safe_report_type = html.escape(report_type)
-        safe_message = html.escape(message)
-
-        text = (
-            f"⚠️ <b>NOVO REPORT</b>\n\n"
-            f"👤 <b>Usuário:</b> {safe_full_name}\n"
-            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-            f"🔖 <b>Username:</b> @{safe_username}\n\n"
-            f"🏷 <b>Tipo:</b> {safe_report_type}\n"
-            f"📝 <b>Mensagem:</b>\n{safe_message}"
-        )
-
-        resp = await _telegram_send_message(CANAL_PEDIDOS, text)
-        tg_json = resp.json()
-
-        if not tg_json.get("ok"):
-            print("[pedido] telegram falhou no report:", tg_json, flush=True)
-            return JSONResponse({
-                "ok": False,
-                "message": "O report foi salvo, mas o Telegram recusou o envio ao canal."
-            }, status_code=502)
-
-        return JSONResponse({"ok": True, "message": "Report enviado com sucesso."})
-
-    except Exception as e:
-        print("[pedido] falha ao enviar report:", repr(e), flush=True)
-        traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Não foi possível enviar o report."}, status_code=500)
-
-
-@app.get("/pedido", response_class=HTMLResponse)
-def pedido_page():
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Central de Pedidos — Source Baltigo</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg0:#060b14; --bg1:#0c1627; --card:rgba(255,255,255,.05); --stroke:rgba(255,255,255,.10);
-      --stroke2:rgba(255,255,255,.18); --txt:rgba(255,255,255,.94); --muted:rgba(255,255,255,.58);
-      --blue:rgba(79,139,255,.30); --blue2:#5da7ff; --green:#45e58d; --red:#ff6565; --yellow:#ffcf5a;
-      --shadow:0 20px 40px rgba(0,0,0,.45);
-    }
-    *{box-sizing:border-box} html,body{height:100%} body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:var(--txt);background:
-      radial-gradient(1000px 500px at 10% 0%, rgba(60,130,246,.18), transparent 60%),
-      radial-gradient(900px 500px at 100% 20%, rgba(168,85,247,.14), transparent 60%),
-      linear-gradient(180deg,var(--bg0),var(--bg1));}
-    .wrap{max-width:960px;margin:0 auto;padding:16px 14px 40px}.hero{border:1px solid var(--stroke);border-radius:28px;overflow:hidden;box-shadow:var(--shadow);background:rgba(255,255,255,.03)}
-    .heroTop{position:relative;height:190px;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.70)), url('__PEDIDO_BANNER__') center/cover no-repeat}
-    .heroBody{padding:18px}.eyebrow{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border-radius:999px;border:1px solid rgba(93,167,255,.35);background:rgba(93,167,255,.12);font-size:12px;font-weight:900;letter-spacing:.10em;text-transform:uppercase}
-    h1{margin:14px 0 6px;font-size:26px;line-height:1.1}.sub{color:var(--muted);font-size:14px;line-height:1.45}.limitBox{margin-top:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid var(--stroke)}
-    .limitBar{height:10px;width:160px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.limitFill{height:100%;width:0;background:linear-gradient(90deg,#4f8bff,#45e58d)}
-    .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.tab{padding:14px 10px;border-radius:18px;text-align:center;border:1px solid var(--stroke);background:rgba(255,255,255,.04);font-weight:900;letter-spacing:.06em;cursor:pointer;user-select:none}.tab.active{background:var(--blue);border-color:rgba(93,167,255,.45)}
-    .panel{margin-top:16px;padding:16px;border-radius:24px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);box-shadow:var(--shadow)}
-    .searchRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.searchWrap{flex:1;min-width:220px;display:flex;gap:10px;align-items:center;padding:14px 14px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.04)}
-    .searchWrap input,.reportBox textarea{width:100%;border:0;outline:none;background:transparent;color:var(--txt);font-size:14px}.searchWrap input::placeholder,.reportBox textarea::placeholder{color:rgba(255,255,255,.35)}
-    .btn{border:0;border-radius:18px;padding:14px 16px;font-weight:900;letter-spacing:.06em;cursor:pointer}.btnPrimary{background:#5da7ff;color:#08111f}.btnGhost{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--stroke)}
-    .hint{margin-top:10px;color:var(--muted);font-size:13px}.results{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.empty{padding:26px 14px;text-align:center;color:var(--muted);border:1px dashed var(--stroke);border-radius:20px;margin-top:16px}
-    .card{border-radius:22px;overflow:hidden;border:1px solid var(--stroke);background:rgba(255,255,255,.04);box-shadow:0 16px 28px rgba(0,0,0,.35)}
-    .cover{height:220px;background:linear-gradient(135deg,rgba(93,167,255,.16),rgba(255,255,255,.03));position:relative}.cover img{width:100%;height:100%;object-fit:cover;display:block}.badge{position:absolute;left:12px;bottom:12px;padding:8px 10px;border-radius:14px;background:rgba(0,0,0,.45);backdrop-filter:blur(10px);font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;border:1px solid rgba(255,255,255,.14)}
-    .meta{padding:14px}.title{font-size:14px;font-weight:900;line-height:1.22;letter-spacing:.03em;text-transform:uppercase}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chip{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);font-size:11px;font-weight:800;color:rgba(255,255,255,.76)}
-    .state{margin-top:12px;font-size:12px;font-weight:900;letter-spacing:.05em}.ok{color:var(--green)} .warn{color:var(--yellow)} .bad{color:#ff8b8b}
-    .card .btn{width:100%;margin-top:12px}.reportTypes{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px}.rType{padding:12px 10px;border-radius:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.04);text-align:center;font-weight:800;cursor:pointer}.rType.active{background:rgba(255,101,101,.16);border-color:rgba(255,101,101,.38)}
-    .reportBox{margin-top:12px;padding:14px;border-radius:18px;border:1px solid var(--stroke);background:rgba(255,255,255,.04)} .reportBox textarea{min-height:130px;resize:vertical}
-    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;padding:14px 16px;border-radius:16px;background:rgba(7,11,20,.92);border:1px solid var(--stroke2);box-shadow:var(--shadow);display:none;z-index:50}.toast.show{display:block}
-    .skeleton{height:316px;border-radius:22px;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.09),rgba(255,255,255,.05));background-size:200% 100%;animation:sh 1.2s linear infinite} @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
-    @media (min-width: 760px){.results{grid-template-columns:repeat(3,1fr)}.heroTop{height:240px}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="hero">
-      <div class="heroTop"></div>
-      <div class="heroBody">
-        <div class="eyebrow">📩 Mini App • Central unificada</div>
-        <h1>Central de Pedidos</h1>
-        <div class="sub">Peça <b>animes</b>, <b>mangás</b> e envie <b>reports</b> em um só lugar, com o mesmo padrão dos outros miniapps do bot.</div>
-        <div class="limitBox">
-          <div>
-            <div style="font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:12px">Limite diário</div>
-            <div id="limitText" class="sub" style="margin-top:6px">Carregando...</div>
-          </div>
-          <div class="limitBar"><div class="limitFill" id="limitFill"></div></div>
-        </div>
-        <div class="tabs">
-          <div class="tab active" data-tab="anime">🎬 Anime</div>
-          <div class="tab" data-tab="manga">📚 Mangá</div>
-          <div class="tab" data-tab="report">⚠️ Reportar erro</div>
-        </div>
-
-        <div id="panelAnime" class="panel">
-          <div class="searchRow">
-            <div class="searchWrap"><span>🔎</span><input id="searchAnime" placeholder="Busque um anime no AniList..."></div>
-            <button class="btn btnPrimary" id="btnSearchAnime">Buscar</button>
-          </div>
-          <div class="hint">Dica: pesquise pelo nome mais conhecido para encontrar mais rápido.</div>
-          <div id="animeResults" class="results"></div>
-          <div id="animeEmpty" class="empty">Pesquise um anime para começar.</div>
-        </div>
-
-        <div id="panelManga" class="panel" style="display:none">
-          <div class="searchRow">
-            <div class="searchWrap"><span>🔎</span><input id="searchManga" placeholder="Busque um mangá no AniList..."></div>
-            <button class="btn btnPrimary" id="btnSearchManga">Buscar</button>
-          </div>
-          <div class="hint">Você pode pedir mangás, manhwas e novels que apareçam no AniList.</div>
-          <div id="mangaResults" class="results"></div>
-          <div id="mangaEmpty" class="empty">Pesquise um mangá para começar.</div>
-        </div>
-
-        <div id="panelReport" class="panel" style="display:none">
-          <div style="font-weight:900;text-transform:uppercase;letter-spacing:.06em;font-size:13px;margin-bottom:12px">Tipo do report</div>
-          <div class="reportTypes" id="reportTypes">
-            <div class="rType active" data-type="Bug visual">Bug visual</div>
-            <div class="rType" data-type="Erro ao abrir">Erro ao abrir</div>
-            <div class="rType" data-type="Anime faltando">Anime faltando</div>
-            <div class="rType" data-type="Mangá faltando">Mangá faltando</div>
-            <div class="rType" data-type="Card errado">Card errado</div>
-            <div class="rType" data-type="Outro">Outro</div>
-          </div>
-          <div class="reportBox"><textarea id="reportMessage" placeholder="Descreva o problema com o máximo de detalhe possível..."></textarea></div>
-          <div class="hint">O report é enviado para o mesmo canal privado de pedidos.</div>
-          <button class="btn btnPrimary" id="btnSendReport" style="margin-top:12px;width:100%">Enviar report</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"></div>
-
-<script>
-const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-if (tg) {
-  try {
-    tg.ready();
-    tg.expand();
-  } catch (e) {}
-}
-
-const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
-const currentUser = {
-  id: user && user.id ? Number(user.id) : 0,
-  username: user && user.username ? user.username : '',
-  full_name: user ? [user.first_name || '', user.last_name || ''].join(' ').trim() : ''
-};
-
-let currentTab = 'anime';
-let currentReportType = 'Bug visual';
-let limitState = {limit:3, used:0, remaining:3};
-
-function toast(msg){
-  const el=document.getElementById('toast');
-  el.textContent=msg;
-  el.classList.add('show');
-  clearTimeout(window.__toastT);
-  window.__toastT=setTimeout(()=>el.classList.remove('show'), 3400);
-}
-
-function esc(s){
-  return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-}
-
-function setTab(tab){
-  currentTab=tab;
-  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===tab));
-  document.getElementById('panelAnime').style.display = tab==='anime'?'block':'none';
-  document.getElementById('panelManga').style.display = tab==='manga'?'block':'none';
-  document.getElementById('panelReport').style.display = tab==='report'?'block':'none';
-}
-
-async function getJSON(url){
-  const r=await fetch(url);
-  const d=await r.json();
-  if(!r.ok || d.ok===false) throw new Error(d.message || 'Erro');
-  return d;
-}
-
-async function postJSON(url,payload){
-  const r=await fetch(url,{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(payload)
-  });
-  const d=await r.json();
-  if(!r.ok || d.ok===false) throw new Error(d.message || 'Erro');
-  return d;
-}
-
-function updateLimitUI(){
-  const used=limitState.used||0;
-  const limit=limitState.limit||3;
-  const remaining=Math.max(0, limit-used);
-  document.getElementById('limitText').textContent = `Pedidos restantes hoje: ${remaining}/${limit}`;
-  document.getElementById('limitFill').style.width = `${Math.min(100,(used/limit)*100)}%`;
-}
-
-async function loadLimit(){
-  if(!currentUser.id){
-    document.getElementById('limitText').textContent='Abra este Mini App pelo Telegram.';
-    return;
-  }
-  try{
-    limitState = await getJSON(`/api/pedido/limit?uid=${currentUser.id}`);
-    updateLimitUI();
-  }catch(e){
-    document.getElementById('limitText').textContent='Não foi possível carregar o limite.';
-  }
-}
-
-function skeletons(containerId, emptyId){
-  document.getElementById(emptyId).style.display='none';
-  const c=document.getElementById(containerId);
-  c.innerHTML='';
-  for(let i=0;i<6;i++){
-    const d=document.createElement('div');
-    d.className='skeleton';
-    c.appendChild(d);
-  }
-}
-
-function renderResults(containerId, emptyId, items, mediaType){
-  const c=document.getElementById(containerId);
-  const e=document.getElementById(emptyId);
-  c.innerHTML='';
-
-  if(!items || !items.length){
-    e.textContent='Nenhum resultado encontrado.';
-    e.style.display='block';
-    return;
-  }
-
-  e.style.display='none';
-
-  for(const item of items){
-    const stateText = item.already_exists
-      ? 'Já está disponível no catálogo'
-      : (item.already_requested
-          ? 'Já foi pedido e está em análise'
-          : 'Disponível para pedido');
-
-    const stateClass = item.already_exists ? 'bad' : (item.already_requested ? 'warn' : 'ok');
-
-    const sub = [];
-    if(item.year) sub.push(item.year);
-    if(item.score) sub.push('★ '+item.score);
-    if(item.format) sub.push(item.format);
-    if(mediaType==='anime' && item.episodes) sub.push(item.episodes+' eps');
-    if(mediaType==='manga' && item.chapters) sub.push(item.chapters+' caps');
-
-    const disabled = item.already_exists || item.already_requested || (limitState.used >= (limitState.limit||3));
-
-    const el=document.createElement('div');
-    el.className='card';
-    el.innerHTML = `
-      <div class="cover">
-        ${item.cover ? `<img src="${esc(item.cover)}" alt="${esc(item.title)}">` : ''}
-        <div class="badge">${esc(mediaType.toUpperCase())}</div>
-      </div>
-      <div class="meta">
-        <div class="title">${esc(item.title)}</div>
-        <div class="chips">${sub.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>
-        <div class="state ${stateClass}">${esc(stateText)}</div>
-        <button class="btn ${disabled ? 'btnGhost' : 'btnPrimary'}" ${disabled ? 'disabled' : ''}>
-          ${disabled ? 'Indisponível' : 'Pedir agora'}
-        </button>
-      </div>
-    `;
-
-    const btn = el.querySelector('button');
-    if(!disabled){
-      btn.addEventListener('click', ()=>sendRequest(mediaType, item));
-    }
-
-    c.appendChild(el);
-  }
-}
-
-async function runSearch(mediaType){
-  if(!currentUser.id){
-    toast('Abra este Mini App dentro do Telegram.');
-    return;
-  }
-
-  const inputId = mediaType==='anime' ? 'searchAnime' : 'searchManga';
-  const containerId = mediaType==='anime' ? 'animeResults' : 'mangaResults';
-  const emptyId = mediaType==='anime' ? 'animeEmpty' : 'mangaEmpty';
-  const q=(document.getElementById(inputId).value||'').trim();
-
-  if(!q){
-    toast('Digite um nome para buscar.');
-    return;
-  }
-
-  skeletons(containerId, emptyId);
-
-  try{
-    const data = await getJSON(`/api/pedido/search?q=${encodeURIComponent(q)}&media_type=${mediaType}`);
-    renderResults(containerId, emptyId, data.items||[], mediaType);
-  }catch(e){
-    document.getElementById(containerId).innerHTML='';
-    document.getElementById(emptyId).textContent=e.message || 'Não foi possível buscar agora.';
-    document.getElementById(emptyId).style.display='block';
-  }
-}
-
-async function sendRequest(mediaType, item){
-  if(!currentUser.id){
-    toast('Abra este Mini App dentro do Telegram.');
-    return;
-  }
-
-  try{
-    const data = await postJSON('/api/pedido/send', {
-      user_id: currentUser.id,
-      username: currentUser.username,
-      full_name: currentUser.full_name,
-      media_type: mediaType,
-      anilist_id: item.id,
-      title: item.title,
-      cover: item.cover || ''
-    });
-
-    limitState.used = data.used;
-    limitState.remaining = data.remaining;
-    updateLimitUI();
-    toast(`✅ ${item.title} enviado com sucesso.`);
-  }catch(e){
-    toast(e.message || 'Não foi possível enviar o pedido.');
-  }
-}
-
-async function sendReport(){
-  if(!currentUser.id){
-    toast('Abra este Mini App dentro do Telegram.');
-    return;
-  }
-
-  const message=(document.getElementById('reportMessage').value||'').trim();
-  if(!message){
-    toast('Descreva o problema antes de enviar.');
-    return;
-  }
-
-  try{
-    await postJSON('/api/pedido/report', {
-      user_id: currentUser.id,
-      username: currentUser.username,
-      full_name: currentUser.full_name,
-      report_type: currentReportType,
-      message
-    });
-    document.getElementById('reportMessage').value='';
-    toast('✅ Report enviado com sucesso.');
-  }catch(e){
-    toast(e.message || 'Não foi possível enviar o report.');
-  }
-}
-
-document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>setTab(el.dataset.tab)));
-document.querySelectorAll('.rType').forEach(el=>el.addEventListener('click',()=>{
-  document.querySelectorAll('.rType').forEach(x=>x.classList.remove('active'));
-  el.classList.add('active');
-  currentReportType=el.dataset.type;
-}));
-document.getElementById('btnSearchAnime').addEventListener('click',()=>runSearch('anime'));
-document.getElementById('btnSearchManga').addEventListener('click',()=>runSearch('manga'));
-document.getElementById('btnSendReport').addEventListener('click',sendReport);
-document.getElementById('searchAnime').addEventListener('keydown',(e)=>{ if(e.key==='Enter') runSearch('anime'); });
-document.getElementById('searchManga').addEventListener('keydown',(e)=>{ if(e.key==='Enter') runSearch('manga'); });
-
-loadLimit();
-</script>
-</body>
-</html>
-"""
-    return HTMLResponse(html.replace("__PEDIDO_BANNER__", PEDIDO_BANNER_URL))
-
-# =========================================================
-# DADO / GACHA WEBAPP — BLOCO COMPLETO
-# =========================================================
-
-from pathlib import Path
-from urllib.parse import parse_qsl
-import hashlib
-import hmac
-import json
-import random
-import re
-import time
-from typing import Any, Dict, List, Optional, Tuple
-
-import httpx
-from fastapi import Body, Header, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-
-from database import (
-    cancel_dice_roll,
-    create_dice_roll,
-    create_or_get_user,
-    expire_stale_dice_rolls,
-    get_active_dice_roll,
-    get_dado_state,
-    get_next_dado_recharge_info,
-    pick_dice_roll_anime,
-    resolve_dice_roll,
-)
-
-# =========================================================
-# CONFIG — DADO / GACHA WEBAPP
-# =========================================================
-
-DADO_BANNER_URL = os.getenv(
-    "DADO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZqAk02mfJAxu6F0SV9i2MqA5qQ6fDy3PAAKhC2sbjP74RFhnKn29pt05AQADAgADeQADOgQ/photo.jpg",
-).strip()
-
-CARDS_LOCAL_PATH = os.getenv(
-    "CARDS_LOCAL_PATH",
-    "bot/data/personagens_anilist.txt",
-).strip()
-
-DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
-
-_DADO_RATE: Dict[Tuple[int, str], float] = {}
-_DADO_LOCAL_CACHE: Dict[str, Any] = {
-    "mtime": 0.0,
-    "loaded": False,
-    "path": "",
-    "animes_list": [],
-    "animes_by_id": {},
-    "characters_by_anime": {},
-}
-
-
-def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECONDS) -> bool:
-    now = time.time()
-    k = (int(user_id), str(key))
-    last = _DADO_RATE.get(k, 0.0)
-    if now - last < window:
+def _is_valid_roll_options(options: Any, dice_value: int) -> bool:
+    if not isinstance(options, list):
         return False
-    _DADO_RATE[k] = now
-    return True
-
-
-# =========================================================
-# TELEGRAM WEBAPP AUTH
-# =========================================================
-
-def verify_telegram_init_data(init_data: str) -> dict:
-    if not init_data:
-        raise HTTPException(status_code=401, detail="initData ausente")
-
-    data = dict(parse_qsl(init_data, keep_blank_values=True))
-    received_hash = data.pop("hash", None)
-    if not received_hash:
-        raise HTTPException(status_code=401, detail="hash ausente")
-
-    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
-    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-    calculated_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(calculated_hash, received_hash):
-        raise HTTPException(status_code=401, detail="initData inválido")
-
-    user_json = data.get("user")
-    user = json.loads(user_json) if user_json else None
-    if not user or "id" not in user:
-        raise HTTPException(status_code=401, detail="user inválido")
-
-    return {"user": user, "raw": data}
-
-
-def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
-    payload = verify_telegram_init_data(x_telegram_init_data)
-    user = payload["user"]
-
-    user_id = int(user["id"])
-    username = (user.get("username") or "").strip()
-    full_name = " ".join(
-        p for p in [
-            (user.get("first_name") or "").strip(),
-            (user.get("last_name") or "").strip(),
-        ] if p
-    ).strip()
-
-    create_or_get_user(user_id)
-    return {
-        "user_id": user_id,
-        "username": username,
-        "full_name": full_name,
-    }
-
-
-async def _tg_send_photo(chat_id: int, photo: str, caption: str) -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                json={
-                    "chat_id": int(chat_id),
-                    "photo": str(photo),
-                    "caption": str(caption),
-                    "parse_mode": "HTML",
-                },
-            )
-            data = resp.json()
-            return bool(data.get("ok"))
-    except Exception:
+    if dice_value < 1 or dice_value > 6:
         return False
-
-
-# =========================================================
-# DADO — BASE LOCAL
-# =========================================================
-
-def _safe_int(v: Any, default: int = 0) -> int:
-    try:
-        return int(v)
-    except Exception:
-        return default
-
-
-def _norm_text(v: Any) -> str:
-    return str(v or "").strip()
-
-
-def _build_cover_from_anilist(anime_id: int) -> str:
-    anime_id = int(anime_id)
-    if anime_id <= 0:
-        return DADO_BANNER_URL
-    return f"https://img.anili.st/media/{anime_id}"
-
-
-def _build_char_image_from_anilist(char_id: int) -> str:
-    char_id = int(char_id)
-    if char_id <= 0:
-        return DADO_BANNER_URL
-    return f"https://img.anili.st/character/{char_id}"
-
-
-def _resolve_local_cards_path() -> Optional[Path]:
-    candidates = [
-        CARDS_LOCAL_PATH,
-        "bot/data/personagens_anilist.txt",
-        "data/personagens_anilist.txt",
-        "/app/bot/data/personagens_anilist.txt",
-        "/app/data/personagens_anilist.txt",
-    ]
+    if len(options) != dice_value:
+        return False
 
     seen = set()
-    for cand in candidates:
-        cand = str(cand or "").strip()
-        if not cand or cand in seen:
-            continue
-        seen.add(cand)
-
-        p = Path(cand)
-        if p.exists() and p.is_file():
-            return p
-
-    return None
-
-
-def _repair_loose_json_text(raw: str) -> str:
-    if not raw:
-        return "[]"
-
-    lines = raw.splitlines()
-    fixed: List[str] = []
-
-    key_start_re = re.compile(r'^\s*"[^"]+"\s*:')
-    prev_can_need_comma_re = re.compile(r'["\}\]0-9]$')
-
-    for line in lines:
-        stripped = line.strip()
-
-        if fixed:
-            prev = fixed[-1].rstrip()
-            prev_stripped = prev.strip()
-
-            if (
-                stripped
-                and key_start_re.match(stripped)
-                and prev_stripped
-                and not prev_stripped.endswith((",", "{", "[", ":"))
-                and prev_can_need_comma_re.search(prev_stripped)
-            ):
-                fixed[-1] = prev + ","
-
-        fixed.append(line)
-
-    txt = "\n".join(fixed)
-    txt = re.sub(r",(\s*[\]\}])", r"\1", txt)
-    return txt
-
-
-def _extract_items_from_local_file(path: Path) -> List[Dict[str, Any]]:
-    raw = path.read_text(encoding="utf-8", errors="ignore").strip()
-    if not raw:
-        return []
-
-    attempts = [
-        raw,
-        _repair_loose_json_text(raw),
-    ]
-
-    for candidate in attempts:
-        try:
-            parsed = json.loads(candidate)
-            items = parsed.get("items") if isinstance(parsed, dict) else parsed
-            if isinstance(items, list):
-                return [x for x in items if isinstance(x, dict)]
-        except Exception:
-            continue
-
-    return []
-
-
-def _load_local_dado_pool() -> Dict[str, Any]:
-    global _DADO_LOCAL_CACHE
-
-    path = _resolve_local_cards_path()
-    if path is None:
-        return {
-            "animes_list": [],
-            "animes_by_id": {},
-            "characters_by_anime": {},
-        }
-
-    mtime = float(path.stat().st_mtime or 0.0)
-    if (
-        _DADO_LOCAL_CACHE["loaded"]
-        and _DADO_LOCAL_CACHE["mtime"] == mtime
-        and _DADO_LOCAL_CACHE["path"] == str(path)
-    ):
-        return {
-            "animes_list": _DADO_LOCAL_CACHE["animes_list"],
-            "animes_by_id": _DADO_LOCAL_CACHE["animes_by_id"],
-            "characters_by_anime": _DADO_LOCAL_CACHE["characters_by_anime"],
-        }
-
-    raw_items = _extract_items_from_local_file(path)
-
-    animes_by_id: Dict[int, Dict[str, Any]] = {}
-    characters_by_anime: Dict[int, List[Dict[str, Any]]] = {}
-
-    for item in raw_items:
-        anime_id = _safe_int(item.get("anime_id"), 0)
-        anime_name = _norm_text(item.get("anime"))
-        banner_image = _norm_text(item.get("banner_image"))
-        cover_image = _norm_text(item.get("cover_image") or item.get("imagem_de_capa"))
-        chars_raw = item.get("characters") or item.get("personagens") or []
-
-        if anime_id <= 0 or not anime_name:
-            continue
-
-        if anime_id not in animes_by_id:
-            animes_by_id[anime_id] = {
-                "anime_id": anime_id,
-                "anime": anime_name,
-                "cover_image": cover_image or banner_image or _build_cover_from_anilist(anime_id),
-                "banner_image": banner_image or cover_image or _build_cover_from_anilist(anime_id),
-                "characters_count": 0,
-            }
-            characters_by_anime[anime_id] = []
-
-        if isinstance(chars_raw, list):
-            for c in chars_raw:
-                if not isinstance(c, dict):
-                    continue
-
-                cid = _safe_int(c.get("id"), 0)
-                cname = _norm_text(c.get("name") or c.get("nome"))
-                canime = _norm_text(c.get("anime") or anime_name)
-                cimg = _norm_text(c.get("image") or c.get("imagem"))
-
-                if cid <= 0 or not cname:
-                    continue
-
-                characters_by_anime[anime_id].append({
-                    "id": cid,
-                    "name": cname,
-                    "anime": canime or anime_name,
-                    "image": cimg or _build_char_image_from_anilist(cid),
-                })
-
-    animes_list: List[Dict[str, Any]] = []
-
-    for anime_id, meta in animes_by_id.items():
-        chars = characters_by_anime.get(anime_id, [])
-        seen_ids = set()
-        clean_chars = []
-
-        for c in chars:
-            cid = int(c["id"])
-            if cid in seen_ids:
-                continue
-            seen_ids.add(cid)
-            clean_chars.append(c)
-
-        clean_chars.sort(key=lambda x: (x["name"] or "").lower())
-        characters_by_anime[anime_id] = clean_chars
-        meta["characters_count"] = len(clean_chars)
-
-        if clean_chars:
-            animes_list.append(meta)
-
-    animes_list.sort(key=lambda x: (x.get("anime") or "").lower())
-
-    _DADO_LOCAL_CACHE = {
-        "mtime": mtime,
-        "loaded": True,
-        "path": str(path),
-        "animes_list": animes_list,
-        "animes_by_id": animes_by_id,
-        "characters_by_anime": characters_by_anime,
-    }
-
-    return {
-        "animes_list": animes_list,
-        "animes_by_id": animes_by_id,
-        "characters_by_anime": characters_by_anime,
-    }
-
-
-def _max_dice_value_from_local_pool(pool: Optional[List[Dict[str, Any]]] = None) -> int:
-    if pool is None:
-        data = _load_local_dado_pool()
-        pool = list(data.get("animes_list") or [])
-    return min(6, len(pool))
-
-
-def _pick_random_local_animes(
-    n: int,
-    pool: Optional[List[Dict[str, Any]]] = None,
-) -> List[dict]:
-    if pool is None:
-        data = _load_local_dado_pool()
-        pool = list(data.get("animes_list") or [])
-    else:
-        pool = list(pool or [])
-
-    if not pool:
-        return []
-
-    max_allowed = min(6, len(pool))
-    qty = max(1, min(int(n), max_allowed))
-
-    picks = random.sample(pool, qty)
-    return [
-        {
-            "id": int(item["anime_id"]),
-            "title": str(item["anime"]),
-            "cover": str(item.get("cover_image") or item.get("banner_image") or DADO_BANNER_URL),
-        }
-        for item in picks
-    ]
-
-
-def _pick_random_local_character(anime_id: int) -> Optional[dict]:
-    data = _load_local_dado_pool()
-    chars = list((data["characters_by_anime"].get(int(anime_id)) or []))
-    if not chars:
-        return None
-
-    random.shuffle(chars)
-    c = chars[0]
-
-    return {
-        "id": int(c["id"]),
-        "name": str(c["name"]),
-        "image": str(c.get("image") or DADO_BANNER_URL),
-        "anime_title": str(c.get("anime") or "Anime"),
-        "anime_cover": _build_cover_from_anilist(int(anime_id)),
-    }
-
-
-def _rarity_from_roll(dice_value: int, character_id: int) -> dict:
-    seed = ((int(character_id) * 1103515245) + (int(dice_value) * 12345)) & 0xFFFFFFFF
-    r = seed % 1000
-
-    if r < 30:
-        return {"tier": "MYTHIC", "stars": 5}
-    if r < 150:
-        return {"tier": "LEGENDARY", "stars": 4}
-    if r < 420:
-        return {"tier": "EPIC", "stars": 3}
-    if r < 760:
-        return {"tier": "RARE", "stars": 2}
-    return {"tier": "COMMON", "stars": 1}
-
-
-# =========================================================
-# API — DADO
-# =========================================================
-
-@app.get("/api/dado/state")
-def api_dado_state(x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    try:
-        expire_stale_dice_rolls(refund_pending=True)
-    except Exception:
-        pass
-
-    state = get_dado_state(user_id) or {}
-    recharge = get_next_dado_recharge_info(user_id) or {}
-    active = get_active_dice_roll(user_id)
-
-    roll_payload = None
-    if active:
-        options = active.get("options_json") or []
-        dice_value = int(active.get("dice_value") or 0)
-
-        if isinstance(options, str):
-            try:
-                options = json.loads(options)
-            except Exception:
-                options = []
-
-        if isinstance(options, list) and options:
-            roll_payload = {
-                "roll_id": int(active["roll_id"]),
-                "dice_value": dice_value,
-                "options": options,
-                "status": active.get("status"),
-                "selected_anime_id": active.get("selected_anime_id"),
-                "rewarded_character_id": active.get("rewarded_character_id"),
-            }
-
-    return JSONResponse({
-        "ok": True,
-        "balance": int(state.get("balance") or 0),
-        "next_recharge_hhmm": recharge.get("next_recharge_hhmm") or "--:--",
-        "next_recharge_iso": recharge.get("next_recharge_iso"),
-        "timezone": recharge.get("timezone") or "America/Sao_Paulo",
-        "max_balance": int(recharge.get("max_balance") or 24),
-        "active_roll": roll_payload,
-        "recharge_hours": ["01:00", "04:00", "07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
-    })
-
-
-@app.post("/api/dado/roll")
-async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    if not _dado_rate_limit(user_id, "roll", 1.4):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
-
-    try:
-        expire_stale_dice_rolls(refund_pending=True)
-    except Exception:
-        pass
-
-    active = get_active_dice_roll(user_id)
-    if active:
-        active_options = active.get("options_json") or []
-        active_dice = int(active.get("dice_value") or 0)
-
-        if isinstance(active_options, str):
-            try:
-                active_options = json.loads(active_options)
-            except Exception:
-                active_options = []
-
-        if isinstance(active_options, list) and active_options and len(active_options) == active_dice:
-            return JSONResponse({
-                "ok": True,
-                "reused": True,
-                "roll_id": int(active["roll_id"]),
-                "dice_value": active_dice,
-                "options": active_options,
-                "status": active.get("status"),
-                "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
-            })
-
-        try:
-            cancel_dice_roll(user_id, int(active["roll_id"]), refund=True)
-        except Exception:
-            pass
-
-    data = _load_local_dado_pool()
-    anime_pool = list(data.get("animes_list") or [])
-    max_dice_value = _max_dice_value_from_local_pool(anime_pool)
-
-    if max_dice_value <= 0:
-        return JSONResponse({
-            "ok": False,
-            "error": "anime_pool_unavailable",
-        }, status_code=200)
-
-    raw_value = random.SystemRandom().randint(1, max_dice_value)
-
-    try:
-        options = _pick_random_local_animes(raw_value, anime_pool)
-    except Exception:
-        return JSONResponse({
-            "ok": False,
-            "error": "anime_pool_unavailable",
-        }, status_code=200)
-
-    if not options:
-        return JSONResponse({
-            "ok": False,
-            "error": "anime_pool_unavailable",
-        }, status_code=200)
-
-    dice_value = len(options)
-
-    created = create_dice_roll(user_id, dice_value, options)
-    if not created.get("ok"):
-        return JSONResponse(created, status_code=200)
-
-    roll = created["roll"]
-    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
-
-    response_options = created.get("options") or options or roll.get("options_json") or []
-
-    if isinstance(response_options, str):
-        try:
-            response_options = json.loads(response_options)
-        except Exception:
-            response_options = []
-
-    return JSONResponse({
-        "ok": True,
-        "reused": bool(created.get("reused")),
-        "roll_id": int(roll["roll_id"]),
-        "dice_value": int(roll["dice_value"]),
-        "options": response_options,
-        "status": roll.get("status"),
-        "balance": balance,
-    })
-
-
-@app.post("/api/dado/pick")
-async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    if not _dado_rate_limit(user_id, "pick", 1.0):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
-
-    roll_id = int(payload_body.get("roll_id") or 0)
-    anime_id = int(payload_body.get("anime_id") or 0)
-
-    if roll_id <= 0 or anime_id <= 0:
-        raise HTTPException(status_code=400, detail="roll_id/anime_id inválidos")
-
-    picked = pick_dice_roll_anime(user_id, roll_id, anime_id)
-    if not picked.get("ok"):
-        return JSONResponse(picked, status_code=200)
-
-    roll = picked["roll"]
-    char = _pick_random_local_character(anime_id)
-    if not char:
-        return JSONResponse({"ok": False, "error": "character_not_found"}, status_code=200)
-
-    resolved = resolve_dice_roll(user_id, roll_id, int(char["id"]))
-    if not resolved.get("ok"):
-        return JSONResponse(resolved, status_code=200)
-
-    rarity = _rarity_from_roll(int(roll["dice_value"]), int(char["id"]))
-    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
-
-    char_id = int(char["id"])
-    name = str(char["name"])
-    image = str(char["image"] or char["anime_cover"] or DADO_BANNER_URL)
-    anime_title = str(char["anime_title"] or "Anime")
-
-    try:
-        await _tg_send_photo(
-            chat_id=user_id,
-            photo=image,
-            caption=(
-                "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-                f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-                f"<i>{anime_title}</i>\n\n"
-                "📦 <b>Adicionado à sua coleção!</b>"
-            ),
-        )
-    except Exception:
-        pass
-
-    return JSONResponse({
-        "ok": True,
-        "roll_id": int(roll_id),
-        "balance": balance,
-        "character": {
-            "id": char_id,
-            "name": name,
-            "image": image,
-            "anime_title": anime_title,
-            "anime_cover": char["anime_cover"],
-            "tier": rarity["tier"],
-            "stars": rarity["stars"],
-        },
-    })
-
-
-# =========================================================
-# PAGE — /dado
-# =========================================================
-
-@app.get("/dado", response_class=HTMLResponse)
-def dado_page():
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Sistema de Dados — Source Baltigo</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-
-  <style>
-    :root{
-      --bg0:#050913;
-      --bg1:#0b1222;
-      --panel:rgba(255,255,255,.045);
-      --panel2:rgba(255,255,255,.03);
-      --stroke:rgba(255,255,255,.11);
-      --txt:rgba(255,255,255,.96);
-      --muted:rgba(255,255,255,.62);
-      --pink:#ff2bd6;
-      --cyan:#00f2ff;
-      --gold:#ffd65a;
-      --ok:#63ffa8;
-      --shadow:0 18px 38px rgba(0,0,0,.48);
-      --shadow2:0 12px 24px rgba(0,0,0,.30);
-    }
-
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      color:var(--txt);
-      background:
-        radial-gradient(1200px 700px at 50% -10%, rgba(0,242,255,.12), transparent 55%),
-        radial-gradient(900px 500px at 20% 20%, rgba(255,43,214,.10), transparent 50%),
-        linear-gradient(180deg,var(--bg0),var(--bg1));
-      overflow-x:hidden;
-    }
-
-    .wrap{
-      max-width:980px;
-      margin:0 auto;
-      padding:14px 14px 34px;
-    }
-
-    .banner{
-      border-radius:24px;
-      overflow:hidden;
-      border:1px solid var(--stroke);
-      box-shadow:var(--shadow);
-      position:relative;
-      background:#000;
-    }
-
-    .banner img{
-      width:100%;
-      height:220px;
-      object-fit:cover;
-      display:block;
-    }
-
-    .banner:after{
-      content:"";
-      position:absolute; inset:0;
-      background:linear-gradient(180deg,rgba(0,0,0,.06),rgba(0,0,0,.72));
-    }
-
-    .hero{
-      margin-top:14px;
-      border-radius:24px;
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);
-      box-shadow:var(--shadow);
-      padding:16px;
-      backdrop-filter:blur(8px);
-    }
-
-    .title{
-      font-size:24px;
-      font-weight:1000;
-      letter-spacing:.08em;
-      text-transform:uppercase;
-    }
-
-    .sub{
-      margin-top:8px;
-      color:var(--muted);
-      font-size:14px;
-      font-weight:700;
-      line-height:1.5;
-    }
-
-    .stats{
-      margin-top:16px;
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:12px;
-    }
-
-    @media (max-width:760px){
-      .stats{grid-template-columns:1fr}
-    }
-
-    .stat{
-      border-radius:20px;
-      background:var(--panel);
-      border:1px solid var(--stroke);
-      padding:16px;
-      box-shadow:var(--shadow2);
-    }
-
-    .stat .k{
-      color:var(--muted);
-      font-size:12px;
-      font-weight:900;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-    }
-
-    .stat .v{
-      margin-top:8px;
-      font-size:24px;
-      font-weight:1000;
-      line-height:1.2;
-    }
-
-    .diceStage{
-      margin-top:16px;
-      border-radius:24px;
-      overflow:hidden;
-      border:1px solid var(--stroke);
-      background:
-        radial-gradient(circle at 50% 0%, rgba(255,43,214,.08), transparent 38%),
-        radial-gradient(circle at 50% 100%, rgba(0,242,255,.08), transparent 38%),
-        rgba(255,255,255,.025);
-      box-shadow:var(--shadow);
-      min-height:360px;
-      position:relative;
-    }
-
-    #sceneWrap{
-      width:100%;
-      height:360px;
-      position:relative;
-    }
-
-    .hud{
-      position:absolute;
-      left:0; right:0; bottom:14px;
-      display:flex;
-      justify-content:center;
-      pointer-events:none;
-      padding:0 14px;
-    }
-
-    .hudTag{
-      max-width:100%;
-      padding:10px 14px;
-      border-radius:999px;
-      background:rgba(0,0,0,.38);
-      border:1px solid rgba(255,255,255,.12);
-      font-weight:900;
-      font-size:12px;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      box-shadow:0 8px 18px rgba(0,0,0,.28);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-
-    .actions{
-      margin-top:16px;
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
-    }
-
-    .btn{
-      flex:1;
-      min-width:180px;
-      border:none;
-      border-radius:18px;
-      padding:16px 14px;
-      color:#fff;
-      font-weight:1000;
-      letter-spacing:.1em;
-      text-transform:uppercase;
-      cursor:pointer;
-      box-shadow:0 18px 30px rgba(0,0,0,.3);
-      transition:transform .15s ease, opacity .15s ease, filter .15s ease;
-    }
-
-    .btn:hover{filter:brightness(1.05)}
-    .btn:active{transform:scale(.985)}
-    .btn[disabled]{opacity:.45;cursor:not-allowed}
-
-    .btnRoll{
-      background:linear-gradient(135deg, rgba(255,43,214,.92), rgba(0,242,255,.92));
-      border:1px solid rgba(255,255,255,.18);
-    }
-
-    .btnReset{
-      background:linear-gradient(135deg, rgba(255,214,90,.30), rgba(255,214,90,.18));
-      border:1px solid rgba(255,214,90,.28);
-    }
-
-    .msg{
-      margin-top:14px;
-      min-height:20px;
-      color:rgba(255,255,255,.76);
-      font-size:13px;
-      font-weight:800;
-      white-space:pre-wrap;
-    }
-
-    .animeGrid{
-      margin-top:18px;
-      display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:12px;
-    }
-
-    @media (max-width:720px){
-      .animeGrid{grid-template-columns:1fr}
-    }
-
-    .animeCard{
-      appearance:none;
-      width:100%;
-      padding:0;
-      border:none;
-      border-radius:18px;
-      overflow:hidden;
-      border:1px solid rgba(255,255,255,.12);
-      background:#0f1728;
-      box-shadow:0 14px 28px rgba(0,0,0,.28);
-      cursor:pointer;
-      transition:transform .16s ease, border-color .16s ease, filter .16s ease;
-      text-align:left;
-      color:#fff;
-      position:relative;
-      min-height:92px;
-    }
-
-    .animeCard:hover{
-      transform:translateY(-2px);
-      border-color:rgba(0,242,255,.42);
-      filter:brightness(1.02);
-    }
-
-    .animeCard[aria-disabled="true"]{
-      opacity:.55;
-      pointer-events:none;
-    }
-
-    .animeBg{
-      position:absolute;
-      inset:0;
-      background-size:cover;
-      background-position:center;
-      transform:scale(1.04);
-      filter:blur(.5px) saturate(1.05);
-      opacity:.34;
-    }
-
-    .animeOverlay{
-      position:absolute;
-      inset:0;
-      background:
-        linear-gradient(90deg, rgba(6,10,18,.92) 0%, rgba(6,10,18,.78) 46%, rgba(6,10,18,.62) 100%),
-        linear-gradient(180deg, rgba(255,43,214,.08), rgba(0,242,255,.06));
-    }
-
-    .animeMeta{
-      position:relative;
-      z-index:2;
-      min-height:92px;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      padding:16px;
-    }
-
-    .animeTitle{
-      font-size:18px;
-      font-weight:1000;
-      line-height:1.22;
-      color:#fff;
-      text-shadow:0 2px 10px rgba(0,0,0,.38);
-      word-break:break-word;
-    }
-
-    .animeHint{
-      margin-top:8px;
-      color:rgba(255,255,255,.72);
-      font-size:12px;
-      font-weight:900;
-      letter-spacing:.10em;
-      text-transform:uppercase;
-    }
-
-    .reveal{
-      margin-top:18px;
-      border-radius:24px;
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.035);
-      box-shadow:var(--shadow);
-      overflow:hidden;
-      display:none;
-    }
-
-    .reveal.show{
-      display:block;
-      animation:fadeUp .35s ease;
-    }
-
-    .revealImg{
-      width:100%;
-      height:300px;
-      object-fit:cover;
-      display:block;
-      background:#111;
-    }
-
-    .revealBody{padding:16px}
-
-    .rarity{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:8px 12px;
-      background:rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.12);
-      font-size:12px;
-      font-weight:1000;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-    }
-
-    .charName{
-      margin-top:12px;
-      font-size:24px;
-      font-weight:1000;
-      line-height:1.2;
-    }
-
-    .animeFrom{
-      margin-top:8px;
-      color:var(--muted);
-      font-weight:800;
-      font-size:14px;
-    }
-
-    .footer{
-      margin-top:16px;
-      text-align:center;
-      color:rgba(255,255,255,.38);
-      font-size:12px;
-      font-weight:800;
-      letter-spacing:.08em;
-    }
-
-    @keyframes fadeUp{
-      from{opacity:0;transform:translateY(10px)}
-      to{opacity:1;transform:translateY(0)}
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="banner">
-      <img src="__DADO_BANNER_URL__" alt="Sistema de Dados">
-    </div>
-
-    <div class="hero">
-      <div class="title">Sistema de Dados</div>
-      <div class="sub">
-        Role o dado 3D, receba entre 1 e 6 opções de anime e escolha uma para revelar um personagem da sua coleção.
-      </div>
-
-      <div class="stats">
-        <div class="stat">
-          <div class="k">Dados disponíveis</div>
-          <div class="v" id="balanceTxt">...</div>
-        </div>
-        <div class="stat">
-          <div class="k">Próximo dado</div>
-          <div class="v" id="nextTxt">...</div>
-        </div>
-        <div class="stat">
-          <div class="k">Recargas</div>
-          <div class="v" style="font-size:16px;line-height:1.5">01h, 04h, 07h, 10h, 13h, 16h, 19h e 22h</div>
-        </div>
-      </div>
-
-      <div class="diceStage">
-        <div id="sceneWrap"></div>
-        <div class="hud"><div class="hudTag" id="hudTxt">Pronto para rolar</div></div>
-      </div>
-
-      <div class="actions">
-        <button id="rollBtn" class="btn btnRoll">Rolar Dado</button>
-        <button id="resetBtn" class="btn btnReset" type="button">Limpar tela</button>
-      </div>
-
-      <div class="msg" id="msg">Carregando seus dados...</div>
-
-      <div id="animeGrid" class="animeGrid"></div>
-
-      <div id="revealBox" class="reveal">
-        <img id="revealImg" class="revealImg" src="" alt="Personagem">
-        <div class="revealBody">
-          <div id="rarityTxt" class="rarity">REWARD</div>
-          <div id="charName" class="charName"></div>
-          <div id="animeFrom" class="animeFrom"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="footer">Source Baltigo • Dado Gacha</div>
-  </div>
-
-  <script>
-    const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-    const DADO_BANNER_FALLBACK = "__DADO_BANNER_URL__";
-
-    if (tg) {
-      try {
-        tg.ready();
-        tg.expand();
-        tg.setHeaderColor("#0b1222");
-        tg.setBackgroundColor("#060912");
-      } catch(e) {}
-    }
-
-    const state = {
-      balance: 0,
-      nextRecharge: "--:--",
-      currentRollId: 0,
-      currentDice: 0,
-      rolling: false,
-      choosing: false,
-      options: [],
-    };
-
-    const msg = document.getElementById("msg");
-    const balanceTxt = document.getElementById("balanceTxt");
-    const nextTxt = document.getElementById("nextTxt");
-    const hudTxt = document.getElementById("hudTxt");
-    const animeGrid = document.getElementById("animeGrid");
-    const revealBox = document.getElementById("revealBox");
-    const revealImg = document.getElementById("revealImg");
-    const rarityTxt = document.getElementById("rarityTxt");
-    const charName = document.getElementById("charName");
-    const animeFrom = document.getElementById("animeFrom");
-    const rollBtn = document.getElementById("rollBtn");
-    const resetBtn = document.getElementById("resetBtn");
-
-    function setMsg(text){ msg.textContent = text || ""; }
-    function setHud(text){ hudTxt.textContent = text || ""; }
-    function setBalance(v){ balanceTxt.textContent = String(v ?? 0); }
-    function setNext(v){ nextTxt.textContent = String(v || "--:--"); }
-
-    function clearReveal(){
-      revealBox.classList.remove("show");
-      revealImg.src = "";
-      charName.textContent = "";
-      animeFrom.textContent = "";
-      rarityTxt.textContent = "REWARD";
-    }
-
-    function clearAnimeCards(){
-      animeGrid.innerHTML = "";
-    }
-
-    function resetScreen(){
-      clearAnimeCards();
-      clearReveal();
-      state.currentRollId = 0;
-      state.currentDice = 0;
-      state.options = [];
-      setHud("Pronto para rolar");
-      setMsg("Tela limpa.");
-    }
-
-    async function apiGet(url){
-      const res = await fetch(url + "?_ts=" + Date.now(), {
-        headers: {"X-Telegram-Init-Data": tg ? tg.initData : ""}
-      });
-      let data = {};
-      try { data = await res.json(); } catch(e) {}
-      if (!res.ok) {
-        throw new Error(data.detail || ("Erro HTTP " + res.status));
-      }
-      return data;
-    }
-
-    async function apiPost(url, payload){
-      const res = await fetch(url + "?_ts=" + Date.now(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Telegram-Init-Data": tg ? tg.initData : ""
-        },
-        body: JSON.stringify(payload || {})
-      });
-      let data = {};
-      try { data = await res.json(); } catch(e) {}
-      if (!res.ok) {
-        throw new Error(data.detail || ("Erro HTTP " + res.status));
-      }
-      return data;
-    }
-
-    let renderer, scene, camera, dice, particles = [];
-    let ambient, point, frameHandle = 0;
-
-    function createFaceTexture(value, rotateDeg = 0){
-      const c = document.createElement("canvas");
-      c.width = 512;
-      c.height = 512;
-      const ctx = c.getContext("2d");
-
-      const g = ctx.createLinearGradient(0, 0, 512, 512);
-      g.addColorStop(0, "#1b2340");
-      g.addColorStop(1, "#0a0f1e");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 512, 512);
-
-      ctx.strokeStyle = "rgba(255,255,255,.18)";
-      ctx.lineWidth = 12;
-      ctx.strokeRect(18, 18, 476, 476);
-
-      ctx.save();
-      ctx.translate(256, 256);
-      ctx.rotate((rotateDeg * Math.PI) / 180);
-
-      ctx.shadowColor = "rgba(0,242,255,.65)";
-      ctx.shadowBlur = 28;
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 250px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(value), 0, 18);
-
-      ctx.restore();
-
-      const tex = new THREE.CanvasTexture(c);
-      tex.needsUpdate = true;
-      return tex;
-    }
-
-    function setupScene(){
-      const el = document.getElementById("sceneWrap");
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-
-      renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.setSize(w, h);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      el.innerHTML = "";
-      el.appendChild(renderer.domElement);
-
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-      camera.position.set(0, 0.8, 6.8);
-
-      ambient = new THREE.AmbientLight(0xffffff, 1.45);
-      scene.add(ambient);
-
-      point = new THREE.PointLight(0xffffff, 2.0, 30);
-      point.position.set(2.8, 3.6, 5.2);
-      scene.add(point);
-
-      const floorGeo = new THREE.CircleGeometry(2.9, 64);
-      const floorMat = new THREE.MeshBasicMaterial({
-        color: 0x112031,
-        transparent: true,
-        opacity: .36
-      });
-      const floor = new THREE.Mesh(floorGeo, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -1.55;
-      scene.add(floor);
-
-      const mats = [
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(2, -90), roughness: 0.42, metalness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(5,  90), roughness: 0.42, metalness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(3,   0), roughness: 0.42, metalness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(4, 180), roughness: 0.42, metalness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(1,   0), roughness: 0.42, metalness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: createFaceTexture(6, 180), roughness: 0.42, metalness: 0.35 }),
-      ];
-
-      const geo = new THREE.BoxGeometry(2.05, 2.05, 2.05, 1, 1, 1);
-      dice = new THREE.Mesh(geo, mats);
-      scene.add(dice);
-
-      const edgeGeo = new THREE.EdgesGeometry(geo);
-      const edgeMat = new THREE.LineBasicMaterial({color: 0x6ae7ff, transparent:true, opacity:.55});
-      const edges = new THREE.LineSegments(edgeGeo, edgeMat);
-      dice.add(edges);
-
-      particles = [];
-      for (let i = 0; i < 48; i++) {
-        const pGeo = new THREE.SphereGeometry(0.03, 8, 8);
-        const pMat = new THREE.MeshBasicMaterial({color: (i % 2 ? 0x00f2ff : 0xff2bd6)});
-        const p = new THREE.Mesh(pGeo, pMat);
-        p.position.set(
-          (Math.random() - .5) * 4,
-          (Math.random() - .5) * 3,
-          (Math.random() - .5) * 3
-        );
-        p.userData = {
-          vx: (Math.random() - .5) * 0.02,
-          vy: (Math.random() - .5) * 0.02,
-          vz: (Math.random() - .5) * 0.02,
-        };
-        scene.add(p);
-        particles.push(p);
-      }
-
-      cancelAnimationFrame(frameHandle);
-      const tick = () => {
-        if (!renderer || !scene || !camera || !dice) return;
-        if (!state.rolling) {
-          dice.rotation.x += 0.0022;
-          dice.rotation.y += 0.003;
-        }
-        particles.forEach(p => {
-          p.position.x += p.userData.vx;
-          p.position.y += p.userData.vy;
-          p.position.z += p.userData.vz;
-          if (Math.abs(p.position.x) > 3) p.userData.vx *= -1;
-          if (Math.abs(p.position.y) > 2) p.userData.vy *= -1;
-          if (Math.abs(p.position.z) > 2) p.userData.vz *= -1;
-        });
-        renderer.render(scene, camera);
-        frameHandle = requestAnimationFrame(tick);
-      };
-      tick();
-    }
-
-    function resizeScene(){
-      const el = document.getElementById("sceneWrap");
-      if (!renderer || !camera || !el) return;
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    }
-
-    async function animateDiceResult(value){
-      if (!dice) return;
-
-      state.rolling = true;
-      rollBtn.disabled = true;
-      setHud("Rolando...");
-      clearAnimeCards();
-      clearReveal();
-
-      const targets = {
-        1: { x: 0, y: 0 },
-        2: { x: 0, y: -Math.PI / 2 },
-        3: { x: Math.PI / 2, y: 0 },
-        4: { x: -Math.PI / 2, y: 0 },
-        5: { x: 0, y: Math.PI / 2 },
-        6: { x: 0, y: Math.PI },
-      };
-
-      const t = targets[value] || targets[1];
-
-      const baseX = dice.rotation.x;
-      const baseY = dice.rotation.y;
-      const baseZ = dice.rotation.z;
-
-      const endX = t.x + (Math.PI * 8);
-      const endY = t.y + (Math.PI * 9);
-      const endZ = baseZ + (Math.PI * 2.5);
-
-      const duration = 1850;
-      const start = performance.now();
-
-      await new Promise(resolve => {
-        function step(now){
-          const p = Math.min((now - start) / duration, 1);
-          const ease = 1 - Math.pow(1 - p, 4);
-
-          dice.rotation.x = baseX + (endX - baseX) * ease;
-          dice.rotation.y = baseY + (endY - baseY) * ease;
-          dice.rotation.z = baseZ + (endZ - baseZ) * (1 - Math.pow(1 - p, 3)) * 0.10;
-
-          camera.position.x = Math.sin(p * Math.PI * 2) * 0.22;
-          camera.position.y = 0.8 + Math.sin(p * Math.PI * 5) * 0.08;
-          camera.lookAt(0, 0, 0);
-
-          if (p < 1) {
-            requestAnimationFrame(step);
-          } else {
-            resolve();
-          }
-        }
-        requestAnimationFrame(step);
-      });
-
-      dice.rotation.x = t.x;
-      dice.rotation.y = t.y;
-      dice.rotation.z = 0;
-
-      camera.position.set(0, 0.8, 6.8);
-      camera.lookAt(0, 0, 0);
-
-      setHud("Resultado: " + value);
-      state.rolling = false;
-      rollBtn.disabled = false;
-    }
-
-    function renderAnimeOptions(options){
-      animeGrid.innerHTML = "";
-      clearReveal();
-
-      if (!Array.isArray(options) || !options.length) {
-        setMsg("Nenhuma opção encontrada para esta rolagem.");
-        return;
-      }
-
-      options.forEach((opt, idx) => {
-        const title = (opt && opt.title) ? String(opt.title) : ("Anime " + (idx + 1));
-        const cover = (opt && opt.cover) ? String(opt.cover) : DADO_BANNER_FALLBACK;
-
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "animeCard";
-        card.innerHTML = `
-          <div class="animeBg" style="background-image:url('${cover.replace(/'/g, "\\'")}')"></div>
-          <div class="animeOverlay"></div>
-          <div class="animeMeta">
-            <div class="animeTitle">${title}</div>
-            <div class="animeHint">Toque para escolher</div>
-          </div>
-        `;
-        card.addEventListener("click", () => chooseAnime(opt));
-        animeGrid.appendChild(card);
-      });
-    }
-
-    async function chooseAnime(opt){
-      if (!state.currentRollId || state.choosing) return;
-      state.choosing = true;
-
-      [...animeGrid.children].forEach(el => el.setAttribute("aria-disabled", "true"));
-      setMsg("Revelando personagem...");
-      setHud("Escolha confirmada");
-
-      try {
-        const data = await apiPost("/api/dado/pick", {
-          roll_id: state.currentRollId,
-          anime_id: Number(opt.id),
-        });
-
-        if (!data.ok) {
-          const msgMap = {
-            rate_limited: "Espere um instante antes de escolher novamente.",
-            character_not_found: "Nenhum personagem válido foi encontrado para este anime.",
-            roll_not_found: "Essa rolagem não foi encontrada.",
-            expired: "Sua rolagem expirou. Role novamente.",
-            anime_not_in_roll: "Esse anime não pertence à rolagem atual.",
-            roll_invalid: "A rolagem ficou inválida e foi cancelada. Role novamente.",
-          };
-          throw new Error(msgMap[data.error] || data.error || "Falha ao revelar personagem.");
-        }
-
-        const ch = data.character || {};
-        setBalance(data.balance ?? state.balance);
-
-        revealImg.src = ch.image || opt.cover || DADO_BANNER_FALLBACK;
-        rarityTxt.textContent = `${ch.tier || "COMMON"} • ${"★".repeat(Number(ch.stars || 1))}`;
-        charName.textContent = ch.name || "Personagem";
-        animeFrom.textContent = "Obtido de " + (ch.anime_title || opt.title || "Anime");
-        revealBox.classList.add("show");
-
-        setHud("Personagem revelado");
-        setMsg("✨ Personagem obtido com sucesso.");
-      } catch (e) {
-        [...animeGrid.children].forEach(el => el.removeAttribute("aria-disabled"));
-        setMsg("❌ " + (e.message || "Falha ao escolher anime."));
-      } finally {
-        state.choosing = false;
-      }
-    }
-
-    async function loadState(){
-      try {
-        if (!tg || !tg.initData) {
-          setMsg("Abra este WebApp pelo Telegram.");
-          rollBtn.disabled = true;
-          return;
-        }
-
-        const data = await apiGet("/api/dado/state");
-        setBalance(data.balance ?? 0);
-        setNext(data.next_recharge_hhmm || "--:--");
-        state.balance = Number(data.balance || 0);
-
-        if (data.active_roll && data.active_roll.roll_id) {
-          state.currentRollId = Number(data.active_roll.roll_id);
-          state.currentDice = Number(data.active_roll.dice_value || 0);
-          state.options = Array.isArray(data.active_roll.options) ? data.active_roll.options : [];
-
-          if (state.currentDice > 0) {
-            await animateDiceResult(state.currentDice);
-          }
-
-          if (state.options.length) {
-            renderAnimeOptions(state.options);
-            setMsg("Você tinha uma rolagem ativa. Continue escolhendo.");
-          } else {
-            setMsg("Você tinha uma rolagem ativa, mas sem opções visíveis. Role novamente se necessário.");
-          }
-        } else {
-          setMsg("Tudo pronto. Role o dado quando quiser.");
-        }
-
-        rollBtn.disabled = false;
-      } catch (e) {
-        rollBtn.disabled = true;
-        setMsg("❌ " + (e.message || "Não consegui carregar seus dados."));
-      }
-    }
-
-    async function rollDice(){
-      if (state.rolling || state.choosing) return;
-      if (!tg || !tg.initData) {
-        setMsg("Abra este WebApp pelo Telegram.");
-        return;
-      }
-
-      rollBtn.disabled = true;
-      clearAnimeCards();
-      clearReveal();
-      setMsg("Rolando dado...");
-      setHud("Rolando...");
-
-      try {
-        const data = await apiPost("/api/dado/roll", {});
-
-        if (!data.ok) {
-          const msgMap = {
-            no_balance: "Você está sem dados agora.",
-            rate_limited: "Espere um instante antes de rolar novamente.",
-            anime_pool_unavailable: "A base local de animes não está disponível no momento.",
-          };
-          throw new Error(msgMap[data.error] || data.error || "Falha ao rolar.");
-        }
-
-        state.currentRollId = Number(data.roll_id || 0);
-        state.currentDice = Number(data.dice_value || 1);
-        state.options = Array.isArray(data.options) ? data.options : [];
-        setBalance(data.balance ?? 0);
-
-        await animateDiceResult(state.currentDice);
-
-        if (!state.options.length) {
-          throw new Error("A rolagem veio sem opções de anime.");
-        }
-
-        renderAnimeOptions(state.options);
-        setMsg("Escolha um anime para revelar o personagem.");
-      } catch (e) {
-        setMsg("❌ " + (e.message || "Erro ao rolar dado."));
-        setHud("Falha na rolagem");
-      } finally {
-        rollBtn.disabled = false;
-      }
-    }
-
-    rollBtn.addEventListener("click", rollDice);
-    resetBtn.addEventListener("click", resetScreen);
-    window.addEventListener("resize", resizeScene);
-
-    setupScene();
-    loadState();
-  </script>
-</body>
-</html>
-"""
-    html = html.replace("__DADO_BANNER_URL__", DADO_BANNER_URL)
-    return HTMLResponse(html)
-
-# =========================================================
-# MENU WEBAPP — BLOCO COMPLETO
-# Cole no seu webapp.py
-# =========================================================
-
-from database import (
-    touch_user_identity,
-    get_user_status,
-    get_progress_row,
-    get_user_card_collection,
-    get_profile_settings,
-    set_profile_nickname,
-    set_profile_favorite,
-    set_profile_country,
-    set_profile_language,
-    set_profile_private,
-    set_profile_notifications,
-    delete_user_account,
-)
-
-from cards_service import get_character_by_id
-
-
-MENU_BANNER_URL = os.getenv(
-    "MENU_BANNER_URL",
-    TOP_BANNER_URL,
-).strip()
-
-MENU_BACKGROUND_URL = os.getenv(
-    "MENU_BACKGROUND_URL",
-    BACKGROUND_URL or "",
-).strip()
-
-COUNTRY_OPTIONS = [
-    {"code": "BR", "flag": "🇧🇷", "name": "Brasil"},
-    {"code": "US", "flag": "🇺🇸", "name": "United States"},
-    {"code": "ES", "flag": "🇪🇸", "name": "España"},
-    {"code": "JP", "flag": "🇯🇵", "name": "日本"},
-]
-
-LANGUAGE_OPTIONS = [
-    {"code": "pt", "name": "Português"},
-    {"code": "en", "name": "English"},
-    {"code": "es", "name": "Español"},
-]
-
-
-def _valid_menu_nickname(nickname: str) -> bool:
-    nickname = (nickname or "").strip()
-    return bool(re.match(r"^[A-Z][A-Za-z0-9_]{3,16}$", nickname))
-
-
-def _menu_user_payload(uid: int) -> Dict[str, Any]:
-    create_or_get_user(uid)
-
-    user = get_user_status(uid) or {}
-    progress = get_progress_row(uid) or {}
-    settings = get_profile_settings(uid) or {}
-    cards = get_user_card_collection(uid) or []
-
-    favorite = None
-    fav_id = settings.get("favorite_character_id")
-    if fav_id:
-        try:
-            ch = get_character_by_id(int(fav_id))
-            if ch:
-                favorite = {
-                    "id": int(fav_id),
-                    "name": str(ch.get("name") or "").strip(),
-                    "anime": str(ch.get("anime") or "").strip(),
-                    "image": str(ch.get("image") or "").strip(),
-                }
-        except Exception:
-            favorite = None
-
-    full_name = str(user.get("full_name") or "").strip()
-    username = str(user.get("username") or "").strip()
-
-    display_name = full_name or (f"@{username}" if username else f"User {uid}")
-
-    return {
-        "ok": True,
-        "profile": {
-            "user_id": int(uid),
-            "display_name": display_name,
-            "username": username,
-            "coins": int(user.get("coins") or 0),
-            "level": int(progress.get("level") or 1),
-            "collection_total": len(cards),
-            "nickname": str(settings.get("nickname") or "").strip(),
-            "favorite": favorite,
-            "country_code": str(settings.get("country_code") or "BR").strip().upper(),
-            "language": str(settings.get("language") or "pt").strip().lower(),
-            "private_profile": bool(settings.get("private_profile")),
-            "notifications_enabled": bool(settings.get("notifications_enabled", True)),
-        },
-        "countries": COUNTRY_OPTIONS,
-        "languages": LANGUAGE_OPTIONS,
-    }
-
-
-def _menu_collection_characters(uid: int) -> List[Dict[str, Any]]:
-    rows = get_user_card_collection(uid) or []
-    out: List[Dict[str, Any]] = []
-
-    for row in rows:
-        cid = int(row.get("character_id") or 0)
-        qty = int(row.get("quantity") or 0)
-        if cid <= 0 or qty <= 0:
-            continue
-
-        try:
-            ch = get_character_by_id(cid)
-        except Exception:
-            ch = None
-
-        if not ch:
-            continue
-
-        out.append({
-            "id": cid,
-            "name": str(ch.get("name") or "").strip(),
-            "anime": str(ch.get("anime") or "").strip(),
-            "image": str(ch.get("image") or "").strip(),
-            "quantity": qty,
-        })
-
-    out.sort(key=lambda x: ((x["anime"] or "").lower(), (x["name"] or "").lower(), int(x["id"])))
-    return out
-
-
-MENU_HTML = """<!doctype html>
-<html lang="pt-br">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Menu</title>
-<style>
-  :root{
-    --bg:#050712;
-    --card:rgba(255,255,255,0.05);
-    --stroke:rgba(255,255,255,0.10);
-    --stroke2:rgba(255,255,255,0.18);
-    --txt:rgba(255,255,255,0.94);
-    --muted:rgba(255,255,255,0.58);
-    --accent:#4f8cff;
-    --danger:#ff5f57;
-    --ok:#4ade80;
-    --shadow:0 18px 36px rgba(0,0,0,.42);
-  }
-
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-    color:var(--txt);
-    background:
-      linear-gradient(180deg, rgba(0,0,0,.48), rgba(0,0,0,.78)),
-      url("__MENU_BG__") center/cover no-repeat fixed,
-      radial-gradient(900px 520px at 50% -10%, rgba(79,140,255,.18), transparent 55%),
-      #050712;
-    overflow-x:hidden;
-  }
-
-  body:before{
-    content:"";
-    position:fixed; inset:0;
-    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
-    background-size:42px 42px;
-    opacity:.12;
-    pointer-events:none;
-  }
-
-  .wrap{
-    position:relative;
-    z-index:1;
-    max-width:860px;
-    margin:0 auto;
-    padding:16px 14px 40px;
-  }
-
-  .hero{
-    position:relative;
-    width:100%;
-    border-radius:28px;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:#111;
-    box-shadow:var(--shadow);
-  }
-
-  .hero img{
-    width:100%;
-    height:190px;
-    object-fit:cover;
-    display:block;
-    opacity:.9;
-  }
-
-  .hero:after{
-    content:"";
-    position:absolute; inset:0;
-    background:linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.74));
-  }
-
-  .profile{
-    position:relative;
-    z-index:2;
-    margin-top:-48px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-  }
-
-  .avatar{
-    width:106px; height:106px;
-    border-radius:50%;
-    border:4px solid rgba(255,255,255,.08);
-    background:#111722;
-    overflow:hidden;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:34px;
-    font-weight:900;
-    box-shadow:0 18px 34px rgba(0,0,0,.38);
-  }
-
-  .avatar img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .name{
-    margin-top:14px;
-    font-size:30px;
-    font-weight:900;
-    line-height:1.1;
-    text-align:center;
-  }
-
-  .sub{
-    margin-top:6px;
-    color:var(--muted);
-    font-size:15px;
-    text-align:center;
-  }
-
-  .stats{
-    margin-top:22px;
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:12px;
-  }
-
-  .stat{
-    border:1px solid var(--stroke);
-    background:var(--card);
-    border-radius:24px;
-    padding:18px;
-    box-shadow:var(--shadow);
-  }
-
-  .statLabel{
-    color:var(--muted);
-    font-size:13px;
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    font-weight:800;
-  }
-
-  .statValue{
-    margin-top:8px;
-    font-size:24px;
-    font-weight:900;
-  }
-
-  .sectionTitle{
-    margin:28px 4px 12px;
-    font-size:18px;
-    font-weight:900;
-    letter-spacing:.02em;
-  }
-
-  .list{
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
-
-  .row{
-    border:1px solid var(--stroke);
-    background:var(--card);
-    border-radius:24px;
-    padding:18px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:14px;
-    box-shadow:var(--shadow);
-  }
-
-  .rowLeft{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-    min-width:0;
-  }
-
-  .rowTitle{
-    font-size:18px;
-    font-weight:800;
-    line-height:1.15;
-  }
-
-  .rowSub{
-    color:var(--muted);
-    font-size:14px;
-    line-height:1.35;
-  }
-
-  .btn,
-  select,
-  input{
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.06);
-    color:var(--txt);
-    border-radius:16px;
-    padding:12px 14px;
-    font-weight:800;
-    outline:none;
-  }
-
-  .btn{
-    cursor:pointer;
-    min-width:118px;
-  }
-
-  .btn:hover{
-    border-color:var(--stroke2);
-  }
-
-  .btnDanger{
-    border-color:rgba(255,95,87,.32);
-    background:rgba(255,95,87,.12);
-    color:#ffd8d6;
-  }
-
-  .btnAccent{
-    border-color:rgba(79,140,255,.30);
-    background:rgba(79,140,255,.14);
-  }
-
-  .nicknameBox{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-    justify-content:flex-end;
-    width:100%;
-    max-width:340px;
-  }
-
-  .nicknameBox input{
-    flex:1;
-    min-width:180px;
-  }
-
-  .msg{
-    margin-top:14px;
-    min-height:20px;
-    color:var(--muted);
-    font-size:14px;
-  }
-
-  .modalWrap{
-    position:fixed;
-    inset:0;
-    display:none;
-    align-items:flex-end;
-    justify-content:center;
-    background:rgba(0,0,0,.52);
-    z-index:9999;
-    padding:16px;
-  }
-
-  .modal{
-    width:100%;
-    max-width:760px;
-    max-height:78vh;
-    overflow:hidden;
-    border:1px solid var(--stroke);
-    background:#0d1320;
-    border-radius:26px;
-    box-shadow:0 24px 48px rgba(0,0,0,.52);
-    display:flex;
-    flex-direction:column;
-  }
-
-  .modalHead{
-    padding:16px;
-    border-bottom:1px solid var(--stroke);
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-  }
-
-  .modalTitle{
-    font-size:18px;
-    font-weight:900;
-  }
-
-  .modalBody{
-    padding:14px;
-    overflow:auto;
-  }
-
-  .favSearch{
-    width:100%;
-    margin-bottom:12px;
-  }
-
-  .favList{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-  }
-
-  .favItem{
-    border:1px solid var(--stroke);
-    background:rgba(255,255,255,.04);
-    border-radius:20px;
-    padding:12px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-  }
-
-  .favThumb{
-    width:62px;
-    height:62px;
-    border-radius:16px;
-    overflow:hidden;
-    background:#121825;
-    flex:0 0 auto;
-  }
-
-  .favThumb img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .favMeta{
-    min-width:0;
-    flex:1;
-  }
-
-  .favName{
-    font-size:16px;
-    font-weight:900;
-    line-height:1.15;
-  }
-
-  .favAnime{
-    margin-top:4px;
-    color:var(--muted);
-    font-size:13px;
-  }
-
-  .footer{
-    margin-top:18px;
-    text-align:center;
-    color:rgba(255,255,255,.42);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:.08em;
-  }
-
-  @media (max-width: 720px){
-    .stats{ grid-template-columns:1fr 1fr; }
-    .row{ flex-direction:column; align-items:stretch; }
-    .nicknameBox{ max-width:none; }
-    .btn, select, input{ width:100%; }
-  }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="hero">
-    <img src="__MENU_BANNER__" alt="Banner">
-  </div>
-
-  <div class="profile">
-    <div class="avatar" id="avatar">SB</div>
-    <div class="name" id="name">Carregando...</div>
-    <div class="sub" id="subtitle">...</div>
-  </div>
-
-  <div class="stats">
-    <div class="stat">
-      <div class="statLabel">Coleção</div>
-      <div class="statValue" id="collectionTotal">0</div>
-    </div>
-    <div class="stat">
-      <div class="statLabel">Coins</div>
-      <div class="statValue" id="coins">0</div>
-    </div>
-    <div class="stat">
-      <div class="statLabel">Nível</div>
-      <div class="statValue" id="level">1</div>
-    </div>
-    <div class="stat">
-      <div class="statLabel">Favorito</div>
-      <div class="statValue" id="favoriteName">—</div>
-    </div>
-  </div>
-
-  <div class="sectionTitle">Perfil</div>
-  <div class="list">
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Nickname</div>
-        <div class="rowSub">Único, começa com maiúscula e não pode ser alterado depois.</div>
-      </div>
-      <div class="nicknameBox">
-        <input id="nicknameInput" placeholder="Ex: Zoro" maxlength="17" />
-        <button class="btn btnAccent" id="saveNicknameBtn">Salvar</button>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Favoritar personagem</div>
-        <div class="rowSub">Só pode escolher personagens da sua própria coleção.</div>
-      </div>
-      <button class="btn" id="favoriteBtn">Escolher</button>
-    </div>
-  </div>
-
-  <div class="sectionTitle">Preferências</div>
-  <div class="list">
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Bandeira</div>
-        <div class="rowSub">Defina seu país.</div>
-      </div>
-      <select id="countrySelect"></select>
-    </div>
-
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Idioma</div>
-        <div class="rowSub">Idioma principal da conta.</div>
-      </div>
-      <select id="languageSelect"></select>
-    </div>
-
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Perfil privado</div>
-        <div class="rowSub">Oculta o perfil para outros usuários.</div>
-      </div>
-      <button class="btn" id="privacyBtn">Desativado</button>
-    </div>
-
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Notificações</div>
-        <div class="rowSub">Avisar quando os 24 dados acumularem.</div>
-      </div>
-      <button class="btn" id="notificationsBtn">Ativado</button>
-    </div>
-  </div>
-
-  <div class="sectionTitle">Conta</div>
-  <div class="list">
-    <div class="row">
-      <div class="rowLeft">
-        <div class="rowTitle">Autoexcluir conta</div>
-        <div class="rowSub">Apaga nickname, coleção, nível, coins e preferências.</div>
-      </div>
-      <button class="btn btnDanger" id="deleteBtn">Excluir conta</button>
-    </div>
-  </div>
-
-  <div class="msg" id="msg"></div>
-  <div class="footer">Source Baltigo • Menu do usuário</div>
-</div>
-
-<div class="modalWrap" id="favoriteModalWrap">
-  <div class="modal">
-    <div class="modalHead">
-      <div class="modalTitle">Escolher favorito</div>
-      <button class="btn" id="closeFavoriteModalBtn">Fechar</button>
-    </div>
-    <div class="modalBody">
-      <input class="favSearch" id="favSearchInput" placeholder="Buscar personagem..." />
-      <div class="favList" id="favList"></div>
-    </div>
-  </div>
-</div>
-
-<script>
-const uid = __UID__;
-const msg = document.getElementById("msg");
-const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-if (tg) { try { tg.ready(); } catch(e) {} }
-
-let profileData = null;
-let favoriteCharacters = [];
-
-function setMsg(text) {
-  msg.textContent = text || "";
-}
-
-async function getJson(url) {
-  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now());
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    throw new Error((data && data.message) || "Erro");
-  }
-  return data;
-}
-
-async function postJson(url, payload) {
-  const res = await fetch(url + "?_ts=" + Date.now(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    throw new Error((data && data.message) || "Erro");
-  }
-  return data;
-}
-
-function renderAvatar(profile) {
-  const avatar = document.getElementById("avatar");
-  if (profile.favorite && profile.favorite.image) {
-    avatar.innerHTML = '<img src="' + profile.favorite.image + '" alt="avatar">';
-    return;
-  }
-  const name = (profile.display_name || "SB").trim();
-  const initials = name.slice(0, 2).toUpperCase();
-  avatar.textContent = initials;
-}
-
-function renderProfile(data) {
-  profileData = data.profile || {};
-  const p = profileData;
-
-  document.getElementById("name").textContent = p.display_name || "User";
-  document.getElementById("subtitle").textContent = p.nickname ? ("@" + p.nickname) : "Sem nickname";
-  document.getElementById("collectionTotal").textContent = String(p.collection_total || 0);
-  document.getElementById("coins").textContent = String(p.coins || 0);
-  document.getElementById("level").textContent = String(p.level || 1);
-  document.getElementById("favoriteName").textContent = p.favorite ? p.favorite.name : "—";
-
-  renderAvatar(p);
-
-  const nickInput = document.getElementById("nicknameInput");
-  const nickBtn = document.getElementById("saveNicknameBtn");
-
-  nickInput.value = p.nickname || "";
-  nickInput.disabled = !!p.nickname;
-  nickBtn.disabled = !!p.nickname;
-
-  const country = document.getElementById("countrySelect");
-  country.innerHTML = "";
-  (data.countries || []).forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c.code;
-    opt.textContent = c.flag + " " + c.name;
-    if (c.code === p.country_code) opt.selected = true;
-    country.appendChild(opt);
-  });
-
-  const lang = document.getElementById("languageSelect");
-  lang.innerHTML = "";
-  (data.languages || []).forEach(l => {
-    const opt = document.createElement("option");
-    opt.value = l.code;
-    opt.textContent = l.name;
-    if (l.code === p.language) opt.selected = true;
-    lang.appendChild(opt);
-  });
-
-  document.getElementById("privacyBtn").textContent = p.private_profile ? "Ativado" : "Desativado";
-  document.getElementById("notificationsBtn").textContent = p.notifications_enabled ? "Ativado" : "Desativado";
-}
-
-async function loadProfile() {
-  const data = await getJson("/api/menu/profile?uid=" + uid);
-  renderProfile(data);
-}
-
-function openFavoriteModal() {
-  document.getElementById("favoriteModalWrap").style.display = "flex";
-}
-
-function closeFavoriteModal() {
-  document.getElementById("favoriteModalWrap").style.display = "none";
-}
-
-function renderFavoriteList(items) {
-  const wrap = document.getElementById("favList");
-  wrap.innerHTML = "";
-
-  if (!items.length) {
-    wrap.innerHTML = '<div class="rowSub">Você ainda não tem personagens na coleção.</div>';
-    return;
-  }
-
-  for (const item of items) {
-    const el = document.createElement("div");
-    el.className = "favItem";
-
-    el.innerHTML = `
-      <div class="favThumb">${item.image ? `<img src="${item.image}" alt="">` : ""}</div>
-      <div class="favMeta">
-        <div class="favName">🧧 ${item.name}</div>
-        <div class="favAnime">${item.anime || ""}</div>
-      </div>
-      <button class="btn btnAccent">Favoritar</button>
-    `;
-
-    el.querySelector("button").onclick = async () => {
-      try {
-        setMsg("Salvando favorito...");
-        await postJson("/api/menu/favorite", { uid, character_id: item.id });
-        setMsg("✅ Favorito atualizado.");
-        closeFavoriteModal();
-        await loadProfile();
-      } catch (e) {
-        setMsg("❌ " + e.message);
-      }
-    };
-
-    wrap.appendChild(el);
-  }
-}
-
-async function loadFavoriteCharacters() {
-  const data = await getJson("/api/menu/collection-characters?uid=" + uid);
-  favoriteCharacters = data.items || [];
-  renderFavoriteList(favoriteCharacters);
-}
-
-document.getElementById("favoriteBtn").onclick = async () => {
-  try {
-    setMsg("");
-    await loadFavoriteCharacters();
-    openFavoriteModal();
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("closeFavoriteModalBtn").onclick = closeFavoriteModal;
-document.getElementById("favoriteModalWrap").onclick = (e) => {
-  if (e.target.id === "favoriteModalWrap") closeFavoriteModal();
-};
-
-document.getElementById("favSearchInput").addEventListener("input", (e) => {
-  const q = (e.target.value || "").trim().toLowerCase();
-  const filtered = favoriteCharacters.filter(item => {
-    const hay = (item.name + " " + item.anime).toLowerCase();
-    return hay.includes(q);
-  });
-  renderFavoriteList(filtered);
-});
-
-document.getElementById("saveNicknameBtn").onclick = async () => {
-  try {
-    const nickname = document.getElementById("nicknameInput").value.trim();
-    setMsg("Salvando nickname...");
-    await postJson("/api/menu/nickname", { uid, nickname });
-    setMsg("✅ Nickname salvo com sucesso.");
-    await loadProfile();
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("countrySelect").onchange = async (e) => {
-  try {
-    await postJson("/api/menu/country", { uid, country_code: e.target.value });
-    setMsg("✅ Bandeira atualizada.");
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("languageSelect").onchange = async (e) => {
-  try {
-    await postJson("/api/menu/language", { uid, language: e.target.value });
-    setMsg("✅ Idioma atualizado.");
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("privacyBtn").onclick = async () => {
-  try {
-    const current = document.getElementById("privacyBtn").textContent === "Ativado";
-    await postJson("/api/menu/privacy", { uid, value: !current });
-    setMsg("✅ Privacidade atualizada.");
-    await loadProfile();
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("notificationsBtn").onclick = async () => {
-  try {
-    const current = document.getElementById("notificationsBtn").textContent === "Ativado";
-    await postJson("/api/menu/notifications", { uid, value: !current });
-    setMsg("✅ Notificações atualizadas.");
-    await loadProfile();
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-document.getElementById("deleteBtn").onclick = async () => {
-  const ok = confirm("Tem certeza que deseja excluir sua conta? Essa ação é irreversível.");
-  if (!ok) return;
-
-  try {
-    setMsg("Excluindo conta...");
-    await postJson("/api/menu/delete-account", { uid });
-    setMsg("✅ Conta excluída com sucesso.");
-    if (tg) {
-      try { tg.close(); } catch (e) {}
-    }
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-};
-
-(async () => {
-  try {
-    await loadProfile();
-  } catch (e) {
-    setMsg("❌ " + e.message);
-  }
-})();
-</script>
-</body>
-</html>
-"""
-
-
-@app.get("/menu", response_class=HTMLResponse)
-def menu_page(uid: int = Query(...)):
-    bg = MENU_BACKGROUND_URL if MENU_BACKGROUND_URL else EMPTY_BG_DATA_URI
-
-    html = (
-        MENU_HTML
-        .replace("__UID__", str(int(uid)))
-        .replace("__MENU_BANNER__", MENU_BANNER_URL)
-        .replace("__MENU_BG__", bg)
-    )
-    return HTMLResponse(html)
-
-
-@app.get("/api/menu/profile")
-def api_menu_profile(uid: int = Query(...)):
-    uid = int(uid or 0)
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    return JSONResponse(_menu_user_payload(uid))
-
-
-@app.get("/api/menu/collection-characters")
-def api_menu_collection_characters(uid: int = Query(...)):
-    uid = int(uid or 0)
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    return JSONResponse({
-        "ok": True,
-        "items": _menu_collection_characters(uid),
-    })
-
-
-@app.post("/api/menu/nickname")
-def api_menu_nickname(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    nickname = str(payload.get("nickname") or "").strip()
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    if not _valid_menu_nickname(nickname):
-        return JSONResponse({
-            "ok": False,
-            "message": "Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula."
-        }, status_code=400)
-
-    result = set_profile_nickname(uid, nickname)
-
-    if not result.get("ok"):
-        err = result.get("error")
-        if err == "nickname_locked":
-            return JSONResponse({"ok": False, "message": "Você já definiu seu nickname."}, status_code=400)
-        if err == "nickname_taken":
-            return JSONResponse({"ok": False, "message": "Esse nickname já está em uso."}, status_code=400)
-        return JSONResponse({"ok": False, "message": "Não foi possível salvar o nickname."}, status_code=400)
-
-    return {"ok": True}
-
-
-@app.post("/api/menu/favorite")
-def api_menu_favorite(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    character_id = int(payload.get("character_id") or 0)
-
-    if uid <= 0 or character_id <= 0:
-        return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
-
-    items = _menu_collection_characters(uid)
-    owned_ids = {int(item["id"]) for item in items}
-
-    if character_id not in owned_ids:
-        return JSONResponse({
-            "ok": False,
-            "message": "Você só pode favoritar personagens da sua coleção."
-        }, status_code=400)
-
-    set_profile_favorite(uid, character_id)
-    return {"ok": True}
-
-
-@app.post("/api/menu/country")
-def api_menu_country(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    country_code = str(payload.get("country_code") or "BR").strip().upper()
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    valid = {c["code"] for c in COUNTRY_OPTIONS}
-    if country_code not in valid:
-        return JSONResponse({"ok": False, "message": "País inválido."}, status_code=400)
-
-    set_profile_country(uid, country_code)
-    return {"ok": True}
-
-
-@app.post("/api/menu/language")
-def api_menu_language(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    language = str(payload.get("language") or "pt").strip().lower()
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    if language not in ("pt", "en", "es"):
-        return JSONResponse({"ok": False, "message": "Idioma inválido."}, status_code=400)
-
-    set_profile_language(uid, language)
-    return {"ok": True}
-
-
-@app.post("/api/menu/privacy")
-def api_menu_privacy(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    value = bool(payload.get("value"))
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    set_profile_private(uid, value)
-    return {"ok": True}
-
-
-@app.post("/api/menu/notifications")
-def api_menu_notifications(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    value = bool(payload.get("value"))
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    set_profile_notifications(uid, value)
-    return {"ok": True}
-
-
-@app.post("/api/menu/delete-account")
-def api_menu_delete_account(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    delete_user_account(uid)
-    return {"ok": True}
-
-# =========================================================
-# SHOP — HELPERS
-# =========================================================
-
-SHOP_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3EsyO0G_rk8AAHTWgACBw5rG0eL9VAWyQkpU35BaAEAAwIAA3kAAzoE/photo.jpg"
-
-
-def _shop_rate_limit(user_id: int, key: str, window: float = 1.0) -> bool:
-    if not hasattr(_shop_rate_limit, "_mem"):
-        _shop_rate_limit._mem = {}
-    mem = _shop_rate_limit._mem
-
-    now = time.time()
-    k = f"{user_id}:{key}"
-    last = float(mem.get(k, 0.0) or 0.0)
-    if now - last < float(window):
-        return False
-    mem[k] = now
+    for item in options:
+        if not isinstance(item, dict):
+            return False
+        anime_id = int(item.get("id") or 0)
+        if anime_id <= 0 or anime_id in seen:
+            return False
+        seen.add(anime_id)
     return True
 
 
-def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
-    from database import get_user_card_collection
-    from cards_service import build_cards_final_data
+def _roll_expired(row: Dict[str, Any]) -> bool:
+    expires_at = row.get("expires_at")
+    if not expires_at:
+        return False
 
-    raw_rows = get_user_card_collection(int(user_id)) or []
-    data = build_cards_final_data()
-    chars_by_id = data.get("characters_by_id") or {}
-
-    qn = (q or "").strip().lower()
-    out: List[Dict[str, Any]] = []
-
-    for row in raw_rows:
-        char_id = int(row.get("character_id") or 0)
-        qty = int(row.get("quantity") or 0)
-        if char_id <= 0 or qty <= 0:
-            continue
-
-        meta = chars_by_id.get(char_id) or {}
-
-        name = str(meta.get("name") or f"Personagem {char_id}")
-        anime = str(meta.get("anime") or "Sem anime")
-        image = str(meta.get("image") or "")
-        rarity = str(meta.get("subcategory") or meta.get("role") or "").strip().upper()
-
-        if qn:
-            joined = f"{char_id} {name} {anime}".lower()
-            if qn not in joined:
-                continue
-
-        out.append({
-            "character_id": char_id,
-            "character_name": name,
-            "anime_title": anime,
-            "image": image,
-            "quantity": qty,
-            "rarity": rarity,
-        })
-
-    out.sort(key=lambda x: (x["anime_title"].lower(), x["character_name"].lower(), x["character_id"]))
-    return out
-
-
-def _shop_css() -> str:
-    return r"""
-:root{
-  --bg0:#070b12;
-  --bg1:#0a1220;
-  --txt:rgba(255,255,255,.94);
-  --muted:rgba(255,255,255,.58);
-  --stroke:rgba(255,255,255,.10);
-  --stroke2:rgba(255,255,255,.16);
-  --glass:rgba(255,255,255,.04);
-  --shadow:0 16px 30px rgba(0,0,0,.44);
-  --ok:#4ade80;
-  --danger:#ff4d6d;
-}
-
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
-
-body{
-  margin:0;
-  color:var(--txt);
-  font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  background:
-    radial-gradient(1100px 600px at 50% -10%, rgba(90,168,255,.18), transparent 55%),
-    linear-gradient(180deg,var(--bg0),var(--bg1));
-  overflow-x:hidden;
-}
-
-.bg{
-  position:fixed; inset:0;
-  background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-  background-size:36px 36px;
-  opacity:.16;
-  pointer-events:none;
-  z-index:0;
-}
-
-.wrap{
-  position:relative;
-  z-index:1;
-  max-width:980px;
-  margin:0 auto;
-  padding:18px 14px 42px;
-}
-
-.top-banner{
-  width:100%;
-  border-radius:26px;
-  overflow:hidden;
-  border:1px solid var(--stroke);
-  box-shadow:var(--shadow);
-  position:relative;
-  background:#000;
-  min-height:220px;
-}
-
-.top-banner img{
-  width:100%;
-  height:220px;
-  object-fit:cover;
-  display:block;
-}
-
-.top-banner:after{
-  content:"";
-  position:absolute; inset:0;
-  background:linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
-  pointer-events:none;
-}
-
-.top-copy{
-  position:absolute;
-  left:18px;
-  right:18px;
-  bottom:16px;
-  z-index:2;
-}
-
-.eyebrow{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  border:1px solid rgba(255,255,255,.16);
-  background:rgba(0,0,0,.26);
-  backdrop-filter: blur(8px);
-  border-radius:999px;
-  padding:8px 12px;
-  font-size:11px;
-  font-weight:900;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-}
-
-.title{
-  margin-top:12px;
-  font-size:28px;
-  line-height:1.05;
-  font-weight:900;
-  letter-spacing:.05em;
-  text-transform:uppercase;
-  text-shadow:0 6px 20px rgba(0,0,0,.45);
-}
-
-.subtitle{
-  margin-top:8px;
-  color:rgba(255,255,255,.78);
-  font-weight:700;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  font-size:12px;
-}
-
-.head{
-  padding:18px 4px 8px;
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:12px;
-  flex-wrap:wrap;
-}
-
-.stats{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-}
-
-.stat-pill{
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.04);
-  padding:10px 12px;
-  border-radius:999px;
-  font-weight:900;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-  font-size:12px;
-}
-
-.tabs{
-  margin-top:12px;
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:12px;
-}
-
-.tab{
-  user-select:none;
-  cursor:pointer;
-  border-radius:18px;
-  padding:14px 12px;
-  text-align:center;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
-  transition:transform .08s ease, border-color .12s ease, background .12s ease;
-  font-weight:900;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  font-size:13px;
-}
-
-.tab:hover{ transform:translateY(-1px); border-color:var(--stroke2); }
-.tab.active{ background:rgba(90,168,255,.18); border-color:rgba(90,168,255,.42); }
-
-.search{
-  margin-top:16px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  background:var(--glass);
-  border:1px solid var(--stroke);
-  border-radius:18px;
-  padding:13px 14px;
-  box-shadow:0 10px 18px rgba(0,0,0,.32);
-}
-
-.search input{
-  width:100%;
-  border:0;
-  outline:none;
-  background:transparent;
-  color:var(--txt);
-  font-size:14px;
-}
-
-.search input::placeholder{
-  color:rgba(255,255,255,.38);
-  font-weight:800;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-}
-
-.cards{
-  margin-top:16px;
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:12px;
-}
-
-@media (min-width:720px){
-  .top-banner img{ height:250px; }
-  .cards{ grid-template-columns:repeat(3,1fr); }
-  .tabs{ grid-template-columns:repeat(2,220px); justify-content:flex-start; }
-}
-
-.card{
-  border-radius:24px;
-  overflow:hidden;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
-  box-shadow:0 18px 30px rgba(0,0,0,.42);
-  position:relative;
-}
-
-.cover{
-  width:100%;
-  height:250px;
-  position:relative;
-  background:linear-gradient(135deg, rgba(90,168,255,.18), rgba(255,255,255,.03));
-}
-
-.cover img{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  display:block;
-}
-
-.cover:after{
-  content:"";
-  position:absolute; inset:0;
-  background:linear-gradient(180deg, rgba(0,0,0,.00), rgba(0,0,0,.56));
-  pointer-events:none;
-}
-
-.count-pill{
-  position:absolute;
-  right:12px;
-  bottom:12px;
-  z-index:2;
-  border-radius:999px;
-  padding:8px 10px;
-  font-size:11px;
-  font-weight:900;
-  letter-spacing:.12em;
-  text-transform:uppercase;
-  color:rgba(255,255,255,.95);
-  background:rgba(0,0,0,.32);
-  border:1px solid rgba(255,255,255,.18);
-  backdrop-filter:blur(8px);
-}
-
-.meta{
-  padding:13px 14px 15px;
-}
-
-.name{
-  font-weight:900;
-  letter-spacing:.04em;
-  font-size:14px;
-  line-height:1.2;
-  text-transform:uppercase;
-  margin:0;
-}
-
-.sub{
-  margin-top:8px;
-  color:rgba(255,255,255,.52);
-  font-weight:800;
-  letter-spacing:.12em;
-  font-size:11px;
-  text-transform:uppercase;
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
-
-.pill{
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.04);
-  padding:6px 10px;
-  border-radius:999px;
-}
-
-.actions{
-  margin-top:12px;
-}
-
-.btn{
-  width:100%;
-  border:1px solid transparent;
-  border-radius:16px;
-  padding:12px 14px;
-  font-weight:900;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  cursor:pointer;
-}
-
-.btn-danger{
-  background:rgba(255,77,109,.18);
-  border-color:rgba(255,77,109,.34);
-  color:#fff;
-}
-
-.btn-buy{
-  background:rgba(74,222,128,.18);
-  border-color:rgba(74,222,128,.34);
-  color:#fff;
-}
-
-.buy-grid{
-  margin-top:16px;
-  display:grid;
-  grid-template-columns:1fr;
-  gap:12px;
-}
-
-@media (min-width:720px){
-  .buy-grid{ grid-template-columns:repeat(2,1fr); }
-}
-
-.buy-card{
-  border-radius:22px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
-  box-shadow:0 18px 30px rgba(0,0,0,.42);
-  padding:16px;
-}
-
-.buy-card h3{
-  margin:0;
-  font-size:16px;
-  font-weight:900;
-  letter-spacing:.05em;
-  text-transform:uppercase;
-}
-
-.buy-card p{
-  margin:10px 0 14px;
-  color:rgba(255,255,255,.68);
-  font-size:13px;
-  line-height:1.45;
-}
-
-.price{
-  margin-bottom:12px;
-  font-weight:900;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  font-size:12px;
-  color:rgba(255,255,255,.82);
-}
-
-.empty{
-  margin-top:16px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
-  border-radius:22px;
-  padding:18px;
-  color:rgba(255,255,255,.70);
-  font-weight:700;
-  text-align:center;
-}
-
-.toast{
-  margin-top:14px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
-  border-radius:18px;
-  padding:12px 14px;
-  font-size:13px;
-  color:rgba(255,255,255,.84);
-  font-weight:700;
-}
-
-.footer{
-  margin-top:16px;
-  color:rgba(255,255,255,.40);
-  font-size:12px;
-  font-weight:700;
-  letter-spacing:.08em;
-  text-align:center;
-}
-"""
+    try:
+        now = datetime.now(expires_at.tzinfo) if getattr(expires_at, "tzinfo", None) else datetime.utcnow()
+        return expires_at <= now
+    except Exception:
+        return False
 
 
 # =========================================================
-# API — SHOP
+# INIT / MIGRATIONS
 # =========================================================
 
-@app.get("/api/shop/state")
-def api_shop_state(x_telegram_init_data: str = Header(default="")):
-    from database import get_user_status
+def create_tables():
+    create_users_table()
+    create_media_request_tables()
+    create_cards_tables()
+    create_collection_tables()
+    create_level_tables()
+    create_termo_tables()
+    create_dado_tables()
+    create_profile_settings_table()
+    create_shop_tables()
+    create_daily_tables()
+    create_weekly_ranking_tables()
+    create_trades_table()
+    create_message_tables()
+    create_card_contrib_tables()
 
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
 
-    row = get_user_status(user_id) or {}
-    return JSONResponse({
-        "ok": True,
+def create_users_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id BIGINT PRIMARY KEY,
+        lang TEXT,
+        username TEXT,
+        full_name TEXT,
+        coins BIGINT NOT NULL DEFAULT 0,
+        terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
+        terms_version TEXT,
+        accepted_at TIMESTAMPTZ,
+        welcome_sent BOOLEAN NOT NULL DEFAULT FALSE,
+        must_join_ok BOOLEAN NOT NULL DEFAULT FALSE,
+        dado_balance INTEGER NOT NULL DEFAULT 4,
+        dado_slot BIGINT NOT NULL DEFAULT -1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    """)
+
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS must_join_ok BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_balance INTEGER NOT NULL DEFAULT 4;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS dado_slot BIGINT NOT NULL DEFAULT -1;""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_users_dado_balance
+    ON users (dado_balance DESC)
+    """)
+
+
+def create_media_request_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS media_requests (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+        media_type TEXT NOT NULL,
+        anilist_id BIGINT,
+        title TEXT NOT NULL,
+        title_norm TEXT NOT NULL,
+        cover_url TEXT,
+        request_status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_user_created
+    ON media_requests (user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_media_title
+    ON media_requests (media_type, title_norm)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_media_requests_media_anilist
+    ON media_requests (media_type, anilist_id)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS webapp_reports (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+        report_type TEXT,
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_webapp_reports_user_created
+    ON webapp_reports (user_id, created_at DESC)
+    """)
+
+
+def create_cards_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_card_collection (
+        user_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, character_id)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_card_collection_character
+    ON user_card_collection (character_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
+    ON user_card_collection (user_id)
+    """)
+
+
+def create_collection_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_collection_profile (
+        user_id BIGINT PRIMARY KEY,
+        favorite_character_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS favorite_character_id BIGINT;""")
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE user_collection_profile ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+
+def create_level_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        total_actions BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_progress_level_xp
+    ON user_progress (level DESC, xp DESC)
+    """)
+
+
+def create_termo_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_games (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        date DATE NOT NULL,
+        word TEXT NOT NULL,
+        category TEXT,
+        source TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        guesses JSONB NOT NULL DEFAULT '[]'::jsonb,
+        used_letters TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'playing',
+        mode TEXT NOT NULL DEFAULT 'daily',
+        start_time BIGINT NOT NULL,
+        time_spent_seconds INTEGER NOT NULL DEFAULT 0,
+        reward_coins INTEGER NOT NULL DEFAULT 0,
+        reward_xp INTEGER NOT NULL DEFAULT 0,
+        won_at_attempt INTEGER NOT NULL DEFAULT 0,
+        finished_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_termo_games_user_date_mode
+    ON termo_games (user_id, date, mode)
+    WHERE mode = 'daily'
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_games_user_status
+    ON termo_games (user_id, status)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_games_date
+    ON termo_games (date DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_games_finished_at
+    ON termo_games (finished_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_stats (
+        user_id BIGINT PRIMARY KEY,
+        games_played INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        best_streak INTEGER NOT NULL DEFAULT 0,
+        best_score INTEGER NOT NULL DEFAULT 0,
+        last_play_date DATE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_stats_wins
+    ON termo_stats (wins DESC, best_streak DESC, best_score ASC, user_id ASC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_attempt_distribution (
+        user_id BIGINT PRIMARY KEY,
+        one_try INTEGER NOT NULL DEFAULT 0,
+        two_try INTEGER NOT NULL DEFAULT 0,
+        three_try INTEGER NOT NULL DEFAULT 0,
+        four_try INTEGER NOT NULL DEFAULT 0,
+        five_try INTEGER NOT NULL DEFAULT 0,
+        six_try INTEGER NOT NULL DEFAULT 0
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS termo_used_words (
+        user_id BIGINT NOT NULL,
+        word TEXT NOT NULL,
+        used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, word)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_termo_used_words_user
+    ON termo_used_words (user_id, used_at DESC)
+    """)
+
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS category TEXT;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS source TEXT;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS guesses JSONB NOT NULL DEFAULT '[]'::jsonb;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS used_letters TEXT NOT NULL DEFAULT '';""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'daily';""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS time_spent_seconds INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS reward_coins INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS reward_xp INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS won_at_attempt INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE termo_games ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS losses INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS best_score INTEGER NOT NULL DEFAULT 0;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS last_play_date DATE;""")
+    _run("""ALTER TABLE termo_stats ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+
+def create_dado_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS dice_rolls (
+        roll_id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        dice_value INTEGER NOT NULL,
+        options_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        selected_anime_id BIGINT,
+        rewarded_character_id BIGINT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+        picked_at TIMESTAMPTZ,
+        resolved_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes')
+    )
+    """)
+
+    _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS selected_anime_id BIGINT;""")
+    _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS rewarded_character_id BIGINT;""")
+    _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS picked_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE dice_rolls ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes');""")
+
+    _run("""
+    DO $$
+    DECLARE
+        col_type TEXT;
+    BEGIN
+        SELECT data_type
+          INTO col_type
+          FROM information_schema.columns
+         WHERE table_name = 'dice_rolls'
+           AND column_name = 'created_at';
+
+        IF col_type IS NOT NULL AND col_type <> 'bigint' THEN
+            ALTER TABLE dice_rolls
+            ALTER COLUMN created_at TYPE BIGINT
+            USING CASE
+                WHEN created_at IS NULL THEN NULL
+                ELSE EXTRACT(EPOCH FROM created_at)::BIGINT
+            END;
+        END IF;
+    END
+    $$;
+    """)
+
+    _run("""
+    ALTER TABLE dice_rolls
+    ALTER COLUMN created_at SET DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_dice_rolls_user_created
+    ON dice_rolls (user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_dice_rolls_status
+    ON dice_rolls (status)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_dice_rolls_user_status
+    ON dice_rolls (user_id, status)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_dice_rolls_one_active_per_user
+    ON dice_rolls (user_id)
+    WHERE status IN ('pending', 'picked')
+    """)
+
+
+def create_profile_settings_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_profile_settings (
+        user_id BIGINT PRIMARY KEY,
+        nickname TEXT UNIQUE,
+        favorite_character_id BIGINT,
+        country_code TEXT NOT NULL DEFAULT 'BR',
+        language TEXT NOT NULL DEFAULT 'pt',
+        private_profile BOOLEAN NOT NULL DEFAULT FALSE,
+        notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE,
+        dado_full_notified_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS nickname TEXT;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS favorite_character_id BIGINT;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS country_code TEXT NOT NULL DEFAULT 'BR';""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'pt';""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS private_profile BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified BOOLEAN NOT NULL DEFAULT FALSE;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS dado_full_notified_at TIMESTAMPTZ;""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+    _run("""ALTER TABLE user_profile_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();""")
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_user_profile_settings_nickname
+    ON user_profile_settings (nickname)
+    WHERE nickname IS NOT NULL
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_profile_settings_notifications
+    ON user_profile_settings (notifications_enabled, dado_full_notified)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_profile_settings_nickname_lower
+    ON user_profile_settings (LOWER(nickname))
+    WHERE nickname IS NOT NULL
+    """)
+
+
+# =========================================================
+# USERS
+# =========================================================
+
+def create_or_get_user(user_id: int):
+    initial_slot = _slot_number_from_dt(_now_sp())
+    _run(
+        """
+        INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
+        VALUES (%s, %s, %s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id), DADO_INITIAL_BALANCE, initial_slot)
+    )
+
+
+def touch_user_identity(user_id: int, username: str = "", full_name: str = ""):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+        SET username = %s,
+            full_name = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (
+            (username or "").strip(),
+            (full_name or "").strip(),
+            int(user_id),
+        )
+    )
+
+
+def set_language(user_id: int, lang: str):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+        SET lang = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        ((lang or "").strip(), int(user_id))
+    )
+
+
+def accept_terms(user_id: int, version: str):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+           SET terms_accepted = TRUE,
+               terms_version = %s,
+               accepted_at = NOW(),
+               updated_at = NOW()
+         WHERE user_id = %s
+        """,
+        ((version or "").strip(), int(user_id))
+    )
+
+
+def has_accepted_terms(user_id: int, version: str) -> bool:
+    row = _run(
+        "SELECT terms_accepted, terms_version FROM users WHERE user_id = %s",
+        (int(user_id),),
+        fetch="one"
+    )
+    if not row:
+        return False
+    return bool(row["terms_accepted"]) and (row["terms_version"] == version)
+
+
+def get_user_status(user_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT
+            lang,
+            username,
+            full_name,
+            coins,
+            terms_accepted,
+            terms_version,
+            welcome_sent,
+            must_join_ok,
+            dado_balance,
+            dado_slot
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    if not row:
+        return None
+
+    return {
+        "lang": row.get("lang"),
+        "username": row.get("username"),
+        "full_name": row.get("full_name"),
         "coins": int(row.get("coins") or 0),
+        "terms_accepted": bool(row.get("terms_accepted")),
+        "terms_version": row.get("terms_version"),
+        "welcome_sent": bool(row.get("welcome_sent")),
+        "must_join_ok": bool(row.get("must_join_ok")),
         "dado_balance": int(row.get("dado_balance") or 0),
-    })
-
-
-@app.get("/api/shop/sell/all")
-def api_shop_sell_all(
-    q: str = Query(default="", max_length=120),
-    x_telegram_init_data: str = Header(default="")
-):
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-    items = _shop_collection_items(user_id, q=q)
-
-    return JSONResponse({
-        "ok": True,
-        "items": items,
-    })
-
-
-@app.post("/api/shop/sell/confirm")
-def api_shop_sell_confirm(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default="")
-):
-    from database import sell_character, get_user_status
-
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    char_id = int(payload.get("character_id") or 0)
-    if char_id <= 0:
-        return JSONResponse({"ok": False, "error": "character_id inválido"}, status_code=400)
-
-    if not _shop_rate_limit(user_id, f"sell:{char_id}", 0.9):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
-
-    result = sell_character(user_id, char_id)
-    if not result or not result.get("ok"):
-        return JSONResponse({
-            "ok": False,
-            "error": (result or {}).get("error") or "Não foi possível vender agora.",
-        }, status_code=200)
-
-    row = get_user_status(user_id) or {}
-    return JSONResponse({
-        "ok": True,
-        "coins": int(row.get("coins") or 0),
-    })
-
-
-@app.post("/api/shop/buy/dado")
-def api_shop_buy_dado(x_telegram_init_data: str = Header(default="")):
-    from database import buy_dado, get_user_status
-
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    if not _shop_rate_limit(user_id, "buy_dado", 0.9):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
-
-    result = buy_dado(user_id)
-    if not result or not result.get("ok"):
-        return JSONResponse({
-            "ok": False,
-            "error": (result or {}).get("error") or "Coins insuficientes.",
-        }, status_code=200)
-
-    row = get_user_status(user_id) or {}
-    return JSONResponse({
-        "ok": True,
-        "coins": int(row.get("coins") or 0),
-        "dado_balance": int(row.get("dado_balance") or 0),
-    })
-
-
-@app.post("/api/shop/buy/nickname")
-def api_shop_buy_nickname(x_telegram_init_data: str = Header(default="")):
-    from database import buy_nickname_change, get_user_status
-
-    tg = _get_tg_user(x_telegram_init_data)
-    user_id = int(tg["user_id"])
-
-    if not _shop_rate_limit(user_id, "buy_nick", 0.9):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
-
-    result = buy_nickname_change(user_id)
-    if not result or not result.get("ok"):
-        return JSONResponse({
-            "ok": False,
-            "error": (result or {}).get("error") or "Coins insuficientes.",
-        }, status_code=200)
-
-    row = get_user_status(user_id) or {}
-    return JSONResponse({
-        "ok": True,
-        "coins": int(row.get("coins") or 0),
-    })
-
-
-# =========================================================
-# PAGE — /shop
-# =========================================================
-
-@app.get("/shop", response_class=HTMLResponse)
-def shop_page():
-    html = """<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>Loja • Source Baltigo</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-  <style>
-    __SHOP_CSS__
-  </style>
-</head>
-<body>
-<div class="bg"></div>
-
-<div class="wrap">
-  <div class="top-banner">
-    <img src="__SHOP_BANNER__" alt="Shop banner"/>
-    <div class="top-copy">
-      <div class="eyebrow">🛒 Shop • Source Baltigo</div>
-      <div class="title">Loja Baltigo</div>
-      <div class="subtitle">Venda personagens e compre recursos do sistema</div>
-    </div>
-  </div>
-
-  <div class="head">
-    <div class="stats">
-      <div class="stat-pill">🪙 Coins: <span id="coinsTxt">...</span></div>
-      <div class="stat-pill">🎲 Dados: <span id="dadoTxt">...</span></div>
-    </div>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" id="tabSell">📦 Vender</div>
-    <div class="tab" id="tabBuy">🛒 Comprar</div>
-  </div>
-
-  <div id="sellView">
-    <div class="search">
-      <span style="opacity:.6;font-weight:900;">🔎</span>
-      <input id="q" type="text" placeholder="Buscar personagem ou anime..." />
-    </div>
-
-    <div class="cards" id="sellCards"></div>
-    <div class="empty" id="sellEmpty" style="display:none;">Nada para mostrar.</div>
-  </div>
-
-  <div id="buyView" style="display:none;">
-    <div class="buy-grid">
-      <div class="buy-card">
-        <h3>🎲 Comprar Dado</h3>
-        <p>Adiciona +1 dado ao seu saldo atual.</p>
-        <div class="price">Preço: 2 coins</div>
-        <button class="btn btn-buy" id="buyDadoBtn">Comprar dado</button>
-      </div>
-
-      <div class="buy-card">
-        <h3>✏️ Alterar Nickname</h3>
-        <p>Libera uma nova troca de nickname no seu perfil.</p>
-        <div class="price">Preço: 3 coins</div>
-        <button class="btn btn-buy" id="buyNickBtn">Comprar nickname</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast" id="toast">Carregando loja...</div>
-  <div class="footer">Source Baltigo • Shop</div>
-</div>
-
-<script>
-  const tg = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
-  if (tg) { try { tg.ready(); tg.expand(); } catch(e) {} }
-
-  async function fetchJson(url, options = {}) {
-    const headers = Object.assign({}, options.headers || {});
-    try {
-      const initData = tg && tg.initData ? tg.initData : "";
-      if (initData) headers["x-telegram-init-data"] = initData;
-    } catch(e) {}
-
-    const res = await fetch(url, Object.assign({}, options, { headers }));
-    const data = await res.json();
-    return { ok: res.ok, data };
-  }
-
-  const state = {
-    items: [],
-    coins: 0,
-    dado_balance: 0,
-    q: "",
-  };
-
-  function setToast(msg){
-    document.getElementById("toast").textContent = msg;
-  }
-
-  function syncState(){
-    document.getElementById("coinsTxt").textContent = String(state.coins ?? 0);
-    document.getElementById("dadoTxt").textContent = String(state.dado_balance ?? 0);
-  }
-
-  function esc(s){
-    return String(s || "").replace(/[&<>"']/g, m => (
-      { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]
-    ));
-  }
-
-  function renderSell(){
-    const root = document.getElementById("sellCards");
-    const empty = document.getElementById("sellEmpty");
-    root.innerHTML = "";
-
-    const qn = state.q.trim().toLowerCase();
-    const items = state.items.filter(x => {
-      if (!qn) return true;
-      const joined = `${x.character_id} ${x.character_name} ${x.anime_title}`.toLowerCase();
-      return joined.includes(qn);
-    });
-
-    if (!items.length){
-      empty.style.display = "";
-      return;
+        "dado_slot": int(row.get("dado_slot") or -1),
     }
 
-    empty.style.display = "none";
 
-    for (const c of items){
-      const card = document.createElement("div");
-      card.className = "card";
+def mark_welcome_sent(user_id: int):
+    create_or_get_user(user_id)
+    _run(
+        "UPDATE users SET welcome_sent = TRUE, updated_at = NOW() WHERE user_id = %s",
+        (int(user_id),)
+    )
 
-      const cover = c.image
-        ? `<img src="${esc(c.image)}" alt="${esc(c.character_name)}"/>`
-        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:900;opacity:.55;">SEM IMAGEM</div>`;
 
-      const extraPill = c.rarity ? `<span class="pill">${esc(c.rarity)}</span>` : "";
+def reset_welcome_sent(user_id: int):
+    create_or_get_user(user_id)
+    _run(
+        "UPDATE users SET welcome_sent = FALSE, updated_at = NOW() WHERE user_id = %s",
+        (int(user_id),)
+    )
 
-      card.innerHTML = `
-        <div class="cover">
-          ${cover}
-          <div class="count-pill">x${Number(c.quantity || 0)}</div>
-        </div>
-        <div class="meta">
-          <p class="name">${esc(c.character_name)}</p>
-          <div class="sub">
-            <span class="pill">${esc(c.anime_title)}</span>
-            ${extraPill}
-          </div>
-          <div class="actions">
-            <button class="btn btn-danger" data-sell="${Number(c.character_id)}">Vender +1 coin</button>
-          </div>
-        </div>
-      `;
-      root.appendChild(card);
+
+def set_must_join_ok(user_id: int, value: bool):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+        SET must_join_ok = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def add_user_coins(user_id: int, amount: int):
+    create_or_get_user(user_id)
+    _run(
+        """
+        UPDATE users
+        SET coins = COALESCE(coins, 0) + %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(amount), int(user_id))
+    )
+
+
+# =========================================================
+# MEDIA REQUESTS / REPORTS
+# =========================================================
+
+def normalize_media_title(title: str) -> str:
+    t = (title or "").strip().lower()
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"[^\w\s]", "", t)
+    return t.strip()
+
+
+def count_user_media_requests_last_24h(user_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM media_requests
+        WHERE user_id = %s
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def media_request_exists(media_type: str, title: str, anilist_id=None) -> bool:
+    media_type = (media_type or "").strip()
+    title_norm = normalize_media_title(title)
+
+    if anilist_id:
+        row = _run(
+            """
+            SELECT id
+            FROM media_requests
+            WHERE media_type = %s
+              AND anilist_id = %s
+              AND request_status IN ('pending', 'approved')
+            LIMIT 1
+            """,
+            (media_type, int(anilist_id)),
+            fetch="one"
+        )
+        if row:
+            return True
+
+    row = _run(
+        """
+        SELECT id
+        FROM media_requests
+        WHERE media_type = %s
+          AND title_norm = %s
+          AND request_status IN ('pending', 'approved')
+        LIMIT 1
+        """,
+        (media_type, title_norm),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def save_media_request(
+    user_id: int,
+    username: str,
+    full_name: str,
+    media_type: str,
+    title: str,
+    anilist_id=None,
+    cover_url: str = "",
+):
+    _run(
+        """
+        INSERT INTO media_requests
+        (user_id, username, full_name, media_type, anilist_id, title, title_norm, cover_url, request_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+        """,
+        (
+            int(user_id),
+            (username or "").strip(),
+            (full_name or "").strip(),
+            (media_type or "").strip(),
+            int(anilist_id) if anilist_id else None,
+            (title or "").strip(),
+            normalize_media_title(title),
+            (cover_url or "").strip(),
+        )
+    )
+
+
+def save_webapp_report(
+    user_id: int,
+    username: str,
+    full_name: str,
+    report_type: str,
+    message: str,
+):
+    _run(
+        """
+        INSERT INTO webapp_reports
+        (user_id, username, full_name, report_type, message)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (
+            int(user_id),
+            (username or "").strip(),
+            (full_name or "").strip(),
+            (report_type or "").strip(),
+            (message or "").strip(),
+        )
+    )
+
+
+# =========================================================
+# CARDS / COLLECTION
+# =========================================================
+
+def ensure_collection_profile_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_collection_profile (user_id, created_at, updated_at)
+        VALUES (%s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_collection_profile(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_collection_profile_row(user_id)
+    row = _run(
+        """
+        SELECT user_id, favorite_character_id, created_at, updated_at
+        FROM user_collection_profile
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return row or None
+
+
+def set_favorite_character_id(user_id: int, character_id: Optional[int]):
+    ensure_collection_profile_row(user_id)
+    _run(
+        """
+        UPDATE user_collection_profile
+        SET favorite_character_id = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(character_id) if character_id else None, int(user_id))
+    )
+
+
+def get_user_card_quantity(user_id: int, character_id: int) -> int:
+    row = _run(
+        """
+        SELECT quantity
+        FROM user_card_collection
+        WHERE user_id = %s AND character_id = %s
+        """,
+        (int(user_id), int(character_id)),
+        fetch="one"
+    )
+    if not row:
+        return 0
+    return int(row.get("quantity") or 0)
+
+
+def add_card_copy(user_id: int, character_id: int, amount: int = 1):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    _run(
+        """
+        INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id, character_id)
+        DO UPDATE SET
+            quantity = user_card_collection.quantity + EXCLUDED.quantity,
+            updated_at = NOW()
+        """,
+        (int(user_id), int(character_id), amount)
+    )
+
+
+def remove_card_copy(user_id: int, character_id: int, amount: int = 1):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    row = _run(
+        """
+        SELECT quantity
+        FROM user_card_collection
+        WHERE user_id = %s AND character_id = %s
+        """,
+        (int(user_id), int(character_id)),
+        fetch="one"
+    )
+
+    current = int((row or {}).get("quantity") or 0)
+    new_qty = max(0, current - amount)
+
+    if current == 0:
+        return
+
+    if new_qty == 0:
+        _run(
+            """
+            DELETE FROM user_card_collection
+            WHERE user_id = %s AND character_id = %s
+            """,
+            (int(user_id), int(character_id))
+        )
+    else:
+        _run(
+            """
+            UPDATE user_card_collection
+            SET quantity = %s,
+                updated_at = NOW()
+            WHERE user_id = %s AND character_id = %s
+            """,
+            (new_qty, int(user_id), int(character_id))
+        )
+
+
+def set_card_quantity(user_id: int, character_id: int, quantity: int):
+    quantity = int(quantity)
+
+    if quantity <= 0:
+        _run(
+            """
+            DELETE FROM user_card_collection
+            WHERE user_id = %s AND character_id = %s
+            """,
+            (int(user_id), int(character_id))
+        )
+        return
+
+    _run(
+        """
+        INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id, character_id)
+        DO UPDATE SET
+            quantity = EXCLUDED.quantity,
+            updated_at = NOW()
+        """,
+        (int(user_id), int(character_id), quantity)
+    )
+
+
+def get_card_total_copies(character_id: int) -> int:
+    row = _run(
+        """
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM user_card_collection
+        WHERE character_id = %s
+        """,
+        (int(character_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def get_card_owner_count(character_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM user_card_collection
+        WHERE character_id = %s
+          AND quantity > 0
+        """,
+        (int(character_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT user_id, character_id, quantity, first_obtained_at, updated_at
+        FROM user_card_collection
+        WHERE user_id = %s
+          AND quantity > 0
+        ORDER BY quantity DESC, updated_at DESC, character_id ASC
+        """,
+        (int(user_id),),
+        fetch="all"
+    )
+    return rows or []
+
+
+# =========================================================
+# LEVEL / PROGRESS SYSTEM
+# =========================================================
+
+def ensure_progress_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_progress (user_id)
+        VALUES (%s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_progress_row(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_progress_row(user_id)
+
+    return _run(
+        """
+        SELECT user_id, xp, level, total_actions, updated_at
+        FROM user_progress
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def level_xp_required(level: int) -> int:
+    level = max(1, int(level))
+    return 80 * (level - 1) * (level - 1) + 120 * (level - 1)
+
+
+def xp_to_level(xp: int) -> int:
+    xp = max(0, int(xp))
+    level = 1
+
+    while True:
+        next_level = level + 1
+        if xp < level_xp_required(next_level):
+            return level
+        level = next_level
+
+
+def get_level_progress_values(xp: int) -> Dict[str, int]:
+    xp = max(0, int(xp))
+    level = xp_to_level(xp)
+
+    current_floor = level_xp_required(level)
+    next_floor = level_xp_required(level + 1)
+
+    current_in_level = xp - current_floor
+    needed_in_level = next_floor - current_floor
+    remaining = max(next_floor - xp, 0)
+
+    return {
+        "level": level,
+        "xp_total": xp,
+        "xp_current": current_in_level,
+        "xp_needed": needed_in_level,
+        "xp_remaining": remaining,
+        "xp_next_total": next_floor,
     }
 
-    root.querySelectorAll("button[data-sell]").forEach(btn => {
-      btn.onclick = async () => {
-        const id = Number(btn.getAttribute("data-sell"));
-        btn.disabled = true;
-        setToast("Vendendo personagem...");
-        const r = await fetchJson("/api/shop/sell/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ character_id: id }),
-        });
 
-        if (!r.ok || !r.data.ok){
-          setToast("❌ " + ((r.data && r.data.error) || "Não foi possível vender."));
-          btn.disabled = false;
-          return;
+def add_progress_xp(user_id: int, amount: int = 3) -> Dict[str, Any]:
+    ensure_progress_row(user_id)
+
+    row = get_progress_row(user_id)
+    old_xp = int((row or {}).get("xp") or 0)
+    old_level = int((row or {}).get("level") or 1)
+    old_actions = int((row or {}).get("total_actions") or 0)
+
+    new_xp = old_xp + max(0, int(amount))
+    new_level = xp_to_level(new_xp)
+    new_actions = old_actions + 1
+
+    _run(
+        """
+        UPDATE user_progress
+        SET xp = %s,
+            level = %s,
+            total_actions = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (new_xp, new_level, new_actions, int(user_id))
+    )
+
+    return {
+        "old_level": old_level,
+        "new_level": new_level,
+        "xp": new_xp,
+        "total_actions": new_actions,
+    }
+
+
+def get_user_level_rank(user_id: int) -> int:
+    ensure_progress_row(user_id)
+
+    row = _run(
+        """
+        SELECT rank_pos
+        FROM (
+            SELECT
+                user_id,
+                RANK() OVER (ORDER BY level DESC, xp DESC, total_actions DESC, user_id ASC) AS rank_pos
+            FROM user_progress
+        ) ranked
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    return int((row or {}).get("rank_pos") or 0)
+
+
+def get_top_level_users(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            up.user_id,
+            up.xp,
+            up.level,
+            up.total_actions,
+            u.username,
+            u.full_name,
+            ups.nickname
+        FROM user_progress up
+        LEFT JOIN users u
+               ON u.user_id = up.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = up.user_id
+        ORDER BY up.level DESC, up.xp DESC, up.total_actions DESC, up.user_id ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all"
+    )
+    return rows or []
+
+
+# =========================================================
+# DADO / ROLLS (ANTIFALHA)
+# =========================================================
+
+def _refresh_dado_locked(cur, user_id: int) -> Dict[str, Any]:
+    cur.execute(
+        """
+        SELECT user_id, dado_balance, dado_slot
+        FROM users
+        WHERE user_id = %s
+        FOR UPDATE
+        """,
+        (int(user_id),)
+    )
+    row = cur.fetchone()
+
+    if not row:
+        current_slot = _slot_number_from_dt(_now_sp())
+        cur.execute(
+            """
+            INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
+            VALUES (%s, %s, %s, NOW(), NOW())
+            RETURNING user_id, dado_balance, dado_slot
+            """,
+            (int(user_id), DADO_INITIAL_BALANCE, current_slot)
+        )
+        row = cur.fetchone()
+
+    balance = int(row.get("dado_balance") or 0)
+    last_slot = int(row.get("dado_slot") or -1)
+    current_slot = _slot_number_from_dt(_now_sp())
+
+    if last_slot < 0:
+        cur.execute(
+            """
+            UPDATE users
+            SET dado_slot = %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING user_id, dado_balance, dado_slot
+            """,
+            (current_slot, int(user_id))
+        )
+        row = cur.fetchone()
+        balance = int(row.get("dado_balance") or 0)
+        last_slot = int(row.get("dado_slot") or current_slot)
+    elif current_slot > last_slot:
+        gained = current_slot - last_slot
+        new_balance = min(DADO_MAX_BALANCE, balance + gained)
+        cur.execute(
+            """
+            UPDATE users
+            SET dado_balance = %s,
+                dado_slot = %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING user_id, dado_balance, dado_slot
+            """,
+            (new_balance, current_slot, int(user_id))
+        )
+        row = cur.fetchone()
+        balance = int(row.get("dado_balance") or 0)
+        last_slot = int(row.get("dado_slot") or current_slot)
+
+    info = _get_recharge_info()
+
+    return {
+        "user_id": int(user_id),
+        "balance": balance,
+        "slot": last_slot,
+        "max_balance": DADO_MAX_BALANCE,
+        "timezone": info["timezone"],
+        "next_recharge_iso": info["next_recharge_iso"],
+        "next_recharge_hhmm": info["next_recharge_hhmm"],
+    }
+
+
+def refresh_dado_balance(user_id: int) -> Dict[str, Any]:
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, user_id)
+                conn.commit()
+                return state
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def get_dado_state(user_id: int) -> Dict[str, Any]:
+    return refresh_dado_balance(user_id)
+
+
+def get_dado_balance(user_id: int) -> int:
+    state = refresh_dado_balance(user_id)
+    return int(state.get("balance") or 0)
+
+
+def set_dado_balance(user_id: int, balance: int):
+    create_or_get_user(user_id)
+    balance = max(0, min(DADO_MAX_BALANCE, int(balance)))
+
+    _run(
+        """
+        UPDATE users
+        SET dado_balance = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (balance, int(user_id))
+    )
+
+
+def add_dado_balance(user_id: int, amount: int):
+    amount = int(amount)
+    if amount <= 0:
+        return
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, user_id)
+                new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + amount)
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET dado_balance = %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (new_balance, int(user_id))
+                )
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def _reset_dado_full_notification_in_tx(cur, user_id: int):
+    cur.execute(
+        """
+        UPDATE user_profile_settings
+        SET dado_full_notified = FALSE,
+            dado_full_notified_at = NULL,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(user_id),)
+    )
+
+
+def consume_dado(user_id: int, amount: int = 1) -> bool:
+    amount = int(amount)
+    if amount <= 0:
+        return True
+
+    create_or_get_user(user_id)
+    ensure_profile_settings_row(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, user_id)
+                balance = int(state["balance"])
+
+                if balance < amount:
+                    conn.rollback()
+                    return False
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET dado_balance = dado_balance - %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                      AND dado_balance >= %s
+                    """,
+                    (amount, int(user_id), amount)
+                )
+                if cur.rowcount != 1:
+                    conn.rollback()
+                    return False
+
+                _reset_dado_full_notification_in_tx(cur, user_id)
+
+                conn.commit()
+                return True
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def refund_dado(user_id: int, amount: int = 1):
+    amount = int(amount)
+    if amount <= 0:
+        return
+    add_dado_balance(user_id, amount)
+
+
+def get_next_dado_recharge_info(user_id: int) -> Dict[str, Any]:
+    state = refresh_dado_balance(user_id)
+    return {
+        "balance": int(state["balance"]),
+        "next_recharge_iso": state["next_recharge_iso"],
+        "next_recharge_hhmm": state["next_recharge_hhmm"],
+        "timezone": state["timezone"],
+        "max_balance": state["max_balance"],
+    }
+
+
+def get_active_dice_roll(user_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT
+            roll_id,
+            user_id,
+            dice_value,
+            options_json,
+            selected_anime_id,
+            rewarded_character_id,
+            status,
+            created_at,
+            picked_at,
+            resolved_at,
+            expires_at
+        FROM dice_rolls
+        WHERE user_id = %s
+          AND status IN ('pending', 'picked')
+        ORDER BY roll_id DESC
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return None
+
+    row["options_json"] = _coerce_roll_options(row.get("options_json"))
+    return row
+
+
+def get_dice_roll(roll_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    if user_id is None:
+        row = _run(
+            """
+            SELECT *
+            FROM dice_rolls
+            WHERE roll_id = %s
+            LIMIT 1
+            """,
+            (int(roll_id),),
+            fetch="one"
+        )
+    else:
+        row = _run(
+            """
+            SELECT *
+            FROM dice_rolls
+            WHERE roll_id = %s
+              AND user_id = %s
+            LIMIT 1
+            """,
+            (int(roll_id), int(user_id)),
+            fetch="one"
+        )
+
+    if row:
+        row["options_json"] = _coerce_roll_options(row.get("options_json"))
+    return row
+
+
+def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
+    expired_count = 0
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT roll_id, user_id, status
+                    FROM dice_rolls
+                    WHERE status IN ('pending', 'picked')
+                      AND expires_at <= NOW()
+                    FOR UPDATE
+                    """
+                )
+                rows = cur.fetchall() or []
+
+                for row in rows:
+                    roll_id = int(row["roll_id"])
+                    user_id = int(row["user_id"])
+                    status = str(row["status"])
+
+                    cur.execute(
+                        """
+                        UPDATE dice_rolls
+                        SET status = 'expired'
+                        WHERE roll_id = %s
+                          AND status IN ('pending', 'picked')
+                        """,
+                        (roll_id,)
+                    )
+
+                    if refund_pending and status == "pending":
+                        state = _refresh_dado_locked(cur, user_id)
+                        new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                        cur.execute(
+                            """
+                            UPDATE users
+                            SET dado_balance = %s,
+                                updated_at = NOW()
+                            WHERE user_id = %s
+                            """,
+                            (new_balance, user_id)
+                        )
+
+                    expired_count += 1
+
+                conn.commit()
+                return expired_count
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]]) -> Dict[str, Any]:
+    dice_value = int(dice_value)
+    if dice_value < 1 or dice_value > 6:
+        raise ValueError("dice_value deve ser entre 1 e 6")
+
+    clean_options = _clean_roll_options(options, expected_len=dice_value)
+    create_or_get_user(user_id)
+    ensure_profile_settings_row(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                _refresh_dado_locked(cur, user_id)
+
+                cur.execute(
+                    """
+                    SELECT roll_id, status, expires_at, options_json, dice_value
+                    FROM dice_rolls
+                    WHERE user_id = %s
+                      AND status IN ('pending', 'picked')
+                    ORDER BY roll_id DESC
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (int(user_id),)
+                )
+                active = cur.fetchone()
+
+                if active:
+                    active["options_json"] = _coerce_roll_options(active.get("options_json"))
+                    active_dice = int(active.get("dice_value") or 0)
+
+                    if _roll_expired(active):
+                        old_status = str(active.get("status") or "")
+                        cur.execute(
+                            """
+                            UPDATE dice_rolls
+                            SET status = 'expired'
+                            WHERE roll_id = %s
+                              AND status IN ('pending', 'picked')
+                            """,
+                            (int(active["roll_id"]),)
+                        )
+
+                        if old_status == "pending":
+                            state = _refresh_dado_locked(cur, user_id)
+                            new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                            cur.execute(
+                                """
+                                UPDATE users
+                                SET dado_balance = %s,
+                                    updated_at = NOW()
+                                WHERE user_id = %s
+                                """,
+                                (new_balance, int(user_id))
+                            )
+
+                    elif _is_valid_roll_options(active["options_json"], active_dice):
+                        cur.execute(
+                            "SELECT * FROM dice_rolls WHERE roll_id = %s",
+                            (int(active["roll_id"]),)
+                        )
+                        existing = cur.fetchone()
+                        if existing:
+                            existing["options_json"] = _coerce_roll_options(existing.get("options_json"))
+                        conn.commit()
+                        return {
+                            "ok": True,
+                            "reused": True,
+                            "roll": existing,
+                            "options": active["options_json"],
+                        }
+
+                    else:
+                        cur.execute(
+                            """
+                            UPDATE dice_rolls
+                            SET status = 'cancelled'
+                            WHERE roll_id = %s
+                              AND status IN ('pending', 'picked')
+                            """,
+                            (int(active["roll_id"]),)
+                        )
+
+                        if str(active.get("status") or "") == "pending":
+                            state = _refresh_dado_locked(cur, user_id)
+                            new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                            cur.execute(
+                                """
+                                UPDATE users
+                                SET dado_balance = %s,
+                                    updated_at = NOW()
+                                WHERE user_id = %s
+                                """,
+                                (new_balance, int(user_id))
+                            )
+
+                state = _refresh_dado_locked(cur, user_id)
+                balance = int(state["balance"])
+
+                if balance <= 0:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "error": "no_balance",
+                        "balance": balance,
+                    }
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET dado_balance = dado_balance - 1,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                      AND dado_balance > 0
+                    RETURNING dado_balance
+                    """,
+                    (int(user_id),)
+                )
+                consumed = cur.fetchone()
+                if not consumed:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "error": "consume_failed",
+                        "balance": 0,
+                    }
+
+                _reset_dado_full_notification_in_tx(cur, user_id)
+
+                created_ts = int(time.time())
+
+                cur.execute(
+                    """
+                    INSERT INTO dice_rolls
+                    (
+                        user_id,
+                        dice_value,
+                        options_json,
+                        status,
+                        created_at,
+                        expires_at
+                    )
+                    VALUES
+                    (
+                        %s,
+                        %s,
+                        %s::jsonb,
+                        'pending',
+                        %s,
+                        NOW() + (%s || ' minutes')::interval
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        int(user_id),
+                        dice_value,
+                        json.dumps(clean_options, ensure_ascii=False),
+                        created_ts,
+                        str(int(DADO_ROLL_TTL_MINUTES)),
+                    )
+                )
+                created = cur.fetchone()
+                if created:
+                    created["options_json"] = _coerce_roll_options(created.get("options_json"))
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "reused": False,
+                    "roll": created,
+                    "options": clean_options,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def pick_dice_roll_anime(user_id: int, roll_id: int, anime_id: int) -> Dict[str, Any]:
+    user_id = int(user_id)
+    roll_id = int(roll_id)
+    anime_id = int(anime_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM dice_rolls
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                    FOR UPDATE
+                    """,
+                    (roll_id, user_id)
+                )
+                row = cur.fetchone()
+                if not row:
+                    conn.rollback()
+                    return {"ok": False, "error": "roll_not_found"}
+
+                row["options_json"] = _coerce_roll_options(row.get("options_json"))
+
+                status = str(row.get("status") or "")
+                if status == "resolved":
+                    conn.commit()
+                    return {"ok": True, "already_done": True, "roll": row}
+
+                if status != "pending":
+                    conn.rollback()
+                    return {"ok": False, "error": "invalid_status", "status": status}
+
+                if _roll_expired(row):
+                    cur.execute(
+                        """
+                        UPDATE dice_rolls
+                        SET status = 'expired'
+                        WHERE roll_id = %s
+                        """,
+                        (roll_id,)
+                    )
+
+                    state = _refresh_dado_locked(cur, user_id)
+                    new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, user_id)
+                    )
+
+                    conn.commit()
+                    return {"ok": False, "error": "expired"}
+
+                options = row.get("options_json") or []
+                allowed_ids = {
+                    int(item["id"])
+                    for item in options
+                    if isinstance(item, dict) and int(item.get("id") or 0) > 0
+                }
+
+                if not allowed_ids:
+                    cur.execute(
+                        """
+                        UPDATE dice_rolls
+                        SET status = 'cancelled'
+                        WHERE roll_id = %s
+                          AND user_id = %s
+                          AND status = 'pending'
+                        """,
+                        (roll_id, user_id)
+                    )
+
+                    state = _refresh_dado_locked(cur, user_id)
+                    new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, user_id)
+                    )
+
+                    conn.commit()
+                    return {"ok": False, "error": "roll_invalid"}
+
+                if anime_id not in allowed_ids:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "error": "anime_not_in_roll",
+                        "allowed_ids": sorted(list(allowed_ids)),
+                    }
+
+                cur.execute(
+                    """
+                    UPDATE dice_rolls
+                    SET selected_anime_id = %s,
+                        status = 'picked',
+                        picked_at = NOW()
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                      AND status = 'pending'
+                    RETURNING *
+                    """,
+                    (anime_id, roll_id, user_id)
+                )
+                updated = cur.fetchone()
+                if not updated:
+                    conn.rollback()
+                    return {"ok": False, "error": "pick_failed"}
+
+                updated["options_json"] = _coerce_roll_options(updated.get("options_json"))
+
+                conn.commit()
+                return {"ok": True, "roll": updated}
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def resolve_dice_roll(user_id: int, roll_id: int, character_id: int) -> Dict[str, Any]:
+    user_id = int(user_id)
+    roll_id = int(roll_id)
+    character_id = int(character_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM dice_rolls
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                    FOR UPDATE
+                    """,
+                    (roll_id, user_id)
+                )
+                row = cur.fetchone()
+                if not row:
+                    conn.rollback()
+                    return {"ok": False, "error": "roll_not_found"}
+
+                status = str(row.get("status") or "")
+                if status == "resolved":
+                    conn.commit()
+                    return {"ok": True, "already_done": True, "roll": row}
+
+                if status != "picked":
+                    conn.rollback()
+                    return {"ok": False, "error": "invalid_status", "status": status}
+
+                selected_anime_id = row.get("selected_anime_id")
+                if not selected_anime_id:
+                    conn.rollback()
+                    return {"ok": False, "error": "no_selected_anime"}
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+                    VALUES (%s, %s, 1, NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    """,
+                    (user_id, character_id)
+                )
+
+                cur.execute(
+                    """
+                    UPDATE dice_rolls
+                    SET rewarded_character_id = %s,
+                        status = 'resolved',
+                        resolved_at = NOW()
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                      AND status = 'picked'
+                    RETURNING *
+                    """,
+                    (character_id, roll_id, user_id)
+                )
+                updated = cur.fetchone()
+                if not updated:
+                    conn.rollback()
+                    return {"ok": False, "error": "resolve_failed"}
+
+                conn.commit()
+                return {"ok": True, "roll": updated}
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def cancel_dice_roll(user_id: int, roll_id: int, refund: bool = False) -> bool:
+    user_id = int(user_id)
+    roll_id = int(roll_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM dice_rolls
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                    FOR UPDATE
+                    """,
+                    (roll_id, user_id)
+                )
+                row = cur.fetchone()
+                if not row:
+                    conn.rollback()
+                    return False
+
+                status = str(row.get("status") or "")
+                if status not in ("pending", "picked"):
+                    conn.rollback()
+                    return False
+
+                cur.execute(
+                    """
+                    UPDATE dice_rolls
+                    SET status = 'cancelled'
+                    WHERE roll_id = %s
+                      AND user_id = %s
+                    """,
+                    (roll_id, user_id)
+                )
+
+                if refund and status == "pending":
+                    state = _refresh_dado_locked(cur, user_id)
+                    new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, user_id)
+                    )
+
+                conn.commit()
+                return True
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def get_user_dice_roll_history(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT *
+        FROM dice_rolls
+        WHERE user_id = %s
+        ORDER BY roll_id DESC
+        LIMIT %s
+        """,
+        (int(user_id), int(limit)),
+        fetch="all"
+    )
+
+    for row in rows or []:
+        row["options_json"] = _coerce_roll_options(row.get("options_json"))
+
+    return rows or []
+
+
+# =========================================================
+# TERMO
+# =========================================================
+
+def ensure_termo_stats_row(user_id: int):
+    _run(
+        """
+        INSERT INTO termo_stats (user_id)
+        VALUES (%s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+    _run(
+        """
+        INSERT INTO termo_attempt_distribution (user_id)
+        VALUES (%s)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_termo_daily_game(user_id: int, game_date: date) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM termo_games
+        WHERE user_id = %s
+          AND date = %s
+          AND mode = 'daily'
+        LIMIT 1
+        """,
+        (int(user_id), game_date),
+        fetch="one"
+    )
+
+
+def get_termo_active_game(user_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM termo_games
+        WHERE user_id = %s
+          AND status = 'playing'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def create_termo_game(
+    user_id: int,
+    game_date: date,
+    word: str,
+    category: str,
+    source: str,
+    start_time: int,
+    mode: str = "daily",
+):
+    _run(
+        """
+        INSERT INTO termo_games
+        (
+            user_id,
+            date,
+            word,
+            category,
+            source,
+            attempts,
+            guesses,
+            used_letters,
+            status,
+            mode,
+            start_time,
+            time_spent_seconds,
+            reward_coins,
+            reward_xp,
+            won_at_attempt,
+            created_at,
+            updated_at
+        )
+        VALUES
+        (
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            0,
+            '[]'::jsonb,
+            '',
+            'playing',
+            %s,
+            %s,
+            0,
+            0,
+            0,
+            0,
+            NOW(),
+            NOW()
+        )
+        """,
+        (
+            int(user_id),
+            game_date,
+            (word or "").strip().lower(),
+            (category or "").strip(),
+            (source or "").strip(),
+            (mode or "daily").strip(),
+            int(start_time),
+        )
+    )
+
+
+def update_termo_game_progress(
+    game_id: int,
+    attempts: int,
+    guesses_json: str,
+    used_letters: str,
+):
+    _run(
+        """
+        UPDATE termo_games
+        SET attempts = %s,
+            guesses = %s::jsonb,
+            used_letters = %s,
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            int(attempts),
+            guesses_json,
+            (used_letters or "").strip().upper(),
+            int(game_id),
+        )
+    )
+
+def finish_termo_game(
+    game_id: int,
+    status: str,
+    attempts: int,
+    guesses_json: str,
+    used_letters: str,
+    time_spent_seconds: int = 0,
+    reward_coins: int = 0,
+    reward_xp: int = 0,
+    won_at_attempt: int = 0,
+):
+    _run(
+        """
+        UPDATE termo_games
+        SET status = %s,
+            attempts = %s,
+            guesses = %s::jsonb,
+            used_letters = %s,
+            time_spent_seconds = %s,
+            reward_coins = %s,
+            reward_xp = %s,
+            won_at_attempt = %s,
+            finished_at = NOW(),
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            (status or "").strip(),
+            int(attempts),
+            guesses_json,
+            (used_letters or "").strip().upper(),
+            int(time_spent_seconds),
+            int(reward_coins),
+            int(reward_xp),
+            int(won_at_attempt),
+            int(game_id),
+        )
+    )
+
+
+def mark_termo_word_used(user_id: int, word: str):
+    _run(
+        """
+        INSERT INTO termo_used_words (user_id, word)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id, word) DO NOTHING
+        """,
+        (int(user_id), (word or "").strip().lower())
+    )
+
+
+def has_user_used_termo_word(user_id: int, word: str) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM termo_used_words
+        WHERE user_id = %s
+          AND word = %s
+        LIMIT 1
+        """,
+        (int(user_id), (word or "").strip().lower()),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def record_termo_result(user_id: int, win: bool, attempts: int):
+    ensure_termo_stats_row(user_id)
+
+    row = _run(
+        """
+        SELECT user_id, games_played, wins, losses, current_streak, best_streak, best_score, last_play_date
+        FROM termo_stats
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {}
+
+    today = _sp_today()
+    yesterday = today - timedelta(days=1)
+
+    games_played = int(row.get("games_played") or 0) + 1
+    wins = int(row.get("wins") or 0)
+    losses = int(row.get("losses") or 0)
+    current_streak = int(row.get("current_streak") or 0)
+    best_streak = int(row.get("best_streak") or 0)
+    best_score = int(row.get("best_score") or 0)
+    last_play_date = row.get("last_play_date")
+
+    if win:
+        wins += 1
+
+        if last_play_date == yesterday:
+            current_streak += 1
+        elif last_play_date == today:
+            current_streak = max(current_streak, 1)
+        else:
+            current_streak = 1
+
+        if current_streak > best_streak:
+            best_streak = current_streak
+
+        attempts = int(attempts)
+        if attempts > 0 and (best_score == 0 or attempts < best_score):
+            best_score = attempts
+    else:
+        losses += 1
+        current_streak = 0
+
+    _run(
+        """
+        UPDATE termo_stats
+        SET games_played = %s,
+            wins = %s,
+            losses = %s,
+            current_streak = %s,
+            best_streak = %s,
+            best_score = %s,
+            last_play_date = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (
+            games_played,
+            wins,
+            losses,
+            current_streak,
+            best_streak,
+            best_score,
+            today,
+            int(user_id),
+        )
+    )
+
+    if win:
+        col_map = {
+            1: "one_try",
+            2: "two_try",
+            3: "three_try",
+            4: "four_try",
+            5: "five_try",
+            6: "six_try",
         }
-
-        state.coins = Number(r.data.coins || state.coins || 0);
-        syncState();
-        setToast("✅ Personagem vendido.");
-        await loadCollection();
-      };
-    });
-  }
-
-  async function loadState(){
-    const r = await fetchJson("/api/shop/state");
-    if (!r.ok || !r.data.ok){
-      setToast("❌ Falha ao carregar estado da loja.");
-      return false;
-    }
-    state.coins = Number(r.data.coins || 0);
-    state.dado_balance = Number(r.data.dado_balance || 0);
-    syncState();
-    return true;
-  }
-
-  async function loadCollection(){
-    const r = await fetchJson("/api/shop/sell/all?q=" + encodeURIComponent(state.q || ""));
-    if (!r.ok || !r.data.ok){
-      state.items = [];
-      renderSell();
-      setToast("❌ Falha ao carregar personagens.");
-      return;
-    }
-    state.items = Array.isArray(r.data.items) ? r.data.items : [];
-    renderSell();
-    setToast("✅ Loja Baltigo.");
-  }
-
-  document.getElementById("q").addEventListener("input", async (e) => {
-    state.q = e.target.value || "";
-    renderSell();
-  });
-
-  document.getElementById("tabSell").onclick = () => {
-    document.getElementById("tabSell").classList.add("active");
-    document.getElementById("tabBuy").classList.remove("active");
-    document.getElementById("sellView").style.display = "";
-    document.getElementById("buyView").style.display = "none";
-  };
-
-  document.getElementById("tabBuy").onclick = () => {
-    document.getElementById("tabBuy").classList.add("active");
-    document.getElementById("tabSell").classList.remove("active");
-    document.getElementById("buyView").style.display = "";
-    document.getElementById("sellView").style.display = "none";
-  };
-
-  document.getElementById("buyDadoBtn").onclick = async () => {
-    setToast("Comprando dado...");
-    const r = await fetchJson("/api/shop/buy/dado", { method: "POST" });
-    if (!r.ok || !r.data.ok){
-      setToast("❌ " + ((r.data && r.data.error) || "Coins insuficientes."));
-      return;
-    }
-    state.coins = Number(r.data.coins || state.coins || 0);
-    state.dado_balance = Number(r.data.dado_balance || state.dado_balance || 0);
-    syncState();
-    setToast("✅ Dado comprado.");
-  };
-
-  document.getElementById("buyNickBtn").onclick = async () => {
-    setToast("Comprando alteração de nickname...");
-    const r = await fetchJson("/api/shop/buy/nickname", { method: "POST" });
-    if (!r.ok || !r.data.ok){
-      setToast("❌ " + ((r.data && r.data.error) || "Coins insuficientes."));
-      return;
-    }
-    state.coins = Number(r.data.coins || state.coins || 0);
-    syncState();
-    setToast("✅ Alteração de nickname liberada.");
-  };
-
-  (async () => {
-    const ok = await loadState();
-    if (!ok) return;
-    await loadCollection();
-  })();
-</script>
-</body>
-</html>
-"""
-    html = html.replace("__SHOP_CSS__", _shop_css())
-    html = html.replace("__SHOP_BANNER__", SHOP_PREVIEW_IMAGE)
-    return HTMLResponse(html)
+        col = col_map.get(int(attempts))
+        if col:
+            _run(
+                f"""
+                UPDATE termo_attempt_distribution
+                SET {col} = {col} + 1
+                WHERE user_id = %s
+                """,
+                (int(user_id),)
+            )
 
 
-# Alias opcional
-@app.get("/loja", response_class=HTMLResponse)
-def loja_alias():
-    return shop_page()
+def get_termo_stats(user_id: int) -> Optional[Dict[str, Any]]:
+    ensure_termo_stats_row(user_id)
+
+    return _run(
+        """
+        SELECT
+            ts.user_id,
+            ts.games_played,
+            ts.wins,
+            ts.losses,
+            ts.current_streak,
+            ts.best_streak,
+            ts.best_score,
+            ts.last_play_date,
+            ts.updated_at,
+            tad.one_try,
+            tad.two_try,
+            tad.three_try,
+            tad.four_try,
+            tad.five_try,
+            tad.six_try
+        FROM termo_stats ts
+        LEFT JOIN termo_attempt_distribution tad
+               ON tad.user_id = ts.user_id
+        WHERE ts.user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def get_termo_global_ranking(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            ts.user_id,
+            u.username,
+            u.full_name,
+            ts.games_played,
+            ts.wins,
+            ts.losses,
+            ts.current_streak,
+            ts.best_streak,
+            ts.best_score,
+            CASE
+                WHEN ts.games_played > 0 THEN ROUND((ts.wins::numeric / ts.games_played::numeric) * 100, 2)
+                ELSE 0
+            END AS win_rate
+        FROM termo_stats ts
+        LEFT JOIN users u
+               ON u.user_id = ts.user_id
+        WHERE ts.games_played > 0
+        ORDER BY ts.wins DESC, ts.best_streak DESC, ts.best_score ASC, ts.user_id ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_termo_period_ranking(days: int, limit: int = 10) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            tg.user_id,
+            u.username,
+            u.full_name,
+            COUNT(*) FILTER (WHERE tg.status = 'win') AS wins,
+            COUNT(*) FILTER (WHERE tg.status IN ('win', 'lose', 'timeout')) AS games_played,
+            COALESCE(AVG(NULLIF(tg.won_at_attempt, 0)) FILTER (WHERE tg.status = 'win'), 0) AS avg_attempts
+        FROM termo_games tg
+        LEFT JOIN users u
+               ON u.user_id = tg.user_id
+        WHERE tg.mode = 'daily'
+          AND tg.finished_at >= NOW() - (%s || ' days')::interval
+        GROUP BY tg.user_id, u.username, u.full_name
+        HAVING COUNT(*) FILTER (WHERE tg.status IN ('win', 'lose', 'timeout')) > 0
+        ORDER BY wins DESC, avg_attempts ASC, tg.user_id ASC
+        LIMIT %s
+        """,
+        (str(int(days)), int(limit)),
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_termo_user_rank(user_id: int) -> int:
+    ensure_termo_stats_row(user_id)
+
+    row = _run(
+        """
+        SELECT rank_pos
+        FROM (
+            SELECT
+                user_id,
+                RANK() OVER (
+                    ORDER BY wins DESC, best_streak DESC, best_score ASC, user_id ASC
+                ) AS rank_pos
+            FROM termo_stats
+            WHERE games_played > 0
+        ) ranked
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    return int((row or {}).get("rank_pos") or 0)
+
 
 # =========================================================
-# PAGE — /pedidos-fotos
+# ADMIN — DADO
 # =========================================================
 
-@app.get("/cards/contrib", response_class=HTMLResponse)
-async def cards_contrib_page():
-    return """
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Central de Contribuições dos Cards</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 24px;
-      background: #0f172a;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-    .wrap {
-      max-width: 720px;
-      margin: 0 auto;
-    }
-    .card {
-      background: #1e293b;
-      border-radius: 16px;
-      padding: 20px;
-      margin-top: 18px;
-      box-shadow: 0 8px 24px rgba(0,0,0,.25);
-    }
-    .btn {
-      display: block;
-      width: 100%;
-      box-sizing: border-box;
-      text-decoration: none;
-      background: #2563eb;
-      color: #fff;
-      border-radius: 12px;
-      padding: 16px;
-      margin-top: 12px;
-      font-weight: bold;
-    }
-    p {
-      line-height: 1.6;
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>🖼 Central de Contribuições dos Cards</h1>
-    <p>Ajude a melhorar os cards enviando novas imagens de personagens ou sugerindo novas obras.</p>
+def admin_give_dado_to_user(user_id: int, amount: int) -> Dict[str, Any]:
+    user_id = int(user_id)
+    amount = int(amount)
 
-    <div class="card">
-      <h2>Escolha uma opção</h2>
-      <a class="btn" href="/cards/contrib/image">🖼 Alterar foto de personagem</a>
-      <a class="btn" href="/cards/contrib/work">🎬 Pedir nova obra para cards</a>
-      <a class="btn" href="/cards/contrib/rules">📜 Ver regras</a>
-    </div>
-  </div>
-</body>
-</html>
-"""
+    if amount <= 0:
+        return {"ok": False, "error": "invalid_amount"}
+
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, user_id)
+                old_balance = int(state["balance"])
+                new_balance = min(DADO_MAX_BALANCE, old_balance + amount)
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET dado_balance = %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (new_balance, user_id)
+                )
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "user_id": user_id,
+                    "old_balance": old_balance,
+                    "new_balance": new_balance,
+                    "added": amount,
+                    "applied": new_balance - old_balance,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
 
-@app.get("/cards/contrib/rules", response_class=HTMLResponse)
-async def cards_contrib_rules_page():
-    return """
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Regras das Imagens</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 24px;
-      background: #0f172a;
-      color: #fff;
-      font-family: Arial, sans-serif;
-    }
-    .wrap {
-      max-width: 720px;
-      margin: 0 auto;
-    }
-    .card {
-      background: #1e293b;
-      border-radius: 16px;
-      padding: 20px;
-      margin-top: 18px;
-      box-shadow: 0 8px 24px rgba(0,0,0,.25);
-    }
-    ul {
-      line-height: 1.8;
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>📜 Regras para Imagens</h1>
+def admin_give_dado_to_all(amount: int) -> Dict[str, Any]:
+    amount = int(amount)
 
-    <div class="card">
-      <ul>
-        <li>Formato obrigatório 2:3</li>
-        <li>A imagem deve ser fiel ao personagem</li>
-        <li>Não pode conter outros personagens além do principal</li>
-        <li>Sem texto, marca d’água ou bordas estranhas</li>
-        <li>Imagem limpa, centralizada e com boa qualidade</li>
-        <li>Conteúdo impróprio será recusado</li>
-      </ul>
+    if amount <= 0:
+        return {"ok": False, "error": "invalid_amount"}
 
-      <p>Se aprovada, a nova imagem substituirá a atual em todo o sistema.</p>
-      <p><b>Recompensa:</b> +1 coin por imagem aprovada.</p>
-    </div>
-  </div>
-</body>
-</html>
-"""
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT user_id
+                    FROM users
+                    ORDER BY user_id
+                    FOR UPDATE
+                    """
+                )
+                users = cur.fetchall() or []
+
+                total_users = 0
+                total_applied = 0
+
+                for row in users:
+                    uid = int(row["user_id"])
+                    state = _refresh_dado_locked(cur, uid)
+                    old_balance = int(state["balance"])
+                    new_balance = min(DADO_MAX_BALANCE, old_balance + amount)
+                    applied = new_balance - old_balance
+
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET dado_balance = %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (new_balance, uid)
+                    )
+
+                    total_users += 1
+                    total_applied += applied
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "total_users": total_users,
+                    "added": amount,
+                    "total_applied": total_applied,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+# =========================================================
+# MENU / PROFILE SETTINGS
+# =========================================================
+
+def ensure_profile_settings_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_profile_settings (user_id, created_at, updated_at)
+        VALUES (%s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_profile_settings(user_id: int):
+    ensure_profile_settings_row(user_id)
+    row = _run(
+        """
+        SELECT
+            user_id,
+            nickname,
+            favorite_character_id,
+            country_code,
+            language,
+            private_profile,
+            notifications_enabled,
+            dado_full_notified,
+            dado_full_notified_at,
+            created_at,
+            updated_at
+        FROM user_profile_settings
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_profile_settings_by_nickname(nickname: str):
+    row = _run(
+        """
+        SELECT
+            user_id,
+            nickname,
+            favorite_character_id,
+            country_code,
+            language,
+            private_profile,
+            notifications_enabled,
+            dado_full_notified,
+            dado_full_notified_at,
+            created_at,
+            updated_at
+        FROM user_profile_settings
+        WHERE LOWER(nickname) = LOWER(%s)
+        LIMIT 1
+        """,
+        ((nickname or "").strip(),),
+        fetch="one"
+    )
+    return row or None
+
+
+def nickname_exists(nickname: str) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM user_profile_settings
+        WHERE LOWER(nickname) = LOWER(%s)
+        LIMIT 1
+        """,
+        ((nickname or "").strip(),),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def set_profile_nickname(user_id: int, nickname: str) -> dict:
+    ensure_profile_settings_row(user_id)
+
+    current = get_profile_settings(user_id) or {}
+    if current.get("nickname"):
+        return {"ok": False, "error": "nickname_locked"}
+
+    if nickname_exists(nickname):
+        return {"ok": False, "error": "nickname_taken"}
+
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET nickname = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        ((nickname or "").strip(), int(user_id))
+    )
+    return {"ok": True}
+
+
+def set_profile_favorite(user_id: int, character_id: int):
+    ensure_profile_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET favorite_character_id = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (int(character_id), int(user_id))
+    )
+
+
+def set_profile_country(user_id: int, country_code: str):
+    ensure_profile_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET country_code = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        ((country_code or "BR").strip().upper(), int(user_id))
+    )
+
+
+def set_profile_language(user_id: int, language: str):
+    ensure_profile_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET language = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        ((language or "pt").strip().lower(), int(user_id))
+    )
+
+
+def set_profile_private(user_id: int, value: bool):
+    ensure_profile_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET private_profile = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def set_profile_notifications(user_id: int, value: bool):
+    ensure_profile_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET notifications_enabled = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def delete_user_account(user_id: int):
+    user_id = int(user_id)
+
+    _run("DELETE FROM user_card_collection WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM user_progress WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM termo_games WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM termo_stats WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM termo_attempt_distribution WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM termo_used_words WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM dice_rolls WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM media_requests WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM webapp_reports WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM user_collection_profile WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM user_profile_settings WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM users WHERE user_id = %s", (user_id,))
+
+
+# =========================================================
+# DADO NOTIFICATIONS
+# =========================================================
+
+def get_users_with_dado_notifications_enabled() -> List[int]:
+    rows = _run(
+        """
+        SELECT ups.user_id
+        FROM user_profile_settings ups
+        INNER JOIN users u
+                ON u.user_id = ups.user_id
+        WHERE ups.notifications_enabled = TRUE
+        ORDER BY ups.user_id ASC
+        """,
+        fetch="all"
+    ) or []
+
+    return [int(r["user_id"]) for r in rows]
+
+
+def has_dado_full_notified(user_id: int) -> bool:
+    ensure_profile_settings_row(user_id)
+
+    row = _run(
+        """
+        SELECT dado_full_notified
+        FROM user_profile_settings
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {}
+
+    return bool(row.get("dado_full_notified"))
+
+
+def set_dado_full_notified(user_id: int, value: bool):
+    ensure_profile_settings_row(user_id)
+
+    _run(
+        """
+        UPDATE user_profile_settings
+        SET dado_full_notified = %s,
+            dado_full_notified_at = CASE WHEN %s THEN NOW() ELSE NULL END,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), bool(value), int(user_id))
+    )
+
+# =========================================================
+# SHOP / ECONOMY
+# =========================================================
+
+def create_shop_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS shop_transactions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER,
+        reference_id BIGINT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_shop_transactions_user
+    ON shop_transactions (user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS shop_card_sales (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        price INTEGER NOT NULL DEFAULT 1,
+        sold_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        buyback_available_until TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_shop_card_sales_user
+    ON shop_card_sales (user_id, sold_at DESC)
+    """)
+
+def record_coin_transaction(user_id: int, tx_type: str, amount: int, metadata=None):
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (int(user_id),),
+        fetch="one"
+    )
+
+    balance = int((row or {}).get("coins") or 0)
+
+    _run(
+        """
+        INSERT INTO shop_transactions
+        (user_id, type, amount, balance_after, metadata)
+        VALUES (%s,%s,%s,%s,%s)
+        """,
+        (
+            int(user_id),
+            tx_type,
+            int(amount),
+            balance,
+            json.dumps(metadata or {})
+        )
+    )
+
+def sell_character(user_id: int, character_id: int):
+    qty = get_user_card_quantity(user_id, character_id)
+
+    if qty <= 0:
+        return {"ok": False, "error": "no_card"}
+
+    remove_card_copy(user_id, character_id, 1)
+
+    add_user_coins(user_id, 1)
+
+    record_coin_transaction(
+        user_id,
+        "sell_character",
+        1,
+        {"character_id": character_id}
+    )
+
+    _run(
+        """
+        INSERT INTO shop_card_sales
+        (user_id, character_id, price, buyback_available_until)
+        VALUES (%s,%s,1,NOW() + INTERVAL '72 hours')
+        """,
+        (user_id, character_id)
+    )
+
+    return {"ok": True}
+
+def buyback_character(user_id: int, sale_id: int):
+    sale = _run(
+        """
+        SELECT *
+        FROM shop_card_sales
+        WHERE id = %s
+          AND user_id = %s
+        """,
+        (sale_id, user_id),
+        fetch="one"
+    )
+
+    if not sale:
+        return {"ok": False}
+
+    price = 3
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False, "error": "no_coins"}
+
+    add_user_coins(user_id, -price)
+
+    add_card_copy(user_id, sale["character_id"], 1)
+
+    record_coin_transaction(
+        user_id,
+        "buyback_character",
+        -price,
+        {"sale_id": sale_id}
+    )
+
+    return {"ok": True}
+
+def buy_dado(user_id: int):
+    price = 2
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False}
+
+    add_user_coins(user_id, -price)
+
+    add_dado_balance(user_id, 1)
+
+    record_coin_transaction(
+        user_id,
+        "buy_dado",
+        -price
+    )
+
+    return {"ok": True}
+
+def buy_nickname_change(user_id: int):
+    price = 3
+
+    row = _run(
+        "SELECT coins FROM users WHERE user_id = %s",
+        (user_id,),
+        fetch="one"
+    )
+
+    coins = int((row or {}).get("coins") or 0)
+
+    if coins < price:
+        return {"ok": False}
+
+    add_user_coins(user_id, -price)
+
+    record_coin_transaction(
+        user_id,
+        "buy_nickname",
+        -price
+    )
+
+    return {"ok": True}
+
+def get_user_shop_history(user_id: int, limit: int = 20):
+    rows = _run(
+        """
+        SELECT *
+        FROM shop_transactions
+        WHERE user_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (user_id, limit),
+        fetch="all"
+    )
+
+    return rows or []
+
+# =========================================================
+# COINS SYSTEM (COMPATIBILITY HELPERS)
+# =========================================================
+
+def add_coin(user_id: int, amount: int = 1):
+    """
+    Adiciona moedas ao usuário.
+    Wrapper compatível com sistemas externos.
+    """
+    amount = int(amount)
+
+    if amount <= 0:
+        return
+
+    add_user_coins(user_id, amount)
+
+
+def remove_coin(user_id: int, amount: int = 1) -> bool:
+    """
+    Remove moedas do usuário se possível.
+    Retorna True se conseguiu remover.
+    """
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return True
+
+    row = _run(
+        """
+        SELECT coins
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return False
+
+    current = int(row.get("coins") or 0)
+
+    if current < amount:
+        return False
+
+    _run(
+        """
+        UPDATE users
+        SET coins = coins - %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (amount, int(user_id))
+    )
+
+    return True
+
+
+def get_user_coins(user_id: int) -> int:
+    """
+    Retorna quantidade de moedas do usuário
+    """
+
+    row = _run(
+        """
+        SELECT coins
+        FROM users
+        WHERE user_id = %s
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+    if not row:
+        return 0
+
+    return int(row.get("coins") or 0)
+
+import random
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+SP_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+# =========================================================
+# DAILY REWARD
+# =========================================================
+
+def create_daily_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS daily_rewards (
+        user_id BIGINT NOT NULL,
+        day_start_ts BIGINT NOT NULL,
+        reward_type TEXT NOT NULL,
+        reward_amount BIGINT NOT NULL DEFAULT 0,
+        claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, day_start_ts)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_daily_rewards_user_claimed
+    ON daily_rewards (user_id, claimed_at DESC)
+    """)
+
+
+def _daily_day_start_ts_sp() -> int:
+    """
+    Timestamp do começo do dia no fuso de São Paulo.
+    """
+    now = datetime.now(tz=SP_TZ)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
+
+
+def ensure_daily_support():
+    create_daily_tables()
+
+
+def has_claimed_daily(user_id: int, day_start_ts: int) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM daily_rewards
+        WHERE user_id = %s
+          AND day_start_ts = %s
+        LIMIT 1
+        """,
+        (int(user_id), int(day_start_ts)),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def get_extra_dado(user_id: int) -> int:
+    """
+    Compatibilidade com sistema antigo.
+    Se você ainda não tiver giros extras separados no banco,
+    retorna 0 por enquanto.
+    """
+    return 0
+
+
+def add_extra_dado(user_id: int, amount: int = 1):
+    """
+    Compatibilidade com sistema antigo.
+    Aqui você pode plugar depois no seu sistema real de giros extras.
+    Por enquanto não quebra nada.
+    """
+    amount = int(amount)
+    if amount <= 0:
+        return
+    # implementar depois se quiser saldo separado de giros extras
+    return
+
+
+def claim_daily_reward(
+    user_id: int,
+    day_start_ts: int,
+    coins_min: int,
+    coins_max: int,
+    giro_chance: float,
+):
+    """
+    Resgata o daily uma vez por dia no horário de São Paulo.
+
+    Retorna:
+      None -> já resgatou hoje
+      {"type": "giro", "amount": 1}
+      {"type": "coins", "amount": X}
+    """
+
+    user_id = int(user_id)
+    day_start_ts = int(day_start_ts)
+    coins_min = int(coins_min)
+    coins_max = int(coins_max)
+    giro_chance = float(giro_chance)
+
+    ensure_daily_support()
+    create_or_get_user(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM daily_rewards
+                    WHERE user_id = %s
+                      AND day_start_ts = %s
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (user_id, day_start_ts)
+                )
+                already = cur.fetchone()
+
+                if already:
+                    conn.rollback()
+                    return None
+
+                roll = random.random()
+
+                if roll < giro_chance:
+                    reward_type = "giro"
+                    reward_amount = 1
+
+                    # compatível com sistema antigo
+                    add_extra_dado(user_id, 1)
+                else:
+                    reward_type = "coins"
+                    reward_amount = random.randint(coins_min, coins_max)
+
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = COALESCE(coins, 0) + %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (reward_amount, user_id)
+                    )
+
+                cur.execute(
+                    """
+                    INSERT INTO daily_rewards
+                    (user_id, day_start_ts, reward_type, reward_amount, claimed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    """,
+                    (user_id, day_start_ts, reward_type, reward_amount)
+                )
+
+                conn.commit()
+
+                return {
+                    "type": reward_type,
+                    "amount": reward_amount,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+# =========================================================
+# WEEKLY COMPOSITE RANKING
+# =========================================================
+
+def create_weekly_ranking_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS weekly_ranking_posts (
+        week_key DATE PRIMARY KEY,
+        posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_weekly_ranking_posts_posted_at
+    ON weekly_ranking_posts (posted_at DESC)
+    """)
+
+
+def get_display_name_parts(user_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT
+            u.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname
+        FROM users u
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = u.user_id
+        WHERE u.user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+
+
+def get_all_coin_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            u.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(u.coins, 0) AS coins
+        FROM users u
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = u.user_id
+        WHERE COALESCE(u.coins, 0) > 0
+        ORDER BY COALESCE(u.coins, 0) DESC, u.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_level_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            up.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(up.level, 1) AS level,
+            COALESCE(up.xp, 0) AS xp,
+            COALESCE(up.total_actions, 0) AS total_actions
+        FROM user_progress up
+        LEFT JOIN users u
+               ON u.user_id = up.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = up.user_id
+        WHERE COALESCE(up.xp, 0) > 0 OR COALESCE(up.level, 1) > 1
+        ORDER BY COALESCE(up.level, 1) DESC,
+                 COALESCE(up.xp, 0) DESC,
+                 COALESCE(up.total_actions, 0) DESC,
+                 up.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_collection_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            c.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(SUM(c.quantity), 0) AS total_cards
+        FROM user_card_collection c
+        LEFT JOIN users u
+               ON u.user_id = c.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = c.user_id
+        WHERE c.quantity > 0
+        GROUP BY c.user_id, u.username, u.full_name, ups.nickname
+        HAVING COALESCE(SUM(c.quantity), 0) > 0
+        ORDER BY total_cards DESC, c.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_all_termo_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            ts.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COALESCE(ts.wins, 0) AS wins,
+            COALESCE(ts.best_streak, 0) AS best_streak,
+            COALESCE(ts.best_score, 0) AS best_score
+        FROM termo_stats ts
+        LEFT JOIN users u
+               ON u.user_id = ts.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = ts.user_id
+        WHERE COALESCE(ts.games_played, 0) > 0
+        ORDER BY COALESCE(ts.wins, 0) DESC,
+                 COALESCE(ts.best_streak, 0) DESC,
+                 COALESCE(ts.best_score, 0) ASC,
+                 ts.user_id ASC
+        """,
+        fetch="all"
+    )
+    return rows or []
+
+
+def has_weekly_ranking_post_for_week(week_key: date) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM weekly_ranking_posts
+        WHERE week_key = %s
+        LIMIT 1
+        """,
+        (week_key,),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def save_weekly_ranking_post(week_key: date, payload: Dict[str, Any]) -> bool:
+    """
+    Retorna True se salvou agora.
+    Retorna False se essa semana já foi postada.
+    """
+    row = _run(
+        """
+        INSERT INTO weekly_ranking_posts (week_key, payload_json)
+        VALUES (%s, %s::jsonb)
+        ON CONFLICT (week_key) DO NOTHING
+        RETURNING week_key
+        """,
+        (week_key, json.dumps(payload, ensure_ascii=False)),
+        fetch="one"
+    )
+    return bool(row)
+
+# =========================================================
+# CARD TRADES
+# =========================================================
+
+def create_trades_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_trades (
+        trade_id SERIAL PRIMARY KEY,
+        from_user BIGINT NOT NULL,
+        to_user BIGINT NOT NULL,
+        from_character_id INT NOT NULL,
+        to_character_id INT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
+
+def create_trade(from_user, to_user, from_char, to_char):
+
+    row = _run("""
+        INSERT INTO card_trades
+        (from_user, to_user, from_character_id, to_character_id)
+        VALUES (%s,%s,%s,%s)
+        RETURNING trade_id
+    """,(from_user,to_user,from_char,to_char),"one")
+
+    return row["trade_id"]
+
+
+def get_trade(trade_id):
+
+    return _run("""
+        SELECT *
+        FROM card_trades
+        WHERE trade_id=%s
+    """,(trade_id,),"one")
+
+
+def set_trade_status(trade_id,status):
+
+    _run("""
+        UPDATE card_trades
+        SET status=%s
+        WHERE trade_id=%s
+    """,(status,trade_id))
+
+
+def swap_characters_atomic(trade_id: int) -> bool:
+    trade = get_trade(trade_id)
+    if not trade:
+        return False
+
+    if str(trade.get("status")) != "pending":
+        return False
+
+    from_user = int(trade["from_user"])
+    to_user = int(trade["to_user"])
+    from_char = int(trade["from_character_id"])
+    to_char = int(trade["to_character_id"])
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("BEGIN")
+
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM user_card_collection
+                    WHERE user_id = %s AND character_id = %s
+                    FOR UPDATE
+                    """,
+                    (from_user, from_char)
+                )
+                row_a = cur.fetchone()
+
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM user_card_collection
+                    WHERE user_id = %s AND character_id = %s
+                    FOR UPDATE
+                    """,
+                    (to_user, to_char)
+                )
+                row_b = cur.fetchone()
+
+                def _qty(row):
+                    if not row:
+                        return 0
+                    if isinstance(row, dict):
+                        value = row.get("quantity", 0)
+                    else:
+                        value = row[0] if len(row) > 0 else 0
+                    return int(value or 0)
+
+                qty_a = _qty(row_a)
+                qty_b = _qty(row_b)
+
+                if qty_a <= 0 or qty_b <= 0:
+                    cur.execute(
+                        """
+                        UPDATE card_trades
+                        SET status = 'failed'
+                        WHERE trade_id = %s
+                        """,
+                        (trade_id,)
+                    )
+                    conn.commit()
+                    return False
+
+                if qty_a == 1:
+                    cur.execute(
+                        """
+                        DELETE FROM user_card_collection
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (from_user, from_char)
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE user_card_collection
+                        SET quantity = quantity - 1,
+                            updated_at = NOW()
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (from_user, from_char)
+                    )
+
+                if qty_b == 1:
+                    cur.execute(
+                        """
+                        DELETE FROM user_card_collection
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (to_user, to_char)
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE user_card_collection
+                        SET quantity = quantity - 1,
+                            updated_at = NOW()
+                        WHERE user_id = %s AND character_id = %s
+                        """,
+                        (to_user, to_char)
+                    )
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (
+                        user_id,
+                        character_id,
+                        quantity,
+                        first_obtained_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, 1, NOW(), NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    """,
+                    (from_user, to_char)
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (
+                        user_id,
+                        character_id,
+                        quantity,
+                        first_obtained_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, 1, NOW(), NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    """,
+                    (to_user, from_char)
+                )
+
+                cur.execute(
+                    """
+                    UPDATE card_trades
+                    SET status = 'completed'
+                    WHERE trade_id = %s
+                    """,
+                    (trade_id,)
+                )
+
+                conn.commit()
+                return True
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+# =========================================================
+# ADMIN RESET SYSTEM
+# =========================================================
+
+def delete_all_users():
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("TRUNCATE TABLE user_card_collection CASCADE")
+            cur.execute("TRUNCATE TABLE user_progress CASCADE")
+            cur.execute("TRUNCATE TABLE termo_games CASCADE")
+            cur.execute("TRUNCATE TABLE termo_stats CASCADE")
+            cur.execute("TRUNCATE TABLE termo_attempt_distribution CASCADE")
+            cur.execute("TRUNCATE TABLE termo_used_words CASCADE")
+            cur.execute("TRUNCATE TABLE dice_rolls CASCADE")
+            cur.execute("TRUNCATE TABLE media_requests CASCADE")
+            cur.execute("TRUNCATE TABLE webapp_reports CASCADE")
+            cur.execute("TRUNCATE TABLE user_collection_profile CASCADE")
+            cur.execute("TRUNCATE TABLE user_profile_settings CASCADE")
+            cur.execute("TRUNCATE TABLE users CASCADE")
+
+        conn.commit()
+
+# =========================================================
+# ADMIN BROADCAST
+# =========================================================
+
+def get_all_started_user_ids() -> List[int]:
+    rows = _run(
+        """
+        SELECT user_id
+        FROM users
+        ORDER BY user_id ASC
+        """,
+        fetch="all"
+    ) or []
+
+    return [int(r["user_id"]) for r in rows if r.get("user_id") is not None]
+
+def get_all_user_ids() -> List[int]:
+    rows = _run(
+        """
+        SELECT user_id
+        FROM users
+        ORDER BY user_id ASC
+        """,
+        fetch="all"
+    ) or []
+
+    return [int(row["user_id"]) for row in rows if row.get("user_id") is not None]
+
+# =========================================================
+# USER MESSAGES SYSTEM
+# =========================================================
+
+def create_message_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_settings (
+        user_id BIGINT PRIMARY KEY,
+        allow_messages BOOLEAN NOT NULL DEFAULT TRUE,
+        allow_anonymous BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_blocks (
+        user_id BIGINT NOT NULL,
+        blocked_user_id BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, blocked_user_id)
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_messages (
+        message_id BIGSERIAL PRIMARY KEY,
+        from_user_id BIGINT NOT NULL,
+        to_user_id BIGINT NOT NULL,
+        from_nickname TEXT,
+        to_nickname TEXT,
+        message_text TEXT NOT NULL,
+        is_anonymous BOOLEAN NOT NULL DEFAULT FALSE,
+        coin_cost INTEGER NOT NULL DEFAULT 0,
+        refund_done BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        fail_reason TEXT,
+        reported BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        delivered_at TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_message_reports (
+        report_id BIGSERIAL PRIMARY KEY,
+        message_id BIGINT NOT NULL,
+        reporter_user_id BIGINT NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_from_created
+    ON user_messages (from_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_to_created
+    ON user_messages (to_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_messages_status
+    ON user_messages (status, created_at DESC)
+    """)
+
+
+def ensure_message_settings_row(user_id: int):
+    _run(
+        """
+        INSERT INTO user_message_settings (user_id, created_at, updated_at)
+        VALUES (%s, NOW(), NOW())
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (int(user_id),)
+    )
+
+
+def get_message_settings(user_id: int) -> Dict[str, Any]:
+    ensure_message_settings_row(user_id)
+    return _run(
+        """
+        SELECT user_id, allow_messages, allow_anonymous, created_at, updated_at
+        FROM user_message_settings
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    ) or {
+        "user_id": int(user_id),
+        "allow_messages": True,
+        "allow_anonymous": True,
+    }
+
+
+def set_message_allow_messages(user_id: int, value: bool):
+    ensure_message_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_message_settings
+        SET allow_messages = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def set_message_allow_anonymous(user_id: int, value: bool):
+    ensure_message_settings_row(user_id)
+    _run(
+        """
+        UPDATE user_message_settings
+        SET allow_anonymous = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+        """,
+        (bool(value), int(user_id))
+    )
+
+
+def is_message_blocked(user_id: int, blocked_user_id: int) -> bool:
+    row = _run(
+        """
+        SELECT 1
+        FROM user_message_blocks
+        WHERE user_id = %s
+          AND blocked_user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id), int(blocked_user_id)),
+        fetch="one"
+    )
+    return bool(row)
+
+
+def block_user_messages(user_id: int, blocked_user_id: int):
+    _run(
+        """
+        INSERT INTO user_message_blocks (user_id, blocked_user_id, created_at)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (user_id, blocked_user_id) DO NOTHING
+        """,
+        (int(user_id), int(blocked_user_id))
+    )
+
+
+def unblock_user_messages(user_id: int, blocked_user_id: int):
+    _run(
+        """
+        DELETE FROM user_message_blocks
+        WHERE user_id = %s
+          AND blocked_user_id = %s
+        """,
+        (int(user_id), int(blocked_user_id))
+    )
+
+
+def get_last_sent_message_at(user_id: int, is_anonymous: Optional[bool] = None) -> Optional[datetime]:
+    if is_anonymous is None:
+        row = _run(
+            """
+            SELECT created_at
+            FROM user_messages
+            WHERE from_user_id = %s
+              AND status IN ('pending', 'delivered')
+            ORDER BY message_id DESC
+            LIMIT 1
+            """,
+            (int(user_id),),
+            fetch="one"
+        )
+    else:
+        row = _run(
+            """
+            SELECT created_at
+            FROM user_messages
+            WHERE from_user_id = %s
+              AND is_anonymous = %s
+              AND status IN ('pending', 'delivered')
+            ORDER BY message_id DESC
+            LIMIT 1
+            """,
+            (int(user_id), bool(is_anonymous)),
+            fetch="one"
+        )
+
+    return (row or {}).get("created_at")
+
+
+def get_message_cooldown_remaining(user_id: int, cooldown_seconds: int, is_anonymous: Optional[bool] = None) -> int:
+    last_dt = get_last_sent_message_at(user_id, is_anonymous=is_anonymous)
+    if not last_dt:
+        return 0
+
+    now = _sp_now()
+    if getattr(last_dt, "tzinfo", None) is None:
+        elapsed = (datetime.utcnow() - last_dt).total_seconds()
+    else:
+        elapsed = (now.astimezone(last_dt.tzinfo) - last_dt).total_seconds()
+
+    return int(max(0, int(cooldown_seconds) - elapsed))
+
+
+def enqueue_user_message(
+    from_user_id: int,
+    target_nickname: str,
+    message_text: str,
+    is_anonymous: bool,
+    anon_cost: int,
+    normal_cooldown_seconds: int,
+    anonymous_cooldown_seconds: int,
+) -> Dict[str, Any]:
+    from_user_id = int(from_user_id)
+    target_nickname = (target_nickname or "").strip()
+    message_text = (message_text or "").strip()
+    is_anonymous = bool(is_anonymous)
+    anon_cost = int(anon_cost)
+
+    if not target_nickname:
+        return {"ok": False, "error": "target_nickname_required"}
+
+    if not message_text:
+        return {"ok": False, "error": "empty_message"}
+
+    if len(message_text) > 500:
+        return {"ok": False, "error": "message_too_long"}
+
+    create_or_get_user(from_user_id)
+    ensure_profile_settings_row(from_user_id)
+    ensure_message_settings_row(from_user_id)
+
+    sender_profile = get_profile_settings(from_user_id) or {}
+    sender_nickname = (sender_profile.get("nickname") or "").strip()
+    if not sender_nickname:
+        return {"ok": False, "error": "sender_no_nickname"}
+
+    target_profile = get_profile_settings_by_nickname(target_nickname)
+    if not target_profile:
+        return {"ok": False, "error": "target_not_found"}
+
+    to_user_id = int(target_profile["user_id"])
+    to_nickname = (target_profile.get("nickname") or "").strip()
+
+    if from_user_id == to_user_id:
+        return {"ok": False, "error": "cannot_message_self"}
+
+    ensure_message_settings_row(to_user_id)
+    target_settings = get_message_settings(to_user_id)
+
+    if not bool(target_settings.get("allow_messages", True)):
+        return {"ok": False, "error": "target_messages_disabled"}
+
+    if is_anonymous and not bool(target_settings.get("allow_anonymous", True)):
+        return {"ok": False, "error": "target_anonymous_disabled"}
+
+    if is_message_blocked(to_user_id, from_user_id):
+        return {"ok": False, "error": "blocked_by_target"}
+
+    if is_message_blocked(from_user_id, to_user_id):
+        return {"ok": False, "error": "you_blocked_target"}
+
+    cooldown_seconds = int(anonymous_cooldown_seconds if is_anonymous else normal_cooldown_seconds)
+    remaining = get_message_cooldown_remaining(
+        from_user_id,
+        cooldown_seconds,
+        is_anonymous=is_anonymous,
+    )
+    if remaining > 0:
+        return {"ok": False, "error": "cooldown_active", "remaining_seconds": remaining}
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                # trava o usuário antes de cobrar
+                cur.execute(
+                    """
+                    SELECT user_id, coins
+                    FROM users
+                    WHERE user_id = %s
+                    FOR UPDATE
+                    """,
+                    (from_user_id,)
+                )
+                sender_row = cur.fetchone()
+
+                if not sender_row:
+                    conn.rollback()
+                    return {"ok": False, "error": "sender_not_found"}
+
+                sender_coins = int(sender_row.get("coins") or 0)
+
+                if is_anonymous and sender_coins < anon_cost:
+                    conn.rollback()
+                    return {"ok": False, "error": "insufficient_coins"}
+
+                if is_anonymous:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = coins - %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (anon_cost, from_user_id)
+                    )
+
+                cur.execute(
+                    """
+                    INSERT INTO user_messages
+                    (
+                        from_user_id,
+                        to_user_id,
+                        from_nickname,
+                        to_nickname,
+                        message_text,
+                        is_anonymous,
+                        coin_cost,
+                        refund_done,
+                        status,
+                        created_at
+                    )
+                    VALUES
+                    (
+                        %s, %s, %s, %s, %s, %s, %s, FALSE, 'pending', NOW()
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        from_user_id,
+                        to_user_id,
+                        sender_nickname,
+                        to_nickname,
+                        message_text,
+                        is_anonymous,
+                        anon_cost if is_anonymous else 0,
+                    )
+                )
+                row = cur.fetchone()
+
+                conn.commit()
+
+                return {
+                    "ok": True,
+                    "message": row,
+                    "to_user_id": to_user_id,
+                    "to_nickname": to_nickname,
+                    "from_nickname": sender_nickname,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def mark_user_message_delivered(message_id: int):
+    _run(
+        """
+        UPDATE user_messages
+        SET status = 'delivered',
+            delivered_at = NOW()
+        WHERE message_id = %s
+        """,
+        (int(message_id),)
+    )
+
+
+def fail_user_message(message_id: int, reason: str = ""):
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT message_id, from_user_id, coin_cost, refund_done, status, is_anonymous
+                    FROM user_messages
+                    WHERE message_id = %s
+                    FOR UPDATE
+                    """,
+                    (int(message_id),)
+                )
+                row = cur.fetchone()
+
+                if not row:
+                    conn.rollback()
+                    return
+
+                status = str(row.get("status") or "")
+                if status == "failed":
+                    conn.rollback()
+                    return
+
+                do_refund = (
+                    bool(row.get("is_anonymous"))
+                    and int(row.get("coin_cost") or 0) > 0
+                    and not bool(row.get("refund_done"))
+                )
+
+                if do_refund:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET coins = COALESCE(coins, 0) + %s,
+                            updated_at = NOW()
+                        WHERE user_id = %s
+                        """,
+                        (int(row["coin_cost"]), int(row["from_user_id"]))
+                    )
+
+                cur.execute(
+                    """
+                    UPDATE user_messages
+                    SET status = 'failed',
+                        fail_reason = %s,
+                        refund_done = %s
+                    WHERE message_id = %s
+                    """,
+                    ((reason or "").strip()[:300], bool(do_refund), int(message_id))
+                )
+
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def get_received_message_by_id(user_id: int, message_id: int) -> Optional[Dict[str, Any]]:
+    return _run(
+        """
+        SELECT *
+        FROM user_messages
+        WHERE message_id = %s
+          AND to_user_id = %s
+        LIMIT 1
+        """,
+        (int(message_id), int(user_id)),
+        fetch="one"
+    )
+
+
+def report_user_message(reporter_user_id: int, message_id: int, reason: str = "") -> Dict[str, Any]:
+    msg = get_received_message_by_id(reporter_user_id, message_id)
+    if not msg:
+        return {"ok": False, "error": "message_not_found"}
+
+    _run(
+        """
+        INSERT INTO user_message_reports (message_id, reporter_user_id, reason, created_at)
+        VALUES (%s, %s, %s, NOW())
+        """,
+        (int(message_id), int(reporter_user_id), (reason or "").strip()[:500])
+    )
+
+    _run(
+        """
+        UPDATE user_messages
+        SET reported = TRUE
+        WHERE message_id = %s
+        """,
+        (int(message_id),)
+    )
+
+    return {"ok": True}
+
+# =========================================================
+# CARD CONTRIBUTIONS
+# =========================================================
+
+def create_card_contrib_tables():
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_image_suggestions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+
+        character_id BIGINT NOT NULL,
+        character_name TEXT,
+        anime_id BIGINT,
+        anime_title TEXT,
+
+        old_image_url TEXT,
+        suggested_image_url TEXT,
+
+        telegram_file_id TEXT,
+        telegram_file_unique_id TEXT,
+
+        note TEXT,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        reviewed_by BIGINT,
+        reviewed_at TIMESTAMPTZ,
+        review_note TEXT,
+
+        channel_message_id BIGINT,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS card_work_requests (
+        id BIGSERIAL PRIMARY KEY,
+
+        user_id BIGINT NOT NULL,
+        username TEXT,
+        full_name TEXT,
+
+        media_type TEXT,
+        anilist_id BIGINT,
+
+        title TEXT,
+        title_norm TEXT,
+
+        cover_url TEXT,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        reviewed_by BIGINT,
+        reviewed_at TIMESTAMPTZ,
+
+        channel_message_id BIGINT,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+def create_card_image_suggestion(data):
+
+    return _run(
+        """
+        INSERT INTO card_image_suggestions
+        (
+            user_id,
+            username,
+            full_name,
+
+            character_id,
+            character_name,
+            anime_id,
+            anime_title,
+
+            old_image_url,
+            suggested_image_url,
+
+            telegram_file_id,
+            telegram_file_unique_id,
+
+            note
+        )
+        VALUES
+        (
+            %(user_id)s,
+            %(username)s,
+            %(full_name)s,
+
+            %(character_id)s,
+            %(character_name)s,
+            %(anime_id)s,
+            %(anime_title)s,
+
+            %(old_image_url)s,
+            %(suggested_image_url)s,
+
+            %(telegram_file_id)s,
+            %(telegram_file_unique_id)s,
+
+            %(note)s
+        )
+        RETURNING *
+        """,
+        data,
+        fetch="one",
+    )
+
+def approve_card_image_suggestion(suggestion_id, admin_id):
+
+    row = _run(
+        """
+        SELECT *
+        FROM card_image_suggestions
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (suggestion_id,),
+        fetch="one"
+    )
+
+    if not row:
+        return None
+
+    character_id = row["character_id"]
+    new_image = row["suggested_image_url"]
+
+    override_set_character_image(character_id, new_image)
+
+    _run(
+        """
+        UPDATE card_image_suggestions
+        SET status='approved',
+            reviewed_by=%s,
+            reviewed_at=NOW()
+        WHERE id=%s
+        """,
+        (admin_id, suggestion_id)
+    )
+
+    add_user_coins(row["user_id"], int(os.getenv("CARD_IMAGE_APPROVED_REWARD", "1")))
+
+    return row
