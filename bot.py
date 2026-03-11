@@ -53,6 +53,7 @@ from commands.ranking import ranking, callback_ranking
 from commands.pedido import pedido
 from commands.nivel import nivel
 
+from commands.cardcontrib import card_contrib
 from commands.dado import dado
 from commands.dado_admin import dadogive, dadogiveall
 
@@ -151,6 +152,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("resetuser", reset_user))
     app.add_handler(CommandHandler("resetall", reset_all))
     app.add_handler(CommandHandler("avisar", avisar))
+    app.add_handler(CommandHandler("cardcontrib", sugerircard))
 
     # msg
     app.add_handler(CommandHandler("msg", msg))
