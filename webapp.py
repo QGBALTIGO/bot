@@ -8604,3 +8604,128 @@ def shop_page():
 @app.get("/loja", response_class=HTMLResponse)
 def loja_alias():
     return shop_page()
+
+# =========================================================
+# PAGE — /pedidos-fotos
+# =========================================================
+
+@app.get("/cards/contrib", response_class=HTMLResponse)
+async def cards_contrib_page():
+    return """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Central de Contribuições dos Cards</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #0f172a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-decoration: none;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+      font-weight: bold;
+    }
+    ul {
+      text-align: left;
+      line-height: 1.6;
+    }
+    p {
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🖼 Central de Contribuições dos Cards</h1>
+    <p>Ajude a melhorar os cards enviando novas imagens de personagens ou sugerindo novas obras.</p>
+
+    <div class="card">
+      <h2>Escolha uma opção</h2>
+      <a class="btn" href="/cards/contrib/image">🖼 Alterar foto de personagem</a>
+      <a class="btn" href="/cards/contrib/work">🎬 Pedir nova obra para cards</a>
+      <a class="btn" href="/cards/contrib/rules">📜 Ver regras</a>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+    @app.get("/cards/contrib/rules", response_class=HTMLResponse)
+async def cards_contrib_rules_page():
+    return """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regras das Imagens</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #0f172a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    }
+    ul {
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📜 Regras para Imagens</h1>
+
+    <div class="card">
+      <ul>
+        <li>Formato obrigatório 2:3</li>
+        <li>A imagem deve ser fiel ao personagem</li>
+        <li>Não pode conter outros personagens além do principal</li>
+        <li>Sem texto, marca d’água ou bordas estranhas</li>
+        <li>Imagem limpa, centralizada e com boa qualidade</li>
+        <li>Conteúdo impróprio será recusado</li>
+      </ul>
+
+      <p>Se aprovada, a nova imagem substituirá a atual em todo o sistema.</p>
+      <p><b>Recompensa:</b> +1 coin por imagem aprovada.</p>
+    </div>
+  </div>
+</body>
+</html>
+"""
