@@ -1,10 +1,11 @@
 import os
 import random
+import time
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers.capture_spawn import CHARACTERS, ACTIVE_SPAWNS
+from handlers.capture_spawn import ACTIVE_SPAWNS, get_spawn_pool
 
 
 ADMIN_IDS = set(
@@ -21,15 +22,17 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
 
-    if not CHARACTERS:
+    characters = get_spawn_pool()
+    if not characters:
         await update.message.reply_text("Dataset de personagens não carregado.")
         return
 
     chat_id = update.effective_chat.id
-    character = random.choice(CHARACTERS)
+    character = random.choice(characters)
 
     ACTIVE_SPAWNS[chat_id] = {
         "character": character,
+        "time": time.time(),
     }
 
     caption = (
