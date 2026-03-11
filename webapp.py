@@ -8726,4 +8726,3 @@ async def cards_contrib_rules_page():
 </body>
 </html>
 """
-"""
