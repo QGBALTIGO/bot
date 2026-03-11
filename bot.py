@@ -53,7 +53,7 @@ from commands.ranking import ranking, callback_ranking
 from commands.pedido import pedido
 from commands.nivel import nivel
 
-from commands.cardcontrib import card_contrib
+from commands.card_contrib import sugerircard
 from commands.dado import dado
 from commands.dado_admin import dadogive, dadogiveall
 
