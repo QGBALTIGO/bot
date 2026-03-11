@@ -6,12 +6,6 @@ from copy import deepcopy
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
-from database import (
-    get_global_character_image,
-    set_global_character_image,
-    delete_global_character_image,
-)
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
@@ -67,7 +61,9 @@ def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
         os.replace(tmp_path, path)
+
     finally:
         if os.path.exists(tmp_path):
             try:
@@ -133,27 +129,23 @@ def load_cards_assets_raw() -> List[Dict[str, Any]]:
 
             seen_ids.add(cid)
 
-            chars_clean.append(
-                {
-                    "id": cid,
-                    "name": name,
-                    "image": image,
-                    "anime_id": anime_id,
-                    "anime": anime_name,
-                }
-            )
+            chars_clean.append({
+                "id": cid,
+                "name": name,
+                "image": image,
+                "anime_id": anime_id,
+                "anime": anime_name,
+            })
 
         chars_clean.sort(key=lambda x: _normalize_text(x["name"]))
 
-        cleaned.append(
-            {
-                "anime_id": anime_id,
-                "anime": anime_name,
-                "banner_image": banner_image,
-                "cover_image": cover_image,
-                "characters": chars_clean,
-            }
-        )
+        cleaned.append({
+            "anime_id": anime_id,
+            "anime": anime_name,
+            "banner_image": banner_image,
+            "cover_image": cover_image,
+            "characters": chars_clean,
+        })
 
     cleaned.sort(key=lambda x: _normalize_text(x["anime"]))
     return cleaned
@@ -230,12 +222,8 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 continue
 
             anime_name = overrides["anime_name_overrides"].get(str(anime_id), anime["anime"])
-            banner_image = overrides["anime_banner_overrides"].get(
-                str(anime_id), anime.get("banner_image", "")
-            )
-            cover_image = overrides["anime_cover_overrides"].get(
-                str(anime_id), anime.get("cover_image", "")
-            )
+            banner_image = overrides["anime_banner_overrides"].get(str(anime_id), anime.get("banner_image", ""))
+            cover_image = overrides["anime_cover_overrides"].get(str(anime_id), anime.get("cover_image", ""))
 
             anime_obj = {
                 "anime_id": anime_id,
@@ -255,14 +243,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                     continue
 
                 name = overrides["character_name_overrides"].get(str(cid), ch["name"])
-
-                db_image = get_global_character_image(cid)
-                if db_image:
-                    image = str(db_image).strip()
-                else:
-                    image = overrides["character_image_overrides"].get(
-                        str(cid), ch.get("image", "")
-                    )
+                image = overrides["character_image_overrides"].get(str(cid), ch.get("image", ""))
 
                 char_obj = {
                     "id": cid,
@@ -332,17 +313,8 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             else:
                 anime_name = anime_obj["anime"]
 
-            name = overrides["character_name_overrides"].get(
-                str(cid), str(ch.get("name") or "").strip()
-            )
-
-            db_image = get_global_character_image(cid)
-            if db_image:
-                image = str(db_image).strip()
-            else:
-                image = overrides["character_image_overrides"].get(
-                    str(cid), str(ch.get("image") or "").strip()
-                )
+            name = overrides["character_name_overrides"].get(str(cid), str(ch.get("name") or "").strip())
+            image = overrides["character_image_overrides"].get(str(cid), str(ch.get("image") or "").strip())
 
             if not name:
                 continue
@@ -444,9 +416,7 @@ def find_anime(query: Any) -> Optional[Dict[str, Any]]:
             candidates.append(anime)
 
     if candidates:
-        candidates.sort(
-            key=lambda x: (len(_normalize_text(x["anime"])), _normalize_text(x["anime"]))
-        )
+        candidates.sort(key=lambda x: (len(_normalize_text(x["anime"])), _normalize_text(x["anime"])))
         return candidates[0]
 
     return None
@@ -488,8 +458,6 @@ def override_delete_character(character_id: int) -> None:
     if cid not in [int(x) for x in data["deleted_characters"]]:
         data["deleted_characters"].append(cid)
 
-    delete_global_character_image(cid)
-
     for subcat, ids in data["subcategories"].items():
         data["subcategories"][subcat] = [x for x in ids if int(x) != cid]
 
@@ -501,18 +469,10 @@ def override_delete_character(character_id: int) -> None:
     save_cards_overrides(data)
 
 
-def override_set_character_image(character_id: int, image_url: str, updated_by: int = 0) -> None:
-    set_global_character_image(
-        character_id=int(character_id),
-        image_url=str(image_url).strip(),
-        updated_by=int(updated_by or 0),
-    )
-    reload_cards_cache()
-
-
-def override_delete_character_image(character_id: int) -> None:
-    delete_global_character_image(int(character_id))
-    reload_cards_cache()
+def override_set_character_image(character_id: int, image_url: str) -> None:
+    data = _get_overrides_copy()
+    data["character_image_overrides"][str(int(character_id))] = str(image_url).strip()
+    save_cards_overrides(data)
 
 
 def override_set_character_name(character_id: int, new_name: str) -> None:
@@ -521,13 +481,7 @@ def override_set_character_name(character_id: int, new_name: str) -> None:
     save_cards_overrides(data)
 
 
-def override_add_character(
-    character_id: int,
-    name: str,
-    anime_id: int,
-    anime_name: str,
-    image_url: str,
-) -> None:
+def override_add_character(character_id: int, name: str, anime_id: int, anime_name: str, image_url: str) -> None:
     data = _get_overrides_copy()
     cid = int(character_id)
     aid = int(anime_id)
@@ -563,14 +517,6 @@ def override_delete_anime(anime_id: int) -> None:
         if int(x.get("anime_id", -1)) != aid
     ]
 
-    chars_to_delete = [
-        int(x.get("id"))
-        for x in data["custom_characters"]
-        if int(x.get("anime_id", -1)) == aid and str(x.get("id", "")).isdigit()
-    ]
-    for cid in chars_to_delete:
-        delete_global_character_image(cid)
-
     data["custom_characters"] = [
         x for x in data["custom_characters"]
         if int(x.get("anime_id", -1)) != aid
@@ -579,12 +525,7 @@ def override_delete_anime(anime_id: int) -> None:
     save_cards_overrides(data)
 
 
-def override_add_anime(
-    anime_id: int,
-    anime_name: str,
-    banner_image: str = "",
-    cover_image: str = "",
-) -> None:
+def override_add_anime(anime_id: int, anime_name: str, banner_image: str = "", cover_image: str = "") -> None:
     data = _get_overrides_copy()
     aid = int(anime_id)
 
@@ -658,8 +599,21 @@ def override_subcategory_remove_character(name: str, character_id: int) -> None:
 
     save_cards_overrides(data)
 
+def get_character_by_id(character_id: int):
+    data = build_cards_final_data()
+    ch = data["characters_by_id"].get(int(character_id))
 
-def get_character_by_id(character_id: int) -> Optional[Dict[str, Any]]:
+    if not ch:
+        return None
+
+    return {
+        "id": ch["id"],
+        "name": ch["name"],
+        "anime": ch["anime"],
+        "image": ch.get("image", "")
+    }
+
+def get_character_by_id(character_id: int):
     data = build_cards_final_data()
     ch = data["characters_by_id"].get(int(character_id))
 
