@@ -547,7 +547,23 @@ def set_global_character_image(character_id: int, image_url: str, updated_by: in
                 (character_id, image_url, updated_by),
             )
         conn.commit()
-        
+
+def get_character_image_override(character_id: int):
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT image_url
+                FROM character_image_overrides
+                WHERE character_id = %s
+                """,
+                (character_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0]
+            
 def create_dado_tables():
     _run("""
     CREATE TABLE IF NOT EXISTS dice_rolls (
