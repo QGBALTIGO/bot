@@ -8650,10 +8650,6 @@ async def cards_contrib_page():
       margin-top: 12px;
       font-weight: bold;
     }
-    ul {
-      text-align: left;
-      line-height: 1.6;
-    }
     p {
       line-height: 1.6;
     }
@@ -8675,7 +8671,8 @@ async def cards_contrib_page():
 </html>
 """
 
-    @app.get("/cards/contrib/rules", response_class=HTMLResponse)
+
+@app.get("/cards/contrib/rules", response_class=HTMLResponse)
 async def cards_contrib_rules_page():
     return """
 <!DOCTYPE html>
@@ -8728,4 +8725,5 @@ async def cards_contrib_rules_page():
   </div>
 </body>
 </html>
+"""
 """
