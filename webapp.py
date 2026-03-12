@@ -35,8 +35,8 @@ app = FastAPI()
 TERMS_VERSION = (os.getenv("TERMS_VERSION", "v1").strip() or "v1")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
-REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 
 TOP_BANNER_URL = os.getenv(
     "TOP_BANNER_URL",
