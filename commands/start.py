@@ -15,8 +15,8 @@ if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
 # Canal obrigatório (se vazio, não bloqueia aqui — mas o gatekeeper pode bloquear)
-REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourcerBaltigo").strip()
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourcerBaltigo").strip()
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 
 # Link do bot (pra abrir privado quando o comando vier de grupo)
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")  # coloque o user correto
