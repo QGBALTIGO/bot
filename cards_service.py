@@ -7,7 +7,7 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from database import (
-    get_global_character_image,
+    get_all_global_character_images,
     set_global_character_image,
     delete_global_character_image,
 )
