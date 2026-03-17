@@ -4891,9 +4891,10 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
 
     save_cards_overrides(data)
 
-def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
-    create_global_character_images_table()
+from psycopg.errors import UndefinedTable
 
+
+def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -4913,8 +4914,6 @@ def set_global_character_image(character_id: int, image_url: str, updated_by: in
 
 def get_global_character_image(character_id: int):
     try:
-        create_global_character_images_table()
-
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -4938,14 +4937,13 @@ def get_global_character_image(character_id: int):
                     return row["image_url"]
                 except Exception:
                     return row[0]
-    except Exception:
+
+    except UndefinedTable:
         return None
 
 
 def delete_global_character_image(character_id: int) -> None:
     try:
-        create_global_character_images_table()
-
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -4956,5 +4954,5 @@ def delete_global_character_image(character_id: int) -> None:
                     (int(character_id),),
                 )
             conn.commit()
-    except Exception:
+    except UndefinedTable:
         pass
