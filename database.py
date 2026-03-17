@@ -4892,6 +4892,8 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
     save_cards_overrides(data)
 
 def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
+    create_global_character_images_table()
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -4910,39 +4912,49 @@ def set_global_character_image(character_id: int, image_url: str, updated_by: in
 
 
 def get_global_character_image(character_id: int):
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT image_url
-                FROM global_character_images
-                WHERE character_id = %s
-                LIMIT 1
-                """,
-                (int(character_id),),
-            )
-            row = cur.fetchone()
+    try:
+        create_global_character_images_table()
 
-            if not row:
-                return None
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT image_url
+                    FROM global_character_images
+                    WHERE character_id = %s
+                    LIMIT 1
+                    """,
+                    (int(character_id),),
+                )
+                row = cur.fetchone()
 
-            if isinstance(row, dict):
-                return row.get("image_url")
+                if not row:
+                    return None
 
-            try:
-                return row["image_url"]
-            except Exception:
-                return row[0]
+                if isinstance(row, dict):
+                    return row.get("image_url")
+
+                try:
+                    return row["image_url"]
+                except Exception:
+                    return row[0]
+    except Exception:
+        return None
 
 
 def delete_global_character_image(character_id: int) -> None:
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                DELETE FROM global_character_images
-                WHERE character_id = %s
-                """,
-                (int(character_id),),
-            )
-        conn.commit()
+    try:
+        create_global_character_images_table()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM global_character_images
+                    WHERE character_id = %s
+                    """,
+                    (int(character_id),),
+                )
+            conn.commit()
+    except Exception:
+        pass
