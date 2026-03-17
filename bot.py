@@ -13,6 +13,15 @@ from telegram.ext import (
 )
 
 # =====================================================
+# DATABASE (IMPORTANTE VIR ANTES DOS COMMANDS)
+# =====================================================
+
+from database import create_tables
+
+# cria todas as tabelas antes de qualquer import de comando
+create_tables()
+
+# =====================================================
 # COMMANDS
 # =====================================================
 
@@ -99,8 +108,6 @@ from commands.messages_help import msgtutorial
 
 from handlers.capture_spawn import capture_message_handler
 
-from database import create_tables
-
 
 # =========================================================
 # ENV
@@ -163,7 +170,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("msgconfig", msgconfig))
     app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
     app.add_handler(CommandHandler("msgtutorial", msgtutorial))
-    
+
     # catálogo
     app.add_handler(CommandHandler("anime", anime))
     app.add_handler(CommandHandler("manga", manga))
@@ -230,23 +237,18 @@ def register_commands(app: Application):
 # =========================================================
 
 def register_callbacks(app: Application):
-    # trocas
     app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
-    # card
     app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
 
-    # coleção
     app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
     app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
     app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
     app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
 
-    # ranking
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
-    # termo
     app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
 
 
@@ -255,13 +257,11 @@ def register_callbacks(app: Application):
 # =========================================================
 
 def register_messages(app: Application):
-    # termo primeiro para tentar consumir palavras do jogo antes do sistema de captura
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
         group=1,
     )
 
-    # captura/spawn depois
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, capture_message_handler),
         group=2,
@@ -294,8 +294,6 @@ def build_application():
 # =========================================================
 
 def main():
-    create_tables()
-
     threading.Thread(
         target=run_webapp,
         daemon=True,
