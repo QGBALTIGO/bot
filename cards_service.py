@@ -177,7 +177,12 @@ def load_cards_overrides() -> Dict[str, Any]:
     if isinstance(raw, dict):
         data.update(raw)
 
-    for key in ["deleted_characters", "deleted_animes", "custom_animes", "custom_characters"]:
+    for key in [
+        "deleted_characters",
+        "deleted_animes",
+        "custom_animes",
+        "custom_characters",
+    ]:
         if not isinstance(data.get(key), list):
             data[key] = []
 
@@ -203,8 +208,7 @@ def save_cards_overrides(data: Dict[str, Any]) -> None:
 
 def reload_cards_cache() -> None:
     global _CACHE
-    with _LOCK:
-        _CACHE = None
+    _CACHE = None
 
 
 def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
@@ -216,6 +220,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
 
         assets = load_cards_assets_raw()
         overrides = load_cards_overrides()
+        db_images_map = get_all_global_character_images()
 
         deleted_animes = {int(x) for x in overrides["deleted_animes"]}
         deleted_characters = {int(x) for x in overrides["deleted_characters"]}
@@ -229,7 +234,9 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             if anime_id in deleted_animes:
                 continue
 
-            anime_name = overrides["anime_name_overrides"].get(str(anime_id), anime["anime"])
+            anime_name = overrides["anime_name_overrides"].get(
+                str(anime_id), anime["anime"]
+            )
             banner_image = overrides["anime_banner_overrides"].get(
                 str(anime_id), anime.get("banner_image", "")
             )
@@ -256,7 +263,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
 
                 name = overrides["character_name_overrides"].get(str(cid), ch["name"])
 
-                db_image = get_global_character_image(cid)
+                db_image = db_images_map.get(cid)
                 if db_image:
                     image = str(db_image).strip()
                 else:
@@ -336,7 +343,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 str(cid), str(ch.get("name") or "").strip()
             )
 
-            db_image = get_global_character_image(cid)
+            db_image = db_images_map.get(cid)
             if db_image:
                 image = str(db_image).strip()
             else:
@@ -501,7 +508,11 @@ def override_delete_character(character_id: int) -> None:
     save_cards_overrides(data)
 
 
-def override_set_character_image(character_id: int, image_url: str, updated_by: int = 0) -> None:
+def override_set_character_image(
+    character_id: int,
+    image_url: str,
+    updated_by: int = 0,
+) -> None:
     set_global_character_image(
         character_id=int(character_id),
         image_url=str(image_url).strip(),
@@ -654,7 +665,9 @@ def override_subcategory_remove_character(name: str, character_id: int) -> None:
     cid = int(character_id)
 
     if key in data["subcategories"]:
-        data["subcategories"][key] = [x for x in data["subcategories"][key] if int(x) != cid]
+        data["subcategories"][key] = [
+            x for x in data["subcategories"][key] if int(x) != cid
+        ]
 
     save_cards_overrides(data)
 
