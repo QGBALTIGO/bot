@@ -275,8 +275,18 @@ def create_tables():
     create_trades_table()
     create_message_tables()
     create_card_contrib_tables()
+    create_global_character_images_table()
 
-
+def create_global_character_images_table():
+    _run("""
+    CREATE TABLE IF NOT EXISTS global_character_images (
+        character_id BIGINT PRIMARY KEY,
+        image_url TEXT NOT NULL,
+        updated_by BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+    
 def create_users_table():
     _run("""
     CREATE TABLE IF NOT EXISTS users (
@@ -4881,18 +4891,18 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
 
     save_cards_overrides(data)
 
-
 def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO character_image_overrides (character_id, image_url, updated_by)
-                VALUES (%s, %s, %s)
+                INSERT INTO global_character_images (character_id, image_url, updated_by, updated_at)
+                VALUES (%s, %s, %s, NOW())
                 ON CONFLICT (character_id)
                 DO UPDATE SET
                     image_url = EXCLUDED.image_url,
-                    updated_by = EXCLUDED.updated_by
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()
                 """,
                 (int(character_id), str(image_url).strip(), int(updated_by)),
             )
@@ -4905,7 +4915,7 @@ def get_global_character_image(character_id: int):
             cur.execute(
                 """
                 SELECT image_url
-                FROM character_image_overrides
+                FROM global_character_images
                 WHERE character_id = %s
                 LIMIT 1
                 """,
@@ -4930,7 +4940,7 @@ def delete_global_character_image(character_id: int) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                DELETE FROM character_image_overrides
+                DELETE FROM global_character_images
                 WHERE character_id = %s
                 """,
                 (int(character_id),),
