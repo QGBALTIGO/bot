@@ -4956,3 +4956,35 @@ def delete_global_character_image(character_id: int) -> None:
             conn.commit()
     except UndefinedTable:
         pass
+
+def get_all_global_character_images() -> dict[int, str]:
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT character_id, image_url
+                    FROM global_character_images
+                    """
+                )
+                rows = cur.fetchall() or []
+
+                result: dict[int, str] = {}
+
+                for row in rows:
+                    try:
+                        if isinstance(row, dict):
+                            cid = int(row.get("character_id") or 0)
+                            image_url = str(row.get("image_url") or "").strip()
+                        else:
+                            cid = int(row[0] or 0)
+                            image_url = str(row[1] or "").strip()
+
+                        if cid > 0 and image_url:
+                            result[cid] = image_url
+                    except Exception:
+                        continue
+
+                return result
+    except UndefinedTable:
+        return {}
