@@ -8741,6 +8741,9 @@ async def cards_contrib_rules_page():
 </html>
 """
 
+import os
+from typing import Any, Dict
+
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -8748,7 +8751,29 @@ from fastapi.responses import HTMLResponse, JSONResponse
 WEBHOOK_SECRET = os.getenv("CAKTO_WEBHOOK_SECRET", "").strip()
 
 BALTIGOFLIX_PLANS = {
-   CHECKOUT_URLS = {
+    "mensal": {
+        "code": "mensal",
+        "name": "Plano Mensal",
+        "amount_cents": 2590,
+    },
+    "trimestral": {
+        "code": "trimestral",
+        "name": "Plano Trimestral",
+        "amount_cents": 5990,
+    },
+    "semestral": {
+        "code": "semestral",
+        "name": "Plano Semestral",
+        "amount_cents": 8990,
+    },
+    "anual": {
+        "code": "anual",
+        "name": "Plano Anual",
+        "amount_cents": 12990,
+    },
+}
+
+CHECKOUT_URLS = {
     "mensal": "https://pay.cakto.com.br/9snqsP3",
     "trimestral": "https://pay.cakto.com.br/3fsy24d",
     "semestral": "https://pay.cakto.com.br/32ocvxm",
@@ -8829,23 +8854,19 @@ async def baltigoflix_create_intent(request: Request):
         },
     )
 
-    # Aqui por enquanto o "checkout_url" é um placeholder.
-    # Quando você integrar a criação real do checkout pela API da Cakto,
-    # é aqui que vai entrar a URL retornada pela Cakto.
     base_checkout_url = CHECKOUT_URLS.get(plan["code"], "").strip()
+    if not base_checkout_url:
+        return JSONResponse({"ok": False, "error": "checkout_nao_configurado"}, status_code=500)
 
-if not base_checkout_url:
-    return JSONResponse({"ok": False, "error": "checkout_nao_configurado"}, status_code=500)
-
-separator = "&" if "?" in base_checkout_url else "?"
-checkout_url = f"{base_checkout_url}{separator}ref={intent['intent_token']}"
+    separator = "&" if "?" in base_checkout_url else "?"
+    checkout_url = f"{base_checkout_url}{separator}ref={intent['intent_token']}"
 
     attach_checkout_data_to_purchase_intent(
         intent_id=int(intent["id"]),
         checkout_url=checkout_url,
         raw_checkout_response={
-            "mode": "placeholder",
-            "message": "checkout ainda não integrado pela API da Cakto",
+            "mode": "static_checkout_link",
+            "message": "checkout via link pronto da Cakto",
         },
     )
 
@@ -8874,9 +8895,8 @@ async def cakto_webhook(request: Request):
         or str(payload.get("secret") or "").strip()
     )
 
-    if WEBHOOK_SECRET:
-        if received_secret != WEBHOOK_SECRET:
-            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    if WEBHOOK_SECRET and received_secret != WEBHOOK_SECRET:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
 
     event_type = str(
         payload.get("event")
@@ -8908,7 +8928,6 @@ async def cakto_webhook(request: Request):
             mark_cakto_webhook_event_error(event_row["id"], "purchase_intent_nao_encontrado")
             return JSONResponse({"ok": True, "ignored": True, "reason": "purchase_intent_nao_encontrado"})
 
-        # vincula ids externos caso ainda não estejam salvos
         attach_checkout_data_to_purchase_intent(
             intent_id=int(intent["id"]),
             cakto_order_id=ids["order_id"],
@@ -9029,10 +9048,8 @@ def baltigoflix_checkout_pending():
 </head>
 <body>
   <div class="card">
-    <h1>Checkout ainda não integrado</h1>
-    <p>A intenção de compra já foi criada no banco.</p>
-    <p>Agora falta ligar a criação real do checkout pela API da Cakto para redirecionar o usuário ao pagamento.</p>
-    <p>O webhook já está pronto para confirmar o pagamento quando você conectar essa etapa.</p>
+    <h1>Redirecionando para o checkout...</h1>
+    <p>Se você estiver vendo esta tela, revise a URL do checkout retornada na criação da intenção.</p>
   </div>
 </body>
 </html>
