@@ -8,6 +8,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from commands.anime import anime
 from commands.card import card, card_stats_callback
 from commands.cards import cards
+from handlers.baltigoflix import baltigoflix
 from commands.cards_admin import (
     card_addanime,
     card_addchar,
@@ -71,6 +72,7 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     tg_app.add_handler(CommandHandler("nivel", nivel))
+    tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
 
     # sms
     tg_app.add_handler(CommandHandler("msg", msg))
