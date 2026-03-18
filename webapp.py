@@ -2124,37 +2124,153 @@ def mangas_page():
     return HTMLResponse(html)
 
 # =========================================================
-# CARDS SYSTEM — DINÂMICO VIA cards_service
-# Usa a mesma base do bot/admin, então /setfoto, exclusões e demais
-# overrides aparecem imediatamente também no WebApp.
+# CARDS SYSTEM — JSON ASSETS
+# Lê: data/cards_assets.json
 # =========================================================
 
-from cards_service import (
-    build_cards_final_data,
-    reload_cards_cache,
-)
+import json
+import os
+from typing import Any, Dict, List
 from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
+CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
 CARDS_TOP_BANNER_URL = os.getenv(
     "CARDS_TOP_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZ0sajmmrHXRy1AZxkfEGC2Lx4yC6A80MAAJOC2sb1ZFYRQ5kxLI09cC2AQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
+_CARDS_DATA: List[Dict[str, Any]] = []
+_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
+_CARDS_TOTAL: int = 0
 
-def _ensure_cards_loaded(force_reload: bool = False):
-    return build_cards_final_data(force_reload=force_reload)
+
+def _load_cards_assets() -> int:
+    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
+
+    _CARDS_DATA = []
+    _CARDS_INDEX = {}
+    _CARDS_TOTAL = 0
+
+    path = CARDS_ASSETS_PATH
+    candidates = [path]
+
+    if not os.path.isabs(path):
+        candidates.append(os.path.join(os.getcwd(), path))
+        candidates.append(os.path.join("/app", path))
+
+    real_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            real_path = c
+            break
+
+    if not real_path:
+        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
+        return 0
+
+    try:
+        with open(real_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
+        items = raw.get("items") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            print(f"[cards] Formato inválido em {real_path}", flush=True)
+            return 0
+
+        cleaned: List[Dict[str, Any]] = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            anime_id = item.get("anime_id")
+            anime = str(item.get("anime") or "").strip()
+            banner_image = str(item.get("banner_image") or "").strip()
+            cover_image = str(item.get("cover_image") or "").strip()
+            chars_raw = item.get("characters") or []
+
+            try:
+                anime_id = int(anime_id)
+            except Exception:
+                continue
+
+            if not anime:
+                continue
+
+            chars: List[Dict[str, Any]] = []
+            seen_char_ids = set()
+
+            if isinstance(chars_raw, list):
+                for c in chars_raw:
+                    if not isinstance(c, dict):
+                        continue
+
+                    cid = c.get("id")
+                    cname = str(c.get("name") or "").strip()
+                    canime = str(c.get("anime") or anime).strip()
+                    cimg = str(c.get("image") or "").strip()
+
+                    try:
+                        cid = int(cid)
+                    except Exception:
+                        continue
+
+                    if not cname or cid in seen_char_ids:
+                        continue
+
+                    seen_char_ids.add(cid)
+
+                    chars.append({
+                        "id": cid,
+                        "name": cname,
+                        "anime": canime or anime,
+                        "image": cimg,
+                    })
+
+            chars.sort(key=lambda x: x["name"].lower())
+
+            payload = {
+                "anime_id": anime_id,
+                "anime": anime,
+                "banner_image": banner_image,
+                "cover_image": cover_image,
+                "characters": chars,
+                "characters_count": len(chars),
+            }
+
+            cleaned.append(payload)
+            _CARDS_INDEX[anime_id] = payload
+
+        cleaned.sort(key=lambda x: x["anime"].lower())
+
+        _CARDS_DATA = cleaned
+        _CARDS_TOTAL = len(cleaned)
+
+        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
+        return _CARDS_TOTAL
+
+    except Exception as e:
+        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
+        return 0
+
+
+def _ensure_cards_loaded():
+    if not _CARDS_DATA:
+        _load_cards_assets()
+
+
+# carrega no boot sem derrubar app
+try:
+    _load_cards_assets()
+except Exception as e:
+    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
 
 
 @app.get("/api/cards/reload")
 def api_cards_reload():
-    reload_cards_cache()
-    data = _ensure_cards_loaded(force_reload=True)
-    return JSONResponse({
-        "ok": True,
-        "total_animes": len(data["animes_list"]),
-        "total_characters": len(data["characters_by_id"]),
-    })
+    total = _load_cards_assets()
+    return JSONResponse({"ok": True, "total": total})
 
 
 @app.get("/api/cards/animes")
@@ -2163,20 +2279,30 @@ def api_cards_animes(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    data = _ensure_cards_loaded()
-    items = data["animes_list"]
+    _ensure_cards_loaded()
 
-    qn = (q or "").strip().lower()
-    if qn:
-        items = [x for x in items if qn in x["anime"].lower()]
+    q = (q or "").strip().lower()
+    data = _CARDS_DATA
 
-    total = len(items)
-    items = items[offset: offset + limit]
+    if q:
+        data = [x for x in data if q in x["anime"].lower()]
+
+    total = len(data)
+    items = data[offset: offset + limit]
+
+    payload = []
+    for a in items:
+        payload.append({
+            "anime_id": a["anime_id"],
+            "anime": a["anime"],
+            "banner_image": a["banner_image"],
+            "cover_image": a["cover_image"],
+            "characters_count": a["characters_count"],
+        })
 
     return JSONResponse({
-        "ok": True,
         "total": total,
-        "items": items,
+        "items": payload,
     })
 
 
@@ -2187,9 +2313,9 @@ def api_cards_characters(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    data = _ensure_cards_loaded()
-    anime = data["animes_by_id"].get(anime_id)
+    _ensure_cards_loaded()
 
+    anime = _CARDS_INDEX.get(anime_id)
     if not anime:
         return JSONResponse({
             "ok": False,
@@ -2198,20 +2324,26 @@ def api_cards_characters(
             "items": [],
         })
 
-    chars = list(data["characters_by_anime"].get(anime_id, []))
+    chars = anime["characters"]
+    q = (q or "").strip().lower()
 
-    qn = (q or "").strip().lower()
-    if qn:
-        chars = [x for x in chars if qn in x["name"].lower()]
+    if q:
+        chars = [c for c in chars if q in c["name"].lower()]
 
     total = len(chars)
-    chars = chars[offset: offset + limit]
+    items = chars[offset: offset + limit]
 
     return JSONResponse({
         "ok": True,
-        "anime": anime,
+        "anime": {
+            "anime_id": anime["anime_id"],
+            "anime": anime["anime"],
+            "banner_image": anime["banner_image"],
+            "cover_image": anime["cover_image"],
+            "characters_count": anime["characters_count"],
+        },
         "total": total,
-        "items": chars,
+        "items": items,
     })
 
 
@@ -2906,7 +3038,7 @@ def cards_anime_page(anime_id: int = Query(...)):
 <div class="wrap">
 
   <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner"/>
+    <img id="heroImg" src="" alt="Banner" onerror="this.onerror=null;this.src=fallbackTop;"/>
     <div class="hero-copy">
       <a class="back" href="/cards">← Voltar</a>
       <div class="title" id="animeTitle">Carregando...</div>
@@ -2979,7 +3111,7 @@ def cards_anime_page(anime_id: int = Query(...)):
       html += `
         <div class="card">
           <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
+            <img src="${esc(pickCharImage(item))}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
             <div class="id-pill">ID ${item.id}</div>
           </div>
           <div class="meta">
@@ -4007,7 +4139,7 @@ def cards_anime_page(anime_id: int = Query(...)):
 <div class="wrap">
 
   <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner"/>
+    <img id="heroImg" src="" alt="Banner" onerror="this.onerror=null;this.src=fallbackTop;"/>
     <div class="hero-copy">
       <a class="back" href="/cards">← Voltar</a>
       <div class="title" id="animeTitle">Carregando...</div>
@@ -4080,7 +4212,7 @@ def cards_anime_page(anime_id: int = Query(...)):
       html += `
         <div class="card">
           <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
+            <img src="${esc(pickCharImage(item))}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
             <div class="id-pill">ID ${item.id}</div>
           </div>
           <div class="meta">
@@ -4225,7 +4357,7 @@ async function load(){{
     html += `
       <div class="card">
         <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
+          <img src="${{esc(item.image || fallbackTop)}}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
         </div>
         <div class="meta2">
           <p class="name">${{esc(item.name)}}</p>
@@ -4327,7 +4459,7 @@ async function load(){{
     html += `
       <div class="card">
         <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
+          <img src="${{esc(item.image || fallbackTop)}}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
         </div>
         <div class="meta2">
           <p class="name">${{esc(item.name)}}</p>
