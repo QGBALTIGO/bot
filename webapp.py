@@ -8748,26 +8748,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 WEBHOOK_SECRET = os.getenv("CAKTO_WEBHOOK_SECRET", "").strip()
 
 BALTIGOFLIX_PLANS = {
-    "mensal": {
-        "code": "mensal",
-        "name": "Plano Mensal",
-        "amount_cents": 2590,
-    },
-    "trimestral": {
-        "code": "trimestral",
-        "name": "Plano Trimestral",
-        "amount_cents": 5990,
-    },
-    "semestral": {
-        "code": "semestral",
-        "name": "Plano Semestral",
-        "amount_cents": 8990,
-    },
-    "anual": {
-        "code": "anual",
-        "name": "Plano Anual",
-        "amount_cents": 12990,
-    },
+   CHECKOUT_URLS = {
+    "mensal": "https://pay.cakto.com.br/9snqsP3",
+    "trimestral": "https://pay.cakto.com.br/3fsy24d",
+    "semestral": "https://pay.cakto.com.br/32ocvxm",
+    "anual": "https://pay.cakto.com.br/u9wz86m",
 }
 
 
