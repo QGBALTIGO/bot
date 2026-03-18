@@ -10157,3 +10157,159 @@ def baltigoflix_page():
 </html>
 """
     return HTMLResponse(html)
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
+from animefire_client import (
+    get_anime_details,
+    get_episodes,
+    get_episode_player
+)
+
+app = FastAPI()
+
+
+# 🔥 Página do anime
+@app.get("/anime/{anime_id}", response_class=HTMLResponse)
+async def anime_page(anime_id: str):
+    details = await get_anime_details(anime_id)
+    eps_data = await get_episodes(anime_id, 0, 9999)
+
+    episodes = eps_data.get("items", [])
+
+    title = details.get("title", "")
+    cover = details.get("cover_url", "")
+    description = details.get("description", "")
+
+    eps_html = "".join([
+        f"""
+        <a class="ep" href="/player/{anime_id}/{ep['episode']}">
+            EP {ep['episode']}
+        </a>
+        """
+        for ep in episodes
+    ])
+
+    return HTMLResponse(f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+        <style>
+            body {{
+                margin:0;
+                font-family:Arial;
+                background:#0b0f1a;
+                color:#fff;
+            }}
+
+            .wrap {{
+                padding:16px;
+            }}
+
+            .cover {{
+                width:100%;
+                border-radius:16px;
+            }}
+
+            h1 {{
+                margin:12px 0;
+            }}
+
+            .desc {{
+                color:#bbb;
+                font-size:14px;
+                margin-bottom:20px;
+            }}
+
+            .grid {{
+                display:grid;
+                grid-template-columns:repeat(3,1fr);
+                gap:10px;
+            }}
+
+            .ep {{
+                text-decoration:none;
+                color:white;
+                background:#1a2238;
+                padding:14px;
+                border-radius:12px;
+                text-align:center;
+                font-weight:bold;
+            }}
+        </style>
+    </head>
+
+    <body>
+        <div class="wrap">
+
+            <img class="cover" src="{cover}">
+
+            <h1>{title}</h1>
+
+            <div class="desc">{description}</div>
+
+            <div class="grid">
+                {eps_html}
+            </div>
+
+        </div>
+
+        <script>
+            if (window.Telegram) {{
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }}
+        </script>
+
+    </body>
+    </html>
+    """)
+
+
+# 🎬 PLAYER
+@app.get("/player/{anime_id}/{ep}", response_class=HTMLResponse)
+async def player(anime_id: str, ep: str):
+    data = await get_episode_player(anime_id, ep)
+
+    video = data.get("video", "")
+
+    return HTMLResponse(f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+        <style>
+            body {{
+                margin:0;
+                background:#000;
+            }}
+
+            video {{
+                width:100%;
+                height:100vh;
+                object-fit:contain;
+            }}
+        </style>
+    </head>
+
+    <body>
+
+        <video controls autoplay>
+            <source src="{video}" type="video/mp4">
+        </video>
+
+        <script>
+            if (window.Telegram) {{
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }}
+        </script>
+
+    </body>
+    </html>
+    """)
