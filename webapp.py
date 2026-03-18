@@ -2124,153 +2124,37 @@ def mangas_page():
     return HTMLResponse(html)
 
 # =========================================================
-# CARDS SYSTEM — JSON ASSETS
-# Lê: data/cards_assets.json
+# CARDS SYSTEM — DINÂMICO VIA cards_service
+# Usa a mesma base do bot/admin, então /setfoto, exclusões e demais
+# overrides aparecem imediatamente também no WebApp.
 # =========================================================
 
-import json
-import os
-from typing import Any, Dict, List
+from cards_service import (
+    build_cards_final_data,
+    reload_cards_cache,
+)
 from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
-CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
 CARDS_TOP_BANNER_URL = os.getenv(
     "CARDS_TOP_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZ0sajmmrHXRy1AZxkfEGC2Lx4yC6A80MAAJOC2sb1ZFYRQ5kxLI09cC2AQADAgADeQADOgQ/photo.jpg",
 ).strip()
 
-_CARDS_DATA: List[Dict[str, Any]] = []
-_CARDS_INDEX: Dict[int, Dict[str, Any]] = {}
-_CARDS_TOTAL: int = 0
 
-
-def _load_cards_assets() -> int:
-    global _CARDS_DATA, _CARDS_INDEX, _CARDS_TOTAL
-
-    _CARDS_DATA = []
-    _CARDS_INDEX = {}
-    _CARDS_TOTAL = 0
-
-    path = CARDS_ASSETS_PATH
-    candidates = [path]
-
-    if not os.path.isabs(path):
-        candidates.append(os.path.join(os.getcwd(), path))
-        candidates.append(os.path.join("/app", path))
-
-    real_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            real_path = c
-            break
-
-    if not real_path:
-        print(f"[cards] Arquivo não encontrado: {path} | testados: {candidates}", flush=True)
-        return 0
-
-    try:
-        with open(real_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        items = raw.get("items") if isinstance(raw, dict) else raw
-        if not isinstance(items, list):
-            print(f"[cards] Formato inválido em {real_path}", flush=True)
-            return 0
-
-        cleaned: List[Dict[str, Any]] = []
-
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-
-            anime_id = item.get("anime_id")
-            anime = str(item.get("anime") or "").strip()
-            banner_image = str(item.get("banner_image") or "").strip()
-            cover_image = str(item.get("cover_image") or "").strip()
-            chars_raw = item.get("characters") or []
-
-            try:
-                anime_id = int(anime_id)
-            except Exception:
-                continue
-
-            if not anime:
-                continue
-
-            chars: List[Dict[str, Any]] = []
-            seen_char_ids = set()
-
-            if isinstance(chars_raw, list):
-                for c in chars_raw:
-                    if not isinstance(c, dict):
-                        continue
-
-                    cid = c.get("id")
-                    cname = str(c.get("name") or "").strip()
-                    canime = str(c.get("anime") or anime).strip()
-                    cimg = str(c.get("image") or "").strip()
-
-                    try:
-                        cid = int(cid)
-                    except Exception:
-                        continue
-
-                    if not cname or cid in seen_char_ids:
-                        continue
-
-                    seen_char_ids.add(cid)
-
-                    chars.append({
-                        "id": cid,
-                        "name": cname,
-                        "anime": canime or anime,
-                        "image": cimg,
-                    })
-
-            chars.sort(key=lambda x: x["name"].lower())
-
-            payload = {
-                "anime_id": anime_id,
-                "anime": anime,
-                "banner_image": banner_image,
-                "cover_image": cover_image,
-                "characters": chars,
-                "characters_count": len(chars),
-            }
-
-            cleaned.append(payload)
-            _CARDS_INDEX[anime_id] = payload
-
-        cleaned.sort(key=lambda x: x["anime"].lower())
-
-        _CARDS_DATA = cleaned
-        _CARDS_TOTAL = len(cleaned)
-
-        print(f"[cards] Assets carregados: {_CARDS_TOTAL} obras", flush=True)
-        return _CARDS_TOTAL
-
-    except Exception as e:
-        print(f"[cards] Erro ao carregar assets: {repr(e)}", flush=True)
-        return 0
-
-
-def _ensure_cards_loaded():
-    if not _CARDS_DATA:
-        _load_cards_assets()
-
-
-# carrega no boot sem derrubar app
-try:
-    _load_cards_assets()
-except Exception as e:
-    print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
+def _ensure_cards_loaded(force_reload: bool = False):
+    return build_cards_final_data(force_reload=force_reload)
 
 
 @app.get("/api/cards/reload")
 def api_cards_reload():
-    total = _load_cards_assets()
-    return JSONResponse({"ok": True, "total": total})
+    reload_cards_cache()
+    data = _ensure_cards_loaded(force_reload=True)
+    return JSONResponse({
+        "ok": True,
+        "total_animes": len(data["animes_list"]),
+        "total_characters": len(data["characters_by_id"]),
+    })
 
 
 @app.get("/api/cards/animes")
@@ -2279,30 +2163,20 @@ def api_cards_animes(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    data = _ensure_cards_loaded()
+    items = data["animes_list"]
 
-    q = (q or "").strip().lower()
-    data = _CARDS_DATA
+    qn = (q or "").strip().lower()
+    if qn:
+        items = [x for x in items if qn in x["anime"].lower()]
 
-    if q:
-        data = [x for x in data if q in x["anime"].lower()]
-
-    total = len(data)
-    items = data[offset: offset + limit]
-
-    payload = []
-    for a in items:
-        payload.append({
-            "anime_id": a["anime_id"],
-            "anime": a["anime"],
-            "banner_image": a["banner_image"],
-            "cover_image": a["cover_image"],
-            "characters_count": a["characters_count"],
-        })
+    total = len(items)
+    items = items[offset: offset + limit]
 
     return JSONResponse({
+        "ok": True,
         "total": total,
-        "items": payload,
+        "items": items,
     })
 
 
@@ -2313,9 +2187,9 @@ def api_cards_characters(
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    data = _ensure_cards_loaded()
+    anime = data["animes_by_id"].get(anime_id)
 
-    anime = _CARDS_INDEX.get(anime_id)
     if not anime:
         return JSONResponse({
             "ok": False,
@@ -2324,26 +2198,20 @@ def api_cards_characters(
             "items": [],
         })
 
-    chars = anime["characters"]
-    q = (q or "").strip().lower()
+    chars = list(data["characters_by_anime"].get(anime_id, []))
 
-    if q:
-        chars = [c for c in chars if q in c["name"].lower()]
+    qn = (q or "").strip().lower()
+    if qn:
+        chars = [x for x in chars if qn in x["name"].lower()]
 
     total = len(chars)
-    items = chars[offset: offset + limit]
+    chars = chars[offset: offset + limit]
 
     return JSONResponse({
         "ok": True,
-        "anime": {
-            "anime_id": anime["anime_id"],
-            "anime": anime["anime"],
-            "banner_image": anime["banner_image"],
-            "cover_image": anime["cover_image"],
-            "characters_count": anime["characters_count"],
-        },
+        "anime": anime,
         "total": total,
-        "items": items,
+        "items": chars,
     })
 
 
@@ -10159,3 +10027,157 @@ def baltigoflix_page():
     return HTMLResponse(html)
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+
+from animefire_client import (
+    get_anime_details,
+    get_episodes,
+    get_episode_player
+)
+
+app = FastAPI()
+
+
+# 🔥 Página do anime
+@app.get("/anime/{anime_id}", response_class=HTMLResponse)
+async def anime_page(anime_id: str):
+    details = await get_anime_details(anime_id)
+    eps_data = await get_episodes(anime_id, 0, 9999)
+
+    episodes = eps_data.get("items", [])
+
+    title = details.get("title", "")
+    cover = details.get("cover_url", "")
+    description = details.get("description", "")
+
+    eps_html = "".join([
+        f"""
+        <a class="ep" href="/player/{anime_id}/{ep['episode']}">
+            EP {ep['episode']}
+        </a>
+        """
+        for ep in episodes
+    ])
+
+    return HTMLResponse(f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+        <style>
+            body {{
+                margin:0;
+                font-family:Arial;
+                background:#0b0f1a;
+                color:#fff;
+            }}
+
+            .wrap {{
+                padding:16px;
+            }}
+
+            .cover {{
+                width:100%;
+                border-radius:16px;
+            }}
+
+            h1 {{
+                margin:12px 0;
+            }}
+
+            .desc {{
+                color:#bbb;
+                font-size:14px;
+                margin-bottom:20px;
+            }}
+
+            .grid {{
+                display:grid;
+                grid-template-columns:repeat(3,1fr);
+                gap:10px;
+            }}
+
+            .ep {{
+                text-decoration:none;
+                color:white;
+                background:#1a2238;
+                padding:14px;
+                border-radius:12px;
+                text-align:center;
+                font-weight:bold;
+            }}
+        </style>
+    </head>
+
+    <body>
+        <div class="wrap">
+
+            <img class="cover" src="{cover}">
+
+            <h1>{title}</h1>
+
+            <div class="desc">{description}</div>
+
+            <div class="grid">
+                {eps_html}
+            </div>
+
+        </div>
+
+        <script>
+            if (window.Telegram) {{
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }}
+        </script>
+
+    </body>
+    </html>
+    """)
+
+
+# 🎬 PLAYER
+@app.get("/player/{anime_id}/{ep}", response_class=HTMLResponse)
+async def player(anime_id: str, ep: str):
+    data = await get_episode_player(anime_id, ep)
+
+    video = data.get("video", "")
+
+    return HTMLResponse(f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+        <style>
+            body {{
+                margin:0;
+                background:#000;
+            }}
+
+            video {{
+                width:100%;
+                height:100vh;
+                object-fit:contain;
+            }}
+        </style>
+    </head>
+
+    <body>
+
+        <video controls autoplay>
+            <source src="{video}" type="video/mp4">
+        </video>
+
+        <script>
+            if (window.Telegram) {{
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }}
+        </script>
+
+    </body>
+    </html>
+    """)
