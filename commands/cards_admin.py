@@ -1,5 +1,7 @@
 import os
 import re
+from typing import List, Tuple
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -9,6 +11,7 @@ from cards_service import (
     override_add_subcategory,
     override_delete_anime,
     override_delete_character,
+    override_delete_characters,
     override_delete_subcategory,
     override_set_anime_banner,
     override_set_anime_cover,
@@ -115,16 +118,52 @@ async def card_delchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        if not context.args or not context.args[0].isdigit():
-            return await _reply(update, "Uso: /card_delchar 24311")
+        raw = _extract_payload(update, "card_delchar")
+        if not raw:
+            return await _reply(
+                update,
+                "Uso: /card_delchar 24311\nOu: /card_delchar 24311 24312 24313"
+            )
 
-        cid = int(context.args[0])
-        lock = await lock_manager.acquire(f"cards-admin:char:{cid}")
+        parts = re.split(r"[,\s|]+", raw)
+
+        ids: List[int] = []
+        invalidos: List[str] = []
+        seen = set()
+
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+
+            if part.isdigit():
+                cid = int(part)
+                if cid not in seen:
+                    seen.add(cid)
+                    ids.append(cid)
+            else:
+                invalidos.append(part)
+
+        if not ids:
+            return await _reply(update, "❌ Nenhum ID válido encontrado.")
+
+        batch_lock = await lock_manager.acquire("cards-admin:char:batch-delete")
         try:
-            override_delete_character(cid)
+            override_delete_characters(ids)
         finally:
-            lock.release()
-        await _reply(update, f"✅ Personagem {cid} apagado dos cards.")
+            batch_lock.release()
+
+        if len(ids) == 1:
+            msg = f"✅ Personagem {ids[0]} apagado dos cards."
+        else:
+            msg = f"✅ {len(ids)} personagens apagados dos cards."
+
+        if invalidos:
+            msg += f"\n⚠️ Ignorados: {', '.join(invalidos[:20])}"
+            if len(invalidos) > 20:
+                msg += "..."
+
+        await _reply(update, msg)
     except Exception as e:
         await _reply(update, f"❌ Erro ao apagar personagem: {e}")
 
@@ -376,13 +415,6 @@ async def card_subremove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await _reply(update, f"❌ Erro ao remover da subcategoria: {e}")
 
-import re
-from typing import List, Tuple
-
-from cards_service import (
-    override_set_character_image,
-    reload_cards_cache,
-)
 
 # =========================================================
 # /setfoto
@@ -396,6 +428,7 @@ _SETFOTO_LINE_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+
 def _is_direct_image_url(url: str) -> bool:
     url = str(url or "").strip().lower()
     if not url.startswith(("http://", "https://")):
@@ -403,6 +436,7 @@ def _is_direct_image_url(url: str) -> bool:
 
     base = url.split("?", 1)[0].split("#", 1)[0]
     return base.endswith((".jpg", ".jpeg", ".png", ".webp"))
+
 
 def _parse_setfoto_lines(text: str) -> Tuple[List[Tuple[int, str]], List[str]]:
     items: List[Tuple[int, str]] = []
@@ -451,9 +485,6 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # =====================================================
-        # MODO 1: /setfoto ID LINK
-        # =====================================================
         if len(context.args) >= 2 and str(context.args[0]).isdigit():
             cid = int(context.args[0])
             url = str(context.args[1]).strip()
@@ -478,9 +509,6 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # =====================================================
-        # MODO 2: /setfoto respondendo uma mensagem com linhas
-        # =====================================================
         reply = msg.reply_to_message
         if not context.args and reply:
             base_text = (reply.text or reply.caption or "").strip()
@@ -539,9 +567,6 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _reply(update, text)
             return
 
-        # =====================================================
-        # AJUDA
-        # =====================================================
         await _reply(
             update,
             "🛠️ Admin — setar foto global\n\n"
