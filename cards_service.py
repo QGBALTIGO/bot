@@ -7,9 +7,9 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from database import (
+    delete_global_character_image,
     get_all_global_character_images,
     set_global_character_image,
-    delete_global_character_image,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -76,6 +76,13 @@ def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
                 pass
 
 
+def _safe_int(value: Any, default: Optional[int] = None) -> Optional[int]:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
 def load_cards_assets_raw() -> List[Dict[str, Any]]:
     if not os.path.exists(CARDS_ASSETS_PATH):
         raise FileNotFoundError(
@@ -98,9 +105,8 @@ def load_cards_assets_raw() -> List[Dict[str, Any]]:
         if not isinstance(anime, dict):
             continue
 
-        try:
-            anime_id = int(anime.get("anime_id"))
-        except Exception:
+        anime_id = _safe_int(anime.get("anime_id"))
+        if anime_id is None:
             continue
 
         anime_name = str(anime.get("anime") or "").strip()
@@ -117,12 +123,8 @@ def load_cards_assets_raw() -> List[Dict[str, Any]]:
             if not isinstance(ch, dict):
                 continue
 
-            try:
-                cid = int(ch.get("id"))
-            except Exception:
-                continue
-
-            if cid in seen_ids:
+            cid = _safe_int(ch.get("id"))
+            if cid is None or cid in seen_ids:
                 continue
 
             name = str(ch.get("name") or "").strip()
@@ -222,8 +224,14 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
         overrides = load_cards_overrides()
         db_images_map = get_all_global_character_images()
 
-        deleted_animes = {int(x) for x in overrides["deleted_animes"]}
-        deleted_characters = {int(x) for x in overrides["deleted_characters"]}
+        deleted_animes = {
+            x for x in (_safe_int(v) for v in overrides["deleted_animes"]) if x is not None
+        }
+        deleted_characters = {
+            x
+            for x in (_safe_int(v) for v in overrides["deleted_characters"])
+            if x is not None
+        }
 
         animes_by_id: Dict[int, Dict[str, Any]] = {}
         characters_by_id: Dict[int, Dict[str, Any]] = {}
@@ -286,12 +294,8 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             if not isinstance(anime, dict):
                 continue
 
-            try:
-                anime_id = int(anime.get("anime_id"))
-            except Exception:
-                continue
-
-            if anime_id in deleted_animes:
+            anime_id = _safe_int(anime.get("anime_id"))
+            if anime_id is None or anime_id in deleted_animes:
                 continue
 
             anime_name = str(anime.get("anime") or "").strip()
@@ -314,13 +318,9 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             if not isinstance(ch, dict):
                 continue
 
-            try:
-                cid = int(ch.get("id"))
-                anime_id = int(ch.get("anime_id"))
-            except Exception:
-                continue
-
-            if cid in deleted_characters:
+            cid = _safe_int(ch.get("id"))
+            anime_id = _safe_int(ch.get("anime_id"))
+            if cid is None or anime_id is None or cid in deleted_characters:
                 continue
 
             anime_obj = animes_by_id.get(anime_id)
@@ -398,10 +398,9 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             final_chars = []
             seen = set()
 
-            for cid in ids:
-                try:
-                    cid = int(cid)
-                except Exception:
+            for cid_raw in ids:
+                cid = _safe_int(cid_raw)
+                if cid is None:
                     continue
 
                 ch = characters_by_id.get(cid)
@@ -489,20 +488,44 @@ def _get_overrides_copy() -> Dict[str, Any]:
 
 
 def override_delete_character(character_id: int) -> None:
+    override_delete_characters([character_id])
+
+
+def override_delete_characters(character_ids: List[int]) -> None:
     data = _get_overrides_copy()
-    cid = int(character_id)
 
-    if cid not in [int(x) for x in data["deleted_characters"]]:
-        data["deleted_characters"].append(cid)
+    ids_set = {
+        cid for cid in (_safe_int(value) for value in character_ids) if cid is not None
+    }
+    if not ids_set:
+        return
 
-    delete_global_character_image(cid)
+    current_deleted = {
+        cid
+        for cid in (_safe_int(value) for value in data["deleted_characters"])
+        if cid is not None
+    }
+    data["deleted_characters"] = sorted(current_deleted | ids_set)
+
+    for cid in ids_set:
+        delete_global_character_image(cid)
 
     for subcat, ids in data["subcategories"].items():
-        data["subcategories"][subcat] = [x for x in ids if int(x) != cid]
+        if not isinstance(ids, list):
+            data["subcategories"][subcat] = []
+            continue
+
+        data["subcategories"][subcat] = [
+            x
+            for x in ids
+            if (_safe_int(x) is not None and _safe_int(x) not in ids_set)
+            or _safe_int(x) is None
+        ]
 
     data["custom_characters"] = [
-        x for x in data["custom_characters"]
-        if int(x.get("id", -1)) != cid
+        x
+        for x in data["custom_characters"]
+        if _safe_int(x.get("id", -1), -1) not in ids_set
     ]
 
     save_cards_overrides(data)
@@ -552,12 +575,13 @@ def override_add_character(
     }
 
     data["custom_characters"] = [
-        x for x in data["custom_characters"]
-        if int(x.get("id", -1)) != cid
+        x for x in data["custom_characters"] if _safe_int(x.get("id", -1), -1) != cid
     ]
     data["custom_characters"].append(item)
 
-    data["deleted_characters"] = [x for x in data["deleted_characters"] if int(x) != cid]
+    data["deleted_characters"] = [
+        x for x in data["deleted_characters"] if _safe_int(x) != cid
+    ]
 
     save_cards_overrides(data)
 
@@ -566,25 +590,35 @@ def override_delete_anime(anime_id: int) -> None:
     data = _get_overrides_copy()
     aid = int(anime_id)
 
-    if aid not in [int(x) for x in data["deleted_animes"]]:
-        data["deleted_animes"].append(aid)
+    current_deleted = {
+        cid
+        for cid in (_safe_int(value) for value in data["deleted_animes"])
+        if cid is not None
+    }
+    current_deleted.add(aid)
+    data["deleted_animes"] = sorted(current_deleted)
 
     data["custom_animes"] = [
-        x for x in data["custom_animes"]
-        if int(x.get("anime_id", -1)) != aid
+        x for x in data["custom_animes"] if _safe_int(x.get("anime_id", -1), -1) != aid
     ]
 
     chars_to_delete = [
-        int(x.get("id"))
-        for x in data["custom_characters"]
-        if int(x.get("anime_id", -1)) == aid and str(x.get("id", "")).isdigit()
+        cid
+        for cid in (
+            _safe_int(x.get("id"))
+            for x in data["custom_characters"]
+            if _safe_int(x.get("anime_id", -1), -1) == aid
+        )
+        if cid is not None
     ]
+
     for cid in chars_to_delete:
         delete_global_character_image(cid)
 
     data["custom_characters"] = [
-        x for x in data["custom_characters"]
-        if int(x.get("anime_id", -1)) != aid
+        x
+        for x in data["custom_characters"]
+        if _safe_int(x.get("anime_id", -1), -1) != aid
     ]
 
     save_cards_overrides(data)
@@ -608,12 +642,11 @@ def override_add_anime(
     }
 
     data["custom_animes"] = [
-        x for x in data["custom_animes"]
-        if int(x.get("anime_id", -1)) != aid
+        x for x in data["custom_animes"] if _safe_int(x.get("anime_id", -1), -1) != aid
     ]
     data["custom_animes"].append(item)
 
-    data["deleted_animes"] = [x for x in data["deleted_animes"] if int(x) != aid]
+    data["deleted_animes"] = [x for x in data["deleted_animes"] if _safe_int(x) != aid]
 
     save_cards_overrides(data)
 
@@ -652,7 +685,11 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
 
     data["subcategories"].setdefault(key, [])
 
-    current_ids = [int(x) for x in data["subcategories"][key]]
+    current_ids = {
+        value
+        for value in (_safe_int(x) for x in data["subcategories"][key])
+        if value is not None
+    }
     if cid not in current_ids:
         data["subcategories"][key].append(cid)
 
@@ -666,7 +703,7 @@ def override_subcategory_remove_character(name: str, character_id: int) -> None:
 
     if key in data["subcategories"]:
         data["subcategories"][key] = [
-            x for x in data["subcategories"][key] if int(x) != cid
+            x for x in data["subcategories"][key] if _safe_int(x) != cid
         ]
 
     save_cards_overrides(data)
