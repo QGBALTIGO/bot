@@ -225,7 +225,9 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
         db_images_map = get_all_global_character_images()
 
         deleted_animes = {
-            x for x in (_safe_int(v) for v in overrides["deleted_animes"]) if x is not None
+            x
+            for x in (_safe_int(v) for v in overrides["deleted_animes"])
+            if x is not None
         }
         deleted_characters = {
             x
@@ -515,12 +517,16 @@ def override_delete_characters(character_ids: List[int]) -> None:
             data["subcategories"][subcat] = []
             continue
 
-        data["subcategories"][subcat] = [
-            x
-            for x in ids
-            if (_safe_int(x) is not None and _safe_int(x) not in ids_set)
-            or _safe_int(x) is None
-        ]
+        filtered_ids = []
+        for value in ids:
+            parsed = _safe_int(value)
+            if parsed is None:
+                filtered_ids.append(value)
+                continue
+            if parsed not in ids_set:
+                filtered_ids.append(value)
+
+        data["subcategories"][subcat] = filtered_ids
 
     data["custom_characters"] = [
         x
