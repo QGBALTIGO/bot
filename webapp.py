@@ -27,6 +27,20 @@ from database import (
     resolve_dice_roll,
 )
 
+from database import (
+    create_purchase_intent,
+    get_user_referrer,
+    attach_checkout_data_to_purchase_intent,
+    get_purchase_intent_by_external_reference,
+    get_purchase_intent_by_cakto_order_id,
+    mark_purchase_intent_status,
+    create_affiliate_commission_for_purchase,
+    reverse_affiliate_commission_by_purchase,
+    save_cakto_webhook_event,
+    mark_cakto_webhook_event_processed,
+    mark_cakto_webhook_event_error,
+)
+
 app = FastAPI()
 
 # =========================
@@ -8727,7 +8741,311 @@ async def cards_contrib_rules_page():
 </html>
 """
 
-from fastapi.responses import HTMLResponse
+from fastapi import Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
+
+WEBHOOK_SECRET = os.getenv("CAKTO_WEBHOOK_SECRET", "").strip()
+
+BALTIGOFLIX_PLANS = {
+    "mensal": {
+        "code": "mensal",
+        "name": "Plano Mensal",
+        "amount_cents": 2590,
+    },
+    "trimestral": {
+        "code": "trimestral",
+        "name": "Plano Trimestral",
+        "amount_cents": 5990,
+    },
+    "semestral": {
+        "code": "semestral",
+        "name": "Plano Semestral",
+        "amount_cents": 8990,
+    },
+    "anual": {
+        "code": "anual",
+        "name": "Plano Anual",
+        "amount_cents": 12990,
+    },
+}
+
+
+def _extract_cakto_ids(payload: Dict[str, Any]) -> Dict[str, str]:
+    data = payload.get("data") or {}
+    customer = data.get("customer") or {}
+    order = data.get("order") or {}
+
+    order_id = (
+        str(order.get("id") or "").strip()
+        or str(data.get("order_id") or "").strip()
+        or str(payload.get("order_id") or "").strip()
+    )
+
+    subscription_id = (
+        str(data.get("subscription_id") or "").strip()
+        or str(payload.get("subscription_id") or "").strip()
+    )
+
+    external_reference = (
+        str(data.get("external_reference") or "").strip()
+        or str(order.get("external_reference") or "").strip()
+        or str(payload.get("external_reference") or "").strip()
+    )
+
+    customer_id = (
+        str(customer.get("id") or "").strip()
+        or str(data.get("customer_id") or "").strip()
+    )
+
+    return {
+        "order_id": order_id,
+        "subscription_id": subscription_id,
+        "external_reference": external_reference,
+        "customer_id": customer_id,
+    }
+
+
+@app.post("/api/baltigoflix/create-intent")
+async def baltigoflix_create_intent(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "json_invalido"}, status_code=400)
+
+    telegram_user_id = int(body.get("telegram_user_id") or 0)
+    telegram_username = str(body.get("telegram_username") or "").strip()
+    telegram_full_name = str(body.get("telegram_full_name") or "").strip()
+    plan_code = str(body.get("plan_code") or "").strip().lower()
+
+    if telegram_user_id <= 0:
+        return JSONResponse({"ok": False, "error": "telegram_user_id_invalido"}, status_code=400)
+
+    plan = BALTIGOFLIX_PLANS.get(plan_code)
+    if not plan:
+        return JSONResponse({"ok": False, "error": "plano_invalido"}, status_code=400)
+
+    ref = get_user_referrer(telegram_user_id) or {}
+    referrer_user_id = ref.get("referrer_user_id")
+    ref_code = ref.get("ref_code") or ""
+
+    intent = create_purchase_intent(
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+        plan_code=plan["code"],
+        plan_name=plan["name"],
+        amount_cents=int(plan["amount_cents"]),
+        referrer_user_id=int(referrer_user_id) if referrer_user_id else None,
+        ref_code=ref_code,
+        metadata={
+            "source": "miniapp",
+            "plan_code": plan["code"],
+        },
+    )
+
+    # Aqui por enquanto o "checkout_url" é um placeholder.
+    # Quando você integrar a criação real do checkout pela API da Cakto,
+    # é aqui que vai entrar a URL retornada pela Cakto.
+    checkout_url = f"/baltigoflix/checkout-pending?intent={intent['intent_token']}"
+
+    attach_checkout_data_to_purchase_intent(
+        intent_id=int(intent["id"]),
+        checkout_url=checkout_url,
+        raw_checkout_response={
+            "mode": "placeholder",
+            "message": "checkout ainda não integrado pela API da Cakto",
+        },
+    )
+
+    return JSONResponse({
+        "ok": True,
+        "intent_token": intent["intent_token"],
+        "plan_code": plan["code"],
+        "plan_name": plan["name"],
+        "amount_cents": plan["amount_cents"],
+        "checkout_url": checkout_url,
+        "external_reference": intent.get("external_reference"),
+        "message": "intenção criada com sucesso",
+    })
+
+
+@app.post("/api/cakto/webhook")
+async def cakto_webhook(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "json_invalido"}, status_code=400)
+
+    received_secret = (
+        request.headers.get("x-webhook-secret")
+        or request.headers.get("x-cakto-secret")
+        or str(payload.get("secret") or "").strip()
+    )
+
+    if WEBHOOK_SECRET:
+        if received_secret != WEBHOOK_SECRET:
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    event_type = str(
+        payload.get("event")
+        or payload.get("type")
+        or payload.get("event_type")
+        or ""
+    ).strip()
+
+    ids = _extract_cakto_ids(payload)
+
+    event_row = save_cakto_webhook_event(
+        event_type=event_type,
+        payload=payload,
+        event_id=str(payload.get("id") or payload.get("event_id") or "").strip(),
+        order_id=ids["order_id"],
+        subscription_id=ids["subscription_id"],
+    )
+
+    try:
+        intent = None
+
+        if ids["order_id"]:
+            intent = get_purchase_intent_by_cakto_order_id(ids["order_id"])
+
+        if not intent and ids["external_reference"]:
+            intent = get_purchase_intent_by_external_reference(ids["external_reference"])
+
+        if not intent:
+            mark_cakto_webhook_event_error(event_row["id"], "purchase_intent_nao_encontrado")
+            return JSONResponse({"ok": True, "ignored": True, "reason": "purchase_intent_nao_encontrado"})
+
+        # vincula ids externos caso ainda não estejam salvos
+        attach_checkout_data_to_purchase_intent(
+            intent_id=int(intent["id"]),
+            cakto_order_id=ids["order_id"],
+            cakto_subscription_id=ids["subscription_id"],
+            cakto_customer_id=ids["customer_id"],
+            raw_checkout_response=payload,
+        )
+
+        event_type_lower = event_type.lower()
+
+        approved_events = {
+            "purchase_approved",
+            "compra_aprovada",
+            "payment_approved",
+            "order_paid",
+            "subscription_renewed",
+        }
+
+        canceled_events = {
+            "purchase_refused",
+            "compra_recusada",
+            "subscription_canceled",
+            "subscription_cancelled",
+            "canceled",
+            "cancelled",
+        }
+
+        refunded_events = {
+            "refund",
+            "refunded",
+            "reembolso",
+            "chargeback",
+        }
+
+        if event_type_lower in approved_events:
+            mark_purchase_intent_status(
+                intent_id=int(intent["id"]),
+                status="paid",
+                cakto_order_id=ids["order_id"],
+                cakto_subscription_id=ids["subscription_id"],
+                cakto_customer_id=ids["customer_id"],
+            )
+
+            if intent.get("referrer_user_id"):
+                create_affiliate_commission_for_purchase(
+                    purchase_intent_id=int(intent["id"]),
+                    buyer_user_id=int(intent["telegram_user_id"]),
+                    referrer_user_id=int(intent["referrer_user_id"]),
+                    amount_cents=int(intent["amount_cents"]),
+                    metadata={
+                        "source": "cakto_webhook",
+                        "event_type": event_type,
+                    },
+                )
+
+        elif event_type_lower in canceled_events:
+            mark_purchase_intent_status(
+                intent_id=int(intent["id"]),
+                status="canceled",
+                cakto_order_id=ids["order_id"],
+                cakto_subscription_id=ids["subscription_id"],
+                cakto_customer_id=ids["customer_id"],
+            )
+
+        elif event_type_lower in refunded_events:
+            mark_purchase_intent_status(
+                intent_id=int(intent["id"]),
+                status="refunded",
+                cakto_order_id=ids["order_id"],
+                cakto_subscription_id=ids["subscription_id"],
+                cakto_customer_id=ids["customer_id"],
+            )
+            reverse_affiliate_commission_by_purchase(
+                purchase_intent_id=int(intent["id"]),
+                reason=event_type,
+            )
+
+        mark_cakto_webhook_event_processed(event_row["id"])
+        return JSONResponse({"ok": True})
+
+    except Exception as e:
+        mark_cakto_webhook_event_error(event_row["id"], str(e))
+        return JSONResponse({"ok": False, "error": "erro_processando_webhook"}, status_code=500)
+
+
+@app.get("/baltigoflix/checkout-pending", response_class=HTMLResponse)
+def baltigoflix_checkout_pending():
+    return HTMLResponse("""
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>BaltigoFlix • Checkout</title>
+  <style>
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:#060913;
+      color:#f4f7ff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      padding:24px;
+    }
+    .card{
+      width:100%;
+      max-width:560px;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:24px;
+      padding:24px;
+      background:rgba(255,255,255,.04);
+    }
+    h1{margin:0 0 10px;font-size:28px}
+    p{margin:0 0 12px;line-height:1.6;color:rgba(244,247,255,.75)}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Checkout ainda não integrado</h1>
+    <p>A intenção de compra já foi criada no banco.</p>
+    <p>Agora falta ligar a criação real do checkout pela API da Cakto para redirecionar o usuário ao pagamento.</p>
+    <p>O webhook já está pronto para confirmar o pagamento quando você conectar essa etapa.</p>
+  </div>
+</body>
+</html>
+""")
 
 
 @app.get("/baltigoflix", response_class=HTMLResponse)
@@ -9236,6 +9554,61 @@ def baltigoflix_page():
       line-height:1.55;
     }
 
+    .loadingOverlay{
+      position:fixed;
+      inset:0;
+      background:rgba(6,9,19,.78);
+      backdrop-filter:blur(6px);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+      padding:24px;
+    }
+    .loadingCard{
+      width:100%;
+      max-width:420px;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:24px;
+      background:rgba(255,255,255,.06);
+      padding:22px;
+      text-align:center;
+      box-shadow:0 24px 60px rgba(0,0,0,.36);
+    }
+    .spinner{
+      width:42px;
+      height:42px;
+      border-radius:999px;
+      border:4px solid rgba(255,255,255,.14);
+      border-top-color:#ff8a00;
+      margin:0 auto 14px;
+      animation:spin 1s linear infinite;
+    }
+    @keyframes spin{
+      to{transform:rotate(360deg)}
+    }
+    .statusBox{
+      margin-top:14px;
+      padding:14px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.05);
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.6;
+      display:none;
+    }
+    .statusBox.error{
+      border-color:rgba(255,90,118,.30);
+      background:rgba(255,90,118,.08);
+      color:#ffd8df;
+    }
+    .statusBox.success{
+      border-color:rgba(39,227,138,.28);
+      background:rgba(39,227,138,.08);
+      color:#dffff0;
+    }
+
     @media (max-width:980px){
       .heroGrid,.proof,.guarantee{grid-template-columns:1fr}
       .plans{grid-template-columns:1fr 1fr}
@@ -9498,8 +9871,10 @@ def baltigoflix_page():
         <div class="sectionTitle">Planos</div>
         <h2 class="sectionHeading" id="planos">Escolha o plano ideal e continue a compra pelo bot</h2>
         <p class="sectionText">
-          Todos os botões abaixo já estão prontos para a próxima etapa, onde vamos ligar o plano escolhido ao backend e ao pagamento.
+          Toque em um dos planos abaixo para iniciar sua compra.
         </p>
+
+        <div id="purchaseStatus" class="statusBox"></div>
 
         <div class="plans">
           <article class="plan">
@@ -9511,7 +9886,7 @@ def baltigoflix_page():
               <li><b>✓</b><div>Bom para testar a experiência</div></li>
               <li><b>✓</b><div>Fluxo concluído pelo bot</div></li>
             </ul>
-            <button class="btn btnPrimary buyBtn" data-plan="mensal" data-price="25.90">Assinar mensal</button>
+            <button class="btn btnPrimary buyBtn" data-plan="mensal">Assinar mensal</button>
           </article>
 
           <article class="plan">
@@ -9523,7 +9898,7 @@ def baltigoflix_page():
               <li><b>✓</b><div>Mais tranquilidade</div></li>
               <li><b>✓</b><div>Compra simples e direta</div></li>
             </ul>
-            <button class="btn btnPrimary buyBtn" data-plan="trimestral" data-price="59.90">Assinar trimestral</button>
+            <button class="btn btnPrimary buyBtn" data-plan="trimestral">Assinar trimestral</button>
           </article>
 
           <article class="plan popular">
@@ -9536,7 +9911,7 @@ def baltigoflix_page():
               <li><b>✓</b><div>Boa relação entre tempo e valor</div></li>
               <li><b>✓</b><div>Opção muito competitiva</div></li>
             </ul>
-            <button class="btn btnPrimary buyBtn" data-plan="semestral" data-price="89.90">Assinar semestral</button>
+            <button class="btn btnPrimary buyBtn" data-plan="semestral">Assinar semestral</button>
           </article>
 
           <article class="plan">
@@ -9548,7 +9923,7 @@ def baltigoflix_page():
               <li><b>✓</b><div>Mais tempo sem preocupação</div></li>
               <li><b>✓</b><div>Destaque de oferta na comunicação</div></li>
             </ul>
-            <button class="btn btnPrimary buyBtn" data-plan="anual" data-price="129.90">Assinar anual</button>
+            <button class="btn btnPrimary buyBtn" data-plan="anual">Assinar anual</button>
           </article>
         </div>
       </div>
@@ -9614,7 +9989,7 @@ def baltigoflix_page():
           <div class="faqItem">
             <button class="faqBtn">O pagamento já acontece aqui?</button>
             <div class="faqContent">
-              Nesta etapa, a página está pronta para vender visualmente. No próximo passo, vamos ligar os botões ao backend, ao bot e ao fluxo de pagamento.
+              A compra é iniciada aqui no Mini App e a confirmação final acontece quando o sistema recebe o retorno oficial do pagamento.
             </div>
           </div>
         </div>
@@ -9632,10 +10007,20 @@ def baltigoflix_page():
           <a href="#planos" class="btn btnPrimary">🚀 Ver planos e continuar</a>
         </div>
         <p class="small" style="margin-top:14px">
-          Após tocar em um plano, a próxima etapa será concluída pelo bot com o fluxo de compra.
+          Após tocar em um plano, sua intenção de compra será criada automaticamente.
         </p>
       </div>
     </section>
+  </div>
+
+  <div id="loadingOverlay" class="loadingOverlay">
+    <div class="loadingCard">
+      <div class="spinner"></div>
+      <div style="font-size:18px;font-weight:1000;margin-bottom:8px">Preparando sua compra...</div>
+      <div style="color:rgba(244,247,255,.72);line-height:1.6">
+        Estamos registrando seu plano e preparando a próxima etapa.
+      </div>
+    </div>
   </div>
 
   <script>
@@ -9648,6 +10033,9 @@ def baltigoflix_page():
     }
 
     const btnSaibaMais = document.getElementById("btnSaibaMais");
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const statusBox = document.getElementById("purchaseStatus");
+
     if (btnSaibaMais) {
       btnSaibaMais.addEventListener("click", () => {
         const el = document.getElementById("saibamais");
@@ -9661,20 +10049,99 @@ def baltigoflix_page():
       });
     });
 
+    function showLoading() {
+      if (loadingOverlay) loadingOverlay.style.display = "flex";
+    }
+
+    function hideLoading() {
+      if (loadingOverlay) loadingOverlay.style.display = "none";
+    }
+
+    function setStatus(message, kind = "") {
+      if (!statusBox) return;
+      statusBox.style.display = "block";
+      statusBox.className = "statusBox";
+      if (kind) statusBox.classList.add(kind);
+      statusBox.innerText = message;
+    }
+
+    function getTelegramUser() {
+      const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
+      if (!user) return null;
+
+      return {
+        telegram_user_id: Number(user.id || 0),
+        telegram_username: user.username || "",
+        telegram_full_name: [user.first_name || "", user.last_name || ""].join(" ").trim(),
+      };
+    }
+
+    async function createIntent(planCode) {
+      const user = getTelegramUser();
+
+      if (!user || !user.telegram_user_id) {
+        setStatus("Não foi possível identificar seu usuário do Telegram dentro do Mini App.", "error");
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const res = await fetch("/api/baltigoflix/create-intent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            telegram_user_id: user.telegram_user_id,
+            telegram_username: user.telegram_username,
+            telegram_full_name: user.telegram_full_name,
+            plan_code: planCode
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "erro_ao_criar_intent");
+        }
+
+        setStatus(
+          "Plano registrado com sucesso: " + data.plan_name +
+          "\\n\\nAgora falta integrar a URL real do checkout da Cakto para enviar o usuário ao pagamento.",
+          "success"
+        );
+
+        if (tg && tg.HapticFeedback) {
+          try { tg.HapticFeedback.notificationOccurred("success"); } catch (e) {}
+        }
+
+        if (data.checkout_url) {
+          setTimeout(() => {
+            window.location.href = data.checkout_url;
+          }, 700);
+        }
+
+      } catch (err) {
+        setStatus("Erro ao iniciar sua compra: " + (err.message || "desconhecido"), "error");
+
+        if (tg && tg.HapticFeedback) {
+          try { tg.HapticFeedback.notificationOccurred("error"); } catch (e) {}
+        }
+      } finally {
+        hideLoading();
+      }
+    }
+
     document.querySelectorAll(".buyBtn").forEach(btn => {
       btn.addEventListener("click", () => {
         const plan = btn.dataset.plan || "";
-        const price = btn.dataset.price || "";
 
         if (tg && tg.HapticFeedback) {
           try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {}
         }
 
-        alert(
-          "Plano selecionado: " + plan +
-          "\\nValor: R$ " + price +
-          "\\n\\nPróximo passo: ligar este botão ao backend, ao bot e ao pagamento."
-        );
+        createIntent(plan);
       });
     });
   </script>
