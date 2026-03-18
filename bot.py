@@ -33,7 +33,7 @@ from commands.reset_users import reset_user, reset_all
 from commands.anime import anime
 from commands.manga import manga
 from commands.avisar import avisar
-from handlers.baltigoflix import baltigoflix
+from commands.baltigoflix import baltigoflix
 
 from commands.cards import cards
 from commands.card import card, card_stats_callback
