@@ -8726,3 +8726,618 @@ async def cards_contrib_rules_page():
 </body>
 </html>
 """
+
+from fastapi.responses import HTMLResponse
+
+
+@app.get("/baltigoflix", response_class=HTMLResponse)
+def baltigoflix_page():
+    html = """<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>BaltigoFlix</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root{
+      --bg:#070b14;
+      --bg2:#0b1220;
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.04);
+      --stroke:rgba(255,255,255,.10);
+      --stroke2:rgba(255,255,255,.16);
+      --txt:rgba(255,255,255,.96);
+      --muted:rgba(255,255,255,.70);
+      --accent:#ff8a00;
+      --accent2:#ff3d00;
+      --blue:#5da7ff;
+      --green:#45e58d;
+      --shadow:0 22px 50px rgba(0,0,0,.38);
+      --radius:28px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+    body{
+      background:
+        radial-gradient(900px 500px at 0% 0%, rgba(255,138,0,.14), transparent 60%),
+        radial-gradient(900px 500px at 100% 10%, rgba(93,167,255,.12), transparent 60%),
+        radial-gradient(800px 450px at 50% 100%, rgba(255,61,0,.10), transparent 60%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      min-height:100vh;
+    }
+
+    .wrap{max-width:1080px;margin:0 auto;padding:16px 14px 40px}
+    .hero{
+      position:relative;
+      overflow:hidden;
+      border:1px solid var(--stroke);
+      border-radius:32px;
+      background:
+        linear-gradient(135deg, rgba(255,138,0,.14), rgba(255,61,0,.10) 40%, rgba(93,167,255,.10)),
+        rgba(255,255,255,.04);
+      box-shadow:var(--shadow);
+      padding:22px;
+    }
+
+    .hero::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.09), transparent 26%),
+        radial-gradient(circle at 85% 15%, rgba(255,255,255,.06), transparent 20%);
+      pointer-events:none;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;
+      background:rgba(255,255,255,.06);
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+    }
+
+    .heroGrid{
+      display:grid;
+      grid-template-columns:1.15fr .85fr;
+      gap:18px;
+      position:relative;
+      z-index:1;
+      margin-top:14px;
+    }
+
+    .title{
+      font-size:clamp(30px, 6vw, 54px);
+      line-height:1.02;
+      margin:0 0 14px;
+      font-weight:1000;
+      letter-spacing:-.04em;
+    }
+
+    .grad{
+      background:linear-gradient(90deg, #ffd08a, #ff8a00 38%, #ff4d00 72%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+
+    .desc{
+      font-size:16px;
+      line-height:1.6;
+      color:var(--muted);
+      max-width:700px;
+      margin:0 0 20px;
+    }
+
+    .ctaRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
+    }
+
+    .btn{
+      appearance:none;
+      border:none;
+      cursor:pointer;
+      border-radius:16px;
+      padding:14px 18px;
+      font-weight:900;
+      font-size:14px;
+      letter-spacing:.01em;
+      transition:.18s transform ease,.18s opacity ease,.18s box-shadow ease;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .btn:active{transform:scale(.985)}
+    .btnPrimary{
+      color:#fff;
+      background:linear-gradient(90deg, var(--accent), var(--accent2));
+      box-shadow:0 12px 28px rgba(255,102,0,.28);
+    }
+    .btnGhost{
+      color:#fff;
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--stroke2);
+    }
+
+    .heroCard{
+      border:1px solid var(--stroke);
+      border-radius:26px;
+      background:rgba(255,255,255,.05);
+      padding:18px;
+      backdrop-filter:blur(12px);
+      align-self:stretch;
+    }
+
+    .heroCard .mini{
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      font-weight:900;
+      margin-bottom:10px;
+    }
+
+    .heroPrice{
+      font-size:18px;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
+
+    .heroPrice strong{
+      display:block;
+      font-size:42px;
+      line-height:1;
+      color:#fff;
+      margin-top:6px;
+    }
+
+    .heroList{
+      display:grid;
+      gap:10px;
+      margin-top:18px;
+    }
+
+    .heroList .item{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      color:var(--txt);
+      font-size:14px;
+      line-height:1.45;
+    }
+
+    .heroList .dot{
+      width:22px;
+      height:22px;
+      border-radius:999px;
+      background:rgba(69,229,141,.15);
+      border:1px solid rgba(69,229,141,.35);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 22px;
+      font-size:12px;
+    }
+
+    .section{
+      margin-top:18px;
+      border:1px solid var(--stroke);
+      border-radius:28px;
+      background:rgba(255,255,255,.04);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+
+    .sectionInner{padding:20px}
+    .sectionTitle{
+      font-size:13px;
+      text-transform:uppercase;
+      letter-spacing:.10em;
+      color:#ffc680;
+      font-weight:900;
+      margin-bottom:8px;
+    }
+
+    .sectionHeading{
+      font-size:clamp(24px, 4.4vw, 40px);
+      line-height:1.08;
+      margin:0 0 10px;
+      font-weight:1000;
+      letter-spacing:-.03em;
+    }
+
+    .sectionText{
+      color:var(--muted);
+      line-height:1.65;
+      font-size:15px;
+      margin:0;
+    }
+
+    .plans{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:14px;
+      margin-top:18px;
+    }
+
+    .plan{
+      position:relative;
+      border:1px solid var(--stroke);
+      border-radius:24px;
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.035));
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      min-height:100%;
+    }
+
+    .plan.popular{
+      border-color:rgba(255,138,0,.38);
+      box-shadow:0 16px 34px rgba(255,102,0,.16);
+    }
+
+    .tag{
+      position:absolute;
+      top:14px;
+      right:14px;
+      background:linear-gradient(90deg, var(--accent), var(--accent2));
+      color:#fff;
+      padding:7px 10px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:1000;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+
+    .planLabel{
+      font-size:12px;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      font-weight:900;
+      margin-bottom:8px;
+    }
+
+    .planName{
+      font-size:28px;
+      font-weight:1000;
+      margin:0 0 10px;
+      letter-spacing:-.03em;
+    }
+
+    .planPrice{
+      font-size:15px;
+      color:var(--muted);
+      margin-bottom:14px;
+    }
+
+    .planPrice strong{
+      display:block;
+      font-size:34px;
+      color:#fff;
+      line-height:1;
+      margin-top:6px;
+    }
+
+    .plan ul{
+      list-style:none;
+      padding:0;
+      margin:0 0 16px;
+      display:grid;
+      gap:10px;
+    }
+
+    .plan li{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      color:var(--txt);
+      font-size:14px;
+      line-height:1.45;
+    }
+
+    .plan li span{
+      color:var(--green);
+      font-weight:1000;
+    }
+
+    .plan .btn{
+      width:100%;
+      margin-top:auto;
+    }
+
+    .guarantee{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+      align-items:center;
+    }
+
+    .glass{
+      border:1px solid var(--stroke);
+      border-radius:24px;
+      background:rgba(255,255,255,.045);
+      padding:18px;
+    }
+
+    .faq{
+      display:grid;
+      gap:12px;
+      margin-top:16px;
+    }
+
+    .faqItem{
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      background:rgba(255,255,255,.04);
+      overflow:hidden;
+    }
+
+    .faqBtn{
+      width:100%;
+      background:none;
+      border:none;
+      color:#fff;
+      text-align:left;
+      padding:16px;
+      font-size:15px;
+      font-weight:800;
+      cursor:pointer;
+    }
+
+    .faqContent{
+      display:none;
+      padding:0 16px 16px;
+      color:var(--muted);
+      line-height:1.6;
+      font-size:14px;
+    }
+
+    .faqItem.active .faqContent{display:block}
+
+    .footerSpace{height:20px}
+
+    @media (max-width: 980px){
+      .heroGrid, .guarantee{grid-template-columns:1fr}
+      .plans{grid-template-columns:1fr 1fr}
+    }
+
+    @media (max-width: 640px){
+      .wrap{padding:12px 12px 34px}
+      .hero{padding:16px}
+      .plans{grid-template-columns:1fr}
+      .btn{width:100%}
+      .ctaRow{flex-direction:column}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="badge">🔥 BaltigoFlix • Mini App oficial</div>
+
+      <div class="heroGrid">
+        <div>
+          <h1 class="title">
+            Entre para a <span class="grad">BaltigoFlix</span><br>
+            e tenha acesso direto, rápido e sem enrolação
+          </h1>
+
+          <p class="desc">
+            Uma área premium pensada para quem quer praticidade, organização e acesso facilitado.
+            Escolha o plano ideal, veja os benefícios e finalize tudo pelo bot.
+          </p>
+
+          <div class="ctaRow">
+            <a href="#planos" class="btn btnPrimary">🚀 Ver planos</a>
+            <button class="btn btnGhost" id="btnQueroAssinar">💬 Quero assinar agora</button>
+          </div>
+        </div>
+
+        <aside class="heroCard">
+          <div class="mini">Oferta destaque</div>
+          <div class="heroPrice">
+            Já com a BaltigoFlix você pagará apenas
+            <strong>R$ 129,90</strong>
+            no plano anual
+          </div>
+
+          <div class="heroList">
+            <div class="item"><div class="dot">✓</div><div>Acesso premium com processo simples</div></div>
+            <div class="item"><div class="dot">✓</div><div>Planos mensal, trimestral, semestral e anual</div></div>
+            <div class="item"><div class="dot">✓</div><div>Fluxo preparado para concluir tudo pelo bot</div></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sectionInner">
+        <div class="sectionTitle">Planos</div>
+        <h2 class="sectionHeading" id="planos">Aproveite essa oportunidade única</h2>
+        <p class="sectionText">
+          Escolha a melhor opção para você e continue pelo bot na próxima etapa.
+        </p>
+
+        <div class="plans">
+          <article class="plan">
+            <div class="planLabel">Plano</div>
+            <h3 class="planName">Mensal</h3>
+            <div class="planPrice">Acesso recorrente <strong>R$ 25,90</strong></div>
+            <ul>
+              <li><span>✓</span><div>Acesso rápido</div></li>
+              <li><span>✓</span><div>Entrada imediata no fluxo de compra</div></li>
+              <li><span>✓</span><div>Ideal para começar</div></li>
+            </ul>
+            <button class="btn btnPrimary buyBtn" data-plan="mensal" data-price="25.90">Assinar mensal</button>
+          </article>
+
+          <article class="plan">
+            <div class="planLabel">Plano</div>
+            <h3 class="planName">Trimestral</h3>
+            <div class="planPrice">Mais tempo com economia <strong>R$ 59,90</strong></div>
+            <ul>
+              <li><span>✓</span><div>Melhor custo que o mensal</div></li>
+              <li><span>✓</span><div>Mais estabilidade</div></li>
+              <li><span>✓</span><div>Fluxo direto pelo bot</div></li>
+            </ul>
+            <button class="btn btnPrimary buyBtn" data-plan="trimestral" data-price="59.90">Assinar trimestral</button>
+          </article>
+
+          <article class="plan">
+            <div class="tag">Popular</div>
+            <div class="planLabel">Plano</div>
+            <h3 class="planName">Semestral</h3>
+            <div class="planPrice">Mais vantajoso <strong>R$ 89,90</strong></div>
+            <ul>
+              <li><span>✓</span><div>Excelente custo-benefício</div></li>
+              <li><span>✓</span><div>Mais comodidade</div></li>
+              <li><span>✓</span><div>Compra organizada pelo bot</div></li>
+            </ul>
+            <button class="btn btnPrimary buyBtn" data-plan="semestral" data-price="89.90">Assinar semestral</button>
+          </article>
+
+          <article class="plan popular">
+            <div class="planLabel">Plano</div>
+            <h3 class="planName">Anual</h3>
+            <div class="planPrice">Maior economia <strong>R$ 129,90</strong></div>
+            <ul>
+              <li><span>✓</span><div>Melhor valor entre os planos</div></li>
+              <li><span>✓</span><div>Mais tempo sem preocupação</div></li>
+              <li><span>✓</span><div>Ideal para quem quer economizar</div></li>
+            </ul>
+            <button class="btn btnPrimary buyBtn" data-plan="anual" data-price="129.90">Assinar anual</button>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sectionInner guarantee">
+        <div>
+          <div class="sectionTitle">Sem risco</div>
+          <h2 class="sectionHeading">Experimente por 7 dias e só então decida se quer continuar</h2>
+          <p class="sectionText">
+            Sem letras miúdas. Você pode testar a experiência e, em caso de falha do sistema dentro do período informado,
+            o valor pode ser devolvido integralmente conforme sua regra de atendimento.
+          </p>
+        </div>
+
+        <div class="glass">
+          <div class="sectionTitle">Vantagem</div>
+          <h3 style="margin:0 0 10px;font-size:24px;font-weight:1000;letter-spacing:-.03em">Compra simples, visual bonito e fluxo direto</h3>
+          <p class="sectionText">
+            Aqui no Mini App o usuário entende os planos, escolhe a melhor opção e segue para o bot concluir a assinatura.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sectionInner">
+        <div class="sectionTitle">Perguntas frequentes</div>
+        <h2 class="sectionHeading">Tudo que o usuário precisa ver antes de assinar</h2>
+
+        <div class="faq">
+          <div class="faqItem active">
+            <button class="faqBtn">Como vou assinar?</button>
+            <div class="faqContent">
+              Você escolhe o plano aqui no Mini App e, na próxima etapa, o fluxo segue pelo bot.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqBtn">Quais planos estarão disponíveis?</button>
+            <div class="faqContent">
+              Mensal, trimestral, semestral e anual, exatamente como na sua oferta atual.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqBtn">O pagamento já acontece aqui?</button>
+            <div class="faqContent">
+              Ainda não nesta primeira etapa. Agora estamos montando o visual; depois ligamos os botões ao backend, bot e webhook.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqBtn">Isso vai funcionar dentro do Telegram?</button>
+            <div class="faqContent">
+              Sim. A estrutura já foi feita pensando no Telegram WebApp, no mesmo estilo do restante do seu projeto.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="footerSpace"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+      try {
+        tg.ready();
+        tg.expand();
+      } catch (e) {}
+    }
+
+    const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
+    const currentUser = {
+      id: user && user.id ? Number(user.id) : 0,
+      username: user && user.username ? user.username : "",
+      full_name: user ? [user.first_name || "", user.last_name || ""].join(" ").trim() : ""
+    };
+
+    document.querySelectorAll(".faqBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const item = btn.parentElement;
+        item.classList.toggle("active");
+      });
+    });
+
+    function goToPlans(){
+      const el = document.getElementById("planos");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    const btnQueroAssinar = document.getElementById("btnQueroAssinar");
+    if (btnQueroAssinar) {
+      btnQueroAssinar.addEventListener("click", goToPlans);
+    }
+
+    document.querySelectorAll(".buyBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const plan = btn.dataset.plan || "";
+        const price = btn.dataset.price || "";
+
+        if (tg && tg.HapticFeedback) {
+          try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {}
+        }
+
+        alert(
+          "Plano selecionado: " + plan +
+          "\\nValor: R$ " + price +
+          "\\n\\nPróximo passo: vamos ligar esse botão ao backend e ao bot."
+        );
+      });
+    });
+  </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
