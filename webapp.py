@@ -3038,7 +3038,7 @@ def cards_anime_page(anime_id: int = Query(...)):
 <div class="wrap">
 
   <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner" onerror="this.onerror=null;this.src=fallbackTop;"/>
+    <img id="heroImg" src="" alt="Banner"/>
     <div class="hero-copy">
       <a class="back" href="/cards">← Voltar</a>
       <div class="title" id="animeTitle">Carregando...</div>
@@ -3111,7 +3111,7 @@ def cards_anime_page(anime_id: int = Query(...)):
       html += `
         <div class="card">
           <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
+            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
             <div class="id-pill">ID ${item.id}</div>
           </div>
           <div class="meta">
@@ -4139,7 +4139,7 @@ def cards_anime_page(anime_id: int = Query(...)):
 <div class="wrap">
 
   <div class="hero" id="heroBox">
-    <img id="heroImg" src="" alt="Banner" onerror="this.onerror=null;this.src=fallbackTop;"/>
+    <img id="heroImg" src="" alt="Banner"/>
     <div class="hero-copy">
       <a class="back" href="/cards">← Voltar</a>
       <div class="title" id="animeTitle">Carregando...</div>
@@ -4212,7 +4212,7 @@ def cards_anime_page(anime_id: int = Query(...)):
       html += `
         <div class="card">
           <div class="char-image">
-            <img src="${esc(pickCharImage(item))}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
+            <img src="${esc(pickCharImage(item))}" alt="${esc(item.name)}" loading="lazy"/>
             <div class="id-pill">ID ${item.id}</div>
           </div>
           <div class="meta">
@@ -4357,7 +4357,7 @@ async function load(){{
     html += `
       <div class="card">
         <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
+          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
         </div>
         <div class="meta2">
           <p class="name">${{esc(item.name)}}</p>
@@ -4459,7 +4459,7 @@ async function load(){{
     html += `
       <div class="card">
         <div class="char-image">
-          <img src="${{esc(item.image || fallbackTop)}}" alt="" loading="lazy" onerror="this.onerror=null;this.src=fallbackTop;"/>
+          <img src="${{esc(item.image || fallbackTop)}}" alt="${{esc(item.name)}}" loading="lazy"/>
         </div>
         <div class="meta2">
           <p class="name">${{esc(item.name)}}</p>
