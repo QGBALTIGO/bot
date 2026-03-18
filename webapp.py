@@ -9038,37 +9038,45 @@ def baltigoflix_page():
       border:1px solid var(--stroke-strong);
     }
 
-    .showcase{
+    .contentGrid{
       display:grid;
-      grid-template-columns:repeat(5,1fr);
-      gap:10px;
+      grid-template-columns:repeat(2,1fr);
+      gap:14px;
       margin-top:18px;
     }
-    .poster{
-      aspect-ratio:2/3;
-      border-radius:20px;
+    .contentCard{
       border:1px solid var(--stroke);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.03)),
-        linear-gradient(135deg, rgba(255,138,0,.18), rgba(99,168,255,.12));
+      border-radius:24px;
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.035));
+      padding:18px;
+      min-height:100%;
+    }
+    .contentCardWide{
+      grid-column:1 / -1;
+    }
+    .contentIcon{
+      width:48px;
+      height:48px;
+      border-radius:16px;
       display:flex;
-      align-items:flex-end;
-      padding:12px;
-      overflow:hidden;
-      position:relative;
-      font-weight:900;
-      letter-spacing:.02em;
-      min-height:150px;
+      align-items:center;
+      justify-content:center;
+      margin-bottom:12px;
+      font-size:22px;
+      background:linear-gradient(135deg, rgba(255,138,0,.18), rgba(99,168,255,.12));
+      border:1px solid var(--stroke-strong);
     }
-    .poster:before{
-      content:"";
-      position:absolute; inset:0;
-      background:linear-gradient(180deg, transparent 0%, rgba(0,0,0,.72) 100%);
+    .contentCard h3{
+      margin:0 0 8px;
+      font-size:22px;
+      line-height:1.15;
+      letter-spacing:-.02em;
     }
-    .poster span{
-      position:relative;
-      z-index:1;
+    .contentCard p{
+      margin:0;
+      color:var(--muted);
       font-size:14px;
+      line-height:1.62;
     }
 
     .proof{
@@ -9233,17 +9241,18 @@ def baltigoflix_page():
       .plans{grid-template-columns:1fr 1fr}
       .featureGrid{grid-template-columns:1fr}
       .stats{grid-template-columns:1fr 1fr}
-      .showcase{grid-template-columns:repeat(3,1fr)}
+      .contentGrid{grid-template-columns:1fr 1fr}
     }
     @media (max-width:640px){
       .wrap{padding:12px 12px 34px}
       .hero{padding:16px}
       .plans{grid-template-columns:1fr}
       .stats{grid-template-columns:1fr}
-      .showcase{grid-template-columns:repeat(2,1fr)}
+      .contentGrid{grid-template-columns:1fr}
       .btn{width:100%}
       .ctaRow{flex-direction:column}
       .logo{min-width:92px;font-size:11px;padding:10px 12px}
+      .contentCardWide{grid-column:auto}
     }
   </style>
 </head>
@@ -9410,18 +9419,52 @@ def baltigoflix_page():
     <section class="section">
       <div class="inner">
         <div class="sectionTitle">Conteúdo premium</div>
-        <h2 class="sectionHeading">Para todos os gostos</h2>
+        <h2 class="sectionHeading">Tudo em um só lugar, organizado do jeito certo</h2>
         <p class="sectionText">
-          Filmes, séries, esportes, canais e conteúdos especiais em uma experiência pensada para parecer premium
-          já na página de venda.
+          A BaltigoFlix foi pensada para quem quer entrar, escolher o que assistir e aproveitar sem complicação.
+          Veja o que você encontra no acesso:
         </p>
 
-        <div class="showcase">
-          <div class="poster"><span>Filmes</span></div>
-          <div class="poster"><span>Séries</span></div>
-          <div class="poster"><span>Esportes</span></div>
-          <div class="poster"><span>Canais</span></div>
-          <div class="poster"><span>Conteúdo adulto</span></div>
+        <div class="contentGrid">
+          <article class="contentCard">
+            <div class="contentIcon">🎬</div>
+            <h3>Filmes</h3>
+            <p>
+              Catálogo amplo com opções para todos os gostos, desde lançamentos até títulos para maratonar quando quiser.
+            </p>
+          </article>
+
+          <article class="contentCard">
+            <div class="contentIcon">📺</div>
+            <h3>Séries</h3>
+            <p>
+              Séries populares e conteúdos para quem gosta de acompanhar episódios, temporadas e descobrir novidades.
+            </p>
+          </article>
+
+          <article class="contentCard">
+            <div class="contentIcon">⚽</div>
+            <h3>Esportes</h3>
+            <p>
+              Futebol, UFC, Fórmula 1, NBA e outros eventos ao vivo para quem não quer perder os principais jogos e lutas.
+            </p>
+          </article>
+
+          <article class="contentCard">
+            <div class="contentIcon">📡</div>
+            <h3>Canais</h3>
+            <p>
+              Acesso a canais abertos e fechados para entretenimento, notícias, infantil, variedades e muito mais.
+            </p>
+          </article>
+
+          <article class="contentCard contentCardWide">
+            <div class="contentIcon">🔒</div>
+            <h3>Conteúdo adulto protegido</h3>
+            <p>
+              Área separada e protegida, para manter mais privacidade e controle de acesso dentro da experiência.
+            </p>
+          </article>
         </div>
 
         <div class="ctaRow" style="margin-top:18px">
