@@ -33,6 +33,7 @@ from commands.reset_users import reset_user, reset_all
 from commands.anime import anime
 from commands.manga import manga
 from commands.avisar import avisar
+from handlers.baltigoflix import baltigoflix
 
 from commands.cards import cards
 from commands.card import card, card_stats_callback
@@ -161,6 +162,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("resetall", reset_all))
     app.add_handler(CommandHandler("avisar", avisar))
     app.add_handler(CommandHandler("cardcontrib", sugerircard))
+    app.add_handler(CommandHandler("baltigoflix", baltigoflix))
 
     # msg
     app.add_handler(CommandHandler("msg", msg))
