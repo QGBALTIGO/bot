@@ -8832,7 +8832,13 @@ async def baltigoflix_create_intent(request: Request):
     # Aqui por enquanto o "checkout_url" é um placeholder.
     # Quando você integrar a criação real do checkout pela API da Cakto,
     # é aqui que vai entrar a URL retornada pela Cakto.
-    checkout_url = f"/baltigoflix/checkout-pending?intent={intent['intent_token']}"
+    base_checkout_url = CHECKOUT_URLS.get(plan["code"], "").strip()
+
+if not base_checkout_url:
+    return JSONResponse({"ok": False, "error": "checkout_nao_configurado"}, status_code=500)
+
+separator = "&" if "?" in base_checkout_url else "?"
+checkout_url = f"{base_checkout_url}{separator}ref={intent['intent_token']}"
 
     attach_checkout_data_to_purchase_intent(
         intent_id=int(intent["id"]),
