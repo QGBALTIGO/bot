@@ -9,6 +9,9 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from zoneinfo import ZoneInfo
 
+import secrets
+from decimal import Decimal, ROUND_HALF_UP
+
 from datetime import date, datetime, timedelta, time as dt_time
 
 
@@ -276,7 +279,288 @@ def create_tables():
     create_message_tables()
     create_card_contrib_tables()
     create_global_character_images_table()
+    create_referral_tables()
+    create_baltigoflix_tables()
 
+    # =========================================================
+# BALTIGOFLIX / AFILIADOS / PAGAMENTOS
+# =========================================================
+
+def create_referral_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_referrals (
+        referred_user_id BIGINT PRIMARY KEY,
+        referrer_user_id BIGINT NOT NULL,
+        ref_code TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    ALTER TABLE user_referrals
+    ADD COLUMN IF NOT EXISTS ref_code TEXT
+    """)
+
+    _run("""
+    ALTER TABLE user_referrals
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_referrals_referrer
+    ON user_referrals (referrer_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_user_referrals_referred_user
+    ON user_referrals (referred_user_id)
+    """)
+
+
+def create_baltigoflix_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS purchase_intents (
+        id BIGSERIAL PRIMARY KEY,
+        intent_token TEXT NOT NULL UNIQUE,
+        telegram_user_id BIGINT NOT NULL,
+        telegram_username TEXT,
+        telegram_full_name TEXT,
+
+        referrer_user_id BIGINT,
+        ref_code TEXT,
+
+        plan_code TEXT NOT NULL,
+        plan_name TEXT NOT NULL,
+
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'BRL',
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        checkout_url TEXT,
+        external_reference TEXT,
+        cakto_order_id TEXT,
+        cakto_subscription_id TEXT,
+        cakto_customer_id TEXT,
+
+        approved_at TIMESTAMPTZ,
+        canceled_at TIMESTAMPTZ,
+        refunded_at TIMESTAMPTZ,
+
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        raw_checkout_response JSONB,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS telegram_username TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS telegram_full_name TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS referrer_user_id BIGINT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS ref_code TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS plan_code TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS plan_name TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS amount_cents INTEGER
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'BRL'
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS checkout_url TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS external_reference TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS cakto_order_id TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS cakto_subscription_id TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS cakto_customer_id TEXT
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS raw_checkout_response JSONB
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+    _run("""
+    ALTER TABLE purchase_intents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_purchase_intents_user_created
+    ON purchase_intents (telegram_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_purchase_intents_referrer_created
+    ON purchase_intents (referrer_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_purchase_intents_status_created
+    ON purchase_intents (status, created_at DESC)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_intents_external_reference
+    ON purchase_intents (external_reference)
+    WHERE external_reference IS NOT NULL
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_intents_cakto_order_id
+    ON purchase_intents (cakto_order_id)
+    WHERE cakto_order_id IS NOT NULL
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS affiliate_commissions (
+        id BIGSERIAL PRIMARY KEY,
+        purchase_intent_id BIGINT NOT NULL REFERENCES purchase_intents(id) ON DELETE CASCADE,
+
+        buyer_user_id BIGINT NOT NULL,
+        referrer_user_id BIGINT NOT NULL,
+
+        commission_percent NUMERIC(6,2) NOT NULL DEFAULT 30.00,
+        commission_cents INTEGER NOT NULL,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        released_at TIMESTAMPTZ,
+        reversed_at TIMESTAMPTZ,
+        paid_at TIMESTAMPTZ,
+
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(6,2) NOT NULL DEFAULT 30.00
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS commission_cents INTEGER
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS released_at TIMESTAMPTZ
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    ALTER TABLE affiliate_commissions
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_referrer_created
+    ON affiliate_commissions (referrer_user_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_status
+    ON affiliate_commissions (status, created_at DESC)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_commission_per_purchase
+    ON affiliate_commissions (purchase_intent_id)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS cakto_webhook_events (
+        id BIGSERIAL PRIMARY KEY,
+        event_type TEXT,
+        event_id TEXT,
+        order_id TEXT,
+        subscription_id TEXT,
+        payload_json JSONB NOT NULL,
+        processed BOOLEAN NOT NULL DEFAULT FALSE,
+        processing_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        processed_at TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_cakto_webhook_events_created
+    ON cakto_webhook_events (created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_cakto_webhook_events_processed
+    ON cakto_webhook_events (processed, created_at DESC)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_cakto_webhook_event_id
+    ON cakto_webhook_events (event_id)
+    WHERE event_id IS NOT NULL
+    """)
+    
 def create_global_character_images_table():
     _run("""
     CREATE TABLE IF NOT EXISTS global_character_images (
@@ -4988,3 +5272,501 @@ def get_all_global_character_images() -> dict[int, str]:
                 return result
     except UndefinedTable:
         return {}
+
+# =========================================================
+# BALTIGOFLIX / AFILIADOS / COMPRAS
+# =========================================================
+
+BALTIGOFLIX_DEFAULT_COMMISSION_PERCENT = Decimal(
+    os.getenv("BALTIGOFLIX_COMMISSION_PERCENT", "30")
+).quantize(Decimal("0.01"))
+
+
+def _money_to_cents(value: Any) -> int:
+    dec = Decimal(str(value or "0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return int(dec * 100)
+
+
+def _generate_intent_token() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def _generate_external_reference(user_id: int, plan_code: str) -> str:
+    return f"tg_{int(user_id)}_{plan_code}_{secrets.token_hex(8)}"
+
+
+def set_user_referrer(referred_user_id: int, referrer_user_id: int, ref_code: str = "") -> bool:
+    referred_user_id = int(referred_user_id)
+    referrer_user_id = int(referrer_user_id)
+
+    if referred_user_id <= 0 or referrer_user_id <= 0:
+        return False
+
+    if referred_user_id == referrer_user_id:
+        return False
+
+    create_or_get_user(referred_user_id)
+    create_or_get_user(referrer_user_id)
+
+    existing = _run(
+        """
+        SELECT referred_user_id, referrer_user_id
+        FROM user_referrals
+        WHERE referred_user_id = %s
+        LIMIT 1
+        """,
+        (referred_user_id,),
+        fetch="one"
+    )
+
+    if existing:
+        return int(existing["referrer_user_id"]) == referrer_user_id
+
+    _run(
+        """
+        INSERT INTO user_referrals (referred_user_id, referrer_user_id, ref_code, created_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (referred_user_id) DO NOTHING
+        """,
+        (referred_user_id, referrer_user_id, (ref_code or "").strip())
+    )
+    return True
+
+
+def get_user_referrer(user_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT referred_user_id, referrer_user_id, ref_code, created_at
+        FROM user_referrals
+        WHERE referred_user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_referral_count(referrer_user_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM user_referrals
+        WHERE referrer_user_id = %s
+        """,
+        (int(referrer_user_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def create_purchase_intent(
+    telegram_user_id: int,
+    telegram_username: str,
+    telegram_full_name: str,
+    plan_code: str,
+    plan_name: str,
+    amount_cents: int,
+    referrer_user_id: Optional[int] = None,
+    ref_code: str = "",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    telegram_user_id = int(telegram_user_id)
+    amount_cents = int(amount_cents)
+
+    create_or_get_user(telegram_user_id)
+    touch_user_identity(telegram_user_id, telegram_username or "", telegram_full_name or "")
+
+    intent_token = _generate_intent_token()
+    external_reference = _generate_external_reference(telegram_user_id, plan_code)
+
+    row = _run(
+        """
+        INSERT INTO purchase_intents
+        (
+            intent_token,
+            telegram_user_id,
+            telegram_username,
+            telegram_full_name,
+            referrer_user_id,
+            ref_code,
+            plan_code,
+            plan_name,
+            amount_cents,
+            currency,
+            status,
+            external_reference,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES
+        (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, 'BRL', 'pending', %s, %s::jsonb, NOW(), NOW()
+        )
+        RETURNING *
+        """,
+        (
+            intent_token,
+            telegram_user_id,
+            (telegram_username or "").strip(),
+            (telegram_full_name or "").strip(),
+            int(referrer_user_id) if referrer_user_id else None,
+            (ref_code or "").strip(),
+            (plan_code or "").strip(),
+            (plan_name or "").strip(),
+            amount_cents,
+            external_reference,
+            json.dumps(metadata or {}, ensure_ascii=False),
+        ),
+        fetch="one"
+    )
+
+    return row
+
+
+def get_purchase_intent_by_token(intent_token: str) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM purchase_intents
+        WHERE intent_token = %s
+        LIMIT 1
+        """,
+        ((intent_token or "").strip(),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_purchase_intent_by_external_reference(external_reference: str) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM purchase_intents
+        WHERE external_reference = %s
+        LIMIT 1
+        """,
+        ((external_reference or "").strip(),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_purchase_intent_by_cakto_order_id(cakto_order_id: str) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM purchase_intents
+        WHERE cakto_order_id = %s
+        LIMIT 1
+        """,
+        ((cakto_order_id or "").strip(),),
+        fetch="one"
+    )
+    return row or None
+
+
+def get_latest_pending_purchase_intent(user_id: int, plan_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if plan_code:
+        row = _run(
+            """
+            SELECT *
+            FROM purchase_intents
+            WHERE telegram_user_id = %s
+              AND plan_code = %s
+              AND status = 'pending'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (int(user_id), (plan_code or "").strip()),
+            fetch="one"
+        )
+    else:
+        row = _run(
+            """
+            SELECT *
+            FROM purchase_intents
+            WHERE telegram_user_id = %s
+              AND status = 'pending'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (int(user_id),),
+            fetch="one"
+        )
+    return row or None
+
+
+def attach_checkout_data_to_purchase_intent(
+    intent_id: int,
+    checkout_url: str = "",
+    cakto_order_id: str = "",
+    cakto_subscription_id: str = "",
+    cakto_customer_id: str = "",
+    raw_checkout_response: Optional[Dict[str, Any]] = None,
+):
+    _run(
+        """
+        UPDATE purchase_intents
+        SET checkout_url = COALESCE(NULLIF(%s, ''), checkout_url),
+            cakto_order_id = COALESCE(NULLIF(%s, ''), cakto_order_id),
+            cakto_subscription_id = COALESCE(NULLIF(%s, ''), cakto_subscription_id),
+            cakto_customer_id = COALESCE(NULLIF(%s, ''), cakto_customer_id),
+            raw_checkout_response = COALESCE(%s::jsonb, raw_checkout_response),
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            (checkout_url or "").strip(),
+            (cakto_order_id or "").strip(),
+            (cakto_subscription_id or "").strip(),
+            (cakto_customer_id or "").strip(),
+            json.dumps(raw_checkout_response, ensure_ascii=False) if raw_checkout_response is not None else None,
+            int(intent_id),
+        )
+    )
+
+
+def mark_purchase_intent_status(
+    intent_id: int,
+    status: str,
+    cakto_order_id: str = "",
+    cakto_subscription_id: str = "",
+    cakto_customer_id: str = "",
+):
+    status = (status or "").strip().lower()
+
+    approved_at_sql = "approved_at = CASE WHEN %s = 'paid' THEN NOW() ELSE approved_at END"
+    canceled_at_sql = "canceled_at = CASE WHEN %s IN ('canceled','cancelled') THEN NOW() ELSE canceled_at END"
+    refunded_at_sql = "refunded_at = CASE WHEN %s IN ('refunded','chargeback') THEN NOW() ELSE refunded_at END"
+
+    _run(
+        f"""
+        UPDATE purchase_intents
+        SET status = %s,
+            cakto_order_id = COALESCE(NULLIF(%s, ''), cakto_order_id),
+            cakto_subscription_id = COALESCE(NULLIF(%s, ''), cakto_subscription_id),
+            cakto_customer_id = COALESCE(NULLIF(%s, ''), cakto_customer_id),
+            {approved_at_sql},
+            {canceled_at_sql},
+            {refunded_at_sql},
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            status,
+            (cakto_order_id or "").strip(),
+            (cakto_subscription_id or "").strip(),
+            (cakto_customer_id or "").strip(),
+            status,
+            status,
+            status,
+            int(intent_id),
+        )
+    )
+
+
+def get_user_purchase_history(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT *
+        FROM purchase_intents
+        WHERE telegram_user_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (int(user_id), int(limit)),
+        fetch="all"
+    )
+    return rows or []
+
+
+def calculate_commission_cents(amount_cents: int, percent: Decimal = BALTIGOFLIX_DEFAULT_COMMISSION_PERCENT) -> int:
+    amount = Decimal(int(amount_cents))
+    value = (amount * percent / Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return int(value)
+
+
+def create_affiliate_commission_for_purchase(
+    purchase_intent_id: int,
+    buyer_user_id: int,
+    referrer_user_id: int,
+    amount_cents: int,
+    percent: Decimal = BALTIGOFLIX_DEFAULT_COMMISSION_PERCENT,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    if not referrer_user_id:
+        return None
+
+    existing = _run(
+        """
+        SELECT *
+        FROM affiliate_commissions
+        WHERE purchase_intent_id = %s
+        LIMIT 1
+        """,
+        (int(purchase_intent_id),),
+        fetch="one"
+    )
+    if existing:
+        return existing
+
+    commission_cents = calculate_commission_cents(amount_cents, percent)
+
+    row = _run(
+        """
+        INSERT INTO affiliate_commissions
+        (
+            purchase_intent_id,
+            buyer_user_id,
+            referrer_user_id,
+            commission_percent,
+            commission_cents,
+            status,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES
+        (
+            %s, %s, %s, %s, %s, 'approved', %s::jsonb, NOW(), NOW()
+        )
+        RETURNING *
+        """,
+        (
+            int(purchase_intent_id),
+            int(buyer_user_id),
+            int(referrer_user_id),
+            str(percent),
+            int(commission_cents),
+            json.dumps(metadata or {}, ensure_ascii=False),
+        ),
+        fetch="one"
+    )
+    return row
+
+
+def reverse_affiliate_commission_by_purchase(
+    purchase_intent_id: int,
+    reason: str = "",
+):
+    _run(
+        """
+        UPDATE affiliate_commissions
+        SET status = 'reversed',
+            reversed_at = NOW(),
+            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+            updated_at = NOW()
+        WHERE purchase_intent_id = %s
+          AND status IN ('pending', 'approved')
+        """,
+        (
+            json.dumps({"reverse_reason": (reason or "").strip()}, ensure_ascii=False),
+            int(purchase_intent_id),
+        )
+    )
+
+
+def get_affiliate_summary(referrer_user_id: int) -> Dict[str, Any]:
+    row = _run(
+        """
+        SELECT
+            COUNT(*) AS total_commissions,
+            COALESCE(SUM(commission_cents), 0) AS total_cents,
+            COALESCE(SUM(CASE WHEN status = 'approved' THEN commission_cents ELSE 0 END), 0) AS approved_cents,
+            COALESCE(SUM(CASE WHEN status = 'paid_out' THEN commission_cents ELSE 0 END), 0) AS paid_out_cents,
+            COALESCE(SUM(CASE WHEN status = 'reversed' THEN commission_cents ELSE 0 END), 0) AS reversed_cents
+        FROM affiliate_commissions
+        WHERE referrer_user_id = %s
+        """,
+        (int(referrer_user_id),),
+        fetch="one"
+    ) or {}
+
+    return {
+        "total_commissions": int(row.get("total_commissions") or 0),
+        "total_cents": int(row.get("total_cents") or 0),
+        "approved_cents": int(row.get("approved_cents") or 0),
+        "paid_out_cents": int(row.get("paid_out_cents") or 0),
+        "reversed_cents": int(row.get("reversed_cents") or 0),
+    }
+
+
+def get_affiliate_commissions(referrer_user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT *
+        FROM affiliate_commissions
+        WHERE referrer_user_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (int(referrer_user_id), int(limit)),
+        fetch="all"
+    )
+    return rows or []
+
+
+def save_cakto_webhook_event(
+    event_type: str,
+    payload: Dict[str, Any],
+    event_id: str = "",
+    order_id: str = "",
+    subscription_id: str = "",
+) -> Dict[str, Any]:
+    row = _run(
+        """
+        INSERT INTO cakto_webhook_events
+        (
+            event_type,
+            event_id,
+            order_id,
+            subscription_id,
+            payload_json,
+            processed,
+            created_at
+        )
+        VALUES
+        (
+            %s, %s, %s, %s, %s::jsonb, FALSE, NOW()
+        )
+        ON CONFLICT (event_id) DO UPDATE
+        SET event_type = EXCLUDED.event_type
+        RETURNING *
+        """,
+        (
+            (event_type or "").strip(),
+            (event_id or "").strip() or None,
+            (order_id or "").strip() or None,
+            (subscription_id or "").strip() or None,
+            json.dumps(payload or {}, ensure_ascii=False),
+        ),
+        fetch="one"
+    )
+    return row
+
+
+def mark_cakto_webhook_event_processed(event_row_id: int):
+    _run(
+        """
+        UPDATE cakto_webhook_events
+        SET processed = TRUE,
+            processed_at = NOW(),
+            processing_error = NULL
+        WHERE id = %s
+        """,
+        (int(event_row_id),)
+    )
+
+
+def mark_cakto_webhook_event_error(event_row_id: int, error_message: str):
+    _run(
+        """
+        UPDATE cakto_webhook_events
+        SET processed = FALSE,
+            processing_error = %s
+        WHERE id = %s
+        """,
+        ((error_message or "").strip()[:1000], int(event_row_id))
+    )
