@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import re
@@ -54,31 +55,7 @@ LAST_GUESS_AT: Dict[int, float] = {}
 WORDS_CACHE: List[Dict[str, str]] = []
 VALID_WORDS: Set[str] = set()
 
-# =========================
-# BLOQUEIO GLOBAL PV
-# =========================
-def _only_private(update: Update) -> bool:
-    chat = update.effective_chat
-    return bool(chat and chat.type == ChatType.PRIVATE)
 
-
-async def _block_group_message(update: Update):
-    msg = update.effective_message
-    if not msg:
-        return
-
-    texto = (
-        "🎌 <b>TERMO ANIME</b>\n\n"
-        "Esse jogo funciona apenas no <b>privado</b> do bot.\n\n"
-        "Jogue sem bagunça, com tempo e ranking só seu 👑"
-    )
-
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔒 Jogar no privado", url=BOT_PRIVATE_URL)]
-    ])
-
-    await msg.reply_text(texto, parse_mode="HTML", reply_markup=kb)
-    
 # =========================================================
 # WORDS / TIME
 # =========================================================
