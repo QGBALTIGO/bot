@@ -147,16 +147,43 @@ async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000)):
     if referer:
         headers["Referer"] = referer
 
-    try:
+    async def _fetch_image(verify: bool = True):
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=httpx.Timeout(20.0, connect=10.0),
+            trust_env=False,
+            verify=verify,
         ) as client:
-            upstream = await client.get(target, headers=headers)
-    except Exception:
+            return await client.get(target, headers=headers)
+
+    upstream = None
+    last_error = None
+
+    try:
+        upstream = await _fetch_image(verify=True)
+    except Exception as exc:
+        last_error = exc
+        try:
+            upstream = await _fetch_image(verify=False)
+            print(
+                f"[image-proxy] tls-fallback host={hostname} url={target}",
+                flush=True,
+            )
+        except Exception as fallback_exc:
+            last_error = fallback_exc
+
+    if upstream is None:
+        print(
+            f"[image-proxy] fetch-failed host={hostname} error={repr(last_error)} url={target}",
+            flush=True,
+        )
         raise HTTPException(status_code=502, detail="image_fetch_failed")
 
     if upstream.status_code >= 400:
+        print(
+            f"[image-proxy] upstream-status host={hostname} status={upstream.status_code} url={target}",
+            flush=True,
+        )
         raise HTTPException(status_code=502, detail="image_source_unavailable")
 
     media_type = str(upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
