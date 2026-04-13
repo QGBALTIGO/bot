@@ -515,10 +515,11 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
 }
 .profile-card{
   display:flex;
-  align-items:center;
+  flex-direction:column;
+  align-items:flex-start;
   gap:14px;
   padding:18px;
-  margin-top:-52px;
+  margin-top:-28px;
   position:relative;
   z-index:2;
 }
@@ -566,7 +567,8 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
 }
 .setting-row{
   display:flex;
-  align-items:center;
+  flex-direction:column;
+  align-items:stretch;
   justify-content:space-between;
   gap:12px;
   padding:16px;
@@ -594,6 +596,7 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
   display:flex;
   flex-wrap:wrap;
   gap:10px;
+  width:100%;
 }
 .field{
   display:flex;
@@ -618,6 +621,7 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
   align-items:center;
   justify-content:center;
   min-height:48px;
+  width:100%;
   padding:12px 16px;
   border-radius:16px;
   border:1px solid var(--border);
@@ -831,6 +835,22 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
   .grid-tiles{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
   .media-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
   .buy-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .profile-card{
+    flex-direction:row;
+    align-items:center;
+    margin-top:-52px;
+  }
+  .setting-row{
+    flex-direction:row;
+    align-items:center;
+  }
+  .inline-controls,
+  .form-stack{
+    width:auto;
+  }
+  .control-btn{
+    width:auto;
+  }
   .setting-row{ padding:18px; }
 }
 @media (prefers-reduced-motion: reduce){
@@ -958,6 +978,83 @@ function createLiveRefresh(task, intervalMs){
     run: run,
     stop: function(){ window.clearInterval(timer); }
   };
+}
+
+function getTelegramWebApp(){
+  try{
+    return (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
+  }catch(err){
+    return null;
+  }
+}
+
+function resolveWebappUid(fallback){
+  const base = Number(fallback || 0);
+  try{
+    const params = new URLSearchParams(window.location.search || "");
+    const raw = params.get("uid") || params.get("user_id") || "";
+    const parsed = Number(raw || 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }catch(err){}
+  return Number.isFinite(base) && base > 0 ? base : 0;
+}
+
+function withAuthQuery(url, uid){
+  const target = new URL(url, window.location.origin);
+  const safeUid = Number(uid || 0);
+  if (safeUid > 0 && !target.searchParams.has("uid")){
+    target.searchParams.set("uid", String(safeUid));
+  }
+  return target.pathname + target.search;
+}
+
+async function authJson(url, options){
+  const opts = options || {};
+  const headers = Object.assign({}, opts.headers || {});
+  const uid = Number(opts.uid || 0);
+  const tg = getTelegramWebApp();
+
+  try{
+    const initData = tg && tg.initData ? tg.initData : "";
+    if (initData){
+      headers["x-telegram-init-data"] = initData;
+    }
+  }catch(err){}
+
+  if (uid > 0){
+    headers["x-webapp-uid"] = String(uid);
+  }
+
+  let body = opts.body;
+  if (Object.prototype.hasOwnProperty.call(opts, "json")){
+    const payload = Object.assign({}, opts.json || {});
+    if (uid > 0 && !payload.uid){
+      payload.uid = uid;
+    }
+    body = JSON.stringify(payload);
+    headers["Content-Type"] = "application/json";
+  }
+
+  const finalUrl = withAuthQuery(url, uid);
+  const res = await fetch(finalUrl, Object.assign({}, opts, { headers: headers, body: body }));
+  let data = null;
+  try{
+    data = await res.json();
+  }catch(err){
+    data = { ok: false, message: "Resposta invalida do servidor." };
+  }
+  return { ok: res.ok, data: data };
+}
+
+function openExternalLink(url){
+  const tg = getTelegramWebApp();
+  try{
+    if (tg && tg.openLink){
+      tg.openLink(url);
+      return;
+    }
+  }catch(err){}
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 """
 
@@ -1199,7 +1296,7 @@ async function renderLetters(){{
 }}
 
 function buildCatalogCard(item){{
-  const cover = item.cover_url ? '<img src="' + esc(item.cover_url) + '" alt="' + esc(item.titulo) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')">' : '';
+  const cover = item.cover_url ? '<img src="' + esc(item.cover_url) + '" alt="' + esc(item.titulo) + '" loading="lazy">' : '';
   const pills = catalogMetaParts(item).map(function(part){{ return '<span class="soft-pill">' + esc(part) + '</span>'; }}).join("");
   return ''
     + '<article class="media-card" onclick="tgOpenLink(' + JSON.stringify(String(item.link_post || "")) + ')">'
@@ -1375,7 +1472,7 @@ function renderCardsHome(){{
   root.innerHTML = cardsHomeState.filteredAnimes.map(function(item){{
     return ''
       + '<article class="media-card" onclick="window.location.href=\\'/cards/anime?anime_id=' + encodeURIComponent(item.anime_id) + '\\'">'
-      + '<div class="media-cover"><img src="' + esc(cardsHomeCover(item)) + '" alt="' + esc(item.anime) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')"><div class="media-badge media-badge--cool">Cards</div><div class="media-count">' + esc((item.characters_count || 0) + ' chars') + '</div></div>'
+      + '<div class="media-cover"><img src="' + esc(cardsHomeCover(item)) + '" alt="' + esc(item.anime) + '" loading="lazy"><div class="media-badge media-badge--cool">Cards</div><div class="media-count">' + esc((item.characters_count || 0) + ' chars') + '</div></div>'
       + '<div class="media-body"><h3 class="card-title">' + esc(item.anime) + '</h3><div class="pill-row"><span class="soft-pill">ID ' + esc(item.anime_id) + '</span><span class="soft-pill soft-pill--accent">Obra</span></div></div>'
       + '</article>';
   }}).join("");
@@ -1499,7 +1596,7 @@ function renderAnimeCards(){{
   root.innerHTML = animeCardsState.filteredItems.map(function(item){{
     const badge = item.subcategory ? String(item.subcategory) : "Card";
     return ''
-      + '<article class="media-card"><div class="media-cover"><img src="' + esc(animeCardImage(item)) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')"><div class="media-badge">' + esc(badge) + '</div><div class="media-count">ID ' + esc(item.id) + '</div></div>'
+      + '<article class="media-card"><div class="media-cover"><img src="' + esc(animeCardImage(item)) + '" alt="' + esc(item.name) + '" loading="lazy"><div class="media-badge">' + esc(badge) + '</div><div class="media-count">ID ' + esc(item.id) + '</div></div>'
       + '<div class="media-body"><h3 class="card-title">' + esc(item.name) + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || "") + '</span><span class="soft-pill">Card</span></div></div></article>';
   }}).join("");
 }}
@@ -1589,7 +1686,7 @@ function renderSubcategory(){{
   empty.style.display = "none";
   root.innerHTML = subcategoryState.filteredItems.map(function(item){{
     return ''
-      + '<article class="media-card"><div class="media-cover"><img src="' + esc(item.image || {_j(top_banner_url)}) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')"><div class="media-badge media-badge--accent">' + esc(subcategoryState.name) + '</div></div>'
+      + '<article class="media-card"><div class="media-cover"><img src="' + esc(item.image || {_j(top_banner_url)}) + '" alt="' + esc(item.name) + '" loading="lazy"><div class="media-badge media-badge--accent">' + esc(subcategoryState.name) + '</div></div>'
       + '<div class="media-body"><h3 class="card-title">' + esc(item.name) + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || "") + '</span><span class="soft-pill">Card</span></div></div></article>';
   }}).join("");
 }}
@@ -1673,7 +1770,7 @@ function renderSearchResults(){{
   empty.style.display = "none";
   root.innerHTML = searchPageState.items.map(function(item){{
     return ''
-      + '<article class="media-card"><div class="media-cover"><img src="' + esc(item.image || {_j(top_banner_url)}) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')"><div class="media-badge">Search</div></div>'
+      + '<article class="media-card"><div class="media-cover"><img src="' + esc(item.image || {_j(top_banner_url)}) + '" alt="' + esc(item.name) + '" loading="lazy"><div class="media-badge">Search</div></div>'
       + '<div class="media-body"><h3 class="card-title">' + esc(item.name) + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || "") + '</span><span class="soft-pill">Card</span></div></div></article>';
   }}).join("");
 }}
@@ -1808,13 +1905,13 @@ if (tgMenu) {{ try {{ tgMenu.ready(); tgMenu.expand(); }} catch(err) {{}} }}
 function setMenuNote(message, tone){{ menuNote.textContent = message || ""; menuNote.dataset.tone = tone || ""; }}
 async function menuGet(url){{ const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now()); const data = await res.json(); if (!res.ok || !data.ok) throw new Error((data && data.message) || "Erro"); return data; }}
 async function menuPost(url, payload){{ const res = await fetch(url + "?_ts=" + Date.now(), {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify(payload) }}); const data = await res.json(); if (!res.ok || !data.ok) throw new Error((data && data.message) || "Erro"); return data; }}
-function renderMenuAvatar(profile){{ const avatar = document.getElementById("profileAvatar"); if (profile.favorite && profile.favorite.image) {{ avatar.innerHTML = '<img src="' + esc(profile.favorite.image) + '" alt="avatar" onerror="setImageFallback(this, \\'Avatar\\')">'; return; }} avatar.textContent = (String(profile.display_name || "SB").trim().slice(0, 2).toUpperCase() || "SB"); }}
+function renderMenuAvatar(profile){{ const avatar = document.getElementById("profileAvatar"); if (profile.favorite && profile.favorite.image) {{ avatar.innerHTML = '<img src="' + esc(profile.favorite.image) + '" alt="avatar">'; return; }} avatar.textContent = (String(profile.display_name || "SB").trim().slice(0, 2).toUpperCase() || "SB"); }}
 function renderMenuProfile(data){{ const p = data.profile || {{}}; menuState.profile = p; document.getElementById("profileName").textContent = p.display_name || "User"; document.getElementById("profileSub").textContent = p.nickname ? ("@" + p.nickname) : "Sem nickname"; document.getElementById("favoritePill").textContent = "Favorito: " + (p.favorite ? p.favorite.name : "--"); document.getElementById("menuCollection").textContent = String(p.collection_total || 0); document.getElementById("menuCoins").textContent = String(p.coins || 0); document.getElementById("menuLevel").textContent = String(p.level || 1); document.getElementById("menuLanguage").textContent = String((p.language || "pt")).toUpperCase(); document.getElementById("menuMeta").textContent = "Atualizado " + humanClock() + " . UID " + String(p.user_id || MENU_UID); renderMenuAvatar(p); document.getElementById("nicknameInput").value = p.nickname || ""; document.getElementById("nicknameInput").disabled = !!p.nickname; document.getElementById("saveNicknameBtn").disabled = !!p.nickname; const country = document.getElementById("countrySelect"); country.innerHTML = ""; (data.countries || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = String(item.flag || "") + " " + String(item.name || ""); if (item.code === p.country_code) opt.selected = true; country.appendChild(opt); }}); const language = document.getElementById("languageSelect"); language.innerHTML = ""; (data.languages || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = item.name; if (item.code === p.language) opt.selected = true; language.appendChild(opt); }}); document.getElementById("privacyBtn").textContent = p.private_profile ? "Ativado" : "Desativado"; document.getElementById("notificationsBtn").textContent = p.notifications_enabled ? "Ativado" : "Desativado"; }}
 async function loadMenuProfile(options){{ const opts = options || {{}}; const data = await menuGet("/api/menu/profile?uid=" + MENU_UID); renderMenuProfile(data); if (!opts.silent) setMenuNote("Perfil carregado com sucesso.", "success"); }}
 function favoriteSheetOpen(){{ document.getElementById("favoriteSheetBackdrop").style.display = "flex"; }}
 function favoriteSheetClose(){{ document.getElementById("favoriteSheetBackdrop").style.display = "none"; }}
 function favoriteSheetIsOpen(){{ return document.getElementById("favoriteSheetBackdrop").style.display === "flex"; }}
-function renderFavoriteItems(items){{ const root = document.getElementById("favoriteList"); if (!items.length){{ root.innerHTML = '<div class="empty-state"><strong>Sua colecao esta vazia</strong>Voce so pode favoritar personagens da sua colecao.</div>'; return; }} root.innerHTML = items.map(function(item){{ return '<div class="setting-row"><div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;"><div class="profile-avatar" style="width:64px;height:64px;border-radius:18px;font-size:18px;">' + (item.image ? '<img src="' + esc(item.image) + '" alt="" onerror="setImageFallback(this, \\'No image\\')">' : esc(String(item.name || "").slice(0, 2).toUpperCase())) + '</div><div class="setting-copy"><h3 class="setting-title">' + esc(item.name) + '</h3><p class="setting-sub">' + esc(item.anime || "") + ' . Quantidade ' + esc(item.quantity || 0) + '</p></div></div><button class="control-btn control-btn--accent" data-favorite="' + esc(item.id) + '">Favoritar</button></div>'; }}).join(""); root.querySelectorAll("[data-favorite]").forEach(function(button){{ button.onclick = async function(){{ try{{ setMenuNote("Salvando favorito...", ""); await menuPost("/api/menu/favorite", {{ uid: MENU_UID, character_id: Number(button.getAttribute("data-favorite") || 0) }}); await loadMenuProfile({{ silent: true }}); if (favoriteSheetIsOpen()) await loadFavoriteCharacters({{ silent: true }}); favoriteSheetClose(); setMenuNote("Favorito atualizado com sucesso.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar favorito: " + err.message, "error"); }} }}; }}); }}
+function renderFavoriteItems(items){{ const root = document.getElementById("favoriteList"); if (!items.length){{ root.innerHTML = '<div class="empty-state"><strong>Sua colecao esta vazia</strong>Voce so pode favoritar personagens da sua colecao.</div>'; return; }} root.innerHTML = items.map(function(item){{ return '<div class="setting-row"><div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;"><div class="profile-avatar" style="width:64px;height:64px;border-radius:18px;font-size:18px;">' + (item.image ? '<img src="' + esc(item.image) + '" alt="">' : esc(String(item.name || "").slice(0, 2).toUpperCase())) + '</div><div class="setting-copy"><h3 class="setting-title">' + esc(item.name) + '</h3><p class="setting-sub">' + esc(item.anime || "") + ' . Quantidade ' + esc(item.quantity || 0) + '</p></div></div><button class="control-btn control-btn--accent" data-favorite="' + esc(item.id) + '">Favoritar</button></div>'; }}).join(""); root.querySelectorAll("[data-favorite]").forEach(function(button){{ button.onclick = async function(){{ try{{ setMenuNote("Salvando favorito...", ""); await menuPost("/api/menu/favorite", {{ uid: MENU_UID, character_id: Number(button.getAttribute("data-favorite") || 0) }}); await loadMenuProfile({{ silent: true }}); if (favoriteSheetIsOpen()) await loadFavoriteCharacters({{ silent: true }}); favoriteSheetClose(); setMenuNote("Favorito atualizado com sucesso.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar favorito: " + err.message, "error"); }} }}; }}); }}
 function applyFavoriteFilter(){{ const q = String(document.getElementById("favoriteSearchInput").value || "").trim().toLowerCase(); const filtered = menuState.favoriteItems.filter(function(item){{ const hay = (String(item.name || "") + " " + String(item.anime || "")).toLowerCase(); return hay.includes(q); }}); renderFavoriteItems(filtered); }}
 async function loadFavoriteCharacters(options){{ const data = await menuGet("/api/menu/collection-characters?uid=" + MENU_UID); menuState.favoriteItems = Array.isArray(data.items) ? data.items : []; applyFavoriteFilter(); if (!(options && options.silent)) setMenuNote("Colecao carregada para escolha do favorito.", "success"); }}
 document.getElementById("favoriteBtn").onclick = async function(){{ try{{ await loadFavoriteCharacters({{ silent: false }}); favoriteSheetOpen(); }}catch(err){{ setMenuNote("Erro ao carregar colecao: " + err.message, "error"); }} }};
@@ -1832,7 +1929,7 @@ document.getElementById("deleteBtn").onclick = async function(){{ if (!window.co
     return _page_template("Menu", body, extra_js=js, include_tg=True)
 
 
-def build_shop_page(*, shop_banner_url: str) -> str:
+def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
     body = f"""
 <section class="hero-card hero-card--compact">
   <div class="hero-media"><img src="{_h(shop_banner_url)}" alt="Shop"></div>
@@ -1840,12 +1937,12 @@ def build_shop_page(*, shop_banner_url: str) -> str:
   <div class="hero-content">
     <div class="eyebrow-chip">Baltigo economy</div>
     <h1 class="hero-title">Loja Baltigo</h1>
-    <p class="hero-subtitle">Uma experiencia mais forte visualmente para vender cards, comprar recursos e acompanhar tudo com atualizacao automatica.</p>
+    <p class="hero-subtitle">Venda cards, acompanhe o saldo real da conta e compre recursos com atualizacao silenciosa para refletir setfoto, exclusoes e mudancas da colecao sem reload manual.</p>
     <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="shopPlayerHero">...</span></div>
       <div class="metric-card"><span class="metric-label">Coins</span><span class="metric-value" id="shopCoinsHero">...</span></div>
       <div class="metric-card"><span class="metric-label">Dados</span><span class="metric-value" id="shopDadoHero">...</span></div>
       <div class="metric-card"><span class="metric-label">Estado</span><span class="metric-value"><span class="pulse-dot"></span> Live sync</span></div>
-      <div class="metric-card"><span class="metric-label">Refresh</span><span class="metric-value">5s visivel</span></div>
     </div>
   </div>
 </section>
@@ -1854,6 +1951,11 @@ def build_shop_page(*, shop_banner_url: str) -> str:
   <div class="section-head">
     <div><div class="section-kicker">Economia</div><h2 class="section-title">Compra e venda</h2></div>
     <div class="section-meta" id="shopMeta">Carregando loja...</div>
+  </div>
+  <div class="pill-row" style="margin-top:14px;">
+    <span class="soft-pill soft-pill--cool" id="shopNicknamePill">Conta: ...</span>
+    <span class="soft-pill" id="shopCollectionPill">Colecao: ...</span>
+    <span class="soft-pill">UID {_h(uid) if int(uid) > 0 else "--"}</span>
   </div>
   <div class="segmented" style="margin-top:14px;">
     <button type="button" class="segmented-btn active" id="tabSellBtn">Vender</button>
@@ -1887,23 +1989,1332 @@ def build_shop_page(*, shop_banner_url: str) -> str:
 <div id="shopNote" class="floating-note">Loja sendo carregada...</div>
 <div class="footer-note">Source Baltigo . Shop</div>
 """
-    js = r"""
-const tgShop = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
-if (tgShop) { try { tgShop.ready(); tgShop.expand(); } catch(err) {} }
+    js = f"""
+const SHOP_UID = resolveWebappUid({int(uid)});
+const tgShop = getTelegramWebApp();
+if (tgShop) {{ try {{ tgShop.ready(); tgShop.expand(); }} catch(err) {{}} }}
 const shopNote = document.getElementById("shopNote");
-const shopState = { items: [], coins: 0, dado_balance: 0, q: "" };
-function setShopNote(message, tone){ shopNote.textContent = message || ""; shopNote.dataset.tone = tone || ""; }
-async function shopFetch(url, options){ const opts = options || {}; const headers = Object.assign({}, opts.headers || {}); try { const initData = tgShop && tgShop.initData ? tgShop.initData : ""; if (initData) headers["x-telegram-init-data"] = initData; } catch(err) {} const res = await fetch(url, Object.assign({}, opts, { headers })); const data = await res.json(); return { ok: res.ok, data: data }; }
-function syncShopHero(){ document.getElementById("shopCoinsHero").textContent = String(shopState.coins || 0); document.getElementById("shopDadoHero").textContent = String(shopState.dado_balance || 0); document.getElementById("shopMeta").textContent = "Atualizado " + humanClock() + " . Coins " + String(shopState.coins || 0) + " . Dados " + String(shopState.dado_balance || 0); }
-function renderSellGrid(){ const root = document.getElementById("sellGrid"); const empty = document.getElementById("sellEmpty"); const q = String(shopState.q || "").trim().toLowerCase(); const items = shopState.items.filter(function(item){ if (!q) return true; const hay = (String(item.character_id || "") + " " + String(item.character_name || "") + " " + String(item.anime_title || "")).toLowerCase(); return hay.includes(q); }); document.getElementById("sellMeta").textContent = "Mostrando " + String(items.length) + " cards disponiveis para venda"; if (!items.length){ root.innerHTML = ""; empty.style.display = ""; return; } empty.style.display = "none"; root.innerHTML = items.map(function(item){ const rarity = item.rarity ? '<span class="soft-pill soft-pill--accent">' + esc(item.rarity) + '</span>' : ""; return '<article class="media-card"><div class="media-cover">' + (item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.character_name) + '" loading="lazy" onerror="setImageFallback(this, \\'No image\\')">' : '') + '<div class="media-badge media-badge--cool">Sell</div><div class="media-count">x' + esc(item.quantity || 0) + '</div></div><div class="media-body"><h3 class="card-title">' + esc(item.character_name) + '</h3><div class="pill-row"><span class="soft-pill">' + esc(item.anime_title || "") + '</span>' + rarity + '</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-sell="' + esc(item.character_id) + '">Vender +1 coin</button></div></article>'; }).join(""); root.querySelectorAll("[data-sell]").forEach(function(button){ button.onclick = async function(){ const characterId = Number(button.getAttribute("data-sell") || 0); button.disabled = true; setShopNote("Vendendo personagem...", ""); const response = await shopFetch("/api/shop/sell/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ character_id: characterId }) }); if (!response.ok || !response.data.ok){ setShopNote("Erro ao vender: " + ((response.data && response.data.error) || "Nao foi possivel vender."), "error"); button.disabled = false; return; } shopState.coins = Number(response.data.coins || shopState.coins || 0); syncShopHero(); await loadShopCollection({ silent: true }); setShopNote("Personagem vendido com sucesso.", "success"); }; }); }
-async function loadShopState(options){ const response = await shopFetch("/api/shop/state"); if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar estado da loja."); shopState.coins = Number(response.data.coins || 0); shopState.dado_balance = Number(response.data.dado_balance || 0); syncShopHero(); if (!(options && options.silent)) setShopNote("Estado da loja carregado.", "success"); }
-async function loadShopCollection(options){ const opts = options || {}; if (!opts.silent && !shopState.items.length) setSkeleton("sellGrid", 6); const response = await shopFetch("/api/shop/sell/all?q=" + encodeURIComponent(shopState.q || "")); if (!response.ok || !response.data.ok){ shopState.items = []; renderSellGrid(); throw new Error("Falha ao carregar personagens da colecao."); } shopState.items = Array.isArray(response.data.items) ? response.data.items : []; renderSellGrid(); if (!opts.silent) setShopNote("Colecao carregada para venda.", "success"); }
-async function refreshShop(){ await loadShopState({ silent: true }); await loadShopCollection({ silent: true }); }
-document.getElementById("sellSearchInput").addEventListener("input", debounce(function(event){ shopState.q = String(event.target.value || ""); renderSellGrid(); }, 120));
-document.getElementById("tabSellBtn").onclick = function(){ document.getElementById("tabSellBtn").classList.add("active"); document.getElementById("tabBuyBtn").classList.remove("active"); document.getElementById("sellView").style.display = ""; document.getElementById("buyView").style.display = "none"; };
-document.getElementById("tabBuyBtn").onclick = function(){ document.getElementById("tabBuyBtn").classList.add("active"); document.getElementById("tabSellBtn").classList.remove("active"); document.getElementById("buyView").style.display = ""; document.getElementById("sellView").style.display = "none"; };
-document.getElementById("buyDadoBtn").onclick = async function(){ setShopNote("Comprando dado...", ""); const response = await shopFetch("/api/shop/buy/dado", { method: "POST" }); if (!response.ok || !response.data.ok){ setShopNote("Erro ao comprar dado: " + ((response.data && response.data.error) || "Coins insuficientes."), "error"); return; } shopState.coins = Number(response.data.coins || shopState.coins || 0); shopState.dado_balance = Number(response.data.dado_balance || shopState.dado_balance || 0); syncShopHero(); setShopNote("Dado comprado com sucesso.", "success"); };
-document.getElementById("buyNickBtn").onclick = async function(){ setShopNote("Comprando alteracao de nickname...", ""); const response = await shopFetch("/api/shop/buy/nickname", { method: "POST" }); if (!response.ok || !response.data.ok){ setShopNote("Erro ao comprar alteracao: " + ((response.data && response.data.error) || "Coins insuficientes."), "error"); return; } shopState.coins = Number(response.data.coins || shopState.coins || 0); syncShopHero(); setShopNote("Alteracao de nickname liberada.", "success"); };
-(async function(){ try { await loadShopState({ silent: false }); await loadShopCollection({ silent: false }); createLiveRefresh(refreshShop, 5000); } catch(err) { setShopNote(err.message, "error"); } })();
+const shopState = {{ items: [], coins: 0, dado_balance: 0, q: "", profile: null }};
+function setShopNote(message, tone){{ shopNote.textContent = message || ""; shopNote.dataset.tone = tone || ""; }}
+function syncShopHero(){{
+  const profile = shopState.profile || {{}};
+  const nickname = String(profile.nickname || "").trim();
+  const displayName = String(profile.display_name || profile.full_name || (SHOP_UID > 0 ? ("UID " + SHOP_UID) : "Jogador"));
+  document.getElementById("shopPlayerHero").textContent = nickname || displayName;
+  document.getElementById("shopCoinsHero").textContent = String(shopState.coins || 0);
+  document.getElementById("shopDadoHero").textContent = String(shopState.dado_balance || 0);
+  document.getElementById("shopNicknamePill").textContent = nickname ? ("@" + nickname) : displayName;
+  document.getElementById("shopCollectionPill").textContent = "Colecao: " + String(profile.collection_total || 0);
+  document.getElementById("shopMeta").textContent = "Atualizado " + humanClock() + " . Coins " + String(shopState.coins || 0) + " . Dados " + String(shopState.dado_balance || 0);
+}}
+function renderSellGrid(){{
+  const root = document.getElementById("sellGrid");
+  const empty = document.getElementById("sellEmpty");
+  const q = String(shopState.q || "").trim().toLowerCase();
+  const items = shopState.items.filter(function(item){{
+    if (!q) return true;
+    const hay = (String(item.character_id || "") + " " + String(item.character_name || "") + " " + String(item.anime_title || "")).toLowerCase();
+    return hay.includes(q);
+  }});
+  document.getElementById("sellMeta").textContent = "Mostrando " + String(items.length) + " cards disponiveis para venda";
+  if (!items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = items.map(function(item){{
+    const rarity = item.rarity ? '<span class="soft-pill soft-pill--accent">' + esc(item.rarity) + '</span>' : "";
+    const img = item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.character_name) + '" loading="lazy" onerror="setImageFallback(this,\\'CARD\\')">' : "";
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge media-badge--cool">Sell</div><div class="media-count">x' + esc(item.quantity || 0) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.character_name) + '</h3><div class="pill-row"><span class="soft-pill">' + esc(item.anime_title || "") + '</span>' + rarity + '</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-sell="' + esc(item.character_id) + '">Vender +1 coin</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-sell]").forEach(function(button){{
+    button.onclick = async function(){{
+      const characterId = Number(button.getAttribute("data-sell") || 0);
+      button.disabled = true;
+      setShopNote("Vendendo personagem...", "");
+      const response = await authJson("/api/shop/sell/confirm", {{ uid: SHOP_UID, method: "POST", json: {{ character_id: characterId }} }});
+      if (!response.ok || !response.data.ok){{
+        setShopNote("Erro ao vender: " + ((response.data && response.data.error) || "Nao foi possivel vender."), "error");
+        button.disabled = false;
+        return;
+      }}
+      shopState.coins = Number(response.data.coins || shopState.coins || 0);
+      syncShopHero();
+      await loadShopCollection({{ silent: true }});
+      await loadShopContext({{ silent: true }});
+      setShopNote("Personagem vendido com sucesso.", "success");
+    }};
+  }});
+}}
+async function loadShopContext(options){{
+  const response = await authJson("/api/webapp/context", {{ uid: SHOP_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o jogador da loja.");
+  shopState.profile = response.data.profile || null;
+  if (shopState.profile){{
+    shopState.coins = Number(shopState.profile.coins || shopState.coins || 0);
+    shopState.dado_balance = Number(shopState.profile.dado_balance || shopState.dado_balance || 0);
+  }}
+  syncShopHero();
+  if (!(options && options.silent)) setShopNote("Jogador identificado com sucesso.", "success");
+}}
+async function loadShopState(options){{
+  const response = await authJson("/api/shop/state", {{ uid: SHOP_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar estado da loja.");
+  shopState.coins = Number(response.data.coins || 0);
+  shopState.dado_balance = Number(response.data.dado_balance || 0);
+  syncShopHero();
+  if (!(options && options.silent)) setShopNote("Estado da loja carregado.", "success");
+}}
+async function loadShopCollection(options){{
+  const opts = options || {{}};
+  if (!opts.silent && !shopState.items.length) setSkeleton("sellGrid", 6);
+  const response = await authJson("/api/shop/sell/all?q=" + encodeURIComponent(shopState.q || ""), {{ uid: SHOP_UID }});
+  if (!response.ok || !response.data.ok){{
+    shopState.items = [];
+    renderSellGrid();
+    throw new Error("Falha ao carregar personagens da colecao.");
+  }}
+  shopState.items = Array.isArray(response.data.items) ? response.data.items : [];
+  renderSellGrid();
+  if (!opts.silent) setShopNote("Colecao carregada para venda.", "success");
+}}
+async function refreshShop(){{
+  await loadShopContext({{ silent: true }});
+  await loadShopState({{ silent: true }});
+  await loadShopCollection({{ silent: true }});
+}}
+document.getElementById("sellSearchInput").addEventListener("input", debounce(function(event){{
+  shopState.q = String(event.target.value || "");
+  renderSellGrid();
+}}, 120));
+document.getElementById("tabSellBtn").onclick = function(){{
+  document.getElementById("tabSellBtn").classList.add("active");
+  document.getElementById("tabBuyBtn").classList.remove("active");
+  document.getElementById("sellView").style.display = "";
+  document.getElementById("buyView").style.display = "none";
+}};
+document.getElementById("tabBuyBtn").onclick = function(){{
+  document.getElementById("tabBuyBtn").classList.add("active");
+  document.getElementById("tabSellBtn").classList.remove("active");
+  document.getElementById("buyView").style.display = "";
+  document.getElementById("sellView").style.display = "none";
+}};
+document.getElementById("buyDadoBtn").onclick = async function(){{
+  setShopNote("Comprando dado...", "");
+  const response = await authJson("/api/shop/buy/dado", {{ uid: SHOP_UID, method: "POST", json: {{}} }});
+  if (!response.ok || !response.data.ok){{
+    setShopNote("Erro ao comprar dado: " + ((response.data && response.data.error) || "Coins insuficientes."), "error");
+    return;
+  }}
+  shopState.coins = Number(response.data.coins || shopState.coins || 0);
+  shopState.dado_balance = Number(response.data.dado_balance || shopState.dado_balance || 0);
+  syncShopHero();
+  await loadShopContext({{ silent: true }});
+  setShopNote("Dado comprado com sucesso.", "success");
+}};
+document.getElementById("buyNickBtn").onclick = async function(){{
+  setShopNote("Comprando alteracao de nickname...", "");
+  const response = await authJson("/api/shop/buy/nickname", {{ uid: SHOP_UID, method: "POST", json: {{}} }});
+  if (!response.ok || !response.data.ok){{
+    setShopNote("Erro ao comprar alteracao: " + ((response.data && response.data.error) || "Coins insuficientes."), "error");
+    return;
+  }}
+  shopState.coins = Number(response.data.coins || shopState.coins || 0);
+  syncShopHero();
+  await loadShopContext({{ silent: true }});
+  setShopNote("Alteracao de nickname liberada.", "success");
+}};
+(async function(){{
+  try {{
+    await loadShopContext({{ silent: true }});
+    await loadShopState({{ silent: false }});
+    await loadShopCollection({{ silent: false }});
+    createLiveRefresh(refreshShop, 5000);
+  }} catch(err) {{
+    setShopNote(err.message, "error");
+  }}
+}})();
 """
     return _page_template("Shop", body, extra_js=js, include_tg=True)
+
+
+def _uid_query(uid: int) -> str:
+    return f"?uid={int(uid)}" if int(uid) > 0 else ""
+
+
+def build_collection_page(*, uid: int, banner_url: str) -> str:
+    uid_q = _uid_query(uid)
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Colecao"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Collection center</div>
+    <h1 class="hero-title">Colecao Baltigo</h1>
+    <p class="hero-subtitle">Uma colecao viva, sincronizada com a loja e com o comando tradicional, pronta para refletir novas fotos, cards removidos e mudancas na conta sem poluir a tela.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="collectionPlayerHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Unicos</span><span class="metric-value" id="collectionUniqueHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">Copias</span><span class="metric-value" id="collectionCopiesHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">Completas</span><span class="metric-value" id="collectionCompletedHero">0</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Visao geral</div><h2 class="section-title">Sua estante pessoal</h2></div>
+    <div class="section-meta" id="collectionMeta">Carregando colecao...</div>
+  </div>
+  <div class="pill-row" style="margin-top:14px;">
+    <span class="soft-pill soft-pill--cool" id="collectionNicknamePill">Conta: ...</span>
+    <span class="soft-pill" id="collectionFavoritePill">Favorito: --</span>
+    <span class="soft-pill">Live sync 5s</span>
+  </div>
+  <div class="segmented" style="margin-top:14px;">
+    <button type="button" class="segmented-btn active" id="collectionTabCards">Cards</button>
+    <button type="button" class="segmented-btn" id="collectionTabAnimes">Obras</button>
+    <button type="button" class="segmented-btn" id="collectionTabMissing">Faltantes</button>
+  </div>
+  <label class="searchbar" style="margin-top:14px;">
+    <span class="input-icon">Busca</span>
+    <input id="collectionSearchInput" type="text" placeholder="Buscar personagem ou anime...">
+  </label>
+</section>
+
+<section class="panel panel--soft" id="collectionCardsView">
+  <div class="section-head">
+    <div><div class="section-kicker">Cards</div><h2 class="section-title">Personagens que ja sao seus</h2></div>
+    <div class="section-meta" id="collectionCardsMeta">Preparando grid...</div>
+  </div>
+  <div class="media-grid" id="collectionCardsGrid" style="margin-top:14px;"></div>
+  <div id="collectionCardsEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Colecao vazia</strong>Quando voce receber personagens, eles aparecem aqui automaticamente.</div>
+</section>
+
+<section class="panel panel--soft" id="collectionAnimesView" style="display:none;">
+  <div class="section-head">
+    <div><div class="section-kicker">Obras</div><h2 class="section-title">Progresso por anime</h2></div>
+    <div class="section-meta" id="collectionAnimesMeta">Preparando obras...</div>
+  </div>
+  <div class="media-grid" id="collectionAnimesGrid" style="margin-top:14px;"></div>
+  <div id="collectionAnimesEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nenhuma obra iniciada</strong>Assim que voce tiver algum card, a obra correspondente aparece aqui.</div>
+</section>
+
+<section class="panel panel--soft" id="collectionMissingView" style="display:none;">
+  <div class="section-head">
+    <div><div class="section-kicker">Faltantes</div><h2 class="section-title">Obras para completar</h2></div>
+    <div class="section-meta" id="collectionMissingMeta">Preparando faltantes...</div>
+  </div>
+  <div class="media-grid" id="collectionMissingGrid" style="margin-top:14px;"></div>
+  <div id="collectionMissingEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nada faltando</strong>As obras completas ficam aqui marcadas como finalizadas.</div>
+</section>
+
+<div id="collectionNote" class="floating-note">Colecao sendo carregada...</div>
+<div class="footer-note">Source Baltigo . Collection</div>
+
+<div class="sheet-backdrop" id="collectionDetailBackdrop">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <h3 class="sheet-title" id="collectionDetailTitle">Detalhes da obra</h3>
+        <div class="section-meta" id="collectionDetailMeta">Carregando...</div>
+      </div>
+      <button class="control-btn" id="closeCollectionDetailBtn">Fechar</button>
+    </div>
+    <div class="sheet-body">
+      <div class="segmented">
+        <button type="button" class="segmented-btn active" id="collectionDetailOwnedBtn">Meus cards</button>
+        <button type="button" class="segmented-btn" id="collectionDetailMissingBtn">Faltam</button>
+      </div>
+      <div class="segmented" style="margin-top:10px;">
+        <button type="button" class="segmented-btn" id="collectionDetailGalleryBtn">Galeria</button>
+        <a class="segmented-btn" id="collectionDetailShopLink" href="/shop{uid_q}">Abrir loja</a>
+      </div>
+      <div class="media-grid" id="collectionDetailGrid" style="margin-top:14px;"></div>
+      <div id="collectionDetailEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nada para mostrar</strong>Troque o modo ou espere a colecao sincronizar.</div>
+    </div>
+  </div>
+</div>
+"""
+    js = f"""
+const COLLECTION_UID = resolveWebappUid({int(uid)});
+const collectionNote = document.getElementById("collectionNote");
+const collectionState = {{
+  profile: null,
+  stats: null,
+  cards: [],
+  animes: [],
+  tab: "cards",
+  q: "",
+  detailAnimeId: 0,
+  detailMode: "owned"
+}};
+const tgCollection = getTelegramWebApp();
+if (tgCollection) {{ try {{ tgCollection.ready(); tgCollection.expand(); }} catch(err) {{}} }}
+function setCollectionNote(message, tone){{ collectionNote.textContent = message || ""; collectionNote.dataset.tone = tone || ""; }}
+function collectionDisplayName(){{
+  const profile = collectionState.profile || {{}};
+  return String(profile.nickname || profile.display_name || profile.full_name || (COLLECTION_UID > 0 ? ("UID " + COLLECTION_UID) : "Jogador"));
+}}
+function syncCollectionHero(){{
+  const profile = collectionState.profile || {{}};
+  const stats = collectionState.stats || {{}};
+  document.getElementById("collectionPlayerHero").textContent = collectionDisplayName();
+  document.getElementById("collectionUniqueHero").textContent = String(stats.unique_cards || 0);
+  document.getElementById("collectionCopiesHero").textContent = String(stats.total_copies || 0);
+  document.getElementById("collectionCompletedHero").textContent = String(stats.completed_animes || 0);
+  document.getElementById("collectionNicknamePill").textContent = profile.nickname ? ("@" + profile.nickname) : (profile.display_name || "Conta sem nickname");
+  document.getElementById("collectionFavoritePill").textContent = "Favorito: " + String(stats.favorite_name || "--");
+  document.getElementById("collectionMeta").textContent = "Atualizado " + humanClock() + " . Unicos " + String(stats.unique_cards || 0) + " . Copias " + String(stats.total_copies || 0);
+}}
+function filterCollectionCards(){{
+  const q = String(collectionState.q || "").trim().toLowerCase();
+  return collectionState.cards.filter(function(item){{
+    if (!q) return true;
+    const hay = (String(item.name || "") + " " + String(item.anime || "") + " " + String(item.character_id || "")).toLowerCase();
+    return hay.includes(q);
+  }});
+}}
+function filterCollectionAnimes(mode){{
+  const q = String(collectionState.q || "").trim().toLowerCase();
+  return collectionState.animes.filter(function(item){{
+    if (mode === "missing" && !(Number(item.missing_count || 0) > 0)) return false;
+    if (!q) return true;
+    return String(item.anime || "").toLowerCase().includes(q);
+  }});
+}}
+function renderCollectionCards(){{
+  const items = filterCollectionCards();
+  const root = document.getElementById("collectionCardsGrid");
+  const empty = document.getElementById("collectionCardsEmpty");
+  document.getElementById("collectionCardsMeta").textContent = "Mostrando " + String(items.length) + " personagens da sua conta";
+  if (!items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = items.map(function(item){{
+    const badge = item.subcategory ? String(item.subcategory) : "Card";
+    const img = item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this,\\'CARD\\')">' : "";
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge">' + esc(badge) + '</div><div class="media-count">x' + esc(item.quantity || 0) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.name) + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || "") + '</span><span class="soft-pill">ID ' + esc(item.character_id || 0) + '</span></div></div>'
+      + '</article>';
+  }}).join("");
+}}
+function renderCollectionAnimeSummary(targetId, emptyId, metaId, mode){{
+  const items = filterCollectionAnimes(mode);
+  const root = document.getElementById(targetId);
+  const empty = document.getElementById(emptyId);
+  const meta = document.getElementById(metaId);
+  meta.textContent = "Mostrando " + String(items.length) + " obras";
+  if (!items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = items.map(function(item){{
+    const img = item.cover_image ? '<img src="' + esc(item.cover_image) + '" alt="' + esc(item.anime) + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">' : '';
+    const pct = String(item.completion_pct || 0) + "%";
+    const actionMode = mode === "missing" ? "missing" : "owned";
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge media-badge--cool">' + esc(pct) + '</div><div class="media-count">' + esc(item.owned_count || 0) + '/' + esc(item.total_count || 0) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.anime) + '</h3><div class="pill-row"><span class="soft-pill">Faltam ' + esc(item.missing_count || 0) + '</span><span class="soft-pill soft-pill--accent">Obra</span></div><button class="action-btn action-btn--cool" style="width:100%; margin-top:14px;" data-open-anime="' + esc(item.anime_id) + '" data-open-mode="' + esc(actionMode) + '">Abrir detalhes</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-open-anime]").forEach(function(button){{
+    button.onclick = function(){{
+      openCollectionDetail(Number(button.getAttribute("data-open-anime") || 0), String(button.getAttribute("data-open-mode") || "owned"));
+    }};
+  }});
+}}
+function applyCollectionView(){{
+  document.getElementById("collectionTabCards").classList.toggle("active", collectionState.tab === "cards");
+  document.getElementById("collectionTabAnimes").classList.toggle("active", collectionState.tab === "animes");
+  document.getElementById("collectionTabMissing").classList.toggle("active", collectionState.tab === "missing");
+  document.getElementById("collectionCardsView").style.display = collectionState.tab === "cards" ? "" : "none";
+  document.getElementById("collectionAnimesView").style.display = collectionState.tab === "animes" ? "" : "none";
+  document.getElementById("collectionMissingView").style.display = collectionState.tab === "missing" ? "" : "none";
+  document.getElementById("collectionSearchInput").placeholder = collectionState.tab === "cards" ? "Buscar personagem ou anime..." : "Buscar obra...";
+  renderCollectionCards();
+  renderCollectionAnimeSummary("collectionAnimesGrid", "collectionAnimesEmpty", "collectionAnimesMeta", "animes");
+  renderCollectionAnimeSummary("collectionMissingGrid", "collectionMissingEmpty", "collectionMissingMeta", "missing");
+}}
+function collectionDetailOpen(){{
+  return document.getElementById("collectionDetailBackdrop").style.display === "flex";
+}}
+function closeCollectionDetail(){{
+  document.getElementById("collectionDetailBackdrop").style.display = "none";
+}}
+async function loadCollectionDetail(options){{
+  if (!collectionState.detailAnimeId) return;
+  const response = await authJson("/api/collection/anime?anime_id=" + encodeURIComponent(collectionState.detailAnimeId) + "&mode=" + encodeURIComponent(collectionState.detailMode), {{ uid: COLLECTION_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar detalhes da obra.");
+  const data = response.data;
+  const anime = data.anime || {{}};
+  const items = Array.isArray(data.items) ? data.items : [];
+  document.getElementById("collectionDetailTitle").textContent = anime.anime || "Detalhes da obra";
+  document.getElementById("collectionDetailMeta").textContent = "Modo " + String(collectionState.detailMode).toUpperCase() + " . " + String(data.owned_count || 0) + "/" + String(data.total_count || 0) + " coletados";
+  document.getElementById("collectionDetailOwnedBtn").classList.toggle("active", collectionState.detailMode === "owned");
+  document.getElementById("collectionDetailMissingBtn").classList.toggle("active", collectionState.detailMode === "missing");
+  document.getElementById("collectionDetailGalleryBtn").classList.toggle("active", collectionState.detailMode === "gallery");
+  document.getElementById("collectionDetailShopLink").href = "/shop" + ({_j(uid_q)} || ("?uid=" + COLLECTION_UID));
+  const root = document.getElementById("collectionDetailGrid");
+  const empty = document.getElementById("collectionDetailEmpty");
+  if (!items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = items.map(function(item){{
+    const badge = collectionState.detailMode === "missing" ? "Falta" : (item.subcategory || (item.owned ? "Card" : "Galeria"));
+    const countLabel = item.owned ? ("x" + String(item.quantity || 0)) : "ID " + String(item.id || 0);
+    const img = item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this,\\'CARD\\')">' : '';
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge">' + esc(badge) + '</div><div class="media-count">' + esc(countLabel) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.name || "Personagem") + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || anime.anime || "") + '</span>' + (item.owned ? '<span class="soft-pill">Seu</span>' : '<span class="soft-pill soft-pill--accent">Falta</span>') + '</div></div>'
+      + '</article>';
+  }}).join("");
+}}
+async function openCollectionDetail(animeId, mode){{
+  collectionState.detailAnimeId = Number(animeId || 0);
+  collectionState.detailMode = String(mode || "owned");
+  document.getElementById("collectionDetailBackdrop").style.display = "flex";
+  setSkeleton("collectionDetailGrid", 4);
+  try {{
+    await loadCollectionDetail({{ silent: false }});
+  }} catch(err) {{
+    setCollectionNote(err.message, "error");
+  }}
+}}
+async function loadCollectionState(options){{
+  const response = await authJson("/api/collection/state", {{ uid: COLLECTION_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar resumo da colecao.");
+  collectionState.profile = response.data.profile || null;
+  collectionState.stats = response.data.stats || null;
+  syncCollectionHero();
+  if (!(options && options.silent)) setCollectionNote("Resumo da colecao atualizado.", "success");
+}}
+async function loadCollectionCards(options){{
+  const opts = options || {{}};
+  if (!opts.silent && !collectionState.cards.length) setSkeleton("collectionCardsGrid", 6);
+  const response = await authJson("/api/collection/cards", {{ uid: COLLECTION_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar cards da colecao.");
+  collectionState.cards = Array.isArray(response.data.items) ? response.data.items : [];
+  renderCollectionCards();
+}}
+async function loadCollectionAnimes(options){{
+  const opts = options || {{}};
+  if (!opts.silent && !collectionState.animes.length) {{
+    setSkeleton("collectionAnimesGrid", 4);
+    setSkeleton("collectionMissingGrid", 4);
+  }}
+  const response = await authJson("/api/collection/animes", {{ uid: COLLECTION_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar obras da colecao.");
+  collectionState.animes = Array.isArray(response.data.items) ? response.data.items : [];
+  renderCollectionAnimeSummary("collectionAnimesGrid", "collectionAnimesEmpty", "collectionAnimesMeta", "animes");
+  renderCollectionAnimeSummary("collectionMissingGrid", "collectionMissingEmpty", "collectionMissingMeta", "missing");
+}}
+async function refreshCollection(){{
+  await loadCollectionState({{ silent: true }});
+  await loadCollectionCards({{ silent: true }});
+  await loadCollectionAnimes({{ silent: true }});
+  if (collectionDetailOpen()) await loadCollectionDetail({{ silent: true }});
+}}
+document.getElementById("collectionSearchInput").addEventListener("input", debounce(function(event){{
+  collectionState.q = String(event.target.value || "");
+  applyCollectionView();
+}}, 140));
+document.getElementById("collectionTabCards").onclick = function(){{ collectionState.tab = "cards"; applyCollectionView(); }};
+document.getElementById("collectionTabAnimes").onclick = function(){{ collectionState.tab = "animes"; applyCollectionView(); }};
+document.getElementById("collectionTabMissing").onclick = function(){{ collectionState.tab = "missing"; applyCollectionView(); }};
+document.getElementById("closeCollectionDetailBtn").onclick = closeCollectionDetail;
+document.getElementById("collectionDetailBackdrop").onclick = function(event){{ if (event.target.id === "collectionDetailBackdrop") closeCollectionDetail(); }};
+document.getElementById("collectionDetailOwnedBtn").onclick = async function(){{ collectionState.detailMode = "owned"; await loadCollectionDetail({{ silent: false }}); }};
+document.getElementById("collectionDetailMissingBtn").onclick = async function(){{ collectionState.detailMode = "missing"; await loadCollectionDetail({{ silent: false }}); }};
+document.getElementById("collectionDetailGalleryBtn").onclick = async function(){{ collectionState.detailMode = "gallery"; await loadCollectionDetail({{ silent: false }}); }};
+(async function(){{
+  try {{
+    await loadCollectionState({{ silent: true }});
+    await loadCollectionCards({{ silent: false }});
+    await loadCollectionAnimes({{ silent: false }});
+    applyCollectionView();
+    createLiveRefresh(refreshCollection, 5000);
+  }} catch(err) {{
+    setCollectionNote(err.message, "error");
+  }}
+}})();
+"""
+    return _page_template("Colecao", body, extra_js=js, include_tg=True)
+
+
+def build_request_center_page(*, uid: int, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Pedidos"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Request center</div>
+    <h1 class="hero-title">Central de pedidos</h1>
+    <p class="hero-subtitle">Peca animes, mangas e envie reports com a mesma identidade premium do resto do app, sem misturar informacao demais e com resposta rapida para toque mobile.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="requestPlayerHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Restantes</span><span class="metric-value" id="requestRemainingHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Fluxo</span><span class="metric-value">Anime . Manga . Report</span></div>
+      <div class="metric-card"><span class="metric-label">Status</span><span class="metric-value"><span class="pulse-dot"></span> Pronto</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Pedidos</div><h2 class="section-title">Escolha o que voce quer fazer</h2></div>
+    <div class="section-meta" id="requestMeta">Carregando limites...</div>
+  </div>
+  <div class="segmented" style="margin-top:14px;">
+    <button type="button" class="segmented-btn active" id="requestTabAnime">Anime</button>
+    <button type="button" class="segmented-btn" id="requestTabManga">Manga</button>
+    <button type="button" class="segmented-btn" id="requestTabReport">Report</button>
+  </div>
+</section>
+
+<section class="panel panel--soft" id="requestSearchView">
+  <div class="section-head">
+    <div><div class="section-kicker">Busca</div><h2 class="section-title" id="requestSearchTitle">Procure um anime</h2></div>
+    <div class="section-meta" id="requestSearchMeta">Digite pelo menos 2 letras para comecar.</div>
+  </div>
+  <label class="searchbar" style="margin-top:14px;">
+    <span class="input-icon">Busca</span>
+    <input id="requestSearchInput" type="text" placeholder="Buscar titulo para pedir...">
+  </label>
+  <div class="media-grid" id="requestResultsGrid" style="margin-top:14px;"></div>
+  <div id="requestResultsEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nenhum resultado ainda</strong>Pesquise um titulo para pedir ou troque para o modo report.</div>
+</section>
+
+<section class="panel panel--soft" id="requestReportView" style="display:none;">
+  <div class="section-head">
+    <div><div class="section-kicker">Report</div><h2 class="section-title">Conte o problema com clareza</h2></div>
+    <div class="section-meta">Use essa area para bugs, links quebrados ou problemas na experiencia.</div>
+  </div>
+  <div class="setting-group" style="margin-top:14px;">
+    <div class="setting-row">
+      <div class="setting-copy"><h3 class="setting-title">Tipo</h3><p class="setting-sub">Ajuda a triagem a ficar mais rapida.</p></div>
+      <label class="field" style="width:min(100%, 280px);"><select id="requestReportType"><option>Bug</option><option>Legenda</option><option>Link quebrado</option><option>Player</option><option>Outro</option></select></label>
+    </div>
+    <div class="setting-row">
+      <div class="setting-copy"><h3 class="setting-title">Mensagem</h3><p class="setting-sub">Explique o problema com o maximo de contexto util.</p></div>
+      <label class="field" style="width:100%; min-height:150px; align-items:flex-start; padding:14px;"><textarea id="requestReportMessage" style="width:100%; min-height:120px; resize:vertical; border:0; outline:none; background:transparent; color:inherit;" placeholder="Descreva o erro, a pagina e o que aconteceu."></textarea></label>
+    </div>
+    <button class="action-btn action-btn--primary" id="sendReportBtn" style="width:100%;">Enviar report</button>
+  </div>
+</section>
+
+<div id="requestNote" class="floating-note">Central sendo carregada...</div>
+<div class="footer-note">Source Baltigo . Requests</div>
+"""
+    js = f"""
+const REQUEST_UID = resolveWebappUid({int(uid)});
+const requestNote = document.getElementById("requestNote");
+const requestState = {{ tab: "anime", user: null, remaining: 0, used: 0, limit: 3, items: [], loading: false }};
+const tgRequest = getTelegramWebApp();
+if (tgRequest) {{ try {{ tgRequest.ready(); tgRequest.expand(); }} catch(err) {{}} }}
+function setRequestNote(message, tone){{ requestNote.textContent = message || ""; requestNote.dataset.tone = tone || ""; }}
+function requestUserLabel(){{
+  const user = requestState.user || {{}};
+  return String(user.nickname || user.display_name || user.full_name || (REQUEST_UID > 0 ? ("UID " + REQUEST_UID) : "Jogador"));
+}}
+function syncRequestHero(){{
+  document.getElementById("requestPlayerHero").textContent = requestUserLabel();
+  document.getElementById("requestRemainingHero").textContent = String(requestState.remaining || 0);
+  document.getElementById("requestMeta").textContent = "Limite " + String(requestState.limit || 3) + " por 24h . Restam " + String(requestState.remaining || 0);
+}}
+function applyRequestTab(){{
+  document.getElementById("requestTabAnime").classList.toggle("active", requestState.tab === "anime");
+  document.getElementById("requestTabManga").classList.toggle("active", requestState.tab === "manga");
+  document.getElementById("requestTabReport").classList.toggle("active", requestState.tab === "report");
+  document.getElementById("requestSearchView").style.display = requestState.tab === "report" ? "none" : "";
+  document.getElementById("requestReportView").style.display = requestState.tab === "report" ? "" : "none";
+  document.getElementById("requestSearchTitle").textContent = requestState.tab === "anime" ? "Procure um anime" : "Procure um manga";
+  document.getElementById("requestSearchInput").placeholder = requestState.tab === "anime" ? "Buscar anime para pedir..." : "Buscar manga para pedir...";
+}}
+function renderRequestResults(){{
+  const root = document.getElementById("requestResultsGrid");
+  const empty = document.getElementById("requestResultsEmpty");
+  document.getElementById("requestSearchMeta").textContent = requestState.items.length ? ("Resultados: " + String(requestState.items.length)) : "Digite pelo menos 2 letras para comecar.";
+  if (!requestState.items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = requestState.items.map(function(item){{
+    const disabled = item.already_exists || item.already_requested || requestState.remaining <= 0;
+    const statePill = item.already_exists
+      ? '<span class="soft-pill">Ja existe</span>'
+      : (item.already_requested ? '<span class="soft-pill soft-pill--accent">Ja pedido</span>' : '<span class="soft-pill soft-pill--cool">Disponivel</span>');
+    const img = item.cover ? '<img src="' + esc(item.cover) + '" alt="' + esc(item.title) + '" loading="lazy" onerror="setImageFallback(this,\\'MEDIA\\')">' : '';
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge">' + esc(requestState.tab) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.title) + '</h3><div class="pill-row">' + statePill + (item.year ? '<span class="soft-pill">' + esc(item.year) + '</span>' : '') + '</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-request-item="' + esc(item.id || 0) + '"' + (disabled ? ' disabled' : '') + '>' + (disabled ? 'Indisponivel' : 'Enviar pedido') + '</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-request-item]").forEach(function(button){{
+    button.onclick = async function(){{
+      const targetId = Number(button.getAttribute("data-request-item") || 0);
+      const item = requestState.items.find(function(entry){{ return Number(entry.id || 0) === targetId; }});
+      if (!item) return;
+      button.disabled = true;
+      try {{
+        setRequestNote("Enviando pedido...", "");
+        const payload = {{
+          user_id: Number((requestState.user || {{}}).user_id || REQUEST_UID || 0),
+          username: String((requestState.user || {{}}).username || ""),
+          full_name: String((requestState.user || {{}}).full_name || (requestState.user || {{}}).display_name || ""),
+          media_type: requestState.tab,
+          anilist_id: Number(item.id || 0),
+          title: String(item.title || ""),
+          cover: String(item.cover || "")
+        }};
+        const response = await authJson("/api/pedido/send", {{ uid: REQUEST_UID, method: "POST", json: payload }});
+        if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Nao foi possivel enviar o pedido.");
+        item.already_requested = true;
+        await loadRequestLimit({{ silent: true }});
+        renderRequestResults();
+        setRequestNote("Pedido enviado com sucesso.", "success");
+      }} catch(err) {{
+        button.disabled = false;
+        setRequestNote(err.message, "error");
+      }}
+    }};
+  }});
+}}
+async function loadRequestUser(){{
+  const response = await authJson("/api/webapp/context", {{ uid: REQUEST_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o jogador.");
+  requestState.user = response.data.profile || null;
+  syncRequestHero();
+}}
+async function loadRequestLimit(options){{
+  const response = await authJson("/api/pedido/limit", {{ uid: REQUEST_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar limite de pedidos.");
+  requestState.used = Number(response.data.used || 0);
+  requestState.remaining = Number(response.data.remaining || 0);
+  requestState.limit = Number(response.data.limit || 3);
+  syncRequestHero();
+  if (!(options && options.silent)) setRequestNote("Limites atualizados.", "success");
+}}
+async function searchRequestTitles(query){{
+  const q = String(query || "").trim();
+  if (q.length < 2){{
+    requestState.items = [];
+    renderRequestResults();
+    return;
+  }}
+  requestState.loading = true;
+  setSkeleton("requestResultsGrid", 4);
+  const res = await fetch("/api/pedido/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(requestState.tab));
+  const data = await res.json();
+  requestState.loading = false;
+  if (!res.ok || !data.ok) throw new Error((data && data.message) || "Nao foi possivel buscar agora.");
+  requestState.items = Array.isArray(data.items) ? data.items : [];
+  renderRequestResults();
+}}
+async function sendReport(){{
+  const message = String(document.getElementById("requestReportMessage").value || "").trim();
+  if (!message) throw new Error("Escreva uma mensagem antes de enviar.");
+  const payload = {{
+    user_id: Number((requestState.user || {{}}).user_id || REQUEST_UID || 0),
+    username: String((requestState.user || {{}}).username || ""),
+    full_name: String((requestState.user || {{}}).full_name || (requestState.user || {{}}).display_name || ""),
+    report_type: String(document.getElementById("requestReportType").value || "Outro"),
+    message: message
+  }};
+  const response = await authJson("/api/pedido/report", {{ uid: REQUEST_UID, method: "POST", json: payload }});
+  if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Nao foi possivel enviar o report.");
+  document.getElementById("requestReportMessage").value = "";
+  setRequestNote("Report enviado com sucesso.", "success");
+}}
+document.getElementById("requestTabAnime").onclick = function(){{ requestState.tab = "anime"; requestState.items = []; applyRequestTab(); renderRequestResults(); }};
+document.getElementById("requestTabManga").onclick = function(){{ requestState.tab = "manga"; requestState.items = []; applyRequestTab(); renderRequestResults(); }};
+document.getElementById("requestTabReport").onclick = function(){{ requestState.tab = "report"; applyRequestTab(); }};
+document.getElementById("requestSearchInput").addEventListener("input", debounce(async function(event){{
+  try {{
+    await searchRequestTitles(event.target.value || "");
+  }} catch(err) {{
+    requestState.items = [];
+    renderRequestResults();
+    setRequestNote(err.message, "error");
+  }}
+}}, 320));
+document.getElementById("sendReportBtn").onclick = async function(){{
+  try {{
+    setRequestNote("Enviando report...", "");
+    await sendReport();
+  }} catch(err) {{
+    setRequestNote(err.message, "error");
+  }}
+}};
+(async function(){{
+  try {{
+    applyRequestTab();
+    await loadRequestUser();
+    await loadRequestLimit({{ silent: false }});
+    renderRequestResults();
+  }} catch(err) {{
+    setRequestNote(err.message, "error");
+  }}
+}})();
+"""
+    return _page_template("Pedidos", body, extra_js=js, include_tg=True)
+
+
+def build_dado_page(*, uid: int, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Dado"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Dice system</div>
+    <h1 class="hero-title">Sistema de dados</h1>
+    <p class="hero-subtitle">Role, escolha o anime e revele o personagem em uma experiencia mais limpa, mais forte visualmente e adaptada para mobile e desktop sem perder a sincronia do sistema.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="dadoPlayerHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Saldo</span><span class="metric-value" id="dadoBalanceHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">Proximo</span><span class="metric-value" id="dadoNextHero">--:--</span></div>
+      <div class="metric-card"><span class="metric-label">Status</span><span class="metric-value"><span class="pulse-dot"></span> Live</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Rolagem</div><h2 class="section-title">Seu painel de sorte</h2></div>
+    <div class="section-meta" id="dadoMeta">Carregando estado...</div>
+  </div>
+  <div class="stack" style="margin-top:14px;">
+    <div class="panel panel--soft" style="margin-top:0;">
+      <div style="display:grid; gap:14px;">
+        <div id="diceFace" style="min-height:180px; border-radius:28px; border:1px solid rgba(122,213,255,.24); background:radial-gradient(circle at 20% 10%, rgba(122,213,255,.18), transparent 44%), linear-gradient(180deg, rgba(12,19,39,.94), rgba(8,13,25,.96)); display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk','Plus Jakarta Sans',sans-serif; font-size:82px; font-weight:800; letter-spacing:-.06em; box-shadow:var(--shadow-md);">?</div>
+        <div class="pill-row">
+          <span class="soft-pill soft-pill--cool" id="dadoHud">Pronto para rolar</span>
+          <span class="soft-pill" id="dadoIdentityPill">Conta: ...</span>
+        </div>
+        <div class="segmented">
+          <button type="button" class="segmented-btn active" id="rollDiceBtn">Rolar dado</button>
+          <button type="button" class="segmented-btn" id="resetDiceBtn">Limpar tela</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Escolha</div><h2 class="section-title">Animes da rodada</h2></div>
+    <div class="section-meta" id="dadoOptionsMeta">Role o dado para gerar as opcoes.</div>
+  </div>
+  <div class="media-grid" id="dadoOptionsGrid" style="margin-top:14px;"></div>
+  <div id="dadoOptionsEmpty" class="empty-state" style="margin-top:14px;"><strong>Nenhuma rolagem ativa</strong>Quando a rolagem acontecer, as opcoes aparecem aqui para voce escolher.</div>
+</section>
+
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Revelacao</div><h2 class="section-title">Personagem obtido</h2></div>
+    <div class="section-meta" id="dadoRewardMeta">Nenhum personagem revelado ainda.</div>
+  </div>
+  <div id="dadoRewardRoot" class="empty-state" style="margin-top:14px;"><strong>Sem premio ainda</strong>Escolha um anime da rodada para revelar o personagem.</div>
+</section>
+
+<div id="dadoNote" class="floating-note">Sistema de dados sendo carregado...</div>
+<div class="footer-note">Source Baltigo . Dice</div>
+"""
+    js = f"""
+const DADO_UID = resolveWebappUid({int(uid)});
+const dadoNote = document.getElementById("dadoNote");
+const dadoState = {{
+  user: null,
+  balance: 0,
+  next: "--:--",
+  rollId: 0,
+  diceValue: 0,
+  options: [],
+  rolling: false,
+  picking: false
+}};
+const tgDado = getTelegramWebApp();
+if (tgDado) {{ try {{ tgDado.ready(); tgDado.expand(); }} catch(err) {{}} }}
+function setDadoNote(message, tone){{ dadoNote.textContent = message || ""; dadoNote.dataset.tone = tone || ""; }}
+function dadoUserLabel(){{
+  const user = dadoState.user || {{}};
+  return String(user.nickname || user.display_name || user.full_name || (DADO_UID > 0 ? ("UID " + DADO_UID) : "Jogador"));
+}}
+function syncDadoHero(){{
+  document.getElementById("dadoPlayerHero").textContent = dadoUserLabel();
+  document.getElementById("dadoBalanceHero").textContent = String(dadoState.balance || 0);
+  document.getElementById("dadoNextHero").textContent = String(dadoState.next || "--:--");
+  document.getElementById("dadoIdentityPill").textContent = dadoUserLabel();
+  document.getElementById("dadoMeta").textContent = "Atualizado " + humanClock() + " . Saldo " + String(dadoState.balance || 0) + " . Proximo " + String(dadoState.next || "--:--");
+}}
+function setDiceFace(value, label){{
+  document.getElementById("diceFace").textContent = String(value || "?");
+  document.getElementById("dadoHud").textContent = label || "Pronto";
+}}
+async function animateDiceFace(finalValue){{
+  const face = document.getElementById("diceFace");
+  face.style.transform = "scale(0.96)";
+  for (let i = 0; i < 10; i += 1){{
+    setDiceFace(1 + Math.floor(Math.random() * 6), "Rolando...");
+    await new Promise(function(resolve){{ window.setTimeout(resolve, 80); }});
+  }}
+  face.style.transform = "scale(1)";
+  setDiceFace(finalValue || "?", "Resultado: " + String(finalValue || "?"));
+}}
+function clearReward(){{
+  document.getElementById("dadoRewardRoot").className = "empty-state";
+  document.getElementById("dadoRewardRoot").innerHTML = "<strong>Sem premio ainda</strong>Escolha um anime da rodada para revelar o personagem.";
+  document.getElementById("dadoRewardMeta").textContent = "Nenhum personagem revelado ainda.";
+}}
+function renderReward(character){{
+  const root = document.getElementById("dadoRewardRoot");
+  const stars = "★".repeat(Number(character.stars || 1));
+  const img = character.image ? '<img src="' + esc(character.image) + '" alt="' + esc(character.name || "Personagem") + '" loading="lazy" onerror="setImageFallback(this,\\'WIN\\')">' : "";
+  root.className = "";
+  root.innerHTML = ''
+    + '<article class="media-card">'
+    + '<div class="media-cover">' + img + '<div class="media-badge media-badge--accent">' + esc(character.tier || "COMMON") + '</div><div class="media-count">' + esc(stars) + '</div></div>'
+    + '<div class="media-body"><h3 class="card-title">' + esc(character.name || "Personagem") + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(character.anime_title || "Anime") + '</span><span class="soft-pill">' + esc(character.id || 0) + '</span></div></div>'
+    + '</article>';
+  document.getElementById("dadoRewardMeta").textContent = "Premio revelado com sucesso.";
+}}
+function renderDadoOptions(){{
+  const root = document.getElementById("dadoOptionsGrid");
+  const empty = document.getElementById("dadoOptionsEmpty");
+  if (!dadoState.options.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    document.getElementById("dadoOptionsMeta").textContent = "Role o dado para gerar as opcoes.";
+    return;
+  }}
+  empty.style.display = "none";
+  document.getElementById("dadoOptionsMeta").textContent = "Escolha um anime para revelar o personagem.";
+  root.innerHTML = dadoState.options.map(function(opt){{
+    const img = opt.cover ? '<img src="' + esc(opt.cover) + '" alt="' + esc(opt.title || "Anime") + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">' : '';
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge media-badge--cool">Anime</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(opt.title || "Anime") + '</h3><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-pick-anime="' + esc(opt.id || 0) + '">Escolher este anime</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-pick-anime]").forEach(function(button){{
+    button.onclick = async function(){{
+      const animeId = Number(button.getAttribute("data-pick-anime") || 0);
+      if (!animeId || !dadoState.rollId || dadoState.picking) return;
+      dadoState.picking = true;
+      button.disabled = true;
+      try {{
+        setDadoNote("Revelando personagem...", "");
+        const response = await authJson("/api/dado/pick", {{ uid: DADO_UID, method: "POST", json: {{ roll_id: dadoState.rollId, anime_id: animeId }} }});
+        if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.error) || "Falha ao revelar personagem.");
+        dadoState.balance = Number(response.data.balance || dadoState.balance || 0);
+        dadoState.rollId = 0;
+        dadoState.options = [];
+        syncDadoHero();
+        renderDadoOptions();
+        renderReward(response.data.character || {{}});
+        setDadoNote("Personagem obtido com sucesso.", "success");
+      }} catch(err) {{
+        button.disabled = false;
+        setDadoNote(err.message, "error");
+      }} finally {{
+        dadoState.picking = false;
+      }}
+    }};
+  }});
+}}
+async function loadDadoUser(){{
+  const response = await authJson("/api/webapp/context", {{ uid: DADO_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o jogador.");
+  dadoState.user = response.data.profile || null;
+  syncDadoHero();
+}}
+async function loadDadoState(options){{
+  const response = await authJson("/api/dado/state", {{ uid: DADO_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar o estado dos dados.");
+  dadoState.balance = Number(response.data.balance || 0);
+  dadoState.next = String(response.data.next_recharge_hhmm || "--:--");
+  if (response.data.active_roll && response.data.active_roll.roll_id){{
+    dadoState.rollId = Number(response.data.active_roll.roll_id || 0);
+    dadoState.diceValue = Number(response.data.active_roll.dice_value || 0);
+    dadoState.options = Array.isArray(response.data.active_roll.options) ? response.data.active_roll.options : [];
+    if (dadoState.diceValue > 0) await animateDiceFace(dadoState.diceValue);
+  }} else {{
+    dadoState.rollId = 0;
+    dadoState.diceValue = 0;
+    dadoState.options = [];
+    setDiceFace("?", "Pronto para rolar");
+  }}
+  syncDadoHero();
+  renderDadoOptions();
+  if (!(options && options.silent)) setDadoNote("Estado do sistema de dados atualizado.", "success");
+}}
+async function rollDice(){{
+  if (dadoState.rolling || dadoState.picking) return;
+  dadoState.rolling = true;
+  document.getElementById("rollDiceBtn").disabled = true;
+  clearReward();
+  try {{
+    setDadoNote("Rolando dado...", "");
+    const response = await authJson("/api/dado/roll", {{ uid: DADO_UID, method: "POST", json: {{}} }});
+    if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.error) || "Falha ao rolar.");
+    dadoState.rollId = Number(response.data.roll_id || 0);
+    dadoState.diceValue = Number(response.data.dice_value || 0);
+    dadoState.options = Array.isArray(response.data.options) ? response.data.options : [];
+    dadoState.balance = Number(response.data.balance || dadoState.balance || 0);
+    syncDadoHero();
+    await animateDiceFace(dadoState.diceValue || "?");
+    renderDadoOptions();
+    setDadoNote("Escolha um anime para revelar o personagem.", "success");
+  }} catch(err) {{
+    setDadoNote(err.message, "error");
+  }} finally {{
+    dadoState.rolling = false;
+    document.getElementById("rollDiceBtn").disabled = false;
+  }}
+}}
+document.getElementById("rollDiceBtn").onclick = rollDice;
+document.getElementById("resetDiceBtn").onclick = function(){{
+  dadoState.rollId = 0;
+  dadoState.diceValue = 0;
+  dadoState.options = [];
+  setDiceFace("?", "Pronto para rolar");
+  renderDadoOptions();
+  clearReward();
+  setDadoNote("Tela limpa. O saldo continua sincronizado.", "success");
+}};
+(async function(){{
+  try {{
+    await loadDadoUser();
+    await loadDadoState({{ silent: false }});
+    createLiveRefresh(async function(){{ await loadDadoUser(); await loadDadoState({{ silent: true }}); }}, 7000);
+  }} catch(err) {{
+    setDadoNote(err.message, "error");
+  }}
+}})();
+"""
+    return _page_template("Dado", body, extra_js=js, include_tg=True)
+
+
+def build_baltigoflix_page(*, uid: int, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="BaltigoFlix"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">BaltigoFlix</div>
+    <h1 class="hero-title">Planos premium para assistir sem bagunca.</h1>
+    <p class="hero-subtitle">Uma vitrine mais elegante para apresentar os planos, reforcar confianca e levar o usuario do Mini App ate o checkout com menos ruido e mais cara de produto profissional.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="flixPlayerHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Planos</span><span class="metric-value">4 opcoes</span></div>
+      <div class="metric-card"><span class="metric-label">Checkout</span><span class="metric-value">Cakto</span></div>
+      <div class="metric-card"><span class="metric-label">Status</span><span class="metric-value"><span class="pulse-dot"></span> Disponivel</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Assinatura</div><h2 class="section-title">Escolha seu plano</h2></div>
+    <div class="section-meta" id="flixMeta">Carregando contexto do usuario...</div>
+  </div>
+  <div class="buy-grid" style="margin-top:14px;">
+    <article class="buy-tile"><h3 class="buy-title">Plano Mensal</h3><p class="buy-copy">Entrada rapida para testar toda a experiencia sem compromisso longo.</p><div class="buy-price">R$ 25,90</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-flix-plan="mensal">Assinar mensal</button></article>
+    <article class="buy-tile"><h3 class="buy-title">Plano Trimestral</h3><p class="buy-copy">Mais tempo de uso com melhor custo para quem ja quer continuar.</p><div class="buy-price">R$ 59,90</div><button class="action-btn action-btn--cool" style="width:100%; margin-top:14px;" data-flix-plan="trimestral">Assinar trimestral</button></article>
+    <article class="buy-tile"><h3 class="buy-title">Plano Semestral</h3><p class="buy-copy">Equilibrio entre economia e permanencia para uso recorrente.</p><div class="buy-price">R$ 89,90</div><button class="action-btn action-btn--cool" style="width:100%; margin-top:14px;" data-flix-plan="semestral">Assinar semestral</button></article>
+    <article class="buy-tile"><h3 class="buy-title">Plano Anual</h3><p class="buy-copy">Melhor custo para quem quer resolver tudo de uma vez e aproveitar o maximo.</p><div class="buy-price">R$ 129,90</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-flix-plan="anual">Assinar anual</button></article>
+  </div>
+</section>
+
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Motivos</div><h2 class="section-title">Uma apresentacao mais confiavel</h2></div>
+    <div class="section-meta">Sem exagero visual, com foco em decisao rapida e clareza no mobile.</div>
+  </div>
+  <div class="chip-row scroll-x" style="margin-top:14px;">
+    <div class="chip">Checkout com contexto do usuario</div>
+    <div class="chip chip--accent">Fluxo limpo</div>
+    <div class="chip">Visual premium</div>
+    <div class="chip">Touch friendly</div>
+    <div class="chip">Telegram ready</div>
+  </div>
+</section>
+
+<div id="flixNote" class="floating-note">BaltigoFlix sendo carregado...</div>
+<div class="footer-note">Source Baltigo . BaltigoFlix</div>
+"""
+    js = f"""
+const FLIX_UID = resolveWebappUid({int(uid)});
+const flixNote = document.getElementById("flixNote");
+const flixState = {{ user: null }};
+const tgFlix = getTelegramWebApp();
+if (tgFlix) {{ try {{ tgFlix.ready(); tgFlix.expand(); }} catch(err) {{}} }}
+function setFlixNote(message, tone){{ flixNote.textContent = message || ""; flixNote.dataset.tone = tone || ""; }}
+function flixUserLabel(){{
+  const user = flixState.user || {{}};
+  return String(user.nickname || user.display_name || user.full_name || (FLIX_UID > 0 ? ("UID " + FLIX_UID) : "Jogador"));
+}}
+async function loadFlixUser(){{
+  const response = await authJson("/api/webapp/context", {{ uid: FLIX_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o usuario do plano.");
+  flixState.user = response.data.profile || null;
+  document.getElementById("flixPlayerHero").textContent = flixUserLabel();
+  document.getElementById("flixMeta").textContent = "Checkout vinculado a " + flixUserLabel();
+}}
+async function createFlixIntent(planCode, button){{
+  button.disabled = true;
+  try {{
+    setFlixNote("Preparando checkout...", "");
+    const user = flixState.user || {{}};
+    const payload = {{
+      telegram_user_id: Number(user.user_id || FLIX_UID || 0),
+      telegram_username: String(user.username || ""),
+      telegram_full_name: String(user.full_name || user.display_name || flixUserLabel()),
+      plan_code: String(planCode || "")
+    }};
+    const response = await authJson("/api/baltigoflix/create-intent", {{ uid: FLIX_UID, method: "POST", json: payload }});
+    if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.error) || "Nao foi possivel criar o checkout.");
+    setFlixNote("Checkout criado com sucesso. Abrindo pagamento...", "success");
+    openExternalLink(String(response.data.checkout_url || ""));
+  }} catch(err) {{
+    button.disabled = false;
+    setFlixNote(err.message, "error");
+  }}
+}}
+document.querySelectorAll("[data-flix-plan]").forEach(function(button){{
+  button.onclick = function(){{
+    createFlixIntent(String(button.getAttribute("data-flix-plan") || ""), button);
+  }};
+}});
+(async function(){{
+  try {{
+    await loadFlixUser();
+    setFlixNote("Escolha um plano para continuar.", "success");
+  }} catch(err) {{
+    setFlixNote(err.message, "error");
+  }}
+}})();
+"""
+    return _page_template("BaltigoFlix", body, extra_js=js, include_tg=True)
+
+
+def build_cards_contrib_page(*, uid: int, banner_url: str) -> str:
+    uid_q = _uid_query(uid)
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Cards contrib"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Community cards</div>
+    <h1 class="hero-title">Central de contribuicoes</h1>
+    <p class="hero-subtitle">Um fluxo mais organizado para os membros sugerirem novas fotos, indicar novas obras e acompanhar as regras sem ficar perdido em telas quebradas.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Acoes</div><h2 class="section-title">Escolha como quer ajudar</h2></div>
+    <div class="section-meta">As sugestoes ficam salvas e prontas para avaliacao.</div>
+  </div>
+  <div class="grid-tiles" style="margin-top:14px;">
+    <a class="hub-tile" href="/cards/contrib/image{uid_q}">
+      <div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content">
+        <div class="soft-pill soft-pill--cool">Imagem</div>
+        <h3 class="hub-title">Sugerir nova foto</h3>
+        <p class="hub-copy">Pesquise um personagem e envie uma URL melhor para a arte do card.</p>
+      </div>
+    </a>
+    <a class="hub-tile" href="/cards/contrib/work{uid_q}">
+      <div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content">
+        <div class="soft-pill soft-pill--accent">Obra</div>
+        <h3 class="hub-title">Pedir nova obra</h3>
+        <p class="hub-copy">Busque um anime ou manga e registre uma solicitacao focada em cards.</p>
+      </div>
+    </a>
+    <a class="hub-tile" href="/cards/contrib/rules{uid_q}">
+      <div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content">
+        <div class="soft-pill">Regras</div>
+        <h3 class="hub-title">Ler regras</h3>
+        <p class="hub-copy">Veja o padrao esperado antes de enviar a sua contribuicao.</p>
+      </div>
+    </a>
+  </div>
+</section>
+
+<div class="footer-note">Source Baltigo . Cards contrib</div>
+"""
+    return _page_template("Cards contrib", body, include_tg=True)
+
+
+def build_cards_contrib_rules_page(*, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Regras"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Rules</div>
+    <h1 class="hero-title">Padrao das contribuicoes</h1>
+    <p class="hero-subtitle">Regras objetivas para manter a qualidade visual do sistema de cards sem perder consistencia.</p>
+  </div>
+</section>
+<section class="panel panel--soft">
+  <div class="setting-group">
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Formato 2:3</h3><p class="setting-sub">A imagem precisa respeitar o padrao vertical usado nos cards.</p></div></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Fidelidade ao personagem</h3><p class="setting-sub">Evite fanarts que descaracterizam muito ou confundem o personagem principal.</p></div></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Sem poluicao</h3><p class="setting-sub">Nao envie imagem com texto, watermark, moldura estranha ou varios personagens na frente do protagonista.</p></div></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Qualidade visual</h3><p class="setting-sub">Prefira imagem limpa, centralizada e em boa resolucao para o card ficar bonito no Mini App e no bot.</p></div></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Aprovacao</h3><p class="setting-sub">Sugestoes aprovadas podem substituir a imagem atual em todo o sistema e gerar a recompensa configurada.</p></div></div>
+  </div>
+</section>
+<div class="footer-note">Source Baltigo . Rules</div>
+"""
+    return _page_template("Regras cards", body, include_tg=True)
+
+
+def build_cards_contrib_image_page(*, uid: int, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Nova foto"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Photo suggestion</div>
+    <h1 class="hero-title">Sugerir nova foto</h1>
+    <p class="hero-subtitle">Pesquise o personagem, selecione o card certo e envie uma nova URL para analise da equipe.</p>
+  </div>
+</section>
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Busca</div><h2 class="section-title">Encontre o personagem</h2></div>
+    <div class="section-meta" id="contribImageMeta">Digite pelo menos 2 letras.</div>
+  </div>
+  <label class="searchbar" style="margin-top:14px;"><span class="input-icon">Busca</span><input id="contribImageSearchInput" type="text" placeholder="Buscar personagem para sugerir foto..."></label>
+  <div class="media-grid" id="contribImageResults" style="margin-top:14px;"></div>
+  <div id="contribImageEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nenhum resultado</strong>Continue digitando para encontrar o personagem correto.</div>
+</section>
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Envio</div><h2 class="section-title">Dados da sugestao</h2></div>
+    <div class="section-meta">A imagem nova so entra depois da aprovacao.</div>
+  </div>
+  <div class="setting-group" style="margin-top:14px;">
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Selecionado</h3><p class="setting-sub" id="contribImageSelectedLabel">Nenhum personagem selecionado ainda.</p></div></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Nova imagem</h3><p class="setting-sub">Use uma URL publica e direta.</p></div><label class="field" style="width:100%;"><input id="contribImageUrlInput" placeholder="https://..."></label></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Observacao</h3><p class="setting-sub">Opcional. Explique rapidamente o motivo da troca.</p></div><label class="field" style="width:100%; min-height:120px; align-items:flex-start; padding:14px;"><textarea id="contribImageNoteInput" style="width:100%; min-height:90px; resize:vertical; border:0; outline:none; background:transparent; color:inherit;" placeholder="Ex: imagem mais limpa, melhor enquadramento, arte oficial."></textarea></label></div>
+    <button class="action-btn action-btn--primary" id="sendContribImageBtn" style="width:100%;">Enviar sugestao de foto</button>
+  </div>
+</section>
+<div id="contribImageNote" class="floating-note">Area de contribuicao sendo carregada...</div>
+<div class="footer-note">Source Baltigo . Suggest photo</div>
+"""
+    js = f"""
+const CONTRIB_IMAGE_UID = resolveWebappUid({int(uid)});
+const contribImageState = {{ selected: null, items: [] }};
+const contribImageNote = document.getElementById("contribImageNote");
+function setContribImageNote(message, tone){{ contribImageNote.textContent = message || ""; contribImageNote.dataset.tone = tone || ""; }}
+function renderContribImageResults(){{
+  const root = document.getElementById("contribImageResults");
+  const empty = document.getElementById("contribImageEmpty");
+  document.getElementById("contribImageMeta").textContent = contribImageState.items.length ? ("Resultados " + String(contribImageState.items.length)) : "Digite pelo menos 2 letras.";
+  if (!contribImageState.items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = contribImageState.items.map(function(item){{
+    const img = item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="setImageFallback(this,\\'CARD\\')">' : '';
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge">Card</div><div class="media-count">ID ' + esc(item.id || 0) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.name || "Personagem") + '</h3><div class="pill-row"><span class="soft-pill soft-pill--cool">' + esc(item.anime || "") + '</span></div><button class="action-btn action-btn--cool" style="width:100%; margin-top:14px;" data-select-char="' + esc(item.id || 0) + '">Selecionar</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-select-char]").forEach(function(button){{
+    button.onclick = function(){{
+      const cid = Number(button.getAttribute("data-select-char") || 0);
+      contribImageState.selected = contribImageState.items.find(function(item){{ return Number(item.id || 0) === cid; }}) || null;
+      document.getElementById("contribImageSelectedLabel").textContent = contribImageState.selected ? (contribImageState.selected.name + " . " + contribImageState.selected.anime + " . ID " + contribImageState.selected.id) : "Nenhum personagem selecionado ainda.";
+      setContribImageNote("Personagem selecionado. Agora envie a nova URL.", "success");
+    }};
+  }});
+}}
+async function searchContribImages(query){{
+  const q = String(query || "").trim();
+  if (q.length < 2){{
+    contribImageState.items = [];
+    renderContribImageResults();
+    return;
+  }}
+  setSkeleton("contribImageResults", 4);
+  const res = await fetch("/api/cards/search?q=" + encodeURIComponent(q) + "&limit=24&_ts=" + Date.now());
+  const data = await res.json();
+  contribImageState.items = Array.isArray(data.items) ? data.items : [];
+  renderContribImageResults();
+}}
+document.getElementById("contribImageSearchInput").addEventListener("input", debounce(async function(event){{
+  try {{
+    await searchContribImages(event.target.value || "");
+  }} catch(err) {{
+    contribImageState.items = [];
+    renderContribImageResults();
+    setContribImageNote("Falha ao buscar personagens.", "error");
+  }}
+}}, 260));
+document.getElementById("sendContribImageBtn").onclick = async function(){{
+  try {{
+    if (!contribImageState.selected) throw new Error("Selecione um personagem antes de enviar.");
+    const url = String(document.getElementById("contribImageUrlInput").value || "").trim();
+    if (!/^https?:\\/\\//i.test(url)) throw new Error("Envie uma URL publica valida.");
+    const note = String(document.getElementById("contribImageNoteInput").value || "").trim();
+    setContribImageNote("Enviando sugestao...", "");
+    const response = await authJson("/api/cards/contrib/image", {{ uid: CONTRIB_IMAGE_UID, method: "POST", json: {{ character_id: contribImageState.selected.id, suggested_image_url: url, note: note }} }});
+    if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Nao foi possivel enviar.");
+    document.getElementById("contribImageUrlInput").value = "";
+    document.getElementById("contribImageNoteInput").value = "";
+    setContribImageNote("Sugestao enviada com sucesso para avaliacao.", "success");
+  }} catch(err) {{
+    setContribImageNote(err.message, "error");
+  }}
+}};
+"""
+    return _page_template("Sugerir foto", body, extra_js=js, include_tg=True)
+
+
+def build_cards_contrib_work_page(*, uid: int, banner_url: str) -> str:
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="{_h(banner_url)}" alt="Nova obra"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Work request</div>
+    <h1 class="hero-title">Pedir nova obra para cards</h1>
+    <p class="hero-subtitle">Busque um titulo na base, selecione o item certo e registre o pedido com o mesmo padrao visual do restante do produto.</p>
+  </div>
+</section>
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Busca</div><h2 class="section-title">Escolha o tipo de obra</h2></div>
+    <div class="section-meta" id="contribWorkMeta">Pesquise anime ou manga.</div>
+  </div>
+  <div class="segmented" style="margin-top:14px;">
+    <button type="button" class="segmented-btn active" id="contribWorkAnimeBtn">Anime</button>
+    <button type="button" class="segmented-btn" id="contribWorkMangaBtn">Manga</button>
+  </div>
+  <label class="searchbar" style="margin-top:14px;"><span class="input-icon">Busca</span><input id="contribWorkSearchInput" type="text" placeholder="Buscar obra para cards..."></label>
+  <div class="media-grid" id="contribWorkResults" style="margin-top:14px;"></div>
+  <div id="contribWorkEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nenhum resultado</strong>Pesquise um titulo para registrar o pedido.</div>
+</section>
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Envio</div><h2 class="section-title">Obra selecionada</h2></div>
+    <div class="section-meta">A equipe vai analisar se a obra entra no sistema de cards.</div>
+  </div>
+  <div class="setting-group" style="margin-top:14px;">
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Selecionado</h3><p class="setting-sub" id="contribWorkSelectedLabel">Nenhuma obra selecionada ainda.</p></div></div>
+    <button class="action-btn action-btn--primary" id="sendContribWorkBtn" style="width:100%;">Enviar pedido de obra</button>
+  </div>
+</section>
+<div id="contribWorkNote" class="floating-note">Area de pedidos de obra sendo carregada...</div>
+<div class="footer-note">Source Baltigo . Suggest work</div>
+"""
+    js = f"""
+const CONTRIB_WORK_UID = resolveWebappUid({int(uid)});
+const contribWorkState = {{ mediaType: "anime", selected: null, items: [] }};
+const contribWorkNote = document.getElementById("contribWorkNote");
+function setContribWorkNote(message, tone){{ contribWorkNote.textContent = message || ""; contribWorkNote.dataset.tone = tone || ""; }}
+function applyContribWorkType(){{
+  document.getElementById("contribWorkAnimeBtn").classList.toggle("active", contribWorkState.mediaType === "anime");
+  document.getElementById("contribWorkMangaBtn").classList.toggle("active", contribWorkState.mediaType === "manga");
+  document.getElementById("contribWorkSearchInput").placeholder = contribWorkState.mediaType === "anime" ? "Buscar anime para cards..." : "Buscar manga para cards...";
+}}
+function renderContribWorkResults(){{
+  const root = document.getElementById("contribWorkResults");
+  const empty = document.getElementById("contribWorkEmpty");
+  document.getElementById("contribWorkMeta").textContent = contribWorkState.items.length ? ("Resultados " + String(contribWorkState.items.length)) : "Pesquise anime ou manga.";
+  if (!contribWorkState.items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = contribWorkState.items.map(function(item){{
+    const disabled = item.already_exists || item.already_requested;
+    const img = item.cover ? '<img src="' + esc(item.cover) + '" alt="' + esc(item.title) + '" loading="lazy" onerror="setImageFallback(this,\\'MEDIA\\')">' : '';
+    const statePill = item.already_exists ? '<span class="soft-pill">Ja existe</span>' : (item.already_requested ? '<span class="soft-pill soft-pill--accent">Ja pedido</span>' : '<span class="soft-pill soft-pill--cool">Disponivel</span>');
+    return ''
+      + '<article class="media-card">'
+      + '<div class="media-cover">' + img + '<div class="media-badge">' + esc(contribWorkState.mediaType) + '</div></div>'
+      + '<div class="media-body"><h3 class="card-title">' + esc(item.title || "Obra") + '</h3><div class="pill-row">' + statePill + (item.year ? '<span class="soft-pill">' + esc(item.year) + '</span>' : '') + '</div><button class="action-btn action-btn--cool" style="width:100%; margin-top:14px;" data-select-work="' + esc(item.id || 0) + '"' + (disabled ? ' disabled' : '') + '>Selecionar obra</button></div>'
+      + '</article>';
+  }}).join("");
+  root.querySelectorAll("[data-select-work]").forEach(function(button){{
+    button.onclick = function(){{
+      const id = Number(button.getAttribute("data-select-work") || 0);
+      contribWorkState.selected = contribWorkState.items.find(function(item){{ return Number(item.id || 0) === id; }}) || null;
+      document.getElementById("contribWorkSelectedLabel").textContent = contribWorkState.selected ? (contribWorkState.selected.title + " . " + contribWorkState.mediaType + " . ID " + contribWorkState.selected.id) : "Nenhuma obra selecionada ainda.";
+      setContribWorkNote("Obra selecionada para o pedido.", "success");
+    }};
+  }});
+}}
+async function searchContribWork(query){{
+  const q = String(query || "").trim();
+  if (q.length < 2){{
+    contribWorkState.items = [];
+    renderContribWorkResults();
+    return;
+  }}
+  setSkeleton("contribWorkResults", 4);
+  const res = await fetch("/api/cards/contrib/work/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(contribWorkState.mediaType));
+  const data = await res.json();
+  contribWorkState.items = Array.isArray(data.items) ? data.items : [];
+  renderContribWorkResults();
+}}
+document.getElementById("contribWorkAnimeBtn").onclick = function(){{ contribWorkState.mediaType = "anime"; contribWorkState.items = []; contribWorkState.selected = null; applyContribWorkType(); renderContribWorkResults(); }};
+document.getElementById("contribWorkMangaBtn").onclick = function(){{ contribWorkState.mediaType = "manga"; contribWorkState.items = []; contribWorkState.selected = null; applyContribWorkType(); renderContribWorkResults(); }};
+document.getElementById("contribWorkSearchInput").addEventListener("input", debounce(async function(event){{
+  try {{
+    await searchContribWork(event.target.value || "");
+  }} catch(err) {{
+    contribWorkState.items = [];
+    renderContribWorkResults();
+    setContribWorkNote("Falha ao buscar obra.", "error");
+  }}
+}}, 260));
+document.getElementById("sendContribWorkBtn").onclick = async function(){{
+  try {{
+    if (!contribWorkState.selected) throw new Error("Selecione uma obra antes de enviar.");
+    setContribWorkNote("Enviando pedido de obra...", "");
+    const response = await authJson("/api/cards/contrib/work", {{ uid: CONTRIB_WORK_UID, method: "POST", json: {{ media_type: contribWorkState.mediaType, anilist_id: contribWorkState.selected.id, title: contribWorkState.selected.title, cover_url: contribWorkState.selected.cover || "" }} }});
+    if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Nao foi possivel enviar.");
+    setContribWorkNote("Pedido de obra enviado com sucesso.", "success");
+  }} catch(err) {{
+    setContribWorkNote(err.message, "error");
+  }}
+}};
+applyContribWorkType();
+"""
+    return _page_template("Pedir obra", body, extra_js=js, include_tg=True)
