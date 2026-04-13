@@ -962,17 +962,19 @@ def create_or_get_user(user_id: int):
 
 def touch_user_identity(user_id: int, username: str = "", full_name: str = ""):
     create_or_get_user(user_id)
+    username = (username or "").strip()
+    full_name = (full_name or "").strip()
     _run(
         """
         UPDATE users
-        SET username = %s,
-            full_name = %s,
+        SET username = COALESCE(NULLIF(%s, ''), username),
+            full_name = COALESCE(NULLIF(%s, ''), full_name),
             updated_at = NOW()
         WHERE user_id = %s
         """,
         (
-            (username or "").strip(),
-            (full_name or "").strip(),
+            username,
+            full_name,
             int(user_id),
         )
     )
@@ -4546,6 +4548,86 @@ def create_card_image_suggestion(data):
         RETURNING *
         """,
         data,
+        fetch="one",
+    )
+
+
+def card_work_request_exists(media_type, title, anilist_id=None):
+    media_type = str(media_type or "").strip().lower()
+    title_norm = normalize_media_title(str(title or ""))
+    anilist_id = int(anilist_id or 0)
+
+    if media_type not in {"anime", "manga"}:
+        return False
+
+    if anilist_id > 0:
+        row = _run(
+            """
+            SELECT 1
+            FROM card_work_requests
+            WHERE media_type = %s
+              AND anilist_id = %s
+              AND status IN ('pending', 'approved')
+            LIMIT 1
+            """,
+            (media_type, anilist_id),
+            fetch="one",
+        )
+        if row:
+            return True
+
+    if not title_norm:
+        return False
+
+    row = _run(
+        """
+        SELECT 1
+        FROM card_work_requests
+        WHERE media_type = %s
+          AND title_norm = %s
+          AND status IN ('pending', 'approved')
+        LIMIT 1
+        """,
+        (media_type, title_norm),
+        fetch="one",
+    )
+    return bool(row)
+
+
+def create_card_work_request(data):
+    payload = dict(data or {})
+    payload["media_type"] = str(payload.get("media_type") or "").strip().lower()
+    payload["title"] = str(payload.get("title") or "").strip()
+    payload["title_norm"] = normalize_media_title(payload["title"])
+    payload["cover_url"] = str(payload.get("cover_url") or "").strip()
+
+    return _run(
+        """
+        INSERT INTO card_work_requests
+        (
+            user_id,
+            username,
+            full_name,
+            media_type,
+            anilist_id,
+            title,
+            title_norm,
+            cover_url
+        )
+        VALUES
+        (
+            %(user_id)s,
+            %(username)s,
+            %(full_name)s,
+            %(media_type)s,
+            %(anilist_id)s,
+            %(title)s,
+            %(title_norm)s,
+            %(cover_url)s
+        )
+        RETURNING *
+        """,
+        payload,
         fetch="one",
     )
 
