@@ -2,1826 +2,610 @@
   {
     "word": "naruto",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "O ninja que quer ser Hokage"
   },
   {
     "word": "sasuke",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Rival de Naruto do Clã Uchiha"
   },
   {
     "word": "itachi",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Irmão mais velho de Sasuke"
   },
   {
     "word": "hinata",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Herdeira do Clã Hyuga"
   },
   {
     "word": "sakura",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "A shinobi médica do Time 7"
   },
   {
     "word": "minato",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "O Yondaime Hokage, Relâmpago Amarelo"
   },
   {
     "word": "madara",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Lendário líder do Clã Uchiha"
   },
   {
-    "word": "konata",
+    "word": "temari",
     "category": "personagem",
-    "source": "Lucky Star"
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Irmã de Gaara que usa leque"
   },
   {
-    "word": "shizuo",
+    "word": "kabuto",
     "category": "personagem",
-    "source": "Durarara"
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Espião médico de Orochimaru"
   },
   {
-    "word": "gintok",
+    "word": "nagato",
     "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Líder da Akatsuki, usuário de Pain"
   },
   {
     "word": "ichigo",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Bleach",
+    "difficulty": 1,
+    "hint": "Substituto de Shinigami de cabelo laranja"
   },
   {
-    "word": "orihim",
+    "word": "hollow",
+    "category": "criatura",
+    "source": "Bleach",
+    "difficulty": 2,
+    "hint": "Espírito maligno devorador de almas"
+  },
+  {
+    "word": "espada",
+    "category": "grupo",
+    "source": "Bleach",
+    "difficulty": 2,
+    "hint": "Os dez arrancar mais poderosos de Aizen"
+  },
+  {
+    "word": "vegeta",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Dragon Ball",
+    "difficulty": 1,
+    "hint": "Príncipe dos Saiyajins orgulhoso"
   },
   {
-    "word": "ulquio",
+    "word": "trunks",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Dragon Ball",
+    "difficulty": 2,
+    "hint": "Filho de Vegeta e Bulma do futuro"
   },
   {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
+    "word": "frieza",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Dragon Ball",
+    "difficulty": 1,
+    "hint": "Imperador galáctico arquivilão"
   },
   {
-    "word": "sasuke",
+    "word": "yamcha",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Dragon Ball",
+    "difficulty": 2,
+    "hint": "Ex-bandido do deserto apaixonado por Bulma"
   },
   {
-    "word": "itachi",
+    "word": "shanks",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Imperador do Mar com braço perdido"
   },
   {
-    "word": "hinata",
+    "word": "franky",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Cyborg carpinteiro do Bando do Chapéu de Palha"
   },
   {
-    "word": "sakura",
+    "word": "bonney",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 3,
+    "hint": "Pirata famosa ligada ao governo"
   },
   {
-    "word": "minato",
+    "word": "mikasa",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Attack on Titan",
+    "difficulty": 1,
+    "hint": "A melhor soldado da Pesquisa, protetora de Eren"
   },
   {
-    "word": "madara",
+    "word": "reiner",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Attack on Titan",
+    "difficulty": 2,
+    "hint": "O Titan Couraçado, traidor revelado"
   },
   {
-    "word": "konata",
+    "word": "titans",
+    "category": "criatura",
+    "source": "Attack on Titan",
+    "difficulty": 1,
+    "hint": "Gigantes devoradores de humanos"
+  },
+  {
+    "word": "tengen",
     "category": "personagem",
-    "source": "Lucky Star"
+    "source": "Demon Slayer",
+    "difficulty": 2,
+    "hint": "Pilar do Som extravagante e fashionista"
   },
   {
-    "word": "shizuo",
+    "word": "gyomei",
     "category": "personagem",
-    "source": "Durarara"
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar da Pedra, o mais forte dos Hashiras"
   },
   {
-    "word": "gintok",
+    "word": "emilia",
     "category": "personagem",
-    "source": "Gintama"
+    "source": "Re:Zero",
+    "difficulty": 2,
+    "hint": "Candidata ao trono de meio-elfa"
   },
   {
-    "word": "akashi",
+    "word": "subaru",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Re:Zero",
+    "difficulty": 1,
+    "hint": "Herói isekai com poder de retornar pela morte"
   },
   {
-    "word": "aomine",
+    "word": "nezuko",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Demon Slayer",
+    "difficulty": 1,
+    "hint": "Irmã demônio de Tanjiro que anda em caixinha"
   },
   {
-    "word": "kagami",
+    "word": "bakugo",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "My Hero Academia",
+    "difficulty": 1,
+    "hint": "Herói explosivo e rabugento"
   },
   {
-    "word": "kuroko",
+    "word": "ochako",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "My Hero Academia",
+    "difficulty": 2,
+    "hint": "Heroína que neutraliza a gravidade"
   },
   {
-    "word": "rukiax",
+    "word": "mineta",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "My Hero Academia",
+    "difficulty": 2,
+    "hint": "Herói de uvas pegajosas e personalidade duvidosa"
   },
   {
-    "word": "ichigo",
+    "word": "togata",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "My Hero Academia",
+    "difficulty": 3,
+    "hint": "O sucessor planejado de All Might, Mirio"
   },
   {
-    "word": "orihim",
+    "word": "shindo",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "My Hero Academia",
+    "difficulty": 3,
+    "hint": "Herói rival de Deku com Quirk de tremores"
   },
   {
-    "word": "ulquio",
+    "word": "shinji",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Evangelion",
+    "difficulty": 1,
+    "hint": "Piloto relutante do Eva-01"
   },
   {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
+    "word": "misato",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Evangelion",
+    "difficulty": 2,
+    "hint": "Comandante de operações da NERV"
   },
   {
-    "word": "sasuke",
+    "word": "kirito",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Sword Art Online",
+    "difficulty": 1,
+    "hint": "O Espadachim Negro preso em SAO"
   },
   {
-    "word": "itachi",
+    "word": "kazuma",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "KonoSuba",
+    "difficulty": 2,
+    "hint": "Aventureiro azarado com partido cheio de idiotas"
   },
   {
-    "word": "hinata",
+    "word": "albedo",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Overlord",
+    "difficulty": 2,
+    "hint": "Guardião Supremo obcecada por Ainz"
   },
   {
-    "word": "sakura",
+    "word": "rimuru",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Tensei Slime",
+    "difficulty": 2,
+    "hint": "O slime reencarnado que vira lord"
   },
   {
-    "word": "minato",
+    "word": "violet",
     "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
+    "source": "Violet Evergarden",
+    "difficulty": 2,
+    "hint": "Auto Memória Doll que aprendeu a sentir"
   },
   {
     "word": "shizuo",
     "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
+    "source": "Durarara!!",
+    "difficulty": 2,
+    "hint": "O homem mais forte de Ikebukuro, odeia Izaya"
   },
   {
     "word": "konata",
     "category": "personagem",
-    "source": "Lucky Star"
+    "source": "Lucky Star",
+    "difficulty": 2,
+    "hint": "Otaku nerd apaixonada por anime e games"
   },
   {
-    "word": "shizuo",
+    "word": "chrome",
     "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Dr. Stone",
+    "difficulty": 2,
+    "hint": "Cientista aliado de Senku no mundo de pedra"
   },
   {
     "word": "kuroko",
     "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
+    "source": "Kuroko no Basket",
+    "difficulty": 1,
+    "hint": "O Fantasma da Geração dos Milagres"
   },
   {
     "word": "akashi",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "Capitão perfeito da Geração dos Milagres"
   },
   {
     "word": "aomine",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "O Ás que desistiu de adversários"
   },
   {
     "word": "kagami",
     "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "O Tigre que se torna par de Kuroko"
   },
   {
     "word": "senpai",
     "category": "termo",
-    "source": "Cultura Anime"
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Aluno mais velho ou pessoa admirada"
   },
   {
-    "word": "shonen",
+    "word": "sensei",
     "category": "termo",
-    "source": "Anime"
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Professor, mestre ou especialista"
   },
   {
-    "word": "seinen",
+    "word": "nakama",
     "category": "termo",
-    "source": "Anime"
+    "source": "Cultura Anime",
+    "difficulty": 2,
+    "hint": "Companheiro, amigo de confiança, tripulação"
   },
   {
-    "word": "mechas",
+    "word": "kawaii",
     "category": "termo",
-    "source": "Anime"
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Fofo, adorável em japonês"
   },
   {
-    "word": "isekai",
+    "word": "filler",
     "category": "termo",
-    "source": "Anime"
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Episódio extra que não avança a história"
   },
   {
-    "word": "otakus",
+    "word": "ending",
     "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Música e animação do final do episódio"
   },
   {
     "word": "mangas",
     "category": "termo",
-    "source": "Anime"
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Quadrinhos japoneses em preto e branco"
   },
   {
     "word": "animes",
     "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Animações japonesas que o mundo ama"
   },
   {
     "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Gênero voltado ao público masculino adulto"
   },
   {
     "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Gênero para jovens cheio de batalhas"
   },
   {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
+    "word": "shoujo",
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Gênero romântico para o público feminino"
   },
   {
     "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Personagem transportado para outro mundo"
   },
   {
     "word": "katana",
     "category": "objeto",
-    "source": "Anime"
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Espada curva tradicional japonesa"
   },
   {
-    "word": "samura",
+    "word": "dragon",
+    "category": "criatura",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Criatura mítica de fogo e escamas"
+  },
+  {
+    "word": "pirata",
     "category": "tema",
-    "source": "Anime"
+    "source": "One Piece",
+    "difficulty": 1,
+    "hint": "Saqueadores dos mares em busca do tesouro"
   },
   {
-    "word": "naruto",
+    "word": "brooks",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Esqueleto músico da tripulação"
   },
   {
-    "word": "sasuke",
+    "word": "mihawk",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "O melhor espadachim do mundo"
   },
   {
-    "word": "itachi",
+    "word": "smoker",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "One Piece",
+    "difficulty": 3,
+    "hint": "Vice-almirante que persegue Luffy"
   },
   {
-    "word": "hinata",
+    "word": "sanemi",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar do Vento rabugento"
   },
   {
-    "word": "sakura",
+    "word": "obanai",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar da Serpente"
   },
   {
-    "word": "minato",
+    "word": "kaworu",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Evangelion",
+    "difficulty": 3,
+    "hint": "O 17° Anjo, amigo misterioso de Shinji"
   },
   {
-    "word": "madara",
+    "word": "ryuuku",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Death Note",
+    "difficulty": 1,
+    "hint": "Shinigami que deixou a Death Note cair"
   },
   {
-    "word": "konata",
+    "word": "kohaku",
     "category": "personagem",
-    "source": "Lucky Star"
+    "source": "Dr. Stone",
+    "difficulty": 2,
+    "hint": "Guerreira do Vilarejo de Ishigami"
   },
   {
-    "word": "shizuo",
+    "word": "edward",
     "category": "personagem",
-    "source": "Durarara"
+    "source": "Fullmetal Alchemist",
+    "difficulty": 1,
+    "hint": "O Alquimista de Aço que busca a Pedra Filosofal"
   },
   {
-    "word": "gintok",
+    "word": "bokuto",
     "category": "personagem",
-    "source": "Gintama"
+    "source": "Haikyuu!!",
+    "difficulty": 2,
+    "hint": "Jogador de ponta energético e carismático"
   },
   {
-    "word": "akashi",
+    "word": "killua",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Hunter x Hunter",
+    "difficulty": 1,
+    "hint": "Assassino herdeiro amigo de Gon"
   },
   {
-    "word": "aomine",
+    "word": "hisoka",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Hunter x Hunter",
+    "difficulty": 1,
+    "hint": "Mago palhaço obcecado por lutas fortes"
   },
   {
-    "word": "kagami",
+    "word": "netero",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Hunter x Hunter",
+    "difficulty": 2,
+    "hint": "O presidente da Associação Hunter"
   },
   {
-    "word": "kuroko",
+    "word": "feitan",
     "category": "personagem",
-    "source": "Kuroko no Basket"
+    "source": "Hunter x Hunter",
+    "difficulty": 3,
+    "hint": "Membro da Brigada Fantasma veloz"
   },
   {
-    "word": "rukiax",
+    "word": "suzaku",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Code Geass",
+    "difficulty": 2,
+    "hint": "O Cavaleiro da Área 11, rival e amigo de Lelouch"
   },
   {
-    "word": "ichigo",
+    "word": "kagome",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Inuyasha",
+    "difficulty": 1,
+    "hint": "Garota do futuro que cai no poço mágico"
   },
   {
-    "word": "orihim",
+    "word": "megumi",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "Exorcista herdeiro da técnica das sombras"
   },
   {
-    "word": "ulquio",
+    "word": "sukuna",
     "category": "personagem",
-    "source": "Bleach"
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "O Rei das Pragas de mil anos"
   },
   {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
+    "word": "nobara",
     "category": "personagem",
-    "source": "Durarara"
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "Exorcista que usa prego e martelo"
   },
   {
-    "word": "gintok",
+    "word": "kurisu",
     "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
-  },
-  {
-    "word": "naruto",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sasuke",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "itachi",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "hinata",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "sakura",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "minato",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "madara",
-    "category": "personagem",
-    "source": "Naruto"
-  },
-  {
-    "word": "konata",
-    "category": "personagem",
-    "source": "Lucky Star"
-  },
-  {
-    "word": "shizuo",
-    "category": "personagem",
-    "source": "Durarara"
-  },
-  {
-    "word": "gintok",
-    "category": "personagem",
-    "source": "Gintama"
-  },
-  {
-    "word": "akashi",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "aomine",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kagami",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "kuroko",
-    "category": "personagem",
-    "source": "Kuroko no Basket"
-  },
-  {
-    "word": "rukiax",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ichigo",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "orihim",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "ulquio",
-    "category": "personagem",
-    "source": "Bleach"
-  },
-  {
-    "word": "senpai",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "shonen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "seinen",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "mechas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "isekai",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "otakus",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "ramens",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "cospla",
-    "category": "termo",
-    "source": "Cultura Anime"
-  },
-  {
-    "word": "mangas",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "animes",
-    "category": "termo",
-    "source": "Anime"
-  },
-  {
-    "word": "katana",
-    "category": "objeto",
-    "source": "Anime"
-  },
-  {
-    "word": "samura",
-    "category": "tema",
-    "source": "Anime"
+    "source": "Steins;Gate",
+    "difficulty": 2,
+    "hint": "Neurocientista brilhante, Christina"
   },
   {
-    "word": "naruto",
+    "word": "jellal",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Fairy Tail",
+    "difficulty": 3,
+    "hint": "O mago das estrelas de olhos tatuados"
   },
   {
-    "word": "sasuke",
+    "word": "toguro",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Yu Yu Hakusho",
+    "difficulty": 2,
+    "hint": "O vilão que escolheu se tornar monstro"
   },
   {
-    "word": "itachi",
+    "word": "kurama",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Yu Yu Hakusho",
+    "difficulty": 2,
+    "hint": "A Raposa de Nove Caudas em corpo humano"
   },
   {
-    "word": "hinata",
+    "word": "yusuke",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Yu Yu Hakusho",
+    "difficulty": 1,
+    "hint": "O detetive espiritual ressuscitado"
   },
   {
-    "word": "sakura",
+    "word": "noelle",
     "category": "personagem",
-    "source": "Naruto"
+    "source": "Black Clover",
+    "difficulty": 2,
+    "hint": "Princesa da Água que não controla seu poder"
   }
 ]
