@@ -474,16 +474,16 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         year = _clean_text(meta.get("year"))
 
         lines = [
-            f"<b>{name}</b>",
+            f"🃏 <b>{name}</b>",
             "",
-            f"Gênero: <code>{gender}</code>",
-            f"Nascimento: <code>{birth}</code>",
-            f"Favoritos: <code>{favourites}</code>",
+            f"<b>Gênero:<b> <code>{gender}</code>",
+            f"<b>Nascimento:<b> <code>{birth}</code>",
+            f"<b>Favoritos:<b> <code>{favourites}</code>",
             "",
-            f"Obra: <code>{media_title}</code>",
-            f"Tipo: <code>{media_type}</code>",
-            f"Papel: <code>{role}</code>",
-            f"Ano: <code>{year}</code>",
+            f"<b>Obra:<b> <code>{media_title}</code>",
+            f"<b>Tipo:<b> <code>{media_type}</code>",
+            f"<b>Papel:<b> <code>{role}</code>",
+            f"<b>Ano:<b> <code>{year}</code>",
         ]
         return "\n".join(lines)[:1024]
 
