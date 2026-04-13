@@ -2133,6 +2133,7 @@ import os
 from typing import Any, Dict, List
 from fastapi import Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from cards_service import build_cards_final_data, reload_cards_cache
 
 CARDS_ASSETS_PATH = os.getenv("CARDS_ASSETS_PATH", "data/personagens_anilist.txt").strip()
 CARDS_TOP_BANNER_URL = os.getenv(
@@ -2267,22 +2268,30 @@ except Exception as e:
     print(f"[cards] erro inesperado no startup: {repr(e)}", flush=True)
 
 
-@app.get("/api/cards/reload")
-def api_cards_reload():
-    total = _load_cards_assets()
-    return JSONResponse({"ok": True, "total": total})
+def _cards_api_reload():
+    return _cards_api_reload()
+
+    # Mantem as rotas antigas, mas usa a mesma fonte central
+    # do /card e dos comandos admin para refletir setfoto/overrides.
+    reload_cards_cache()
+    data = build_cards_final_data(force_reload=True)
+    return JSONResponse({
+        "ok": True,
+        "total": len(data["animes_list"]),
+        "total_animes": len(data["animes_list"]),
+        "total_characters": len(data["characters_by_id"]),
+    })
 
 
-@app.get("/api/cards/animes")
-def api_cards_animes(
+def _cards_api_animes(
     q: str = Query(default="", max_length=120),
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    return _cards_api_animes(q=q, limit=limit, offset=offset)
 
     q = (q or "").strip().lower()
-    data = _CARDS_DATA
+    data = list(build_cards_final_data()["animes_list"])
 
     if q:
         data = [x for x in data if q in x["anime"].lower()]
@@ -2306,16 +2315,21 @@ def api_cards_animes(
     })
 
 
-@app.get("/api/cards/characters")
-def api_cards_characters(
+def _cards_api_characters(
     anime_id: int = Query(...),
     q: str = Query(default="", max_length=120),
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
-    _ensure_cards_loaded()
+    return _cards_api_characters(
+        anime_id=anime_id,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
 
-    anime = _CARDS_INDEX.get(anime_id)
+    data = build_cards_final_data()
+    anime = data["animes_by_id"].get(anime_id)
     if not anime:
         return JSONResponse({
             "ok": False,
@@ -2324,7 +2338,7 @@ def api_cards_characters(
             "items": [],
         })
 
-    chars = anime["characters"]
+    chars = list(data["characters_by_anime"].get(anime_id, []))
     q = (q or "").strip().lower()
 
     if q:
@@ -2347,8 +2361,9 @@ def api_cards_characters(
     })
 
 
-@app.get("/cards", response_class=HTMLResponse)
-def cards_page():
+def _cards_home_page():
+    return _cards_home_page()
+
     html = """
 <!doctype html>
 <html lang="pt-br">
@@ -2755,6 +2770,8 @@ def cards_page():
 
 @app.get("/cards/anime", response_class=HTMLResponse)
 def cards_anime_page(anime_id: int = Query(...)):
+    return _cards_anime_page(anime_id=anime_id)
+
     html = """
 <!doctype html>
 <html lang="pt-br">
@@ -3818,13 +3835,14 @@ def cards_page():
 
     let html = "";
     for (const item of items){
-      html += `<button class="sub-btn" onclick="openSubcategory('${esc(item.name)}')">${esc(item.name)} (${item.count || 0})</button>`;
+      const encodedName = encodeURIComponent(String(item.name || ""));
+      html += `<button class="sub-btn" onclick="openSubcategoryByEncoded('${encodedName}')">${esc(item.name)} (${item.count || 0})</button>`;
     }
     subsBox.innerHTML = html;
   }
 
-  function openSubcategory(name){
-    window.location.href = "/cards/subcategory?name=" + encodeURIComponent(name);
+  function openSubcategoryByEncoded(encodedName){
+    window.location.href = "/cards/subcategory?name=" + encodedName;
   }
 
   async function load(){
@@ -3854,8 +3872,7 @@ def cards_page():
     return HTMLResponse(html)
 
 
-@app.get("/cards/anime", response_class=HTMLResponse)
-def cards_anime_page(anime_id: int = Query(...)):
+def _cards_anime_page(anime_id: int):
     html = """
 <!doctype html>
 <html lang="pt-br">
@@ -4275,7 +4292,9 @@ def cards_anime_page(anime_id: int = Query(...)):
 
 @app.get("/cards/subcategory", response_class=HTMLResponse)
 def cards_subcategory_page(name: str = Query(...)):
-    safe_name = str(name).replace("\\", "\\\\").replace("'", "\\'")
+    raw_name = str(name)
+    safe_name = raw_name.replace("\\", "\\\\").replace("'", "\\'")
+    safe_name_html = html.escape(raw_name)
     html = f"""
 <!doctype html>
 <html lang="pt-br">
@@ -4320,20 +4339,24 @@ def cards_subcategory_page(name: str = Query(...)):
   .meta2{{padding:13px 14px 15px;}}
   .name{{font-weight:900;font-size:14px;text-transform:uppercase;margin:0;}}
   .sub{{margin-top:8px;color:rgba(255,255,255,.52);font-weight:800;letter-spacing:.12em;font-size:11px;text-transform:uppercase;}}
+  .empty{{margin-top:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);border-radius:22px;padding:18px;color:rgba(255,255,255,.70);font-weight:700;text-align:center;}}
+  .empty{{margin-top:16px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);border-radius:22px;padding:18px;color:rgba(255,255,255,.70);font-weight:700;text-align:center;}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <a class="back" href="/cards">← Voltar</a>
-  <div class="title">Subcategoria: {name}</div>
+  <div class="title">Subcategoria: {safe_name_html}</div>
   <div id="meta" class="meta">Carregando...</div>
   <div id="cards" class="cards"></div>
+  <div id="empty" class="empty" style="display:none;">Nenhum personagem encontrado nesta subcategoria.</div>
 </div>
 
 <script>
 const subName = '{safe_name}';
 const cards = document.getElementById("cards");
 const meta = document.getElementById("meta");
+const empty = document.getElementById("empty");
 const fallbackTop = "{CARDS_TOP_BANNER_URL}";
 
 function esc(s){{
@@ -4351,6 +4374,14 @@ async function load(){{
   const data = await res.json();
   const items = data.items || [];
   meta.textContent = "TOTAL DE PERSONAGENS: " + items.length;
+
+  if (!items.length){{
+    cards.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }}
+
+  empty.style.display = "none";
 
   let html = "";
   for (const item of items){{
@@ -4379,7 +4410,9 @@ load();
 
 @app.get("/cards/search", response_class=HTMLResponse)
 def cards_search_page(q: str = Query(...)):
-    safe_q = str(q).replace("\\", "\\\\").replace("'", "\\'")
+    raw_q = str(q)
+    safe_q = raw_q.replace("\\", "\\\\").replace("'", "\\'")
+    safe_q_html = html.escape(raw_q)
     html = f"""
 <!doctype html>
 <html lang="pt-br">
@@ -4427,15 +4460,17 @@ def cards_search_page(q: str = Query(...)):
 <body>
 <div class="wrap">
   <a class="back" href="/cards">← Voltar</a>
-  <div class="title">Busca: {q}</div>
+  <div class="title">Busca: {safe_q_html}</div>
   <div id="meta" class="meta">Carregando...</div>
   <div id="cards" class="cards"></div>
+  <div id="empty" class="empty" style="display:none;">Nenhum personagem encontrado para essa busca.</div>
 </div>
 
 <script>
 const searchQ = '{safe_q}';
 const cards = document.getElementById("cards");
 const meta = document.getElementById("meta");
+const empty = document.getElementById("empty");
 const fallbackTop = "{CARDS_TOP_BANNER_URL}";
 
 function esc(s){{
@@ -4453,6 +4488,14 @@ async function load(){{
   const data = await res.json();
   const items = data.items || [];
   meta.textContent = "TOTAL DE RESULTADOS: " + items.length;
+
+  if (!items.length){{
+    cards.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }}
+
+  empty.style.display = "none";
 
   let html = "";
   for (const item of items){{
