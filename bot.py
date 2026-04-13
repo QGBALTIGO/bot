@@ -184,7 +184,7 @@ def register_commands(app: Application):
 
     # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("cccolecao", cccolecao))
+    app.add_handler(CommandHandler("colec", cccolecao))
 
     # economia
     app.add_handler(CommandHandler("loja", loja))
