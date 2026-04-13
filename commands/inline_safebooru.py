@@ -42,7 +42,7 @@ INLINE_SAFEBOORU_ENFORCE_ACCESS = (
 )
 
 INLINE_SAFEBOORU_MIN_QUERY = max(1, int(os.getenv("INLINE_SAFEBOORU_MIN_QUERY", "2")))
-INLINE_SAFEBOORU_LIMIT = max(1, min(50, int(os.getenv("INLINE_SAFEBOORU_LIMIT", "20"))))
+INLINE_SAFEBOORU_LIMIT = max(1, min(50, int(os.getenv("INLINE_SAFEBOORU_LIMIT", "50"))))
 INLINE_SAFEBOORU_CACHE_TIME = max(1, int(os.getenv("INLINE_SAFEBOORU_CACHE_TIME", "60")))
 
 INLINE_SAFEBOORU_DEFAULT_TAGS = (
@@ -62,13 +62,6 @@ BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else ""
 PM_START_PARAMETER = os.getenv("INLINE_SAFEBOORU_START_PARAMETER", "inline_safebooru").strip() or "inline_safebooru"
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off"}
-
-
 def _normalize_query(raw_query: str) -> str:
     q = (raw_query or "").strip()
 
@@ -80,6 +73,37 @@ def _normalize_query(raw_query: str) -> str:
 
     q = " ".join(q.split())
     return q
+
+
+def _build_query_candidates(query: str) -> list[str]:
+    """
+    Gera variações para pegar mais resultados.
+    Ex.:
+    - "zero two" -> ["zero_two", "zero two"]
+    - "rem" -> ["rem"]
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+
+    variants: list[str] = []
+
+    underscored = q.replace(" ", "_")
+    if underscored and underscored != q:
+        variants.append(underscored)
+
+    variants.append(q)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in variants:
+        key = item.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item.strip())
+
+    return deduped
 
 
 def _parse_offset(offset: str) -> int:
@@ -166,17 +190,24 @@ async def _check_inline_access(
 
 def _pick_photo_url(post: dict) -> str:
     """
-    Para inline photo no Telegram, preferimos JPEG.
-    Tentamos sample_url primeiro (menor / mais leve), depois file_url.
+    Preferimos JPEG.
+    Ordem:
+    1) sample_url
+    2) file_url
+    3) preview_url (fallback para não perder tantos resultados)
     """
     sample_url = _normalize_url(post.get("sample_url"))
     file_url = _normalize_url(post.get("file_url"))
+    preview_url = _normalize_url(post.get("preview_url"))
 
     if sample_url and _is_jpeg(sample_url):
         return sample_url
 
     if file_url and _is_jpeg(file_url):
         return file_url
+
+    if preview_url and _is_jpeg(preview_url):
+        return preview_url
 
     return ""
 
@@ -251,7 +282,7 @@ def _build_result(post: dict, idx: int) -> InlineQueryResultPhoto | None:
     )
 
 
-async def _fetch_posts(tags: str, page: int) -> list[dict]:
+async def _fetch_posts_once(tags: str, page: int) -> list[dict]:
     params = {
         "page": "dapi",
         "s": "post",
@@ -279,12 +310,42 @@ async def _fetch_posts(tags: str, page: int) -> list[dict]:
         if isinstance(data, list):
             return [x for x in data if isinstance(x, dict)]
 
-        if isinstance(data, dict):
-            # fallback defensivo caso a origem devolva objeto
-            if isinstance(data.get("posts"), list):
-                return [x for x in data["posts"] if isinstance(x, dict)]
+        if isinstance(data, dict) and isinstance(data.get("posts"), list):
+            return [x for x in data["posts"] if isinstance(x, dict)]
 
         return []
+
+
+async def _search_posts(query: str, page: int) -> tuple[list[dict], bool]:
+    """
+    Busca em mais de uma variação da query e junta sem duplicar.
+    Retorna:
+    - lista de posts
+    - has_more
+    """
+    candidates = _build_query_candidates(query)
+    merged: list[dict] = []
+    seen_ids: set[int] = set()
+    has_more = False
+
+    for candidate in candidates:
+        posts = await _fetch_posts_once(candidate, page)
+
+        if len(posts) >= INLINE_SAFEBOORU_LIMIT:
+            has_more = True
+
+        for post in posts:
+            post_id = _safe_int(post.get("id"))
+            if post_id <= 0 or post_id in seen_ids:
+                continue
+
+            seen_ids.add(post_id)
+            merged.append(post)
+
+            if len(merged) >= INLINE_SAFEBOORU_LIMIT:
+                return merged, has_more
+
+    return merged, has_more
 
 
 async def _answer_empty(
@@ -334,7 +395,7 @@ async def safebooru_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     page = _parse_offset(inline_query.offset)
 
     try:
-        posts = await _fetch_posts(query, page)
+        posts, has_more = await _search_posts(query, page)
     except Exception:
         logger.exception("Falha buscando SafeBooru no inline.")
         await inline_query.answer(
@@ -364,7 +425,7 @@ async def safebooru_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if len(results) >= INLINE_SAFEBOORU_LIMIT:
             break
 
-    next_offset = str(page + 1) if len(posts) >= INLINE_SAFEBOORU_LIMIT and results else ""
+    next_offset = str(page + 1) if has_more and results else ""
 
     await inline_query.answer(
         results=results,
