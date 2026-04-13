@@ -8,6 +8,7 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    InlineQueryHandler,
     MessageHandler,
     filters,
 )
@@ -26,6 +27,7 @@ create_tables()
 # =====================================================
 
 from commands.start import start
+from commands.inline_safebooru import safebooru_inline
 from commands.menu import menu
 from commands.perfil import perfil
 from commands.reset_users import reset_user, reset_all
@@ -257,6 +259,14 @@ def register_callbacks(app: Application):
 
 
 # =========================================================
+# INLINE HANDLERS
+# =========================================================
+
+def register_inline(app: Application):
+    app.add_handler(InlineQueryHandler(safebooru_inline))
+
+
+# =========================================================
 # MESSAGE HANDLERS
 # =========================================================
 
@@ -286,6 +296,7 @@ def build_application():
 
     register_commands(app)
     register_callbacks(app)
+    register_inline(app)
     register_messages(app)
 
     app.add_error_handler(on_error)
@@ -309,7 +320,7 @@ def main():
 
     app.run_polling(
         drop_pending_updates=True,
-        allowed_updates=["message", "callback_query"],
+        allowed_updates=["message", "callback_query", "inline_query"],
     )
 
 
