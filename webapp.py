@@ -15,6 +15,17 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Query, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from premium_webapp_ui import (
+    build_cards_anime_page as build_cards_anime_page_html,
+    build_cards_home_page as build_cards_home_page_html,
+    build_cards_search_page as build_cards_search_page_html,
+    build_cards_subcategory_page as build_cards_subcategory_page_html,
+    build_home_page as build_home_page_html,
+    build_media_catalog_page as build_media_catalog_page_html,
+    build_menu_page as build_menu_page_html,
+    build_shop_page as build_shop_page_html,
+)
+
 from database import (
     create_or_get_user,
     accept_terms,
@@ -734,7 +745,15 @@ TERMS_HTML = """<!doctype html>
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return HTMLResponse("OK - WebApp online. Use /terms e /catalogo")
+    return HTMLResponse(
+        build_home_page_html(
+            top_banner_url=TOP_BANNER_URL,
+            catalog_banner_url=CATALOG_BANNER_URL,
+            manga_banner_url=MANGA_CATALOG_BANNER_URL,
+            cards_banner_url=CARDS_TOP_BANNER_URL,
+            shop_banner_url=SHOP_PREVIEW_IMAGE,
+        )
+    )
 
 
 @app.get("/terms", response_class=HTMLResponse)
@@ -1103,6 +1122,21 @@ def api_catalogo(
 
 @app.get("/catalogo", response_class=HTMLResponse)
 def catalogo_page():
+    return HTMLResponse(
+        build_media_catalog_page_html(
+            page_title=f"{CATALOG_TITLE} - Source Baltigo",
+            hero_tag="Anime catalog",
+            hero_title=CATALOG_TITLE,
+            hero_copy="Biblioteca com visual mais premium, hierarquia melhor e navegacao mais gostosa para mobile.",
+            banner_url=CATALOG_BANNER_URL,
+            api_letters="/api/letters",
+            api_catalog="/api/catalogo",
+            search_placeholder="Buscar anime...",
+            footer_label="Source Baltigo . Catalogo",
+            default_badge="Anime",
+        )
+    )
+
     # IMPORTANTE: aqui NÃO usa f-string com ${} do JS.
     # A gente usa placeholders e replace, pra nunca mais quebrar.
     html = """<!doctype html>
@@ -1797,6 +1831,21 @@ def api_mangas_catalogo(
 
 @app.get("/mangas", response_class=HTMLResponse)
 def mangas_page():
+    return HTMLResponse(
+        build_media_catalog_page_html(
+            page_title=f"{MANGA_CATALOG_TITLE} - Source Baltigo",
+            hero_tag="Manga catalog",
+            hero_title=MANGA_CATALOG_TITLE,
+            hero_copy="Uma vitrine mais cinematografica para explorar mangas com foco em legibilidade, contraste e ritmo visual.",
+            banner_url=MANGA_CATALOG_BANNER_URL,
+            api_letters="/api/mangas/letters",
+            api_catalog="/api/mangas/catalogo",
+            search_placeholder="Buscar manga...",
+            footer_label="Source Baltigo . Mangas",
+            default_badge="Manga",
+        )
+    )
+
     html = """<!doctype html>
 <html lang="pt-br">
 <head>
@@ -3429,12 +3478,17 @@ def api_cards_animes(
         items = [x for x in items if qn in x["anime"].lower()]
 
     total = len(items)
-    items = items[offset: offset + limit]
+    payload_items = []
+    for item in items[offset: offset + limit]:
+        payload = dict(item)
+        payload["banner_image"] = _web_image_url(item.get("banner_image"))
+        payload["cover_image"] = _web_image_url(item.get("cover_image"))
+        payload_items.append(payload)
 
     return JSONResponse({
         "ok": True,
         "total": total,
-        "items": items,
+        "items": payload_items,
     })
 
 
@@ -3546,6 +3600,8 @@ def api_cards_subcategory(
 
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page():
+    return HTMLResponse(build_cards_home_page_html(top_banner_url=CARDS_TOP_BANNER_URL))
+
     html = """
 <!doctype html>
 <html lang="pt-br">
@@ -4028,6 +4084,13 @@ def cards_page():
 
 
 def _cards_anime_page(anime_id: int):
+    return HTMLResponse(
+        build_cards_anime_page_html(
+            anime_id=anime_id,
+            top_banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
     html = """
 <!doctype html>
 <html lang="pt-br">
@@ -4447,6 +4510,13 @@ def _cards_anime_page(anime_id: int):
 
 @app.get("/cards/subcategory", response_class=HTMLResponse)
 def cards_subcategory_page(name: str = Query(...)):
+    return HTMLResponse(
+        build_cards_subcategory_page_html(
+            name=str(name),
+            top_banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
     raw_name = str(name)
     safe_name = raw_name.replace("\\", "\\\\").replace("'", "\\'")
     safe_name_html = html.escape(raw_name)
@@ -4565,6 +4635,13 @@ load();
 
 @app.get("/cards/search", response_class=HTMLResponse)
 def cards_search_page(q: str = Query(...)):
+    return HTMLResponse(
+        build_cards_search_page_html(
+            query=str(q),
+            top_banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
     raw_q = str(q)
     safe_q = raw_q.replace("\\", "\\\\").replace("'", "\\'")
     safe_q_html = html.escape(raw_q)
@@ -7835,15 +7912,12 @@ document.getElementById("deleteBtn").onclick = async () => {
 
 @app.get("/menu", response_class=HTMLResponse)
 def menu_page(uid: int = Query(...)):
-    bg = MENU_BACKGROUND_URL if MENU_BACKGROUND_URL else EMPTY_BG_DATA_URI
-
-    html = (
-        MENU_HTML
-        .replace("__UID__", str(int(uid)))
-        .replace("__MENU_BANNER__", MENU_BANNER_URL)
-        .replace("__MENU_BG__", bg)
+    return HTMLResponse(
+        build_menu_page_html(
+            uid=int(uid),
+            menu_banner_url=MENU_BANNER_URL,
+        )
     )
-    return HTMLResponse(html)
 
 
 @app.get("/api/menu/profile")
@@ -8549,6 +8623,8 @@ def api_shop_buy_nickname(x_telegram_init_data: str = Header(default="")):
 
 @app.get("/shop", response_class=HTMLResponse)
 def shop_page():
+    return HTMLResponse(build_shop_page_html(shop_banner_url=SHOP_PREVIEW_IMAGE))
+
     html = """<!doctype html>
 <html lang="pt-br">
 <head>
