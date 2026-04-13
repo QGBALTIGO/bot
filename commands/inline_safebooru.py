@@ -476,9 +476,11 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         lines = [
             f"🃏 <b>{name}</b>",
             "",
+            "<blockquote>",
             f"<b>Gênero:</b> <code>{gender}</code>",
             f"<b>Nascimento:</b> <code>{birth}</code>",
             f"<b>Favoritos:</b> <code>{favourites}</code>",
+            "<blockquote>",
             "",
             f"<b>Obra:</b> <code>{media_title}</code>",
             f"<b>Tipo:</b> <code>{media_type}</code>",
