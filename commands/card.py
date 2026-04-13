@@ -304,7 +304,6 @@ async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             total_copies = int(get_card_total_copies(char_id) or 0)
 
             msg = (
-                f"🎰 Giros totais: {fmt_num(total_rolls)}\n"
                 f"👥 Usuários que possuem: {fmt_num(owners)}\n"
                 f"📦 Total de cópias: {fmt_num(total_copies)}"
             )
