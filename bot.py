@@ -45,7 +45,7 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
-from commands.colec import cccolecao
+from commands.cccolecao import colec
 
 from commands.loja import loja
 from commands.daily import daily
