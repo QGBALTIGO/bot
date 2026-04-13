@@ -27,7 +27,7 @@ def _is_group(update: Update) -> bool:
     return bool(chat and chat.type in ("group", "supergroup"))
 
 
-async def cccolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def colec(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     user = update.effective_user
 
