@@ -211,8 +211,8 @@ def register_commands(app: Application):
 
     # termo
     app.add_handler(CommandHandler("termo", termo_cmd))
-    app.add_handler(CommandHandler("termoajuda", termoajuda_cmd))
-    app.add_handler(CommandHandler("termodica", termodica_cmd))
+    app.add_handler(CommandHandler("termoajuda", termoajuda))
+    app.add_handler(CommandHandler("termodica", termodica))
     app.add_handler(CommandHandler("termostats", termo_stats_cmd))
     app.add_handler(CommandHandler("termoranking", termo_ranking_cmd))
     app.add_handler(CommandHandler("termorankingsemana", termo_ranking_week_cmd))
