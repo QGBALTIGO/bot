@@ -8,11 +8,12 @@ import httpx
 import random
 import hashlib
 import hmac
-from urllib.parse import parse_qsl
+import ipaddress
+from urllib.parse import parse_qsl, quote, urlparse
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Query, Body, Header, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from database import (
     create_or_get_user,
@@ -59,6 +60,117 @@ TOP_BANNER_URL = os.getenv(
 
 BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # URL pública (pode ficar vazio)
 EMPTY_BG_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
+
+DIRECT_IMAGE_HOSTS = {
+    "s4.anilist.co",
+    "img.anili.st",
+}
+
+IMAGE_PROXY_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+
+def _is_blocked_image_host(hostname: str) -> bool:
+    host = str(hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return True
+
+    if host in {"localhost"} or host.endswith(".local"):
+        return True
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return bool(
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+    )
+
+
+def _guess_image_media_type(url: str) -> str:
+    path = (urlparse(url).path or "").lower()
+    if path.endswith(".png"):
+        return "image/png"
+    if path.endswith(".webp"):
+        return "image/webp"
+    if path.endswith(".gif"):
+        return "image/gif"
+    if path.endswith(".avif"):
+        return "image/avif"
+    return "image/jpeg"
+
+
+def _web_image_url(url: Any) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return ""
+
+    if value.startswith(("data:", "/api/image-proxy?")):
+        return value
+
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return value
+
+    host = (parsed.hostname or "").strip().lower()
+    if host in DIRECT_IMAGE_HOSTS:
+        return value
+
+    return f"/api/image-proxy?url={quote(value, safe='')}"
+
+
+@app.get("/api/image-proxy")
+async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000)):
+    target = str(url or "").strip()
+    parsed = urlparse(target)
+
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="invalid_image_url")
+
+    hostname = (parsed.hostname or "").strip().lower()
+    if _is_blocked_image_host(hostname):
+        raise HTTPException(status_code=400, detail="blocked_image_host")
+
+    headers = {
+        "User-Agent": IMAGE_PROXY_USER_AGENT,
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+
+    referer = f"{parsed.scheme}://{parsed.netloc}/"
+    if referer:
+        headers["Referer"] = referer
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(20.0, connect=10.0),
+        ) as client:
+            upstream = await client.get(target, headers=headers)
+    except Exception:
+        raise HTTPException(status_code=502, detail="image_fetch_failed")
+
+    if upstream.status_code >= 400:
+        raise HTTPException(status_code=502, detail="image_source_unavailable")
+
+    media_type = str(upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if not media_type.startswith("image/"):
+        media_type = _guess_image_media_type(target)
+
+    return Response(
+        content=upstream.content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=21600",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 def pick_lang(lang: Optional[str]) -> str:
@@ -2304,8 +2416,8 @@ def _cards_api_animes(
         payload.append({
             "anime_id": a["anime_id"],
             "anime": a["anime"],
-            "banner_image": a["banner_image"],
-            "cover_image": a["cover_image"],
+            "banner_image": _web_image_url(a.get("banner_image")),
+            "cover_image": _web_image_url(a.get("cover_image")),
             "characters_count": a["characters_count"],
         })
 
@@ -3324,11 +3436,19 @@ def api_cards_characters(
         chars = [x for x in chars if qn in x["name"].lower()]
 
     total = len(chars)
-    items = chars[offset: offset + limit]
+    items = []
+    for item in chars[offset: offset + limit]:
+        payload = dict(item)
+        payload["image"] = _web_image_url(item.get("image"))
+        items.append(payload)
+
+    anime_payload = dict(anime)
+    anime_payload["banner_image"] = _web_image_url(anime.get("banner_image"))
+    anime_payload["cover_image"] = _web_image_url(anime.get("cover_image"))
 
     return JSONResponse({
         "ok": True,
-        "anime": anime,
+        "anime": anime_payload,
         "total": total,
         "items": items,
     })
@@ -3339,7 +3459,11 @@ def api_cards_search(
     q: str = Query(..., min_length=1, max_length=120),
     limit: int = Query(default=100, ge=1, le=500),
 ):
-    items = search_characters(q, limit=limit)
+    items = []
+    for item in search_characters(q, limit=limit):
+        payload = dict(item)
+        payload["image"] = _web_image_url(item.get("image"))
+        items.append(payload)
     return JSONResponse({
         "ok": True,
         "total": len(items),
@@ -3379,7 +3503,11 @@ def api_cards_subcategory(
         chars = [x for x in chars if qn in x["name"].lower()]
 
     total = len(chars)
-    items = chars[offset: offset + limit]
+    items = []
+    for item in chars[offset: offset + limit]:
+        payload = dict(item)
+        payload["image"] = _web_image_url(item.get("image"))
+        items.append(payload)
 
     return JSONResponse({
         "ok": True,
@@ -6889,7 +7017,7 @@ def _menu_user_payload(uid: int) -> Dict[str, Any]:
                     "id": int(fav_id),
                     "name": str(ch.get("name") or "").strip(),
                     "anime": str(ch.get("anime") or "").strip(),
-                    "image": str(ch.get("image") or "").strip(),
+                    "image": _web_image_url(ch.get("image")),
                 }
         except Exception:
             favorite = None
@@ -6942,7 +7070,7 @@ def _menu_collection_characters(uid: int) -> List[Dict[str, Any]]:
             "id": cid,
             "name": str(ch.get("name") or "").strip(),
             "anime": str(ch.get("anime") or "").strip(),
-            "image": str(ch.get("image") or "").strip(),
+            "image": _web_image_url(ch.get("image")),
             "quantity": qty,
         })
 
@@ -7867,7 +7995,7 @@ def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
 
         name = str(meta.get("name") or f"Personagem {char_id}")
         anime = str(meta.get("anime") or "Sem anime")
-        image = str(meta.get("image") or "")
+        image = _web_image_url(meta.get("image"))
         rarity = str(meta.get("subcategory") or meta.get("role") or "").strip().upper()
 
         if qn:
