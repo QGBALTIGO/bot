@@ -16,13 +16,21 @@ from fastapi import FastAPI, Query, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from premium_webapp_ui import (
+    build_baltigoflix_page as build_baltigoflix_page_html,
     build_cards_anime_page as build_cards_anime_page_html,
+    build_cards_contrib_image_page as build_cards_contrib_image_page_html,
+    build_cards_contrib_page as build_cards_contrib_page_html,
+    build_cards_contrib_rules_page as build_cards_contrib_rules_page_html,
+    build_cards_contrib_work_page as build_cards_contrib_work_page_html,
     build_cards_home_page as build_cards_home_page_html,
     build_cards_search_page as build_cards_search_page_html,
     build_cards_subcategory_page as build_cards_subcategory_page_html,
+    build_collection_page as build_collection_page_html,
+    build_dado_page as build_dado_page_html,
     build_home_page as build_home_page_html,
     build_media_catalog_page as build_media_catalog_page_html,
     build_menu_page as build_menu_page_html,
+    build_request_center_page as build_request_center_page_html,
     build_shop_page as build_shop_page_html,
 )
 
@@ -4926,11 +4934,28 @@ async def _pedido_anilist_search(query_text: str, media_type: str):
 
 
 @app.get("/api/pedido/limit")
-def api_pedido_limit(uid: int = Query(...)):
-    used = count_user_media_requests_last_24h(uid)
+def api_pedido_limit(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    used = count_user_media_requests_last_24h(user_id)
     remaining = max(0, 3 - used)
     return JSONResponse({
         "ok": True,
+        "user_id": user_id,
         "used": used,
         "remaining": remaining,
         "limit": 3
@@ -5020,11 +5045,22 @@ async def _telegram_send_photo(chat_id: str, photo: str, caption: str):
 
 
 @app.post("/api/pedido/send")
-async def api_pedido_send(payload: dict = Body(...)):
+async def api_pedido_send(
+    payload: dict = Body(...),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
+        ctx = _resolve_webapp_user(
+            x_telegram_init_data=x_telegram_init_data,
+            uid=uid,
+            x_webapp_uid=x_webapp_uid,
+            body_uid=(payload or {}).get("uid") or (payload or {}).get("user_id"),
+        )
+        user_id = int(ctx["user_id"])
+        username = str(ctx.get("username") or payload.get("username") or "").strip()
+        full_name = str(ctx.get("full_name") or payload.get("full_name") or payload.get("name") or "").strip()
         media_type = str(payload.get("media_type") or "").strip().lower()
         anilist_id = payload.get("anilist_id")
         title = str(payload.get("title") or "").strip()
@@ -5033,6 +5069,7 @@ async def api_pedido_send(payload: dict = Body(...)):
         if user_id <= 0 or media_type not in ("anime", "manga") or not title:
             return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
 
+        touch_user_identity(user_id, username=username, full_name=full_name)
         used = count_user_media_requests_last_24h(user_id)
         if used >= 3:
             return JSONResponse({
@@ -5126,17 +5163,29 @@ async def api_pedido_send(payload: dict = Body(...)):
 
 
 @app.post("/api/pedido/report")
-async def api_pedido_report(payload: dict = Body(...)):
+async def api_pedido_report(
+    payload: dict = Body(...),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     try:
-        user_id = int(payload.get("user_id") or 0)
-        username = str(payload.get("username") or "").strip()
-        full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
+        ctx = _resolve_webapp_user(
+            x_telegram_init_data=x_telegram_init_data,
+            uid=uid,
+            x_webapp_uid=x_webapp_uid,
+            body_uid=(payload or {}).get("uid") or (payload or {}).get("user_id"),
+        )
+        user_id = int(ctx["user_id"])
+        username = str(ctx.get("username") or payload.get("username") or "").strip()
+        full_name = str(ctx.get("full_name") or payload.get("full_name") or payload.get("name") or "").strip()
         report_type = str(payload.get("report_type") or "Outro").strip()
         message = str(payload.get("message") or "").strip()
 
         if user_id <= 0 or not message:
             return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
 
+        touch_user_identity(user_id, username=username, full_name=full_name)
         save_webapp_report(user_id, username, full_name, report_type, message)
 
         if not CANAL_PEDIDOS or not BOT_TOKEN:
@@ -5178,7 +5227,14 @@ async def api_pedido_report(payload: dict = Body(...)):
 
 
 @app.get("/pedido", response_class=HTMLResponse)
-def pedido_page():
+def pedido_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_request_center_page_html(
+            uid=int(uid or 0),
+            banner_url=PEDIDO_BANNER_URL,
+        )
+    )
+
     html = """<!doctype html>
 <html lang="pt-br">
 <head>
@@ -5643,6 +5699,109 @@ def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
     }
 
 
+def _coerce_positive_uid(*values: Any) -> int:
+    for value in values:
+        try:
+            uid = int(str(value or "").strip())
+        except Exception:
+            continue
+        if uid > 0:
+            return uid
+    return 0
+
+
+def _build_fallback_webapp_user(user_id: int) -> Dict[str, Any]:
+    from database import get_user_status
+
+    user_id = int(user_id or 0)
+    if user_id <= 0:
+        raise HTTPException(status_code=401, detail="uid ausente")
+
+    create_or_get_user(user_id)
+    row = get_user_status(user_id) or {}
+
+    return {
+        "user_id": int(user_id),
+        "username": str(row.get("username") or "").strip(),
+        "full_name": str(row.get("full_name") or "").strip(),
+        "auth_mode": "uid_fallback",
+    }
+
+
+def _resolve_webapp_user(
+    *,
+    x_telegram_init_data: str = "",
+    uid: Any = None,
+    x_webapp_uid: Any = None,
+    body_uid: Any = None,
+) -> Dict[str, Any]:
+    fallback_uid = _coerce_positive_uid(body_uid, uid, x_webapp_uid)
+
+    if x_telegram_init_data:
+        try:
+            data = _get_tg_user(x_telegram_init_data)
+            data["auth_mode"] = "telegram_init_data"
+            return data
+        except HTTPException:
+            if fallback_uid > 0:
+                return _build_fallback_webapp_user(fallback_uid)
+            raise
+
+    if fallback_uid > 0:
+        return _build_fallback_webapp_user(fallback_uid)
+
+    raise HTTPException(status_code=401, detail="usuario nao autenticado")
+
+
+@app.get("/api/webapp/context")
+def api_webapp_context(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from database import get_progress_row, get_profile_settings, get_user_status
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    user = get_user_status(user_id) or {}
+    progress = get_progress_row(user_id) or {}
+    settings = get_profile_settings(user_id) or {}
+    cards_data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
+    cards = _collection_cards_from_snapshot(cards_data, qty_by_char, subcategory_map)
+
+    display_name = (
+        str(settings.get("nickname") or "").strip()
+        or str(ctx.get("full_name") or "").strip()
+        or (f"@{ctx.get('username')}" if str(ctx.get("username") or "").strip() else f"User {user_id}")
+    )
+
+    return JSONResponse({
+        "ok": True,
+        "profile": {
+            "user_id": user_id,
+            "username": str(ctx.get("username") or user.get("username") or "").strip(),
+            "full_name": str(ctx.get("full_name") or user.get("full_name") or "").strip(),
+            "display_name": display_name,
+            "nickname": str(settings.get("nickname") or "").strip(),
+            "coins": int(user.get("coins") or 0),
+            "dado_balance": int(user.get("dado_balance") or 0),
+            "level": int(progress.get("level") or 1),
+            "collection_total": len(cards),
+            "auth_mode": str(ctx.get("auth_mode") or ""),
+        },
+    })
+
+
 async def _tg_send_photo(chat_id: int, photo: str, caption: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -5947,8 +6106,16 @@ def _rarity_from_roll(dice_value: int, character_id: int) -> dict:
 # =========================================================
 
 @app.get("/api/dado/state")
-def api_dado_state(x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
+def api_dado_state(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
     user_id = int(tg["user_id"])
 
     try:
@@ -5994,8 +6161,18 @@ def api_dado_state(x_telegram_init_data: str = Header(default="")):
 
 
 @app.post("/api/dado/roll")
-async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
+async def api_dado_roll(
+    payload_body: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload_body or {}).get("uid"),
+    )
     user_id = int(tg["user_id"])
 
     if not _dado_rate_limit(user_id, "roll", 1.4):
@@ -6088,8 +6265,18 @@ async def api_dado_roll(x_telegram_init_data: str = Header(default="")):
 
 
 @app.post("/api/dado/pick")
-async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_data: str = Header(default="")):
-    tg = _get_tg_user(x_telegram_init_data)
+async def api_dado_pick(
+    payload_body: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload_body or {}).get("uid"),
+    )
     user_id = int(tg["user_id"])
 
     if not _dado_rate_limit(user_id, "pick", 1.0):
@@ -6157,7 +6344,14 @@ async def api_dado_pick(payload_body: dict = Body(default={}), x_telegram_init_d
 # =========================================================
 
 @app.get("/dado", response_class=HTMLResponse)
-def dado_page():
+def dado_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_dado_page_html(
+            uid=int(uid or 0),
+            banner_url=DADO_BANNER_URL,
+        )
+    )
+
     html = """<!doctype html>
 <html lang="pt-br">
 <head>
@@ -7109,7 +7303,8 @@ def _menu_user_payload(uid: int) -> Dict[str, Any]:
     user = get_user_status(uid) or {}
     progress = get_progress_row(uid) or {}
     settings = get_profile_settings(uid) or {}
-    cards = get_user_card_collection(uid) or []
+    cards_data, qty_by_char, subcategory_map = _collection_snapshot(uid)
+    cards = _collection_cards_from_snapshot(cards_data, qty_by_char, subcategory_map)
 
     favorite = None
     fav_id = settings.get("favorite_character_id")
@@ -8117,6 +8312,205 @@ def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
     return out
 
 
+def _collection_character_subcategory_map(data: Dict[str, Any]) -> Dict[int, str]:
+    out: Dict[int, str] = {}
+    for raw_name, chars in (data.get("subcategories") or {}).items():
+        label = str(raw_name or "").strip()
+        if not label:
+            continue
+        for char in chars or []:
+            try:
+                cid = int((char or {}).get("id") or 0)
+            except Exception:
+                cid = 0
+            if cid > 0 and cid not in out:
+                out[cid] = label
+    return out
+
+
+def _collection_snapshot(user_id: int) -> Tuple[Dict[str, Any], Dict[int, int], Dict[int, str]]:
+    from database import get_user_card_collection
+    from cards_service import build_cards_final_data
+
+    data = build_cards_final_data()
+    raw_rows = get_user_card_collection(int(user_id)) or []
+    qty_by_char: Dict[int, int] = {}
+
+    for row in raw_rows:
+        try:
+            cid = int(row.get("character_id") or 0)
+            qty = int(row.get("quantity") or 0)
+        except Exception:
+            continue
+        if cid <= 0 or qty <= 0:
+            continue
+        qty_by_char[cid] = qty_by_char.get(cid, 0) + qty
+
+    return data, qty_by_char, _collection_character_subcategory_map(data)
+
+
+def _collection_profile_payload(user_id: int, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    data = _menu_user_payload(int(user_id))
+    profile = dict((data or {}).get("profile") or {})
+
+    username = str((ctx or {}).get("username") or profile.get("username") or "").strip()
+    full_name = str((ctx or {}).get("full_name") or "").strip()
+    display_name = str(profile.get("display_name") or "").strip()
+
+    if not display_name:
+        display_name = full_name or (f"@{username}" if username else f"User {user_id}")
+
+    profile["user_id"] = int(user_id)
+    profile["username"] = username
+    profile["full_name"] = full_name
+    profile["display_name"] = display_name
+    return profile
+
+
+def _collection_cards_from_snapshot(
+    data: Dict[str, Any],
+    qty_by_char: Dict[int, int],
+    subcategory_map: Dict[int, str],
+) -> List[Dict[str, Any]]:
+    chars_by_id = data.get("characters_by_id") or {}
+    items: List[Dict[str, Any]] = []
+
+    for cid, qty in qty_by_char.items():
+        meta = chars_by_id.get(int(cid)) or {}
+        if not meta:
+            continue
+
+        items.append({
+            "character_id": int(cid),
+            "quantity": int(qty),
+            "name": str(meta.get("name") or f"Personagem {cid}"),
+            "anime_id": int(meta.get("anime_id") or 0),
+            "anime": str(meta.get("anime") or "Obra desconhecida"),
+            "image": _web_image_url(meta.get("image")),
+            "subcategory": str(subcategory_map.get(int(cid)) or "").strip(),
+        })
+
+    items.sort(key=lambda x: (x["anime"].lower(), x["name"].lower(), int(x["character_id"])))
+    return items
+
+
+def _collection_animes_from_snapshot(
+    data: Dict[str, Any],
+    qty_by_char: Dict[int, int],
+) -> List[Dict[str, Any]]:
+    chars_by_anime = data.get("characters_by_anime") or {}
+    animes_by_id = data.get("animes_by_id") or {}
+    anime_owned: Dict[int, set] = {}
+
+    for cid, qty in qty_by_char.items():
+        if qty <= 0:
+            continue
+        meta = (data.get("characters_by_id") or {}).get(int(cid)) or {}
+        anime_id = int(meta.get("anime_id") or 0)
+        if anime_id <= 0:
+            continue
+        anime_owned.setdefault(anime_id, set()).add(int(cid))
+
+    items: List[Dict[str, Any]] = []
+    for anime_id, owned_ids in anime_owned.items():
+        chars = list(chars_by_anime.get(int(anime_id)) or [])
+        if not chars:
+            continue
+
+        anime_meta = dict(animes_by_id.get(int(anime_id)) or {})
+        anime_name = str(anime_meta.get("anime") or chars[0].get("anime") or f"Obra {anime_id}")
+        total_count = len(chars)
+        owned_count = len(owned_ids)
+        missing_count = max(0, total_count - owned_count)
+        completion_pct = int(round((owned_count / total_count) * 100)) if total_count else 0
+
+        items.append({
+            "anime_id": int(anime_id),
+            "anime": anime_name,
+            "owned_count": int(owned_count),
+            "total_count": int(total_count),
+            "missing_count": int(missing_count),
+            "completion_pct": int(completion_pct),
+            "cover_image": _web_image_url(anime_meta.get("cover_image") or anime_meta.get("banner_image")),
+            "banner_image": _web_image_url(anime_meta.get("banner_image") or anime_meta.get("cover_image")),
+        })
+
+    items.sort(key=lambda x: (x["anime"].lower(), int(x["anime_id"])))
+    return items
+
+
+def _collection_detail_from_snapshot(
+    data: Dict[str, Any],
+    qty_by_char: Dict[int, int],
+    subcategory_map: Dict[int, str],
+    anime_id: int,
+    mode: str,
+) -> Optional[Dict[str, Any]]:
+    anime_id = int(anime_id or 0)
+    if anime_id <= 0:
+        return None
+
+    chars = list((data.get("characters_by_anime") or {}).get(anime_id) or [])
+    if not chars:
+        return None
+
+    anime_meta = dict((data.get("animes_by_id") or {}).get(anime_id) or {})
+    anime_name = str(anime_meta.get("anime") or chars[0].get("anime") or f"Obra {anime_id}")
+
+    gallery_items: List[Dict[str, Any]] = []
+    owned_items: List[Dict[str, Any]] = []
+    missing_items: List[Dict[str, Any]] = []
+
+    for meta in chars:
+        cid = int(meta.get("id") or 0)
+        qty = int(qty_by_char.get(cid) or 0)
+        base = {
+            "id": cid,
+            "character_id": cid,
+            "name": str(meta.get("name") or f"Personagem {cid}"),
+            "anime_id": anime_id,
+            "anime": anime_name,
+            "image": _web_image_url(meta.get("image")),
+            "subcategory": str(subcategory_map.get(cid) or "").strip(),
+            "quantity": qty,
+            "owned": qty > 0,
+        }
+        gallery_items.append(base)
+        if qty > 0:
+            owned_items.append(base)
+        else:
+            missing_items.append(base)
+
+    gallery_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
+    owned_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
+    missing_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
+
+    mode_key = str(mode or "owned").strip().lower()
+    if mode_key not in {"owned", "missing", "gallery"}:
+        mode_key = "owned"
+
+    items_map = {
+        "owned": owned_items,
+        "missing": missing_items,
+        "gallery": gallery_items,
+    }
+
+    return {
+        "anime": {
+            "anime_id": anime_id,
+            "anime": anime_name,
+            "cover_image": _web_image_url(anime_meta.get("cover_image") or anime_meta.get("banner_image")),
+            "banner_image": _web_image_url(anime_meta.get("banner_image") or anime_meta.get("cover_image")),
+        },
+        "mode": mode_key,
+        "items": items_map[mode_key],
+        "owned_count": len(owned_items),
+        "total_count": len(gallery_items),
+        "missing_count": len(missing_items),
+        "completion_pct": int(round((len(owned_items) / len(gallery_items)) * 100)) if gallery_items else 0,
+    }
+
+
 def _shop_css() -> str:
     return r"""
 :root{
@@ -8508,10 +8902,18 @@ body{
 # =========================================================
 
 @app.get("/api/shop/state")
-def api_shop_state(x_telegram_init_data: str = Header(default="")):
+def api_shop_state(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     from database import get_user_status
 
-    tg = _get_tg_user(x_telegram_init_data)
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
     user_id = int(tg["user_id"])
 
     row = get_user_status(user_id) or {}
@@ -8525,9 +8927,15 @@ def api_shop_state(x_telegram_init_data: str = Header(default="")):
 @app.get("/api/shop/sell/all")
 def api_shop_sell_all(
     q: str = Query(default="", max_length=120),
-    x_telegram_init_data: str = Header(default="")
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
 ):
-    tg = _get_tg_user(x_telegram_init_data)
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
     user_id = int(tg["user_id"])
     items = _shop_collection_items(user_id, q=q)
 
@@ -8540,11 +8948,18 @@ def api_shop_sell_all(
 @app.post("/api/shop/sell/confirm")
 def api_shop_sell_confirm(
     payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default="")
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
 ):
     from database import sell_character, get_user_status
 
-    tg = _get_tg_user(x_telegram_init_data)
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
     user_id = int(tg["user_id"])
 
     char_id = int(payload.get("character_id") or 0)
@@ -8568,11 +8983,145 @@ def api_shop_sell_confirm(
     })
 
 
+@app.get("/api/collection/state")
+def api_collection_state(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
+    cards_items = _collection_cards_from_snapshot(data, qty_by_char, subcategory_map)
+    anime_items = _collection_animes_from_snapshot(data, qty_by_char)
+    profile = _collection_profile_payload(user_id, ctx=ctx)
+    profile["collection_total"] = len(cards_items)
+
+    return JSONResponse({
+        "ok": True,
+        "profile": profile,
+        "stats": {
+            "unique_cards": len(cards_items),
+            "total_copies": sum(int(item.get("quantity") or 0) for item in cards_items),
+            "completed_animes": sum(
+                1
+                for item in anime_items
+                if int(item.get("total_count") or 0) > 0 and int(item.get("missing_count") or 0) <= 0
+            ),
+            "active_animes": len(anime_items),
+            "favorite_name": str(((profile.get("favorite") or {}).get("name") or "")).strip() or "--",
+        },
+    })
+
+
+@app.get("/api/collection/cards")
+def api_collection_cards(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
+    return JSONResponse({
+        "ok": True,
+        "items": _collection_cards_from_snapshot(data, qty_by_char, subcategory_map),
+    })
+
+
+@app.get("/api/collection/animes")
+def api_collection_animes(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    data, qty_by_char, _ = _collection_snapshot(user_id)
+    return JSONResponse({
+        "ok": True,
+        "items": _collection_animes_from_snapshot(data, qty_by_char),
+    })
+
+
+@app.get("/api/collection/anime")
+def api_collection_anime(
+    anime_id: int = Query(..., ge=1),
+    mode: str = Query(default="owned"),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
+    payload = _collection_detail_from_snapshot(
+        data,
+        qty_by_char,
+        subcategory_map,
+        anime_id=anime_id,
+        mode=mode,
+    )
+    if not payload:
+        return JSONResponse({"ok": False, "message": "Obra nao encontrada."}, status_code=404)
+    return JSONResponse({"ok": True, **payload})
+
+
 @app.post("/api/shop/buy/dado")
-def api_shop_buy_dado(x_telegram_init_data: str = Header(default="")):
+def api_shop_buy_dado(
+    payload: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     from database import buy_dado, get_user_status
 
-    tg = _get_tg_user(x_telegram_init_data)
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
     user_id = int(tg["user_id"])
 
     if not _shop_rate_limit(user_id, "buy_dado", 0.9):
@@ -8594,10 +9143,20 @@ def api_shop_buy_dado(x_telegram_init_data: str = Header(default="")):
 
 
 @app.post("/api/shop/buy/nickname")
-def api_shop_buy_nickname(x_telegram_init_data: str = Header(default="")):
+def api_shop_buy_nickname(
+    payload: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     from database import buy_nickname_change, get_user_status
 
-    tg = _get_tg_user(x_telegram_init_data)
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
     user_id = int(tg["user_id"])
 
     if not _shop_rate_limit(user_id, "buy_nick", 0.9):
@@ -8622,8 +9181,13 @@ def api_shop_buy_nickname(x_telegram_init_data: str = Header(default="")):
 # =========================================================
 
 @app.get("/shop", response_class=HTMLResponse)
-def shop_page():
-    return HTMLResponse(build_shop_page_html(shop_banner_url=SHOP_PREVIEW_IMAGE))
+def shop_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_shop_page_html(
+            uid=int(uid or 0),
+            shop_banner_url=SHOP_PREVIEW_IMAGE,
+        )
+    )
 
     html = """<!doctype html>
 <html lang="pt-br">
@@ -8890,15 +9454,234 @@ def shop_page():
 
 # Alias opcional
 @app.get("/loja", response_class=HTMLResponse)
-def loja_alias():
-    return shop_page()
+def loja_alias(uid: int = Query(default=0)):
+    return shop_page(uid=uid)
+
+
+@app.get("/cccolecao", response_class=HTMLResponse)
+def collection_webapp_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_collection_page_html(
+            uid=int(uid or 0),
+            banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
+
+@app.get("/api/cards/contrib/work/search")
+async def api_cards_contrib_work_search(
+    q: str = Query(..., min_length=1, max_length=80),
+    media_type: str = Query(...),
+):
+    from cards_service import build_cards_final_data
+    from database import card_work_request_exists, normalize_media_title
+
+    media_type = str(media_type or "").strip().lower()
+    if media_type not in ("anime", "manga"):
+        return JSONResponse({"ok": False, "message": "media_type invalido"}, status_code=400)
+
+    try:
+        results = await _pedido_anilist_search(q.strip(), media_type)
+        cards_data = build_cards_final_data()
+        animes_by_id = cards_data.get("animes_by_id") or {}
+        existing_titles = {
+            normalize_media_title(item.get("anime"))
+            for item in (cards_data.get("animes_list") or [])
+            if str(item.get("anime") or "").strip()
+        }
+        items = []
+
+        for x in results:
+            title = (
+                ((x.get("title") or {}).get("romaji"))
+                or ((x.get("title") or {}).get("english"))
+                or ((x.get("title") or {}).get("native"))
+                or ""
+            ).strip()
+            if not title:
+                continue
+
+            aid = int(x.get("id") or 0)
+            title_norm = normalize_media_title(title)
+            exists_catalog = bool((aid > 0 and animes_by_id.get(aid)) or (title_norm and title_norm in existing_titles))
+            exists_request = card_work_request_exists(media_type, title, aid)
+
+            items.append({
+                "id": aid,
+                "title": title,
+                "cover": ((x.get("coverImage") or {}).get("large") or ""),
+                "score": x.get("averageScore"),
+                "format": x.get("format"),
+                "status": x.get("status"),
+                "year": x.get("seasonYear"),
+                "episodes": x.get("episodes"),
+                "chapters": x.get("chapters"),
+                "already_exists": bool(exists_catalog),
+                "already_requested": bool(exists_request),
+            })
+
+        return JSONResponse({"ok": True, "items": items})
+    except Exception as e:
+        print("[cards-contrib] busca de obra falhou:", repr(e), flush=True)
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "message": "Nao foi possivel buscar agora."}, status_code=502)
+
+
+@app.post("/api/cards/contrib/image")
+def api_cards_contrib_image_submit(
+    payload: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from cards_service import get_character_by_id
+    from database import create_card_image_suggestion
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
+    user_id = int(ctx["user_id"])
+    username = str(ctx.get("username") or "").strip()
+    full_name = str(ctx.get("full_name") or "").strip()
+    touch_user_identity(user_id, username=username, full_name=full_name)
+
+    character_id = int((payload or {}).get("character_id") or 0)
+    suggested_image_url = str((payload or {}).get("suggested_image_url") or "").strip()
+    note = str((payload or {}).get("note") or "").strip()[:1000]
+
+    parsed = urlparse(suggested_image_url)
+    host = str(parsed.hostname or "").strip()
+    if character_id <= 0 or parsed.scheme not in {"http", "https"} or not host or _is_blocked_image_host(host):
+        return JSONResponse({"ok": False, "message": "Envie uma URL publica valida."}, status_code=400)
+
+    character = get_character_by_id(character_id)
+    if not character:
+        return JSONResponse({"ok": False, "message": "Personagem nao encontrado."}, status_code=404)
+
+    old_image_url = str(character.get("image") or "").strip()
+    if old_image_url and old_image_url == suggested_image_url:
+        return JSONResponse({"ok": False, "message": "A nova imagem precisa ser diferente da atual."}, status_code=409)
+
+    row = create_card_image_suggestion({
+        "user_id": user_id,
+        "username": username,
+        "full_name": full_name,
+        "character_id": character_id,
+        "character_name": str(character.get("name") or "").strip(),
+        "anime_id": int(character.get("anime_id") or 0) or None,
+        "anime_title": str(character.get("anime") or "").strip(),
+        "old_image_url": old_image_url,
+        "suggested_image_url": suggested_image_url,
+        "telegram_file_id": "",
+        "telegram_file_unique_id": "",
+        "note": note,
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "id": int((row or {}).get("id") or 0),
+        "message": "Sugestao de foto enviada com sucesso.",
+    })
+
+
+@app.post("/api/cards/contrib/work")
+def api_cards_contrib_work_submit(
+    payload: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from cards_service import build_cards_final_data
+    from database import card_work_request_exists, create_card_work_request, normalize_media_title
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
+    user_id = int(ctx["user_id"])
+    username = str(ctx.get("username") or "").strip()
+    full_name = str(ctx.get("full_name") or "").strip()
+    touch_user_identity(user_id, username=username, full_name=full_name)
+
+    media_type = str((payload or {}).get("media_type") or "").strip().lower()
+    anilist_id = int((payload or {}).get("anilist_id") or 0)
+    title = str((payload or {}).get("title") or "").strip()
+    cover_url = str((payload or {}).get("cover_url") or "").strip()
+
+    if media_type not in {"anime", "manga"} or not title:
+        return JSONResponse({"ok": False, "message": "Dados invalidos para o pedido de obra."}, status_code=400)
+
+    cards_data = build_cards_final_data()
+    title_norm = normalize_media_title(title)
+    existing_titles = {
+        normalize_media_title(item.get("anime"))
+        for item in (cards_data.get("animes_list") or [])
+        if str(item.get("anime") or "").strip()
+    }
+    already_exists = bool(
+        (anilist_id > 0 and (cards_data.get("animes_by_id") or {}).get(anilist_id))
+        or (title_norm and title_norm in existing_titles)
+    )
+    if already_exists:
+        return JSONResponse({"ok": False, "message": "Essa obra ja existe no sistema de cards."}, status_code=409)
+
+    if card_work_request_exists(media_type, title, anilist_id):
+        return JSONResponse({"ok": False, "message": "Essa obra ja foi sugerida e esta em analise."}, status_code=409)
+
+    row = create_card_work_request({
+        "user_id": user_id,
+        "username": username,
+        "full_name": full_name,
+        "media_type": media_type,
+        "anilist_id": anilist_id or None,
+        "title": title,
+        "cover_url": cover_url,
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "id": int((row or {}).get("id") or 0),
+        "message": "Pedido de obra enviado com sucesso.",
+    })
+
+
+@app.get("/cards/contrib/image", response_class=HTMLResponse)
+async def cards_contrib_image_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_cards_contrib_image_page_html(
+            uid=int(uid or 0),
+            banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
+
+@app.get("/cards/contrib/work", response_class=HTMLResponse)
+async def cards_contrib_work_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_cards_contrib_work_page_html(
+            uid=int(uid or 0),
+            banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
 
 # =========================================================
 # PAGE — /pedidos-fotos
 # =========================================================
 
 @app.get("/cards/contrib", response_class=HTMLResponse)
-async def cards_contrib_page():
+async def cards_contrib_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_cards_contrib_page_html(
+            uid=int(uid or 0),
+            banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
     return """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -8962,6 +9745,12 @@ async def cards_contrib_page():
 
 @app.get("/cards/contrib/rules", response_class=HTMLResponse)
 async def cards_contrib_rules_page():
+    return HTMLResponse(
+        build_cards_contrib_rules_page_html(
+            banner_url=CARDS_TOP_BANNER_URL,
+        )
+    )
+
     return """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -9097,13 +9886,21 @@ async def baltigoflix_create_intent(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "json_invalido"}, status_code=400)
 
-    telegram_user_id = int(body.get("telegram_user_id") or 0)
-    telegram_username = str(body.get("telegram_username") or "").strip()
-    telegram_full_name = str(body.get("telegram_full_name") or "").strip()
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=str(request.headers.get("x-telegram-init-data") or ""),
+        uid=request.query_params.get("uid"),
+        x_webapp_uid=request.headers.get("x-webapp-uid"),
+        body_uid=(body or {}).get("uid") or (body or {}).get("telegram_user_id"),
+    )
+    telegram_user_id = int(ctx["user_id"])
+    telegram_username = str(ctx.get("username") or body.get("telegram_username") or "").strip()
+    telegram_full_name = str(ctx.get("full_name") or body.get("telegram_full_name") or "").strip()
     plan_code = str(body.get("plan_code") or "").strip().lower()
 
     if telegram_user_id <= 0:
         return JSONResponse({"ok": False, "error": "telegram_user_id_invalido"}, status_code=400)
+
+    touch_user_identity(telegram_user_id, username=telegram_username, full_name=telegram_full_name)
 
     plan = BALTIGOFLIX_PLANS.get(plan_code)
     if not plan:
@@ -9330,8 +10127,21 @@ def baltigoflix_checkout_pending():
 """)
 
 
+BALTIGOFLIX_BANNER_URL = os.getenv(
+    "BALTIGOFLIX_BANNER_URL",
+    "https://photo.chelpbot.me/AgACAgEAAxkBaDfI-2m66g4WQ-Jj6FZRPjNKhpCO_4kNAAIXrzEbj2ehRbC9NWdU_qoOAQADAgADeQADOgQ/photo.jpg",
+).strip()
+
+
 @app.get("/baltigoflix", response_class=HTMLResponse)
-def baltigoflix_page():
+def baltigoflix_page(uid: int = Query(default=0)):
+    return HTMLResponse(
+        build_baltigoflix_page_html(
+            uid=int(uid or 0),
+            banner_url=BALTIGOFLIX_BANNER_URL,
+        )
+    )
+
     html = """<!doctype html>
 <html lang="pt-br">
 <head>
