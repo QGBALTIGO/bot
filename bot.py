@@ -8,7 +8,6 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
-    InlineQueryHandler,
     MessageHandler,
     filters,
 )
@@ -27,7 +26,6 @@ create_tables()
 # =====================================================
 
 from commands.start import start
-from commands.inline_safebooru import safebooru_inline
 from commands.menu import menu
 from commands.perfil import perfil
 from commands.reset_users import reset_user, reset_all
@@ -47,12 +45,12 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
-from commands.cccolecao import colec
+from commands.cccolecao import cccolecao
 
 from commands.loja import loja
 from commands.daily import daily
 
-from commands.capturar import capturar
+from commands.capturar import capturar, capture_purchase_callback
 from commands.spawn_personagem import spawn_personagem
 
 from commands.trocar import (
@@ -186,7 +184,7 @@ def register_commands(app: Application):
 
     # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("colec", colec))
+    app.add_handler(CommandHandler("cccolecao", cccolecao))
 
     # economia
     app.add_handler(CommandHandler("loja", loja))
@@ -247,6 +245,7 @@ def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
     app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
+    app.add_handler(CallbackQueryHandler(capture_purchase_callback, pattern=r"^capturebuy:"))
 
     app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
     app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
@@ -256,14 +255,6 @@ def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
     app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
-
-
-# =========================================================
-# INLINE HANDLERS
-# =========================================================
-
-def register_inline(app: Application):
-    app.add_handler(InlineQueryHandler(safebooru_inline))
 
 
 # =========================================================
@@ -296,7 +287,6 @@ def build_application():
 
     register_commands(app)
     register_callbacks(app)
-    register_inline(app)
     register_messages(app)
 
     app.add_error_handler(on_error)
@@ -320,7 +310,7 @@ def main():
 
     app.run_polling(
         drop_pending_updates=True,
-        allowed_updates=["message", "callback_query", "inline_query"],
+        allowed_updates=["message", "callback_query"],
     )
 
 
