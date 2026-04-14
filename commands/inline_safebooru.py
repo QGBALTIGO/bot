@@ -538,8 +538,8 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         role = html.escape(role_raw)
         year = html.escape(year_raw)
 
-        name_emoji = _tg_emoji(PREMIUM_EMOJI_NAME_ID, "✨")
-        year_emoji = _tg_emoji(PREMIUM_EMOJI_YEAR_ID, "📅")
+        name_emoji = _tg_emoji(5451636889717062286, "✨")
+        year_emoji = _tg_emoji(5057563697459759009, "📅")
 
         lines = [
             f"{name_emoji} <b>{name}</b>",
@@ -551,7 +551,8 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
             f"<b>Obra:</b> <code>{media_title}</code>",
             f"<b>Tipo:</b> <code>{media_type}</code>",
             f"<b>Papel:</b> <code>{role}</code>",
-            f"{year_emoji} <b>Ano:</b> <code>{year}</code>",
+            "",
+            f"{year_emoji} <b>Use com sabedoria!</b>",
         ]
 
         caption = "\n".join(lines)
