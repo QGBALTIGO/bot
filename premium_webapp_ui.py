@@ -2916,6 +2916,1005 @@ document.getElementById("resetDiceBtn").onclick = function(){{
     return _page_template("Dado", body, extra_js=js, include_tg=True)
 
 
+def build_dado_page(*, uid: int, banner_url: str) -> str:
+    body_parts: list[str] = []
+    css_parts: list[str] = []
+    js_parts: list[str] = []
+
+    body_parts.append(
+        """
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+"""
+    )
+    body_parts.append(
+        """
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img src="__DADO_BANNER__" alt="Dado"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Dice system 3D</div>
+    <h1 class="hero-title">Sistema de dados com impacto real.</h1>
+    <p class="hero-subtitle">O coracao da experiencia volta a ser o dado 3D: uma rolagem com peso, pouso forte no resultado e revelacao mais premium para cada personagem obtido.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="dadoPlayerHero">...</span></div>
+      <div class="metric-card"><span class="metric-label">Saldo</span><span class="metric-value" id="dadoBalanceHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">Proximo</span><span class="metric-value" id="dadoNextHero">--:--</span></div>
+      <div class="metric-card"><span class="metric-label">Stage</span><span class="metric-value"><span class="pulse-dot"></span> 3D live</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="dice-experience">
+  <article class="panel dice-stage-card" id="dadoStageCard" data-state="idle">
+    <div class="section-head">
+      <div><div class="section-kicker">Rolagem</div><h2 class="section-title">Mesa de sorte</h2></div>
+      <div class="section-meta" id="dadoMeta">Carregando estado...</div>
+    </div>
+    <div class="dice-stage-grid">
+      <div class="dice-viewport">
+        <div class="dice-stage-ring"></div>
+        <div class="dice-stage-glow"></div>
+        <div class="dice-stage-flash" id="dadoStageFlash"></div>
+        <div id="sceneWrap" class="dice-scene"></div>
+        <div class="dice-viewport-top">
+          <span class="soft-pill soft-pill--cool" id="dadoHud">Pronto para rolar</span>
+          <span class="soft-pill" id="dadoIdentityPill">Conta: ...</span>
+        </div>
+        <div class="dice-signal-card">
+          <span class="dice-signal-kicker">Face</span>
+          <strong id="dadoSignalValue">?</strong>
+          <span id="dadoSignalLabel">Aguardando a proxima rolagem</span>
+        </div>
+      </div>
+      <div class="dice-console">
+        <div class="dice-console-copy">
+          <div class="section-kicker">Controle</div>
+          <h3 class="section-title">Rolar, pousar e revelar.</h3>
+          <p class="hero-subtitle">Mantivemos a mesma logica do sistema, mas com uma apresentacao mais forte, mais clara e com melhor leitura em mobile e desktop.</p>
+        </div>
+        <div class="dice-console-stats">
+          <div class="dice-mini-card">
+            <span class="metric-label">Conta</span>
+            <strong class="dice-mini-value" id="dadoAccountCard">...</strong>
+          </div>
+          <div class="dice-mini-card">
+            <span class="metric-label">Dado atual</span>
+            <strong class="dice-mini-value" id="dadoFaceCard">?</strong>
+          </div>
+          <div class="dice-mini-card">
+            <span class="metric-label">Opcoes</span>
+            <strong class="dice-mini-value" id="dadoOptionsCount">0</strong>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="action-btn action-btn--primary dado-action" id="rollDiceBtn">Rolar dado</button>
+          <button type="button" class="action-btn action-btn--ghost dado-action" id="resetDiceBtn">Limpar tela</button>
+        </div>
+        <div class="pill-row">
+          <span class="soft-pill soft-pill--cool" id="dadoEnergyPill">Saldo 0</span>
+          <span class="soft-pill" id="dadoNextPill">Proximo --:--</span>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <article class="panel panel--soft">
+    <div class="section-head">
+      <div><div class="section-kicker">Escolha</div><h2 class="section-title">Animes da rodada</h2></div>
+      <div class="section-meta" id="dadoOptionsMeta">Role o dado para gerar as opcoes.</div>
+    </div>
+    <div class="dado-option-grid" id="dadoOptionsGrid"></div>
+    <div id="dadoOptionsEmpty" class="empty-state" style="margin-top:14px;"><strong>Nenhuma rolagem ativa</strong>Quando a rolagem acontecer, as opcoes aparecem aqui para voce escolher.</div>
+  </article>
+
+  <article class="panel panel--soft">
+    <div class="section-head">
+      <div><div class="section-kicker">Revelacao</div><h2 class="section-title">Personagem obtido</h2></div>
+      <div class="section-meta" id="dadoRewardMeta">Nenhum personagem revelado ainda.</div>
+    </div>
+    <div id="dadoRewardRoot" class="empty-state dado-reward-shell" style="margin-top:14px;"><strong>Sem premio ainda</strong>Escolha um anime da rodada para revelar o personagem.</div>
+  </article>
+</section>
+
+<div id="dadoNote" class="floating-note">Sistema de dados sendo carregado...</div>
+<div class="footer-note">Source Baltigo . Dice</div>
+"""
+    )
+    css_parts.append(
+        r"""
+.dice-experience{
+  display:grid;
+  gap:16px;
+  margin-top:16px;
+}
+.dice-stage-card{
+  overflow:hidden;
+  background:
+    radial-gradient(720px 360px at 12% 0%, rgba(122,213,255,.15), transparent 52%),
+    radial-gradient(520px 280px at 100% 100%, rgba(255,111,148,.14), transparent 54%),
+    linear-gradient(180deg, rgba(10,18,37,.94), rgba(6,11,22,.98));
+}
+.dice-stage-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.04), transparent 34%),
+    radial-gradient(circle at 50% 44%, rgba(122,213,255,.08), transparent 38%);
+}
+.dice-stage-card[data-state="rolling"]{
+  border-color:rgba(122,213,255,.42);
+  box-shadow:0 28px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(122,213,255,.08) inset;
+}
+.dice-stage-card[data-state="landed"]{
+  border-color:rgba(255,111,148,.32);
+}
+.dice-stage-grid{
+  position:relative;
+  z-index:1;
+  display:grid;
+  gap:16px;
+  margin-top:16px;
+}
+.dice-viewport{
+  position:relative;
+  min-height:320px;
+  border-radius:26px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255,255,255,.08), transparent 34%),
+    linear-gradient(180deg, rgba(7,13,26,.6), rgba(3,8,18,.9));
+  overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+}
+.dice-scene{
+  position:absolute;
+  inset:0;
+}
+.dice-stage-ring,
+.dice-stage-glow,
+.dice-stage-flash{
+  position:absolute;
+  left:50%;
+  top:52%;
+  transform:translate(-50%, -50%);
+  border-radius:999px;
+  pointer-events:none;
+}
+.dice-stage-ring{
+  width:72%;
+  aspect-ratio:1 / 1;
+  border:1px solid rgba(122,213,255,.14);
+  box-shadow:0 0 0 18px rgba(122,213,255,.02), 0 0 40px rgba(122,213,255,.08);
+}
+.dice-stage-glow{
+  width:68%;
+  aspect-ratio:1 / 1;
+  background:radial-gradient(circle, rgba(122,213,255,.16) 0%, rgba(122,213,255,.08) 24%, rgba(122,213,255,0) 68%);
+  filter:blur(12px);
+  opacity:.92;
+}
+.dice-stage-flash{
+  width:74%;
+  aspect-ratio:1 / 1;
+  background:radial-gradient(circle, rgba(255,255,255,.30) 0%, rgba(122,213,255,.16) 22%, rgba(255,111,148,.12) 46%, rgba(255,255,255,0) 72%);
+  opacity:0;
+}
+.dice-stage-flash.is-live{
+  animation:diceStageFlash .7s ease;
+}
+.dice-stage-card[data-state="rolling"] .dice-stage-ring{
+  animation:diceRingOrbit 1.2s linear infinite;
+}
+.dice-stage-card[data-state="rolling"] .dice-stage-glow{
+  animation:diceGlowPulse 1.2s ease-in-out infinite;
+}
+.dice-viewport-top{
+  position:absolute;
+  inset:14px 14px auto 14px;
+  z-index:2;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+.dice-signal-card{
+  position:absolute;
+  left:16px;
+  right:16px;
+  bottom:16px;
+  z-index:2;
+  display:grid;
+  gap:4px;
+  padding:16px 18px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(180deg, rgba(8,14,28,.8), rgba(7,12,22,.96));
+  backdrop-filter:blur(18px);
+  box-shadow:var(--shadow-md);
+}
+.dice-signal-kicker{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+}
+.dice-signal-card strong{
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:44px;
+  line-height:1;
+  letter-spacing:-.06em;
+}
+.dice-signal-card span:last-child{
+  color:var(--muted-strong);
+  font-size:13px;
+}
+.dice-console{
+  display:grid;
+  gap:14px;
+}
+.dice-console-copy{
+  display:grid;
+  gap:8px;
+}
+.dice-console-copy .section-title{
+  margin:0;
+  font-size:28px;
+}
+.dice-console-copy .hero-subtitle{
+  max-width:none;
+}
+.dice-console-stats{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+.dice-mini-card{
+  padding:14px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.1);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+}
+.dice-mini-value{
+  display:block;
+  margin-top:8px;
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:22px;
+  line-height:1.05;
+  letter-spacing:-.04em;
+}
+.dado-action{
+  flex:1 1 180px;
+}
+.action-btn--ghost{
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+}
+"""
+    )
+    css_parts.append(
+        r"""
+.dado-option-grid{
+  display:grid;
+  gap:12px;
+  margin-top:14px;
+}
+.dado-anime-option{
+  width:100%;
+  padding:0;
+  overflow:hidden;
+  text-align:left;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.1);
+  background:linear-gradient(180deg, rgba(13,21,42,.94), rgba(8,13,25,.98));
+  box-shadow:var(--shadow-md);
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.dado-anime-option:active{
+  transform:scale(.985);
+}
+.dado-anime-option[disabled]{
+  opacity:.68;
+}
+.dado-anime-option-cover{
+  position:relative;
+  aspect-ratio:16 / 9;
+  overflow:hidden;
+  background:linear-gradient(180deg, rgba(122,213,255,.14), rgba(255,111,148,.16));
+}
+.dado-anime-option-cover img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.dado-anime-option-cover::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(7,11,22,.08), rgba(7,11,22,.84));
+}
+.dado-anime-option-index{
+  position:absolute;
+  left:14px;
+  top:14px;
+  z-index:1;
+}
+.dado-anime-option-body{
+  display:grid;
+  gap:12px;
+  padding:16px;
+}
+.dado-anime-option-copy{
+  display:grid;
+  gap:8px;
+}
+.dado-anime-option-title{
+  margin:0;
+  font-size:20px;
+  line-height:1.06;
+  letter-spacing:-.03em;
+}
+.dado-anime-option-sub{
+  color:var(--muted-strong);
+  font-size:13px;
+  line-height:1.5;
+}
+.dado-anime-option .action-btn{
+  width:100%;
+}
+.dado-reward-shell{
+  min-height:0;
+}
+.dado-reward-card{
+  display:grid;
+  gap:16px;
+  padding:16px;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    radial-gradient(520px 220px at 100% 0%, rgba(255,111,148,.16), transparent 52%),
+    linear-gradient(180deg, rgba(14,23,45,.96), rgba(8,13,25,.98));
+  box-shadow:var(--shadow-md);
+  animation:dadoRewardReveal .48s cubic-bezier(.2,.8,.2,1);
+}
+.dado-reward-media{
+  position:relative;
+  border-radius:22px;
+  overflow:hidden;
+  min-height:220px;
+  background:linear-gradient(180deg, rgba(122,213,255,.14), rgba(255,111,148,.14));
+}
+.dado-reward-media img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.dado-reward-media::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(7,11,22,.04), rgba(7,11,22,.82));
+}
+.dado-reward-copy{
+  display:grid;
+  gap:10px;
+  align-content:start;
+}
+.dado-reward-title{
+  margin:0;
+  font-size:clamp(26px, 7vw, 38px);
+  line-height:.98;
+  letter-spacing:-.05em;
+}
+.dado-reward-stars{
+  color:rgba(255,236,168,.92);
+  font-size:15px;
+  letter-spacing:.16em;
+}
+.dado-reward-copy .pill-row{
+  gap:8px;
+}
+@keyframes diceRingOrbit{
+  from{ transform:translate(-50%, -50%) rotate(0deg); }
+  to{ transform:translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes diceGlowPulse{
+  0%,100%{ opacity:.58; transform:translate(-50%, -50%) scale(.96); }
+  50%{ opacity:1; transform:translate(-50%, -50%) scale(1.04); }
+}
+@keyframes diceStageFlash{
+  0%{ opacity:0; transform:translate(-50%, -50%) scale(.84); }
+  22%{ opacity:1; }
+  100%{ opacity:0; transform:translate(-50%, -50%) scale(1.18); }
+}
+@keyframes dadoRewardReveal{
+  from{ opacity:0; transform:translateY(12px) scale(.985); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+@media (min-width:860px){
+  .dice-stage-grid{
+    grid-template-columns:minmax(0, 1.2fr) minmax(320px, .8fr);
+    align-items:stretch;
+  }
+  .dice-console{
+    align-content:space-between;
+  }
+  .dado-option-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+  .dado-reward-card{
+    grid-template-columns:minmax(260px, .9fr) minmax(0, 1.1fr);
+    align-items:center;
+  }
+}
+@media (min-width:1080px){
+  .dado-option-grid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width:520px){
+  .dice-console-stats{
+    grid-template-columns:1fr;
+  }
+  .dice-viewport{
+    min-height:292px;
+  }
+  .dice-signal-card strong{
+    font-size:38px;
+  }
+}
+"""
+    )
+    js_parts.append(
+        """
+const DADO_UID = resolveWebappUid(__DADO_UID__);
+const dadoNote = document.getElementById("dadoNote");
+const dadoStageCard = document.getElementById("dadoStageCard");
+const dadoStageFlash = document.getElementById("dadoStageFlash");
+const dadoHud = document.getElementById("dadoHud");
+const dadoSignalValue = document.getElementById("dadoSignalValue");
+const dadoSignalLabel = document.getElementById("dadoSignalLabel");
+const rollDiceBtn = document.getElementById("rollDiceBtn");
+const resetDiceBtn = document.getElementById("resetDiceBtn");
+const dadoOptionsGrid = document.getElementById("dadoOptionsGrid");
+const dadoOptionsEmpty = document.getElementById("dadoOptionsEmpty");
+const dadoRewardRoot = document.getElementById("dadoRewardRoot");
+const dadoRewardMeta = document.getElementById("dadoRewardMeta");
+const dadoState = {
+  user: null,
+  balance: 0,
+  next: "--:--",
+  rollId: 0,
+  diceValue: 0,
+  options: [],
+  rolling: false,
+  picking: false,
+  sceneReady: false,
+  refreshHandle: null
+};
+const tgDado = getTelegramWebApp();
+if (tgDado) {
+  try {
+    tgDado.ready();
+    tgDado.expand();
+  } catch(err) {}
+}
+
+let renderer = null;
+let scene = null;
+let camera = null;
+let diceMesh = null;
+let frameHandle = 0;
+let particles = [];
+let stageFloor = null;
+
+function setDadoNote(message, tone){
+  dadoNote.textContent = message || "";
+  dadoNote.dataset.tone = tone || "";
+}
+
+function dadoUserLabel(){
+  const user = dadoState.user || {};
+  return String(user.nickname || user.display_name || user.full_name || (DADO_UID > 0 ? ("UID " + DADO_UID) : "Jogador"));
+}
+
+function setStageMode(mode){
+  dadoStageCard.dataset.state = mode || "idle";
+}
+
+function pulseStage(){
+  dadoStageFlash.classList.remove("is-live");
+  void dadoStageFlash.offsetWidth;
+  dadoStageFlash.classList.add("is-live");
+}
+
+function setStageSignal(value, label){
+  dadoSignalValue.textContent = value == null || value === "" ? "?" : String(value);
+  dadoSignalLabel.textContent = label || "Aguardando a proxima rolagem";
+  document.getElementById("dadoFaceCard").textContent = value == null || value === "" ? "?" : String(value);
+}
+
+function syncDadoHero(){
+  const label = dadoUserLabel();
+  document.getElementById("dadoPlayerHero").textContent = label;
+  document.getElementById("dadoBalanceHero").textContent = String(dadoState.balance || 0);
+  document.getElementById("dadoNextHero").textContent = String(dadoState.next || "--:--");
+  document.getElementById("dadoIdentityPill").textContent = label;
+  document.getElementById("dadoAccountCard").textContent = label;
+  document.getElementById("dadoEnergyPill").textContent = "Saldo " + String(dadoState.balance || 0);
+  document.getElementById("dadoNextPill").textContent = "Proximo " + String(dadoState.next || "--:--");
+  document.getElementById("dadoOptionsCount").textContent = String((dadoState.options || []).length || 0);
+  document.getElementById("dadoMeta").textContent = "Atualizado " + humanClock() + " . Saldo " + String(dadoState.balance || 0) + " . Proximo " + String(dadoState.next || "--:--");
+}
+
+function clearReward(){
+  dadoRewardRoot.className = "empty-state dado-reward-shell";
+  dadoRewardRoot.innerHTML = "<strong>Sem premio ainda</strong>Escolha um anime da rodada para revelar o personagem.";
+  dadoRewardMeta.textContent = "Nenhum personagem revelado ainda.";
+}
+
+function renderReward(character){
+  const safeCharacter = character || {};
+  const stars = "\\u2605".repeat(Math.max(1, Number(safeCharacter.stars || 1)));
+  const img = safeCharacter.image
+    ? '<img src="' + esc(safeCharacter.image) + '" alt="' + esc(safeCharacter.name || "Personagem") + '" loading="lazy" onerror="setImageFallback(this,\\'WIN\\')">'
+    : "";
+  dadoRewardRoot.className = "dado-reward-shell";
+  dadoRewardRoot.innerHTML = ""
+    + '<article class="dado-reward-card">'
+    +   '<div class="dado-reward-media">' + img + '<div class="media-badge media-badge--accent">' + esc((safeCharacter.tier || "COMMON").toUpperCase()) + '</div></div>'
+    +   '<div class="dado-reward-copy">'
+    +     '<div class="section-kicker">Drop confirmado</div>'
+    +     '<h3 class="dado-reward-title">' + esc(safeCharacter.name || "Personagem") + '</h3>'
+    +     '<div class="dado-reward-stars">' + esc(stars) + '</div>'
+    +     '<div class="pill-row">'
+    +       '<span class="soft-pill soft-pill--cool">' + esc(safeCharacter.anime_title || "Anime") + '</span>'
+    +       '<span class="soft-pill">ID ' + esc(safeCharacter.id || 0) + '</span>'
+    +       '<span class="soft-pill soft-pill--accent">' + esc((safeCharacter.tier || "COMMON").toUpperCase()) + '</span>'
+    +     '</div>'
+    +     '<p class="hero-subtitle">Resultado revelado com sincronia imediata e pronto para refletir no restante do ecossistema.</p>'
+    +   '</div>'
+    + '</article>';
+  dadoRewardMeta.textContent = "Premio revelado com sucesso.";
+  pulseStage();
+}
+
+function renderDadoOptions(){
+  if (!Array.isArray(dadoState.options) || !dadoState.options.length){
+    dadoOptionsGrid.innerHTML = "";
+    dadoOptionsEmpty.style.display = "";
+    document.getElementById("dadoOptionsMeta").textContent = "Role o dado para gerar as opcoes.";
+    document.getElementById("dadoOptionsCount").textContent = "0";
+    return;
+  }
+
+  dadoOptionsEmpty.style.display = "none";
+  document.getElementById("dadoOptionsMeta").textContent = "Escolha um anime para revelar o personagem.";
+  document.getElementById("dadoOptionsCount").textContent = String(dadoState.options.length);
+  dadoOptionsGrid.innerHTML = dadoState.options.map(function(opt, index){
+    const cover = opt.cover
+      ? '<img src="' + esc(opt.cover) + '" alt="' + esc(opt.title || "Anime") + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">'
+      : "";
+    return ""
+      + '<button type="button" class="dado-anime-option" data-pick-anime="' + esc(opt.id || 0) + '">'
+      +   '<div class="dado-anime-option-cover">'
+      +     cover
+      +     '<span class="soft-pill soft-pill--cool dado-anime-option-index">Opcao ' + esc(index + 1) + '</span>'
+      +   '</div>'
+      +   '<div class="dado-anime-option-body">'
+      +     '<div class="dado-anime-option-copy">'
+      +       '<h3 class="dado-anime-option-title">' + esc(opt.title || "Anime") + '</h3>'
+      +       '<div class="dado-anime-option-sub">Toque para travar a escolha e revelar um personagem dessa obra.</div>'
+      +     '</div>'
+      +     '<span class="action-btn action-btn--primary">Escolher este anime</span>'
+      +   '</div>'
+      + '</button>';
+  }).join("");
+
+  dadoOptionsGrid.querySelectorAll("[data-pick-anime]").forEach(function(button){
+    button.onclick = async function(){
+      const animeId = Number(button.getAttribute("data-pick-anime") || 0);
+      if (!animeId || !dadoState.rollId || dadoState.picking) return;
+      dadoState.picking = true;
+      dadoOptionsGrid.querySelectorAll("[data-pick-anime]").forEach(function(node){ node.disabled = true; });
+      setDadoNote("Revelando personagem...", "");
+      dadoHud.textContent = "Escolha confirmada";
+      setStageMode("landed");
+
+      try {
+        const response = await authJson("/api/dado/pick", { uid: DADO_UID, method: "POST", json: { roll_id: dadoState.rollId, anime_id: animeId } });
+        if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.error) || "Falha ao revelar personagem.");
+        dadoState.balance = Number(response.data.balance || dadoState.balance || 0);
+        dadoState.rollId = 0;
+        dadoState.options = [];
+        syncDadoHero();
+        renderDadoOptions();
+        renderReward(response.data.character || {});
+        dadoHud.textContent = "Personagem revelado";
+        setDadoNote("Personagem obtido com sucesso.", "success");
+      } catch(err) {
+        dadoOptionsGrid.querySelectorAll("[data-pick-anime]").forEach(function(node){ node.disabled = false; });
+        setDadoNote(err.message, "error");
+      } finally {
+        dadoState.picking = false;
+      }
+    };
+  });
+}
+"""
+    )
+    js_parts.append(
+        """
+function createRoundedRect(ctx, x, y, width, height, radius){
+  const safe = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + safe, y);
+  ctx.lineTo(x + width - safe, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safe);
+  ctx.lineTo(x + width, y + height - safe);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safe, y + height);
+  ctx.lineTo(x + safe, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safe);
+  ctx.lineTo(x, y + safe);
+  ctx.quadraticCurveTo(x, y, x + safe, y);
+  ctx.closePath();
+}
+
+function createFaceTexture(value, accent){
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+
+  const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+  gradient.addColorStop(0, "#182445");
+  gradient.addColorStop(1, "#070c18");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 512, 512);
+
+  ctx.fillStyle = "rgba(255,255,255,.03)";
+  for (let y = 0; y < 512; y += 16){
+    ctx.fillRect(0, y, 512, 1);
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,.14)";
+  ctx.lineWidth = 12;
+  ctx.strokeRect(18, 18, 476, 476);
+
+  ctx.strokeStyle = accent || "#7ad5ff";
+  ctx.lineWidth = 10;
+  createRoundedRect(ctx, 44, 44, 424, 424, 42);
+  ctx.stroke();
+
+  ctx.shadowColor = accent || "#7ad5ff";
+  ctx.shadowBlur = 32;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 240px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(value), 256, 278);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,.52)";
+  ctx.font = "700 34px 'Segoe UI', sans-serif";
+  ctx.fillText("DICE", 256, 94);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function ensureScene(){
+  if (dadoState.sceneReady) return true;
+  if (typeof window.THREE === "undefined"){
+    setStageSignal("?", "3D indisponivel neste momento");
+    return false;
+  }
+
+  const sceneWrap = document.getElementById("sceneWrap");
+  if (!sceneWrap) return false;
+
+  const width = sceneWrap.clientWidth || 320;
+  const height = sceneWrap.clientHeight || 320;
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(width, height);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  sceneWrap.innerHTML = "";
+  sceneWrap.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+  camera.position.set(0, 0.8, 6.8);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 1.5);
+  scene.add(ambient);
+
+  const point = new THREE.PointLight(0xffffff, 2.4, 32);
+  point.position.set(2.8, 3.6, 5.4);
+  scene.add(point);
+
+  const rim = new THREE.PointLight(0xff6f94, 1.2, 20);
+  rim.position.set(-3.2, -0.6, 2.8);
+  scene.add(rim);
+
+  const floorGeo = new THREE.CircleGeometry(3.1, 72);
+  const floorMat = new THREE.MeshBasicMaterial({
+    color: 0x12233a,
+    transparent: true,
+    opacity: 0.34
+  });
+  stageFloor = new THREE.Mesh(floorGeo, floorMat);
+  stageFloor.rotation.x = -Math.PI / 2;
+  stageFloor.position.y = -1.58;
+  scene.add(stageFloor);
+
+  const faceColors = ["#7ad5ff", "#ff7ea6", "#8ef0ff", "#ff9f7d", "#9b8bff", "#ffe07d"];
+  const materials = [
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(2, faceColors[1]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(5, faceColors[4]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(3, faceColors[2]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(4, faceColors[3]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(1, faceColors[0]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
+    new THREE.MeshStandardMaterial({ map: createFaceTexture(6, faceColors[5]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f })
+  ];
+
+  const geometry = new THREE.BoxGeometry(2.08, 2.08, 2.08, 1, 1, 1);
+  diceMesh = new THREE.Mesh(geometry, materials);
+  scene.add(diceMesh);
+
+  const edgeGeo = new THREE.EdgesGeometry(geometry);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x9de8ff, transparent: true, opacity: 0.46 });
+  const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+  diceMesh.add(edges);
+
+  particles = [];
+  for (let i = 0; i < 42; i += 1){
+    const pGeo = new THREE.SphereGeometry(0.03, 8, 8);
+    const pMat = new THREE.MeshBasicMaterial({ color: i % 2 ? 0x7ad5ff : 0xff6f94 });
+    const p = new THREE.Mesh(pGeo, pMat);
+    p.position.set((Math.random() - 0.5) * 4.6, (Math.random() - 0.5) * 3.4, (Math.random() - 0.5) * 3.2);
+    p.userData = {
+      vx: (Math.random() - 0.5) * 0.018,
+      vy: (Math.random() - 0.5) * 0.018,
+      vz: (Math.random() - 0.5) * 0.018
+    };
+    scene.add(p);
+    particles.push(p);
+  }
+
+  cancelAnimationFrame(frameHandle);
+  const tick = function(){
+    if (!renderer || !scene || !camera || !diceMesh) return;
+    if (!dadoState.rolling){
+      diceMesh.rotation.x += 0.0022;
+      diceMesh.rotation.y += 0.003;
+      if (stageFloor) stageFloor.rotation.z += 0.0014;
+    }
+    particles.forEach(function(p){
+      p.position.x += p.userData.vx;
+      p.position.y += p.userData.vy;
+      p.position.z += p.userData.vz;
+      if (Math.abs(p.position.x) > 3.2) p.userData.vx *= -1;
+      if (Math.abs(p.position.y) > 2.1) p.userData.vy *= -1;
+      if (Math.abs(p.position.z) > 2.2) p.userData.vz *= -1;
+    });
+    renderer.render(scene, camera);
+    frameHandle = requestAnimationFrame(tick);
+  };
+  tick();
+  dadoState.sceneReady = true;
+  return true;
+}
+
+function resizeScene(){
+  const sceneWrap = document.getElementById("sceneWrap");
+  if (!renderer || !camera || !sceneWrap) return;
+  const width = sceneWrap.clientWidth || 320;
+  const height = sceneWrap.clientHeight || 320;
+  renderer.setSize(width, height);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+
+async function animateDiceResult(value, options){
+  const opts = options || {};
+  if (!ensureScene()){
+    setStageMode("landed");
+    setStageSignal(value || "?", "Resultado: " + String(value || "?"));
+    dadoHud.textContent = "Resultado: " + String(value || "?");
+    return;
+  }
+
+  const targets = {
+    1: { x: 0, y: 0 },
+    2: { x: 0, y: -Math.PI / 2 },
+    3: { x: Math.PI / 2, y: 0 },
+    4: { x: -Math.PI / 2, y: 0 },
+    5: { x: 0, y: Math.PI / 2 },
+    6: { x: 0, y: Math.PI }
+  };
+  const target = targets[value] || targets[1];
+  const restore = !!opts.restore;
+  const duration = restore ? 1100 : 1850;
+  const baseX = diceMesh.rotation.x;
+  const baseY = diceMesh.rotation.y;
+  const baseZ = diceMesh.rotation.z;
+  const endX = target.x + Math.PI * (restore ? 4.5 : 8.5);
+  const endY = target.y + Math.PI * (restore ? 5.0 : 9.0);
+  const endZ = baseZ + Math.PI * (restore ? 1.4 : 2.4);
+  const start = performance.now();
+
+  dadoState.rolling = true;
+  rollDiceBtn.disabled = true;
+  setStageMode("rolling");
+  dadoHud.textContent = restore ? "Recuperando rolagem" : "Rolando...";
+  setStageSignal("...", restore ? "Retomando resultado" : "Agitando o dado 3D");
+  pulseStage();
+
+  await new Promise(function(resolve){
+    function step(now){
+      const progress = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 4);
+      const wobble = Math.sin(progress * Math.PI * 9) * (1 - progress) * 0.22;
+
+      diceMesh.rotation.x = baseX + (endX - baseX) * ease + wobble * 0.4;
+      diceMesh.rotation.y = baseY + (endY - baseY) * ease + wobble;
+      diceMesh.rotation.z = baseZ + (endZ - baseZ) * ease;
+      camera.position.x = Math.sin(progress * Math.PI * 2) * 0.26;
+      camera.position.y = 0.8 + Math.sin(progress * Math.PI * 5) * 0.09;
+      camera.lookAt(0, 0, 0);
+
+      if (progress < 1){
+        requestAnimationFrame(step);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(step);
+  });
+
+  diceMesh.rotation.x = target.x;
+  diceMesh.rotation.y = target.y;
+  diceMesh.rotation.z = 0;
+  camera.position.set(0, 0.8, 6.8);
+  camera.lookAt(0, 0, 0);
+
+  dadoState.rolling = false;
+  rollDiceBtn.disabled = false;
+  setStageMode("landed");
+  setStageSignal(value || "?", restore ? "Rolagem recuperada" : "Resultado confirmado");
+  dadoHud.textContent = "Resultado: " + String(value || "?");
+  pulseStage();
+}
+"""
+    )
+    js_parts.append(
+        """
+async function loadDadoUser(){
+  const response = await authJson("/api/webapp/context", { uid: DADO_UID });
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o jogador.");
+  dadoState.user = response.data.profile || null;
+  syncDadoHero();
+}
+
+async function loadDadoState(options){
+  const opts = options || {};
+  if ((dadoState.rolling || dadoState.picking) && opts.silent) return;
+
+  const response = await authJson("/api/dado/state", { uid: DADO_UID });
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar o estado dos dados.");
+
+  dadoState.balance = Number(response.data.balance || 0);
+  dadoState.next = String(response.data.next_recharge_hhmm || "--:--");
+
+  if (response.data.active_roll && response.data.active_roll.roll_id){
+    const nextRollId = Number(response.data.active_roll.roll_id || 0);
+    const nextDiceValue = Number(response.data.active_roll.dice_value || 0);
+    const nextOptions = Array.isArray(response.data.active_roll.options) ? response.data.active_roll.options : [];
+    const changedRoll = nextRollId !== dadoState.rollId || nextDiceValue !== dadoState.diceValue;
+
+    dadoState.rollId = nextRollId;
+    dadoState.diceValue = nextDiceValue;
+    dadoState.options = nextOptions;
+    syncDadoHero();
+
+    if (dadoState.diceValue > 0){
+      if (changedRoll){
+        await animateDiceResult(dadoState.diceValue, { restore: !!opts.silent });
+      } else {
+        setStageMode("landed");
+        setStageSignal(dadoState.diceValue, "Resultado confirmado");
+        dadoHud.textContent = "Resultado: " + String(dadoState.diceValue);
+      }
+    }
+  } else {
+    dadoState.rollId = 0;
+    dadoState.diceValue = 0;
+    dadoState.options = [];
+    syncDadoHero();
+    setStageMode("idle");
+    setStageSignal("?", "Aguardando a proxima rolagem");
+    dadoHud.textContent = "Pronto para rolar";
+  }
+
+  renderDadoOptions();
+  if (!opts.silent) setDadoNote("Estado do sistema de dados atualizado.", "success");
+}
+
+async function rollDice(){
+  if (dadoState.rolling || dadoState.picking) return;
+  dadoState.rolling = true;
+  rollDiceBtn.disabled = true;
+  clearReward();
+  dadoState.options = [];
+  renderDadoOptions();
+
+  try {
+    setDadoNote("Rolando dado...", "");
+    const response = await authJson("/api/dado/roll", { uid: DADO_UID, method: "POST", json: {} });
+    if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.error) || "Falha ao rolar.");
+    dadoState.rollId = Number(response.data.roll_id || 0);
+    dadoState.diceValue = Number(response.data.dice_value || 0);
+    dadoState.options = Array.isArray(response.data.options) ? response.data.options : [];
+    dadoState.balance = Number(response.data.balance || dadoState.balance || 0);
+    syncDadoHero();
+    await animateDiceResult(dadoState.diceValue || "?");
+    renderDadoOptions();
+    setDadoNote("Escolha um anime para revelar o personagem.", "success");
+  } catch(err) {
+    setStageMode("idle");
+    setStageSignal("?", "Rolagem interrompida");
+    dadoHud.textContent = "Falha na rolagem";
+    setDadoNote(err.message, "error");
+  } finally {
+    dadoState.rolling = false;
+    rollDiceBtn.disabled = false;
+  }
+}
+
+rollDiceBtn.onclick = rollDice;
+resetDiceBtn.onclick = function(){
+  dadoState.rollId = 0;
+  dadoState.diceValue = 0;
+  dadoState.options = [];
+  setStageMode("idle");
+  setStageSignal("?", "Aguardando a proxima rolagem");
+  dadoHud.textContent = "Pronto para rolar";
+  renderDadoOptions();
+  clearReward();
+  setDadoNote("Tela limpa. O saldo continua sincronizado.", "success");
+};
+
+window.addEventListener("resize", resizeScene);
+
+(async function(){
+  try {
+    ensureScene();
+    setStageSignal("?", "Aguardando a proxima rolagem");
+    await loadDadoUser();
+    await loadDadoState({ silent: false });
+    dadoState.refreshHandle = createLiveRefresh(async function(){
+      await loadDadoUser();
+      await loadDadoState({ silent: true });
+    }, 7000);
+  } catch(err) {
+    setDadoNote(err.message, "error");
+  }
+})();
+"""
+    )
+
+    body = "".join(body_parts).replace("__DADO_BANNER__", _h(banner_url))
+    extra_css = "".join(css_parts)
+    js = "".join(js_parts).replace("__DADO_UID__", str(int(uid)))
+    return _page_template("Dado", body, extra_css=extra_css, extra_js=js, include_tg=True)
+
+
 def build_baltigoflix_page(*, uid: int, banner_url: str) -> str:
     body = f"""
 <section class="hero-card">
