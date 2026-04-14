@@ -3,7 +3,7 @@ import secrets
 import time
 import unicodedata
 from html import escape
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import ContextTypes
@@ -43,7 +43,60 @@ def normalize(text: str) -> str:
     text = str(text or "").lower()
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    text = "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in text)
     return " ".join(text.strip().split())
+
+
+def _tokens(text: str) -> List[str]:
+    return [item for item in normalize(text).split() if item]
+
+
+def _matches_capture_name(character_name: str, guess_text: str) -> bool:
+    full_name = normalize(character_name)
+    guess = normalize(guess_text)
+
+    if not full_name or not guess:
+        return False
+
+    if guess == full_name:
+        return True
+
+    name_tokens = _tokens(character_name)
+    guess_tokens = _tokens(guess_text)
+
+    if not name_tokens or not guess_tokens:
+        return False
+
+    if len(guess_tokens) == 1:
+        probe = guess_tokens[0]
+
+        if probe in name_tokens:
+            return True
+
+        if len(probe) >= 3 and any(token.startswith(probe) for token in name_tokens):
+            return True
+
+        if len(probe) >= 4 and probe in full_name.replace(" ", ""):
+            return True
+
+        return False
+
+    if len(guess_tokens) > len(name_tokens):
+        return False
+
+    idx = 0
+    for probe in guess_tokens:
+        matched = False
+        while idx < len(name_tokens):
+            token = name_tokens[idx]
+            idx += 1
+            if probe == token or (len(probe) >= 3 and token.startswith(probe)):
+                matched = True
+                break
+        if not matched:
+            return False
+
+    return True
 
 
 def _display_name(user) -> str:
@@ -106,28 +159,30 @@ def _build_offer_caption(
     anime_name = escape(str(offer.get("anime_name") or "Obra desconhecida"))
     level_up = str(offer.get("level_up_line") or "")
 
-    xp_block = f"⭐ +{offer['xp_reward']} XP garantidos\n{level_up}".rstrip()
+    xp_block = f"⭐ Claim garantido: <b>+{offer['xp_reward']} XP</b>\n{level_up}".rstrip()
 
     if mode == "available":
         return (
-            f"🏆 {buyer_link} foi mais rapido e capturou <b>{character_name}</b>!\n"
-            f"🎬 {anime_name}\n\n"
+            "✦ <b>CLAIM FECHADO</b>\n\n"
+            f"{buyer_link} levou o claim de <b>{character_name}</b>\n"
+            f"🎬 <b>{anime_name}</b>\n\n"
             f"{xp_block}\n"
-            f"🪙 Compra exclusiva liberada por <b>{offer['price']} coins</b>\n"
-            f"⏳ So o captor pode comprar durante <b>{offer['window_text']}</b>\n\n"
-            "Se quiser transformar essa captura em carta, toca no botao abaixo."
+            f"🛒 Carta exclusiva: <b>{offer['price']} coins</b>\n"
+            f"🔒 So o captor pode comprar\n"
+            f"⏳ Janela de compra: <b>{offer['window_text']}</b>\n\n"
+            "Se quiser transformar o claim em carta, garante agora no botao abaixo."
         )
 
     if mode == "purchased":
         if quantity_after <= 1:
-            collection_line = "📚 Nova carta enviada para a sua colecao"
+            collection_line = "📚 Primeira copia enviada para a colecao"
         else:
             collection_line = f"📚 Agora voce tem <b>{quantity_after}</b> copias dessa carta"
 
         return (
-            f"🛒 <b>Compra concluida!</b>\n\n"
-            f"{buyer_link} garantiu <b>{character_name}</b> para a colecao.\n"
-            f"🎬 {anime_name}\n\n"
+            "✦ <b>CARTA GARANTIDA</b>\n\n"
+            f"{buyer_link} adicionou <b>{character_name}</b> a colecao\n"
+            f"🎬 <b>{anime_name}</b>\n\n"
             f"{xp_block}\n"
             f"🪙 -{offer['price']} coins\n"
             f"{collection_line}\n"
@@ -135,11 +190,11 @@ def _build_offer_caption(
         )
 
     return (
-        f"⌛ <b>Oferta encerrada.</b>\n\n"
-        f"{buyer_link} capturou <b>{character_name}</b>.\n"
-        f"🎬 {anime_name}\n\n"
+        "✦ <b>CLAIM ENCERRADO</b>\n\n"
+        f"{buyer_link} levou <b>{character_name}</b>\n"
+        f"🎬 <b>{anime_name}</b>\n\n"
         f"{xp_block}\n"
-        "Os XP foram garantidos, mas a carta nao entrou na colecao a tempo."
+        "A janela de compra fechou, entao a carta nao entrou na colecao."
     )
 
 
@@ -148,7 +203,7 @@ def _offer_keyboard(offer_id: str) -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    f"🪙 Comprar por {PURCHASE_COST} coins",
+                    f"🛒 Garantir carta ({PURCHASE_COST} coins)",
                     callback_data=f"capturebuy:{offer_id}",
                 )
             ]
@@ -183,7 +238,7 @@ async def _edit_offer_message(
     offer: Dict[str, Any],
     caption: str,
     reply_markup=None,
-) -> None:
+) -> bool:
     try:
         if offer.get("has_photo"):
             await context.bot.edit_message_caption(
@@ -193,7 +248,7 @@ async def _edit_offer_message(
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
-            return
+            return True
 
         await context.bot.edit_message_text(
             chat_id=offer["chat_id"],
@@ -202,8 +257,9 @@ async def _edit_offer_message(
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
+        return True
     except Exception:
-        pass
+        return False
 
 
 async def _expire_offer_later(offer_id: str, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -253,10 +309,10 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         character = spawn.get("character") or {}
-        correct_name = normalize(character.get("name", ""))
-        guess = normalize(" ".join(context.args))
-
-        if not correct_name or guess != correct_name:
+        if not _matches_capture_name(
+            str(character.get("name") or ""),
+            " ".join(context.args),
+        ):
             return
 
         ACTIVE_SPAWNS.pop(chat_id, None)
@@ -292,18 +348,30 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "created_at": created_at,
             "expires_at": created_at + PURCHASE_WINDOW_SECONDS,
             "window_text": _format_window(PURCHASE_WINDOW_SECONDS),
+            "message_id": int(spawn.get("message_id") or 0),
+            "has_photo": True,
         }
 
         caption = _build_offer_caption(offer, "available")
-        sent, has_photo = await _send_offer_message(
-            update.message,
-            offer["image"],
-            caption,
-            _offer_keyboard(offer_id),
-        )
+        edited = False
+        if offer["message_id"]:
+            edited = await _edit_offer_message(
+                context,
+                offer,
+                caption,
+                reply_markup=_offer_keyboard(offer_id),
+            )
 
-        offer["message_id"] = getattr(sent, "message_id", 0)
-        offer["has_photo"] = has_photo
+        if not edited:
+            sent, has_photo = await _send_offer_message(
+                update.message,
+                offer["image"],
+                caption,
+                _offer_keyboard(offer_id),
+            )
+            offer["message_id"] = getattr(sent, "message_id", 0)
+            offer["has_photo"] = has_photo
+
         PURCHASE_OFFERS[offer_id] = offer
 
         asyncio.create_task(_expire_offer_later(offer_id, context))
