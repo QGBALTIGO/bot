@@ -9,7 +9,12 @@ from telegram import Message, Update
 from telegram.ext import ContextTypes
 
 from cards_service import build_cards_final_data
-from database import get_all_global_character_images
+from database import (
+    delete_active_group_spawn,
+    get_active_group_spawn,
+    get_all_global_character_images,
+    upsert_active_group_spawn,
+)
 
 
 ACTIVE_SPAWNS: Dict[int, Dict[str, Any]] = {}
@@ -104,6 +109,36 @@ async def _edit_spawn_message(
         return True
     except Exception:
         return False
+
+
+def get_current_spawn(chat_id: int) -> Optional[Dict[str, Any]]:
+    chat_id = int(chat_id)
+    state = ACTIVE_SPAWNS.get(chat_id)
+    if state:
+        expires_at = float(state.get("expires_at") or 0.0)
+        if not expires_at or expires_at > time.time():
+            return state
+        ACTIVE_SPAWNS.pop(chat_id, None)
+
+    row = get_active_group_spawn(chat_id)
+    if not row:
+        return None
+
+    state = {
+        "character": {
+            "id": int(row.get("character_id") or 0),
+            "name": str(row.get("character_name") or "Sem nome"),
+            "anime": str(row.get("anime_name") or "Obra desconhecida"),
+            "image": str(row.get("image_url") or "").strip(),
+            "curated": False,
+        },
+        "time": float(row.get("created_at_ts") or time.time()),
+        "manual": bool(row.get("is_manual")),
+        "expires_at": float(row.get("expires_at_ts") or 0.0),
+        "message_id": int(row.get("message_id") or 0),
+    }
+    ACTIVE_SPAWNS[chat_id] = state
+    return state
 
 
 def _load_spawn_characters() -> List[Dict[str, Any]]:
@@ -216,7 +251,7 @@ async def start_spawn(
         return None
 
     chat_id = chat.id
-    if chat_id in ACTIVE_SPAWNS:
+    if get_current_spawn(chat_id):
         return None
 
     characters = get_spawn_pool()
@@ -247,6 +282,17 @@ async def start_spawn(
     ACTIVE_SPAWNS[chat_id] = state
     MESSAGE_COUNTER[chat_id] = 0
     _remember_recent_character(chat_id, int(character["id"]))
+    upsert_active_group_spawn(
+        chat_id=chat_id,
+        character_id=int(character["id"]),
+        character_name=str(character.get("name") or "Sem nome"),
+        anime_name=str(character.get("anime") or "Obra desconhecida"),
+        image_url=str(character.get("image") or "").strip(),
+        message_id=int(state["message_id"]),
+        is_manual=bool(manual),
+        created_at_ts=float(state["time"]),
+        expires_at_ts=float(state["expires_at"]),
+    )
 
     asyncio.create_task(_escape_character(chat_id, context))
     return state
@@ -265,7 +311,7 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
         return
 
     chat_id = chat.id
-    if chat_id in ACTIVE_SPAWNS:
+    if get_current_spawn(chat_id):
         return
 
     MESSAGE_COUNTER[chat_id] = MESSAGE_COUNTER.get(chat_id, 0) + 1
@@ -279,7 +325,7 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    state = ACTIVE_SPAWNS.get(chat_id)
+    state = get_current_spawn(chat_id)
     if not state:
         return
 
@@ -291,7 +337,12 @@ async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 async def finish_spawn_as_escaped(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> Optional[Dict[str, Any]]:
     state = ACTIVE_SPAWNS.pop(chat_id, None)
     if not state:
+        state = get_current_spawn(chat_id)
+        ACTIVE_SPAWNS.pop(chat_id, None)
+    if not state:
         return None
+
+    delete_active_group_spawn(chat_id)
 
     character = state.get("character") or {}
     record_chat_spawn_result(chat_id, "escaped", character)
