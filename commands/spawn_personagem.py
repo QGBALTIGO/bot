@@ -3,24 +3,24 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers.capture_spawn import get_current_spawn, start_spawn
+from handlers.capture_spawn import expire_active_spawn_if_needed, get_active_spawn, start_spawn
 
 
-ADMIN_IDS = set(
-    int(x.strip())
-    for x in os.getenv("ADMIN_IDS", "").split(",")
-    if x.strip()
-)
+ADMIN_IDS = {
+    int(item.strip())
+    for item in os.getenv("ADMIN_IDS", "").split(",")
+    if item.strip()
+}
 
 
-async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat:
         return
 
-    if update.effective_user.id not in ADMIN_IDS:
+    if int(update.effective_user.id) not in ADMIN_IDS:
         await update.message.reply_html(
-            "⛔ <b>Acesso restrito</b>\n\n"
-            "<i>Esse comando de teste está disponível apenas para administradores.</i>"
+            "⛔ <b>ACESSO RESTRITO</b>\n\n"
+            "<i>Esse comando de teste esta disponivel apenas para administradores.</i>"
         )
         return
 
@@ -31,17 +31,19 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    chat_id = update.effective_chat.id
-    if get_current_spawn(chat_id):
+    chat_id = int(update.effective_chat.id)
+    await expire_active_spawn_if_needed(chat_id, context.bot)
+
+    if get_active_spawn(chat_id):
         await update.message.reply_html(
-            "⚠️ <b>Spawn já ativo</b>\n\n"
-            "<i>Já existe um visitante em campo nesse grupo. Finalize o atual antes de abrir outro teste.</i>"
+            "⚠️ <b>SPAWN JA ATIVO</b>\n\n"
+            "<i>Ja existe um visitante em campo nesse grupo. Finalize o atual antes de abrir outro teste.</i>"
         )
         return
 
     spawned = await start_spawn(update.message, context, manual=True)
     if not spawned:
         await update.message.reply_html(
-            "❌ <b>Falha ao abrir o teste</b>\n\n"
-            "<i>Não consegui iniciar o spawn agora. Tente novamente em instantes.</i>"
+            "❌ <b>FALHA AO ABRIR O TESTE</b>\n\n"
+            "<i>Nao consegui iniciar o spawn agora. Tente novamente em instantes.</i>"
         )
