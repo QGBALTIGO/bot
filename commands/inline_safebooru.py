@@ -568,7 +568,7 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
             "</blockquote>",
             "",
             f"<b>Obra:</b> <code>{html.escape(_safe_crop_plain(media_title_raw, 34))}</code>",
-            f"{year_emoji} <b>Ano:</b> <code>{html.escape(_safe_crop_plain(year_raw, 8))}</code>",
+            f"<b>Ano:</b> <code>{html.escape(_safe_crop_plain(year_raw, 8))}</code>",
         ]
         return "\n".join(compact_lines)
 
