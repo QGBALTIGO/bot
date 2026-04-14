@@ -13,6 +13,7 @@ from database import (
     add_coin,
     add_progress_xp,
     create_or_get_user,
+    delete_active_group_spawn,
     get_user_card_quantity,
     get_user_coins,
     remove_coin,
@@ -24,6 +25,7 @@ from handlers.capture_spawn import (
     PURCHASE_WINDOW_SECONDS,
     XP_REWARD,
     finish_spawn_as_escaped,
+    get_current_spawn,
     get_chat_spawn_result,
     record_chat_spawn_result,
 )
@@ -448,7 +450,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lock = _get_capture_lock(chat_id)
 
     async with lock:
-        spawn = ACTIVE_SPAWNS.get(chat_id)
+        spawn = get_current_spawn(chat_id)
         if not spawn:
             await _reply_for_inactive_state(
                 message,
@@ -484,6 +486,7 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         ACTIVE_SPAWNS.pop(chat_id, None)
+        delete_active_group_spawn(chat_id)
 
         create_or_get_user(user.id)
         touch_user_identity(
