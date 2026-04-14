@@ -1,4 +1,5 @@
 import asyncio
+from html import escape
 import os
 import random
 import time
@@ -14,6 +15,7 @@ from database import get_all_global_character_images
 ACTIVE_SPAWNS: Dict[int, Dict[str, Any]] = {}
 MESSAGE_COUNTER: Dict[int, int] = {}
 RECENT_CHARACTER_IDS: Dict[int, List[int]] = {}
+LAST_SPAWN_RESULTS: Dict[int, Dict[str, Any]] = {}
 
 SPAWN_EVERY = max(1, int(os.getenv("CAPTURE_SPAWN_EVERY", "75")))
 ESCAPE_TIME = max(30, int(os.getenv("CAPTURE_ESCAPE_TIME", "300")))
@@ -22,23 +24,7 @@ PURCHASE_COST = max(1, int(os.getenv("CAPTURE_PURCHASE_COST", "5")))
 PURCHASE_WINDOW_SECONDS = max(30, int(os.getenv("CAPTURE_PURCHASE_WINDOW", "180")))
 CURATED_WEIGHT = max(2, int(os.getenv("CAPTURE_CURATED_WEIGHT", "4")))
 RECENT_HISTORY_SIZE = max(4, int(os.getenv("CAPTURE_RECENT_HISTORY", "12")))
-
-DROP_TITLES = [
-    "✦ <b>DROP DE PERSONAGEM</b>",
-    "✦ <b>CLAIM ABERTO</b>",
-    "✦ <b>DROP SURPRESA</b>",
-]
-
-DROP_INTROS = [
-    "Um personagem caiu no chat. Quem reclamar primeiro leva o claim.",
-    "O chat ficou quente e um personagem apareceu para disputa.",
-    "Uma nova carta viva apareceu por aqui. Corre para garantir o claim.",
-]
-
-DROP_CURATED_INTROS = [
-    "Drop especial detectado. Esse personagem veio com arte destacada.",
-    "Apareceu um destaque do setfoto. Esse drop merece corrida no claim.",
-]
+RESULT_TTL_SECONDS = max(900, PURCHASE_WINDOW_SECONDS + 600, ESCAPE_TIME + 600)
 
 
 def _format_window(seconds: int) -> str:
@@ -50,6 +36,74 @@ def _format_window(seconds: int) -> str:
     if sec == 0:
         return f"{minutes} min"
     return f"{minutes} min {sec}s"
+
+
+def _character_block(character: Dict[str, Any]) -> str:
+    name = escape(str(character.get("name") or "Visitante desconhecido"))
+    anime = escape(str(character.get("anime") or "Origem desconhecida"))
+    return (
+        "<blockquote>"
+        f"👤 <b>{name}</b>\n"
+        f"🎬 <b>{anime}</b>"
+        "</blockquote>"
+    )
+
+
+def get_chat_spawn_result(chat_id: int) -> Optional[Dict[str, Any]]:
+    row = LAST_SPAWN_RESULTS.get(int(chat_id))
+    if not row:
+        return None
+
+    ended_at = float(row.get("ended_at") or 0.0)
+    if ended_at and (time.time() - ended_at) > RESULT_TTL_SECONDS:
+        LAST_SPAWN_RESULTS.pop(int(chat_id), None)
+        return None
+
+    return row
+
+
+def record_chat_spawn_result(
+    chat_id: int,
+    status: str,
+    character: Dict[str, Any],
+    *,
+    winner_user_id: int = 0,
+    winner_name: str = "",
+) -> Dict[str, Any]:
+    row = {
+        "status": str(status or "").strip().lower(),
+        "character_id": int(character.get("id") or 0),
+        "character_name": str(character.get("name") or "Sem nome"),
+        "anime_name": str(character.get("anime") or "Obra desconhecida"),
+        "winner_user_id": int(winner_user_id or 0),
+        "winner_name": str(winner_name or "").strip(),
+        "ended_at": time.time(),
+    }
+    LAST_SPAWN_RESULTS[int(chat_id)] = row
+    return row
+
+
+async def _edit_spawn_message(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    message_id: int,
+    caption: str,
+    reply_markup=None,
+) -> bool:
+    if not message_id:
+        return False
+
+    try:
+        await context.bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def _load_spawn_characters() -> List[Dict[str, Any]]:
@@ -122,25 +176,29 @@ def _pick_spawn_character(chat_id: int, characters: List[Dict[str, Any]]) -> Opt
 
 def _spawn_caption(character: Dict[str, Any], manual: bool = False) -> str:
     if manual:
-        title = "✦ <b>DROP DE TESTE</b>"
-        intro = "Spawn manual ativado para testar o sistema de claim."
+        title = "🧪 <b>SPAWN DE TESTE</b>"
+        intro = "<i>Um portal acabou de se abrir só para testar o sistema.</i>"
     else:
-        title = random.choice(DROP_TITLES)
+        title = "✨ <b>UM VISITANTE APARECEU</b>"
         if character.get("curated"):
-            intro = random.choice(DROP_CURATED_INTROS)
+            intro = "<i>O chat chamou um visitante especial. Esse drop veio com arte destacada.</i>"
         else:
-            intro = random.choice(DROP_INTROS)
+            intro = "<i>O chat chamou mais um visitante. Quem reconhecer primeiro fecha a captura.</i>"
 
-    claim_hint = "Vale nome completo, primeiro nome ou sobrenome."
+    rules = (
+        "<blockquote>"
+        f"🎯 O primeiro que capturar com <code>/capturar nome</code> ganha <b>{XP_REWARD} XP</b>\n"
+        f"🪙 Quem capturar também libera a compra exclusiva da carta por <b>{PURCHASE_COST} coins</b>\n"
+        f"⏳ Mas corre: ele desaparece em <b>{_format_window(ESCAPE_TIME)}</b>"
+        "</blockquote>"
+    )
+    footer = "<i>Vale nome completo, primeiro nome ou sobrenome. Capricha no chute e corre antes que ele suma.</i>"
 
     return (
         f"{title}\n\n"
         f"{intro}\n\n"
-        f"⚡ Claim: <code>/capturar nome</code>\n"
-        f"📝 {claim_hint}\n"
-        f"⭐ Recompensa do claim: <b>{XP_REWARD} XP</b>\n"
-        f"🛒 O vencedor desbloqueia a compra da carta por <b>{PURCHASE_COST} coins</b>\n"
-        f"⏳ O drop some em <b>{_format_window(ESCAPE_TIME)}</b>"
+        f"{rules}\n\n"
+        f"{footer}"
     )
 
 
@@ -169,11 +227,12 @@ async def start_spawn(
     if not character:
         return None
 
-    state = {
-        "character": character,
-        "time": time.time(),
-        "manual": bool(manual),
-    }
+        state = {
+            "character": character,
+            "time": time.time(),
+            "manual": bool(manual),
+            "expires_at": time.time() + ESCAPE_TIME,
+        }
 
     try:
         sent = await message.reply_photo(
@@ -220,22 +279,42 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(ESCAPE_TIME)
-
-    state = ACTIVE_SPAWNS.pop(chat_id, None)
+    state = ACTIVE_SPAWNS.get(chat_id)
     if not state:
         return
 
-    char = state.get("character") or {}
-    text = (
-        "✦ <b>DROP PERDIDO</b>\n\n"
-        f"👤 <b>{char.get('name', 'Sem nome')}</b>\n"
-        f"🎬 <b>{char.get('anime', 'Obra desconhecida')}</b>\n\n"
-        "Ninguem fechou o claim a tempo. Continuem conversando para puxar o proximo drop."
+    delay = max(float(state.get("expires_at") or 0.0) - time.time(), 0.0)
+    await asyncio.sleep(delay)
+    await finish_spawn_as_escaped(chat_id, context)
+
+
+async def finish_spawn_as_escaped(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> Optional[Dict[str, Any]]:
+    state = ACTIVE_SPAWNS.pop(chat_id, None)
+    if not state:
+        return None
+
+    character = state.get("character") or {}
+    record_chat_spawn_result(chat_id, "escaped", character)
+
+    caption = (
+        "💨 <b>O VISITANTE ESCAPOU</b>\n\n"
+        f"{_character_block(character)}\n\n"
+        "<i>Ninguém acertou a tempo. Continuem conversando para chamar o próximo visitante.</i>"
     )
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=text,
-        parse_mode="HTML",
+    edited = await _edit_spawn_message(
+        context,
+        int(chat_id),
+        int(state.get("message_id") or 0),
+        caption,
+        reply_markup=None,
     )
+
+    if not edited:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=caption,
+            parse_mode="HTML",
+        )
+
+    return state
