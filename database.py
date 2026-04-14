@@ -279,6 +279,7 @@ def create_tables():
     create_message_tables()
     create_card_contrib_tables()
     create_global_character_images_table()
+    create_capture_spawn_tables()
     create_referral_tables()
     create_baltigoflix_tables()
 
@@ -569,6 +570,27 @@ def create_global_character_images_table():
         updated_by BIGINT NOT NULL DEFAULT 0,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+    """)
+
+
+def create_capture_spawn_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS active_group_spawns (
+        chat_id BIGINT PRIMARY KEY,
+        character_id BIGINT NOT NULL,
+        character_name TEXT NOT NULL,
+        anime_name TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        message_id BIGINT NOT NULL DEFAULT 0,
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_active_group_spawns_expires
+    ON active_group_spawns (expires_at)
     """)
     
 def create_users_table():
@@ -5354,6 +5376,114 @@ def get_all_global_character_images() -> dict[int, str]:
                 return result
     except UndefinedTable:
         return {}
+
+
+def upsert_active_group_spawn(
+    chat_id: int,
+    character_id: int,
+    character_name: str,
+    anime_name: str,
+    image_url: str,
+    message_id: int,
+    is_manual: bool,
+    created_at_ts: float,
+    expires_at_ts: float,
+) -> None:
+    _run(
+        """
+        INSERT INTO active_group_spawns (
+            chat_id,
+            character_id,
+            character_name,
+            anime_name,
+            image_url,
+            message_id,
+            is_manual,
+            created_at,
+            expires_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (chat_id)
+        DO UPDATE SET
+            character_id = EXCLUDED.character_id,
+            character_name = EXCLUDED.character_name,
+            anime_name = EXCLUDED.anime_name,
+            image_url = EXCLUDED.image_url,
+            message_id = EXCLUDED.message_id,
+            is_manual = EXCLUDED.is_manual,
+            created_at = EXCLUDED.created_at,
+            expires_at = EXCLUDED.expires_at
+        """,
+        (
+            int(chat_id),
+            int(character_id),
+            str(character_name or "").strip(),
+            str(anime_name or "").strip(),
+            str(image_url or "").strip(),
+            int(message_id or 0),
+            bool(is_manual),
+            datetime.fromtimestamp(float(created_at_ts), tz=SP_TZ),
+            datetime.fromtimestamp(float(expires_at_ts), tz=SP_TZ),
+        ),
+    )
+
+
+def get_active_group_spawn(chat_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT
+            chat_id,
+            character_id,
+            character_name,
+            anime_name,
+            image_url,
+            message_id,
+            is_manual,
+            created_at,
+            expires_at
+        FROM active_group_spawns
+        WHERE chat_id = %s
+        """,
+        (int(chat_id),),
+        fetch="one",
+    )
+
+    if not row:
+        return None
+
+    expires_at = row.get("expires_at")
+    if expires_at:
+        try:
+            now = datetime.now(expires_at.tzinfo) if getattr(expires_at, "tzinfo", None) else datetime.utcnow()
+            if expires_at <= now:
+                delete_active_group_spawn(chat_id)
+                return None
+        except Exception:
+            pass
+
+    created_at = row.get("created_at")
+
+    return {
+        "chat_id": int(row.get("chat_id") or 0),
+        "character_id": int(row.get("character_id") or 0),
+        "character_name": str(row.get("character_name") or "Sem nome"),
+        "anime_name": str(row.get("anime_name") or "Obra desconhecida"),
+        "image_url": str(row.get("image_url") or "").strip(),
+        "message_id": int(row.get("message_id") or 0),
+        "is_manual": bool(row.get("is_manual")),
+        "created_at_ts": float(created_at.timestamp()) if created_at else 0.0,
+        "expires_at_ts": float(expires_at.timestamp()) if expires_at else 0.0,
+    }
+
+
+def delete_active_group_spawn(chat_id: int) -> None:
+    _run(
+        """
+        DELETE FROM active_group_spawns
+        WHERE chat_id = %s
+        """,
+        (int(chat_id),),
+    )
 
 # =========================================================
 # BALTIGOFLIX / AFILIADOS / COMPRAS
