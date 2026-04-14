@@ -3,7 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers.capture_spawn import ACTIVE_SPAWNS, start_spawn
+from handlers.capture_spawn import get_current_spawn, start_spawn
 
 
 ADMIN_IDS = set(
@@ -32,7 +32,7 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    if chat_id in ACTIVE_SPAWNS:
+    if get_current_spawn(chat_id):
         await update.message.reply_html(
             "⚠️ <b>Spawn já ativo</b>\n\n"
             "<i>Já existe um visitante em campo nesse grupo. Finalize o atual antes de abrir outro teste.</i>"
