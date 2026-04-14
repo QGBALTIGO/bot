@@ -544,15 +544,16 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         lines = [
             f"{name_emoji} <b>{name}</b>",
             "",
-            f"<blockquote><b>Gênero:</b> <code>{gender}</code>",
-            f"<b>Nascimento:</b> <code>{birth}</code>",
-            f"<b>Favoritos:</b> <code>{favourites}</code></blockquote>",
+            "<blockquote>",
+            f"<b>Gênero:</b> {gender}",
+            f"<b>Nascimento:</b> {birth}",
+            f"<b>Favoritos:</b> {favourites}",
+            "</blockquote>",
             "",
             f"<b>Obra:</b> <code>{media_title}</code>",
             f"<b>Tipo:</b> <code>{media_type}</code>",
             f"<b>Papel:</b> <code>{role}</code>",
-            "",
-            f"{year_emoji} <b>Use com sabedoria!</b>",
+            f"{year_emoji} <b>Ano:</b> <code>{year}</code>",
         ]
 
         caption = "\n".join(lines)
@@ -568,8 +569,11 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
             f"<b>Nascimento:</b> {html.escape(_safe_crop_plain(birth_raw, 12))}",
             "</blockquote>",
             "",
-            f"<b>Obra:</b> <code>{html.escape(_safe_crop_plain(media_title_raw, 34))}</code>",
-            f"{year_emoji} <b>Ano:</b> <code>{html.escape(_safe_crop_plain(year_raw, 8))}</code>",
+            f"<b>Obra:</b> <code>{media_title}</code>",
+            f"<b>Tipo:</b> <code>{media_type}</code>",
+            f"<b>Papel:</b> <code>{role}</code>",
+            "",
+            f"{year_emoji} <b>Use com sabedoria!</b>",
         ]
         return "\n".join(compact_lines)
 
@@ -579,7 +583,6 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         f"<b>{clean_query}</b>\n\n"
         f"Tags: <code>{tags}</code>"
     )
-
 
 def _build_description_from_anilist(meta: dict | None, query: str) -> str:
     if meta:
