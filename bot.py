@@ -45,12 +45,16 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
-from commands.cccolecao import colec
+from commands.cccolecao import cccolecao
 
 from commands.loja import loja
 from commands.daily import daily
 
-from commands.capturar import capturar, capture_purchase_callback
+from commands.capturar import (
+    capturar,
+    capture_purchase_callback,
+    restore_capture_purchase_runtime,
+)
 from commands.spawn_personagem import spawn_personagem
 
 from commands.trocar import (
@@ -108,7 +112,7 @@ from commands.messages import (
 )
 from commands.messages_help import msgtutorial
 
-from handlers.capture_spawn import capture_message_handler
+from handlers.capture_spawn import capture_message_handler, restore_capture_runtime
 
 
 # =========================================================
@@ -184,7 +188,7 @@ def register_commands(app: Application):
 
     # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("colec", colec))
+    app.add_handler(CommandHandler("cccolecao", cccolecao))
 
     # economia
     app.add_handler(CommandHandler("loja", loja))
@@ -278,10 +282,15 @@ def register_messages(app: Application):
 # =========================================================
 
 def build_application():
+    async def post_init(app: Application):
+        await restore_capture_runtime(app)
+        await restore_capture_purchase_runtime(app)
+
     app = (
         Application.builder()
         .token(BOT_TOKEN)
         .concurrent_updates(True)
+        .post_init(post_init)
         .build()
     )
 
