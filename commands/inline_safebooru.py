@@ -4,7 +4,7 @@ import os
 import re
 import time
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 from telegram import (
@@ -60,17 +60,6 @@ HTTP_USER_AGENT = os.getenv(
 ).strip()
 
 PM_START_PARAMETER = os.getenv("INLINE_SAFEBOORU_START_PARAMETER", "inline_safebooru").strip() or "inline_safebooru"
-
-# URL publica do teu backend/proxy de imagem
-# Exemplo:
-# INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL=https://teu-dominio.com
-INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL = os.getenv(
-    "INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL",
-    "",
-).strip().rstrip("/")
-
-PREMIUM_EMOJI_NAME_ID = os.getenv("PREMIUM_EMOJI_NAME_ID", "").strip()
-PREMIUM_EMOJI_YEAR_ID = os.getenv("PREMIUM_EMOJI_YEAR_ID", "").strip()
 
 _ANILIST_CACHE: dict[str, tuple[float, dict | None]] = {}
 
@@ -165,21 +154,6 @@ def _pm_button(text: str) -> InlineQueryResultsButton | None:
     return InlineQueryResultsButton(text=text[:64], start_parameter=PM_START_PARAMETER[:64])
 
 
-def _safe_crop_plain(value: Any, limit: int) -> str:
-    text = str(value or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[: max(1, limit - 1)].rstrip() + "…"
-
-
-def _tg_emoji(emoji_id: str, fallback: str) -> str:
-    emoji_id = (emoji_id or "").strip()
-    fallback = (fallback or "").strip() or "✨"
-    if emoji_id:
-        return f'<tg-emoji emoji-id="{html.escape(emoji_id)}">{html.escape(fallback)}</tg-emoji>'
-    return html.escape(fallback)
-
-
 async def _is_in_required_channel(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
     if not REQUIRED_CHANNEL:
         return True
@@ -218,37 +192,13 @@ async def _check_inline_access(
     return True, ""
 
 
-def _pick_best_source_url(post: dict) -> str:
+def _pick_photo_url(post: dict) -> str:
     """
-    Melhor origem possível para o proxy:
-    1) file_url (original)
+    Prioriza qualidade maior:
+    1) file_url
     2) sample_url
     3) preview_url
     """
-    file_url = _normalize_url(post.get("file_url"))
-    sample_url = _normalize_url(post.get("sample_url"))
-    preview_url = _normalize_url(post.get("preview_url"))
-
-    if file_url:
-        return file_url
-    if sample_url:
-        return sample_url
-    if preview_url:
-        return preview_url
-    return ""
-
-
-def _pick_photo_url(post: dict) -> str:
-    """
-    URL final usada no inline.
-    Se houver proxy configurado, usa o proxy com a melhor origem possível.
-    Sem proxy, faz fallback seguro priorizando JPEG.
-    """
-    best_source = _pick_best_source_url(post)
-    if INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL and best_source:
-        encoded = quote(best_source, safe="")
-        return f"{INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL}/api/image-proxy?url={encoded}"
-
     file_url = _normalize_url(post.get("file_url"))
     sample_url = _normalize_url(post.get("sample_url"))
     preview_url = _normalize_url(post.get("preview_url"))
@@ -266,12 +216,6 @@ def _pick_photo_url(post: dict) -> str:
 
 
 def _pick_thumb_url(post: dict, fallback_photo_url: str) -> str:
-    best_source = _pick_best_source_url(post)
-
-    if INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL and best_source:
-        encoded = quote(best_source, safe="")
-        return f"{INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL}/api/image-thumb?url={encoded}"
-
     preview_url = _normalize_url(post.get("preview_url"))
     sample_url = _normalize_url(post.get("sample_url"))
 
@@ -520,29 +464,17 @@ async def _fetch_anilist_character(search: str) -> dict | None:
 
 def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> str:
     if meta:
-        name_raw = _safe_crop_plain(meta.get("name") or "—", 70)
-        gender_raw = _safe_crop_plain(meta.get("gender") or "—", 24)
-        birth_raw = _safe_crop_plain(_fmt_birth(meta.get("birth_day"), meta.get("birth_month")), 16)
-        favourites_raw = _safe_crop_plain(meta.get("favourites") or "—", 20)
-        media_title_raw = _safe_crop_plain(meta.get("media_title") or "—", 60)
-        media_type_raw = _safe_crop_plain(meta.get("media_type") or "—", 20)
-        role_raw = _safe_crop_plain(meta.get("role") or "—", 20)
-        year_raw = _safe_crop_plain(meta.get("year") or "—", 10)
-
-        name = html.escape(name_raw)
-        gender = html.escape(gender_raw)
-        birth = html.escape(birth_raw)
-        favourites = html.escape(favourites_raw)
-        media_title = html.escape(media_title_raw)
-        media_type = html.escape(media_type_raw)
-        role = html.escape(role_raw)
-        year = html.escape(year_raw)
-
-        name_emoji = _tg_emoji(PREMIUM_EMOJI_NAME_ID, "✨")
-        year_emoji = _tg_emoji(PREMIUM_EMOJI_YEAR_ID, "📅")
+        name = _clean_text(meta.get("name"))
+        gender = _clean_text(meta.get("gender"))
+        birth = _clean_text(_fmt_birth(meta.get("birth_day"), meta.get("birth_month")))
+        favourites = _clean_text(meta.get("favourites"))
+        media_title = _clean_text(meta.get("media_title"))
+        media_type = _clean_text(meta.get("media_type"))
+        role = _clean_text(meta.get("role"))
+        year = _clean_text(meta.get("year"))
 
         lines = [
-            f"{name_emoji} <b>{name}</b>",
+            f"🃏 <b>{name}</b>",
             "",
             f"<blockquote><b>Gênero:</b> <code>{gender}</code>",
             f"<b>Nascimento:</b> <code>{birth}</code>",
@@ -551,33 +483,17 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
             f"<b>Obra:</b> <code>{media_title}</code>",
             f"<b>Tipo:</b> <code>{media_type}</code>",
             f"<b>Papel:</b> <code>{role}</code>",
-            f"{year_emoji} <b>Ano:</b> <code>{year}</code>",
+            f"<b>Ano:</b> <code>{year}</code>",
         ]
+        return "\n".join(lines)[:1024]
 
-        caption = "\n".join(lines)
-
-        if len(caption) <= 1024:
-            return caption
-
-        compact_lines = [
-            f"{name_emoji} <b>{html.escape(_safe_crop_plain(name_raw, 42))}</b>",
-            "",
-            "<blockquote>",
-            f"<b>Gênero:</b> {html.escape(_safe_crop_plain(gender_raw, 16))}",
-            f"<b>Nascimento:</b> {html.escape(_safe_crop_plain(birth_raw, 12))}",
-            "</blockquote>",
-            "",
-            f"<b>Obra:</b> <code>{html.escape(_safe_crop_plain(media_title_raw, 34))}</code>",
-            f"<b>Ano:</b> <code>{html.escape(_safe_crop_plain(year_raw, 8))}</code>",
-        ]
-        return "\n".join(compact_lines)
-
-    clean_query = html.escape(_safe_crop_plain(query.title(), 64))
-    tags = html.escape(_safe_crop_plain(_trim_tags(str(post.get("tags") or ""), limit=8), 220))
+    # fallback elegante
+    clean_query = _clean_text(query.title())
+    tags = _clean_text(_trim_tags(str(post.get("tags") or ""), limit=8))
     return (
         f"<b>{clean_query}</b>\n\n"
         f"Tags: <code>{tags}</code>"
-    )
+    )[:1024]
 
 
 def _build_description_from_anilist(meta: dict | None, query: str) -> str:
@@ -686,6 +602,7 @@ async def safebooru_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
+    # AniList usa a query limpa, com espaço humano
     anilist_query = query.replace("_", " ").strip()
     anilist_meta = await _fetch_anilist_character(anilist_query)
 
