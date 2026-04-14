@@ -885,6 +885,11 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.text or not update.effective_user:
         return
+
+    # Só processar em chats privados
+    if update.effective_chat and update.effective_chat.type != "private":
+        return
+
     _touch_identity(update)
     if not has_accepted_terms(int(update.effective_user.id), TERMS_VERSION):
         return
@@ -895,6 +900,12 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if len(guess) != WORD_LENGTH or not _valid_format(guess):
         return
 
+    # Checar jogo ativo ANTES de validar a palavra —
+    # sem jogo ativo = silêncio total, sem resposta alguma
+    game = _get_active_game(user_id)
+    if not game:
+        return
+
     _load_words()
     if guess not in VALID_WORDS:
         await update.message.reply_text(
@@ -902,10 +913,6 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "<i>Use personagens, termos ou gêneros do universo anime.</i>",
             parse_mode="HTML",
         )
-        return
-
-    game = _get_active_game(user_id)
-    if not game:
         return
 
     if not _anti_flood_ok(user_id):
