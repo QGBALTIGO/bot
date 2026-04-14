@@ -23,6 +23,23 @@ PURCHASE_WINDOW_SECONDS = max(30, int(os.getenv("CAPTURE_PURCHASE_WINDOW", "180"
 CURATED_WEIGHT = max(2, int(os.getenv("CAPTURE_CURATED_WEIGHT", "4")))
 RECENT_HISTORY_SIZE = max(4, int(os.getenv("CAPTURE_RECENT_HISTORY", "12")))
 
+DROP_TITLES = [
+    "✦ <b>DROP DE PERSONAGEM</b>",
+    "✦ <b>CLAIM ABERTO</b>",
+    "✦ <b>DROP SURPRESA</b>",
+]
+
+DROP_INTROS = [
+    "Um personagem caiu no chat. Quem reclamar primeiro leva o claim.",
+    "O chat ficou quente e um personagem apareceu para disputa.",
+    "Uma nova carta viva apareceu por aqui. Corre para garantir o claim.",
+]
+
+DROP_CURATED_INTROS = [
+    "Drop especial detectado. Esse personagem veio com arte destacada.",
+    "Apareceu um destaque do setfoto. Esse drop merece corrida no claim.",
+]
+
 
 def _format_window(seconds: int) -> str:
     total = max(int(seconds), 0)
@@ -103,21 +120,27 @@ def _pick_spawn_character(chat_id: int, characters: List[Dict[str, Any]]) -> Opt
     return random.choices(pool, weights=weights, k=1)[0]
 
 
-def _spawn_caption(manual: bool = False) -> str:
-    title = "🧪 <b>SPAWN DE TESTE</b>" if manual else "🌟 <b>CACA AO PERSONAGEM</b>"
-    intro = (
-        "Um portal foi aberto so para testar o sistema."
-        if manual
-        else "Um visitante misterioso apareceu no chat."
-    )
+def _spawn_caption(character: Dict[str, Any], manual: bool = False) -> str:
+    if manual:
+        title = "✦ <b>DROP DE TESTE</b>"
+        intro = "Spawn manual ativado para testar o sistema de claim."
+    else:
+        title = random.choice(DROP_TITLES)
+        if character.get("curated"):
+            intro = random.choice(DROP_CURATED_INTROS)
+        else:
+            intro = random.choice(DROP_INTROS)
+
+    claim_hint = "Vale nome completo, primeiro nome ou sobrenome."
 
     return (
         f"{title}\n\n"
         f"{intro}\n\n"
-        f"🎯 O primeiro que acertar com <code>/capturar nome</code> ganha <b>{XP_REWARD} XP</b>\n"
-        f"🪙 Quem capturar desbloqueia a compra exclusiva da carta por <b>{PURCHASE_COST} coins</b>\n"
-        f"⏳ Ele foge em <b>{_format_window(ESCAPE_TIME)}</b>\n\n"
-        "Capricha no chute e corre antes que ele suma."
+        f"⚡ Claim: <code>/capturar nome</code>\n"
+        f"📝 {claim_hint}\n"
+        f"⭐ Recompensa do claim: <b>{XP_REWARD} XP</b>\n"
+        f"🛒 O vencedor desbloqueia a compra da carta por <b>{PURCHASE_COST} coins</b>\n"
+        f"⏳ O drop some em <b>{_format_window(ESCAPE_TIME)}</b>"
     )
 
 
@@ -155,7 +178,7 @@ async def start_spawn(
     try:
         sent = await message.reply_photo(
             photo=character["image"],
-            caption=_spawn_caption(manual=manual),
+            caption=_spawn_caption(character, manual=manual),
             parse_mode="HTML",
         )
     except Exception:
@@ -205,10 +228,10 @@ async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
     char = state.get("character") or {}
     text = (
-        "💨 <b>O visitante escapou!</b>\n\n"
+        "✦ <b>DROP PERDIDO</b>\n\n"
         f"👤 <b>{char.get('name', 'Sem nome')}</b>\n"
-        f"🎬 {char.get('anime', 'Obra desconhecida')}\n\n"
-        "Ninguem acertou a tempo. Continuem conversando para chamar o proximo."
+        f"🎬 <b>{char.get('anime', 'Obra desconhecida')}</b>\n\n"
+        "Ninguem fechou o claim a tempo. Continuem conversando para puxar o proximo drop."
     )
 
     await context.bot.send_message(
