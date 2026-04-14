@@ -1,26 +1,38 @@
+import asyncio
 import os
 import random
-import asyncio
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.ext import ContextTypes
 
 from cards_service import build_cards_final_data
+from database import get_all_global_character_images
 
 
 ACTIVE_SPAWNS: Dict[int, Dict[str, Any]] = {}
 MESSAGE_COUNTER: Dict[int, int] = {}
+RECENT_CHARACTER_IDS: Dict[int, List[int]] = {}
 
-SPAWN_EVERY = int(os.getenv("CAPTURE_SPAWN_EVERY", "100"))
-ESCAPE_TIME = int(os.getenv("CAPTURE_ESCAPE_TIME", "300"))
+SPAWN_EVERY = max(1, int(os.getenv("CAPTURE_SPAWN_EVERY", "75")))
+ESCAPE_TIME = max(30, int(os.getenv("CAPTURE_ESCAPE_TIME", "300")))
+XP_REWARD = max(1, int(os.getenv("CAPTURE_XP_REWARD", "10")))
+PURCHASE_COST = max(1, int(os.getenv("CAPTURE_PURCHASE_COST", "5")))
+PURCHASE_WINDOW_SECONDS = max(30, int(os.getenv("CAPTURE_PURCHASE_WINDOW", "180")))
+CURATED_WEIGHT = max(2, int(os.getenv("CAPTURE_CURATED_WEIGHT", "4")))
+RECENT_HISTORY_SIZE = max(4, int(os.getenv("CAPTURE_RECENT_HISTORY", "12")))
 
-ENABLED_CHATS = set(
-    int(x.strip())
-    for x in os.getenv("CAPTURE_ENABLED_CHATS", "").split(",")
-    if x.strip()
-)
+
+def _format_window(seconds: int) -> str:
+    total = max(int(seconds), 0)
+    minutes, sec = divmod(total, 60)
+
+    if minutes <= 0:
+        return f"{sec}s"
+    if sec == 0:
+        return f"{minutes} min"
+    return f"{minutes} min {sec}s"
 
 
 def _load_spawn_characters() -> List[Dict[str, Any]]:
@@ -32,6 +44,7 @@ def _load_spawn_characters() -> List[Dict[str, Any]]:
     else:
         items = []
 
+    curated_ids = set(get_all_global_character_images().keys())
     out: List[Dict[str, Any]] = []
 
     for ch in items:
@@ -47,10 +60,7 @@ def _load_spawn_characters() -> List[Dict[str, Any]]:
         anime = str(ch.get("anime") or "Obra desconhecida").strip()
         image = str(ch.get("image") or "").strip()
 
-        if not name:
-            continue
-
-        if not image:
+        if not name or not image:
             continue
 
         out.append(
@@ -59,6 +69,7 @@ def _load_spawn_characters() -> List[Dict[str, Any]]:
                 "name": name,
                 "anime": anime,
                 "image": image,
+                "curated": cid in curated_ids,
             }
         )
 
@@ -66,9 +77,97 @@ def _load_spawn_characters() -> List[Dict[str, Any]]:
 
 
 def get_spawn_pool() -> List[Dict[str, Any]]:
-    # Sem cache persistente aqui.
-    # Sempre busca do cards_service para refletir mudanças admin.
     return _load_spawn_characters()
+
+
+def _remember_recent_character(chat_id: int, character_id: int) -> None:
+    history = RECENT_CHARACTER_IDS.get(chat_id, [])
+    history = [cid for cid in history if cid != character_id]
+    history.append(character_id)
+
+    if len(history) > RECENT_HISTORY_SIZE:
+        history = history[-RECENT_HISTORY_SIZE:]
+
+    RECENT_CHARACTER_IDS[chat_id] = history
+
+
+def _pick_spawn_character(chat_id: int, characters: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not characters:
+        return None
+
+    recent_ids = set(RECENT_CHARACTER_IDS.get(chat_id, []))
+    fresh_pool = [item for item in characters if int(item.get("id") or 0) not in recent_ids]
+    pool = fresh_pool or list(characters)
+
+    weights = [CURATED_WEIGHT if item.get("curated") else 1 for item in pool]
+    return random.choices(pool, weights=weights, k=1)[0]
+
+
+def _spawn_caption(manual: bool = False) -> str:
+    title = "🧪 <b>SPAWN DE TESTE</b>" if manual else "🌟 <b>CACA AO PERSONAGEM</b>"
+    intro = (
+        "Um portal foi aberto so para testar o sistema."
+        if manual
+        else "Um visitante misterioso apareceu no chat."
+    )
+
+    return (
+        f"{title}\n\n"
+        f"{intro}\n\n"
+        f"🎯 O primeiro que acertar com <code>/capturar nome</code> ganha <b>{XP_REWARD} XP</b>\n"
+        f"🪙 Quem capturar desbloqueia a compra exclusiva da carta por <b>{PURCHASE_COST} coins</b>\n"
+        f"⏳ Ele foge em <b>{_format_window(ESCAPE_TIME)}</b>\n\n"
+        "Capricha no chute e corre antes que ele suma."
+    )
+
+
+async def start_spawn(
+    message: Message,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    manual: bool = False,
+) -> Optional[Dict[str, Any]]:
+    if not message or not message.chat:
+        return None
+
+    chat = message.chat
+    if chat.type not in ("group", "supergroup"):
+        return None
+
+    chat_id = chat.id
+    if chat_id in ACTIVE_SPAWNS:
+        return None
+
+    characters = get_spawn_pool()
+    if not characters:
+        return None
+
+    character = _pick_spawn_character(chat_id, characters)
+    if not character:
+        return None
+
+    state = {
+        "character": character,
+        "time": time.time(),
+        "manual": bool(manual),
+    }
+
+    try:
+        sent = await message.reply_photo(
+            photo=character["image"],
+            caption=_spawn_caption(manual=manual),
+            parse_mode="HTML",
+        )
+    except Exception:
+        return None
+
+    state["message_id"] = getattr(sent, "message_id", 0)
+    ACTIVE_SPAWNS[chat_id] = state
+    MESSAGE_COUNTER[chat_id] = 0
+    _remember_recent_character(chat_id, int(character["id"]))
+
+    asyncio.create_task(_escape_character(chat_id, context))
+    return state
 
 
 async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,61 +178,37 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if chat.type not in ("group", "supergroup"):
         return
 
-    chat_id = chat.id
-
-    if chat_id not in ENABLED_CHATS:
+    user = update.effective_user
+    if user and getattr(user, "is_bot", False):
         return
 
-    characters = get_spawn_pool()
-    if not characters:
+    chat_id = chat.id
+    if chat_id in ACTIVE_SPAWNS:
         return
 
     MESSAGE_COUNTER[chat_id] = MESSAGE_COUNTER.get(chat_id, 0) + 1
 
-    if chat_id in ACTIVE_SPAWNS:
-        return
-
     if MESSAGE_COUNTER[chat_id] < SPAWN_EVERY:
         return
 
-    MESSAGE_COUNTER[chat_id] = 0
-
-    character = random.choice(characters)
-
-    ACTIVE_SPAWNS[chat_id] = {
-        "character": character,
-        "time": time.time(),
-    }
-
-    caption = (
-        "✨ <b>UM PERSONAGEM APARECEU!</b>\n\n"
-        "🕵️ <i>Quem é esse personagem?</i>\n\n"
-        "⏳ Ele fugirá em <b>5 minutos</b>\n\n"
-        "💬 Use:\n"
-        "<code>/capturar nome</code>"
-    )
-
-    await update.message.reply_photo(
-        photo=character["image"],
-        caption=caption,
-        parse_mode="HTML",
-    )
-
-    asyncio.create_task(_escape_character(chat_id, context))
+    spawned = await start_spawn(update.message, context, manual=False)
+    if not spawned:
+        MESSAGE_COUNTER[chat_id] = SPAWN_EVERY - 1
 
 
 async def _escape_character(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(ESCAPE_TIME)
 
-    if chat_id not in ACTIVE_SPAWNS:
+    state = ACTIVE_SPAWNS.pop(chat_id, None)
+    if not state:
         return
 
-    char = ACTIVE_SPAWNS.pop(chat_id)["character"]
-
+    char = state.get("character") or {}
     text = (
-        "💨 <b>O personagem fugiu...</b>\n\n"
-        f"👤 <b>{char['name']}</b>\n"
-        f"📺 {char['anime']}"
+        "💨 <b>O visitante escapou!</b>\n\n"
+        f"👤 <b>{char.get('name', 'Sem nome')}</b>\n"
+        f"🎬 {char.get('anime', 'Obra desconhecida')}\n\n"
+        "Ninguem acertou a tempo. Continuem conversando para chamar o proximo."
     )
 
     await context.bot.send_message(
