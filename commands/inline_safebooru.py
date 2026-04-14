@@ -69,8 +69,8 @@ INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL = os.getenv(
     "",
 ).strip().rstrip("/")
 
-PREMIUM_EMOJI_NAME_ID = "5451636889717062286"
-PREMIUM_EMOJI_YEAR_ID = "5057563697459759009"
+PREMIUM_EMOJI_NAME_ID = os.getenv("PREMIUM_EMOJI_NAME_ID", "").strip()
+PREMIUM_EMOJI_YEAR_ID = os.getenv("PREMIUM_EMOJI_YEAR_ID", "").strip()
 
 _ANILIST_CACHE: dict[str, tuple[float, dict | None]] = {}
 
@@ -544,11 +544,9 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         lines = [
             f"{name_emoji} <b>{name}</b>",
             "",
-            "<blockquote>",
-            f"<b>Gênero:</b> {gender}",
-            f"<b>Nascimento:</b> {birth}",
-            f"<b>Favoritos:</b> {favourites}",
-            "</blockquote>",
+            f"<blockquote><b>Gênero:</b> <code>{gender}</code>",
+            f"<b>Nascimento:</b> <code>{birth}</code>",
+            f"<b>Favoritos:</b> <code>{favourites}</code></blockquote>",
             "",
             f"<b>Obra:</b> <code>{media_title}</code>",
             f"<b>Tipo:</b> <code>{media_type}</code>",
@@ -569,11 +567,8 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
             f"<b>Nascimento:</b> {html.escape(_safe_crop_plain(birth_raw, 12))}",
             "</blockquote>",
             "",
-            f"<b>Obra:</b> <code>{media_title}</code>",
-            f"<b>Tipo:</b> <code>{media_type}</code>",
-            f"<b>Papel:</b> <code>{role}</code>",
-            "",
-            f"{year_emoji} <b>Use com sabedoria!</b>",
+            f"<b>Obra:</b> <code>{html.escape(_safe_crop_plain(media_title_raw, 34))}</code>",
+            f"{year_emoji} <b>Ano:</b> <code>{html.escape(_safe_crop_plain(year_raw, 8))}</code>",
         ]
         return "\n".join(compact_lines)
 
@@ -583,6 +578,7 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         f"<b>{clean_query}</b>\n\n"
         f"Tags: <code>{tags}</code>"
     )
+
 
 def _build_description_from_anilist(meta: dict | None, query: str) -> str:
     if meta:
