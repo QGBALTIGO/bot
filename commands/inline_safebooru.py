@@ -69,8 +69,8 @@ INLINE_SAFEBOORU_IMAGE_PROXY_BASE_URL = os.getenv(
     "",
 ).strip().rstrip("/")
 
-PREMIUM_EMOJI_NAME_ID = os.getenv("PREMIUM_EMOJI_NAME_ID", "").strip()
-PREMIUM_EMOJI_YEAR_ID = os.getenv("PREMIUM_EMOJI_YEAR_ID", "").strip()
+PREMIUM_EMOJI_NAME_ID = ("PREMIUM_EMOJI_NAME_ID", "5451636889717062286").strip()
+PREMIUM_EMOJI_YEAR_ID = ("PREMIUM_EMOJI_YEAR_ID", "5057563697459759009").strip()
 
 _ANILIST_CACHE: dict[str, tuple[float, dict | None]] = {}
 
@@ -538,8 +538,8 @@ def _build_caption_from_anilist(query: str, meta: dict | None, post: dict) -> st
         role = html.escape(role_raw)
         year = html.escape(year_raw)
 
-        name_emoji = _tg_emoji(5451636889717062286, "✨")
-        year_emoji = _tg_emoji(5057563697459759009, "📅")
+        name_emoji = _tg_emoji(PREMIUM_EMOJI_NAME_ID, "✨")
+        year_emoji = _tg_emoji(PREMIUM_EMOJI_YEAR_ID, "📅")
 
         lines = [
             f"{name_emoji} <b>{name}</b>",
