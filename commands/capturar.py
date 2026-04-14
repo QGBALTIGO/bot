@@ -3,7 +3,7 @@ import secrets
 import time
 import unicodedata
 from html import escape
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import ContextTypes
@@ -23,12 +23,16 @@ from handlers.capture_spawn import (
     PURCHASE_COST,
     PURCHASE_WINDOW_SECONDS,
     XP_REWARD,
+    finish_spawn_as_escaped,
+    get_chat_spawn_result,
+    record_chat_spawn_result,
 )
 from utils.runtime_guard import lock_manager
 
 
 _capture_locks: Dict[int, asyncio.Lock] = {}
 PURCHASE_OFFERS: Dict[str, Dict[str, Any]] = {}
+_feedback_timestamps: Dict[str, float] = {}
 
 
 def _get_capture_lock(chat_id: int) -> asyncio.Lock:
@@ -84,18 +88,37 @@ def _matches_capture_name(character_name: str, guess_text: str) -> bool:
     if len(guess_tokens) > len(name_tokens):
         return False
 
-    idx = 0
+    used_indexes = set()
     for probe in guess_tokens:
         matched = False
-        while idx < len(name_tokens):
-            token = name_tokens[idx]
-            idx += 1
+        for idx, token in enumerate(name_tokens):
+            if idx in used_indexes:
+                continue
             if probe == token or (len(probe) >= 3 and token.startswith(probe)):
+                used_indexes.add(idx)
                 matched = True
                 break
         if not matched:
             return False
 
+    return True
+
+
+def _time_left_text(expires_at: float) -> str:
+    return _format_window(max(int(expires_at - time.time()), 0))
+
+
+def _feedback_key(chat_id: int, user_id: int, kind: str) -> str:
+    return f"{int(chat_id)}:{int(user_id)}:{kind}"
+
+
+def _feedback_allowed(chat_id: int, user_id: int, kind: str, window: float = 1.5) -> bool:
+    now = time.monotonic()
+    key = _feedback_key(chat_id, user_id, kind)
+    last = _feedback_timestamps.get(key, 0.0)
+    if now - last < window:
+        return False
+    _feedback_timestamps[key] = now
     return True
 
 
@@ -163,14 +186,15 @@ def _build_offer_caption(
 
     if mode == "available":
         return (
-            "✦ <b>CLAIM FECHADO</b>\n\n"
-            f"{buyer_link} levou o claim de <b>{character_name}</b>\n"
-            f"🎬 <b>{anime_name}</b>\n\n"
+            "✨ <b>O VISITANTE FOI CAPTURADO</b>\n\n"
+            f"<blockquote>👤 <b>{character_name}</b>\n🎬 <b>{anime_name}</b></blockquote>\n\n"
+            f"{buyer_link} acertou o visitante e fechou a captura com sucesso.\n\n"
+            "<blockquote>"
             f"{xp_block}\n"
-            f"🛒 Carta exclusiva: <b>{offer['price']} coins</b>\n"
-            f"🔒 So o captor pode comprar\n"
-            f"⏳ Janela de compra: <b>{offer['window_text']}</b>\n\n"
-            "Se quiser transformar o claim em carta, garante agora no botao abaixo."
+            f"🪙 Compra exclusiva da carta liberada por <b>{offer['price']} coins</b>\n"
+            "🔒 Só o captor pode usar o botão abaixo"
+            "</blockquote>\n\n"
+            "<i>Continuem conversando para atrair o próximo visitante.</i>"
         )
 
     if mode == "purchased":
@@ -180,21 +204,24 @@ def _build_offer_caption(
             collection_line = f"📚 Agora voce tem <b>{quantity_after}</b> copias dessa carta"
 
         return (
-            "✦ <b>CARTA GARANTIDA</b>\n\n"
-            f"{buyer_link} adicionou <b>{character_name}</b> a colecao\n"
-            f"🎬 <b>{anime_name}</b>\n\n"
+            "🛒 <b>CARTA GARANTIDA</b>\n\n"
+            f"<blockquote>👤 <b>{character_name}</b>\n🎬 <b>{anime_name}</b></blockquote>\n\n"
+            f"{buyer_link} comprou a carta com sucesso.\n\n"
+            "<blockquote>"
             f"{xp_block}\n"
             f"🪙 -{offer['price']} coins\n"
             f"{collection_line}\n"
             f"💰 Saldo atual: <b>{coins_left}</b> coins"
+            "</blockquote>\n\n"
+            "<i>Continuem conversando para atrair o próximo visitante.</i>"
         )
 
     return (
-        "✦ <b>CLAIM ENCERRADO</b>\n\n"
-        f"{buyer_link} levou <b>{character_name}</b>\n"
-        f"🎬 <b>{anime_name}</b>\n\n"
-        f"{xp_block}\n"
-        "A janela de compra fechou, entao a carta nao entrou na colecao."
+        "⌛ <b>JANELA DE COMPRA ENCERRADA</b>\n\n"
+        f"<blockquote>👤 <b>{character_name}</b>\n🎬 <b>{anime_name}</b></blockquote>\n\n"
+        f"{buyer_link} garantiu o claim e recebeu os XP, mas a janela exclusiva de compra acabou.\n\n"
+        f"<blockquote>{xp_block}</blockquote>\n\n"
+        "<i>Continuem conversando para chamar o próximo visitante.</i>"
     )
 
 
@@ -262,6 +289,110 @@ async def _edit_offer_message(
         return False
 
 
+async def _reply_context(message: Message, text: str) -> None:
+    await message.reply_html(text)
+
+
+def _build_usage_text(active: bool) -> str:
+    status_line = (
+        "<i>O visitante ainda está em campo. Se liga no formato e tenta de novo.</i>"
+        if active
+        else "<i>No momento não há visitante ativo neste chat, mas o comando funciona assim.</i>"
+    )
+
+    return (
+        "🎯 <b>COMO CAPTURAR</b>\n\n"
+        f"{status_line}\n\n"
+        "<blockquote>"
+        "Use assim:\n"
+        "<code>/capturar Nome do Personagem</code>\n\n"
+        "Exemplo:\n"
+        "<code>/capturar Victor Nikiforov</code>"
+        "</blockquote>\n\n"
+        "<i>Vale nome completo, primeiro nome ou sobrenome. Capricha no chute.</i>"
+    )
+
+
+def _build_wrong_name_text(character: Dict[str, Any], expires_at: float) -> str:
+    return (
+        "❌ <b>TENTATIVA FALHOU</b>\n\n"
+        "<i>Esse nome não corresponde ao visitante atual.</i>\n\n"
+        "<blockquote>"
+        "Use <code>/capturar nome</code> com o nome do personagem exibido.\n"
+        "Vale nome completo, primeiro nome ou sobrenome.\n"
+        f"⏳ Tempo restante: <b>{_time_left_text(expires_at)}</b>"
+        "</blockquote>\n\n"
+        "<i>O spawn continua ativo. Respira e tenta de novo.</i>"
+    )
+
+
+def _build_no_spawn_text() -> str:
+    return (
+        "🕊 <b>NENHUM VISITANTE EM CAMPO</b>\n\n"
+        "<i>No momento não há nenhum spawn ativo neste chat.</i>\n\n"
+        "<blockquote>"
+        "Quando um visitante aparecer, use:\n"
+        "<code>/capturar Nome do Personagem</code>\n\n"
+        "Exemplo:\n"
+        "<code>/capturar Victor Nikiforov</code>"
+        "</blockquote>\n\n"
+        "<i>Continuem conversando para atrair o próximo evento.</i>"
+    )
+
+
+def _build_captured_text(result: Dict[str, Any]) -> str:
+    winner_name = str(result.get("winner_name") or "Outro jogador")
+    winner_id = int(result.get("winner_user_id") or 0)
+    winner = _player_link(winner_id, winner_name) if winner_id else escape(winner_name)
+    character_name = escape(str(result.get("character_name") or "Sem nome"))
+    anime_name = escape(str(result.get("anime_name") or "Obra desconhecida"))
+
+    return (
+        "🏁 <b>CAPTURA ENCERRADA</b>\n\n"
+        f"<blockquote>👤 <b>{character_name}</b>\n🎬 <b>{anime_name}</b></blockquote>\n\n"
+        f"<i>Esse visitante já foi capturado por {winner}. Agora é esperar o próximo.</i>"
+    )
+
+
+def _build_escaped_text(result: Dict[str, Any]) -> str:
+    character_name = escape(str(result.get("character_name") or "Sem nome"))
+    anime_name = escape(str(result.get("anime_name") or "Obra desconhecida"))
+
+    return (
+        "💨 <b>VISITANTE INDISPONÍVEL</b>\n\n"
+        f"<blockquote>👤 <b>{character_name}</b>\n🎬 <b>{anime_name}</b></blockquote>\n\n"
+        "<i>Esse visitante já foi embora. Continuem conversando para chamar o próximo.</i>"
+    )
+
+
+async def _reply_for_inactive_state(
+    message: Message,
+    chat_id: int,
+    user_id: int,
+    *,
+    no_name: bool,
+) -> None:
+    if no_name:
+        if _feedback_allowed(chat_id, user_id, "no_name_idle", window=2.0):
+            await _reply_context(message, _build_usage_text(active=False))
+        return
+
+    result = get_chat_spawn_result(chat_id)
+    if result and result.get("status") == "captured":
+        if _feedback_allowed(chat_id, user_id, "captured", window=2.0):
+            await _reply_context(message, _build_captured_text(result))
+        return
+
+    if result and result.get("status") == "escaped":
+        if _feedback_allowed(chat_id, user_id, "escaped", window=2.0):
+            await _reply_context(message, _build_escaped_text(result))
+        return
+
+    if _feedback_allowed(chat_id, user_id, "no_spawn", window=2.0):
+        text = _build_no_spawn_text()
+        await _reply_context(message, text)
+
+
 async def _expire_offer_later(offer_id: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     offer = PURCHASE_OFFERS.get(offer_id)
     if not offer:
@@ -294,18 +425,53 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_chat or not update.effective_user:
         return
 
-    if update.effective_chat.type not in ("group", "supergroup"):
+    chat = update.effective_chat
+    message = update.message
+    user = update.effective_user
+    chat_id = chat.id
+
+    if chat.type not in ("group", "supergroup"):
+        if _feedback_allowed(chat_id, user.id, "outside_group", window=3.0):
+            await _reply_context(
+                message,
+                (
+                    "🧭 <b>CAPTURA EM GRUPO</b>\n\n"
+                    "<i>As capturas acontecem nos grupos quando um visitante aparece no chat.</i>\n\n"
+                    "<blockquote>"
+                    "Quando o spawn surgir, use:\n"
+                    "<code>/capturar Nome do Personagem</code>"
+                    "</blockquote>"
+                ),
+            )
         return
 
-    if not context.args:
-        return
-
-    chat_id = update.effective_chat.id
     lock = _get_capture_lock(chat_id)
 
     async with lock:
         spawn = ACTIVE_SPAWNS.get(chat_id)
         if not spawn:
+            await _reply_for_inactive_state(
+                message,
+                chat_id,
+                user.id,
+                no_name=not bool(context.args),
+            )
+            return
+
+        expires_at = float(spawn.get("expires_at") or 0.0)
+        if expires_at and time.time() >= expires_at:
+            await finish_spawn_as_escaped(chat_id, context)
+            await _reply_for_inactive_state(
+                message,
+                chat_id,
+                user.id,
+                no_name=not bool(context.args),
+            )
+            return
+
+        if not context.args:
+            if _feedback_allowed(chat_id, user.id, "usage_active", window=2.0):
+                await _reply_context(message, _build_usage_text(active=True))
             return
 
         character = spawn.get("character") or {}
@@ -313,11 +479,12 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             str(character.get("name") or ""),
             " ".join(context.args),
         ):
+            if _feedback_allowed(chat_id, user.id, "wrong_name", window=1.3):
+                await _reply_context(message, _build_wrong_name_text(character, expires_at))
             return
 
         ACTIVE_SPAWNS.pop(chat_id, None)
 
-        user = update.effective_user
         create_or_get_user(user.id)
         touch_user_identity(
             user.id,
@@ -351,6 +518,14 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "message_id": int(spawn.get("message_id") or 0),
             "has_photo": True,
         }
+
+        record_chat_spawn_result(
+            chat_id,
+            "captured",
+            character,
+            winner_user_id=int(user.id),
+            winner_name=offer["buyer_name"],
+        )
 
         caption = _build_offer_caption(offer, "available")
         edited = False
@@ -408,7 +583,7 @@ async def capture_purchase_callback(update: Update, context: ContextTypes.DEFAUL
             return
 
         if int(user.id) != int(offer["buyer_user_id"]):
-            await query.answer("So quem capturou pode comprar essa carta.", show_alert=True)
+            await query.answer("Só quem capturou pode usar essa compra exclusiva.", show_alert=True)
             return
 
         create_or_get_user(user.id)
@@ -432,7 +607,7 @@ async def capture_purchase_callback(update: Update, context: ContextTypes.DEFAUL
 
         if not remove_coin(user.id, price):
             await query.answer(
-                "Nao consegui debitar suas coins agora. Tenta de novo em instantes.",
+                "Não consegui debitar suas coins agora. Tenta de novo em instantes.",
                 show_alert=True,
             )
             return
@@ -442,7 +617,7 @@ async def capture_purchase_callback(update: Update, context: ContextTypes.DEFAUL
         except Exception:
             add_coin(user.id, price)
             await query.answer(
-                "Nao consegui enviar a carta para a colecao. Suas coins foram devolvidas.",
+                "Não consegui enviar a carta para a coleção. Suas coins foram devolvidas.",
                 show_alert=True,
             )
             return
@@ -469,6 +644,6 @@ async def capture_purchase_callback(update: Update, context: ContextTypes.DEFAUL
             ),
             reply_markup=None,
         )
-        await query.answer("Carta comprada e enviada para sua colecao!", show_alert=True)
+        await query.answer("Carta comprada e enviada para sua coleção!", show_alert=True)
     finally:
         lock.release()
