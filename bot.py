@@ -45,7 +45,7 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
-from commands.cccolecao import cccolecao
+from commands.cccolecao import colec
 
 from commands.loja import loja
 from commands.daily import daily
@@ -188,7 +188,7 @@ def register_commands(app: Application):
 
     # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("cccolecao", cccolecao))
+    app.add_handler(CommandHandler("colec", colec))
 
     # economia
     app.add_handler(CommandHandler("loja", loja))
