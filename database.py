@@ -592,6 +592,131 @@ def create_capture_spawn_tables():
     CREATE INDEX IF NOT EXISTS idx_active_group_spawns_expires
     ON active_group_spawns (expires_at)
     """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS capture_group_state (
+        chat_id BIGINT PRIMARY KEY,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        total_messages BIGINT NOT NULL DEFAULT 0,
+        last_counted_message_at TIMESTAMPTZ,
+        last_spawn_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    ALTER TABLE capture_group_state
+    ADD COLUMN IF NOT EXISTS message_count INTEGER NOT NULL DEFAULT 0
+    """)
+    _run("""
+    ALTER TABLE capture_group_state
+    ADD COLUMN IF NOT EXISTS total_messages BIGINT NOT NULL DEFAULT 0
+    """)
+    _run("""
+    ALTER TABLE capture_group_state
+    ADD COLUMN IF NOT EXISTS last_counted_message_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE capture_group_state
+    ADD COLUMN IF NOT EXISTS last_spawn_id BIGINT
+    """)
+    _run("""
+    ALTER TABLE capture_group_state
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS capture_spawns (
+        id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        character_id BIGINT NOT NULL,
+        character_name TEXT NOT NULL,
+        anime_name TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        is_curated BOOLEAN NOT NULL DEFAULT FALSE,
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'active',
+        spawn_message_id BIGINT NOT NULL DEFAULT 0,
+        spawn_has_photo BOOLEAN NOT NULL DEFAULT TRUE,
+        purchase_token TEXT,
+        purchase_price INTEGER NOT NULL DEFAULT 0,
+        purchase_expires_at TIMESTAMPTZ,
+        winner_user_id BIGINT,
+        winner_name TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        captured_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """)
+
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS is_curated BOOLEAN NOT NULL DEFAULT FALSE
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS spawn_message_id BIGINT NOT NULL DEFAULT 0
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS spawn_has_photo BOOLEAN NOT NULL DEFAULT TRUE
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS purchase_token TEXT
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS purchase_price INTEGER NOT NULL DEFAULT 0
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS purchase_expires_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS winner_user_id BIGINT
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS winner_name TEXT
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ
+    """)
+    _run("""
+    ALTER TABLE capture_spawns
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_capture_spawns_chat_created
+    ON capture_spawns (chat_id, created_at DESC)
+    """)
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_capture_spawns_status_expires
+    ON capture_spawns (status, expires_at)
+    """)
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_capture_spawns_chat_active
+    ON capture_spawns (chat_id)
+    WHERE status = 'active'
+    """)
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_capture_spawns_purchase_token
+    ON capture_spawns (purchase_token)
+    WHERE purchase_token IS NOT NULL
+    """)
     
 def create_users_table():
     _run("""
@@ -5279,7 +5404,7 @@ def override_subcategory_add_character(name: str, character_id: int) -> None:
 
     save_cards_overrides(data)
 
-from psycopg.errors import UndefinedTable
+from psycopg.errors import UndefinedTable, UniqueViolation
 
 
 def set_global_character_image(character_id: int, image_url: str, updated_by: int) -> None:
@@ -5484,6 +5609,666 @@ def delete_active_group_spawn(chat_id: int) -> None:
         """,
         (int(chat_id),),
     )
+
+
+def _capture_spawn_row_to_dict(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not row:
+        return None
+
+    created_at = row.get("created_at")
+    expires_at = row.get("expires_at")
+    captured_at = row.get("captured_at")
+    purchase_expires_at = row.get("purchase_expires_at")
+
+    return {
+        "id": int(row.get("id") or 0),
+        "chat_id": int(row.get("chat_id") or 0),
+        "character_id": int(row.get("character_id") or 0),
+        "character_name": str(row.get("character_name") or "Sem nome"),
+        "anime_name": str(row.get("anime_name") or "Obra desconhecida"),
+        "image_url": str(row.get("image_url") or "").strip(),
+        "is_curated": bool(row.get("is_curated")),
+        "is_manual": bool(row.get("is_manual")),
+        "status": str(row.get("status") or "").strip().lower(),
+        "spawn_message_id": int(row.get("spawn_message_id") or 0),
+        "spawn_has_photo": bool(row.get("spawn_has_photo")),
+        "purchase_token": str(row.get("purchase_token") or "").strip(),
+        "purchase_price": int(row.get("purchase_price") or 0),
+        "winner_user_id": int(row.get("winner_user_id") or 0),
+        "winner_name": str(row.get("winner_name") or "").strip(),
+        "created_at_ts": float(created_at.timestamp()) if created_at else 0.0,
+        "expires_at_ts": float(expires_at.timestamp()) if expires_at else 0.0,
+        "captured_at_ts": float(captured_at.timestamp()) if captured_at else 0.0,
+        "purchase_expires_at_ts": float(purchase_expires_at.timestamp()) if purchase_expires_at else 0.0,
+    }
+
+
+def register_capture_group_activity(chat_id: int, threshold: int) -> Dict[str, Any]:
+    chat_id = int(chat_id)
+    threshold = max(1, int(threshold))
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO capture_group_state (
+                        chat_id,
+                        message_count,
+                        total_messages,
+                        last_counted_message_at,
+                        updated_at
+                    )
+                    VALUES (%s, 0, 0, NOW(), NOW())
+                    ON CONFLICT (chat_id) DO NOTHING
+                    """,
+                    (chat_id,),
+                )
+
+                cur.execute(
+                    """
+                    SELECT message_count, total_messages, last_spawn_id
+                    FROM capture_group_state
+                    WHERE chat_id = %s
+                    FOR UPDATE
+                    """,
+                    (chat_id,),
+                )
+                row = cur.fetchone() or {}
+
+                new_count = int(row.get("message_count") or 0) + 1
+                total_messages = int(row.get("total_messages") or 0) + 1
+                should_spawn = new_count >= threshold
+                stored_count = 0 if should_spawn else new_count
+
+                cur.execute(
+                    """
+                    UPDATE capture_group_state
+                    SET message_count = %s,
+                        total_messages = %s,
+                        last_counted_message_at = NOW(),
+                        updated_at = NOW()
+                    WHERE chat_id = %s
+                    RETURNING chat_id, message_count, total_messages, last_spawn_id
+                    """,
+                    (stored_count, total_messages, chat_id),
+                )
+                updated = cur.fetchone() or {}
+                conn.commit()
+
+                return {
+                    "chat_id": int(updated.get("chat_id") or chat_id),
+                    "message_count": int(updated.get("message_count") or 0),
+                    "total_messages": int(updated.get("total_messages") or 0),
+                    "last_spawn_id": int(updated.get("last_spawn_id") or 0),
+                    "should_spawn": bool(should_spawn),
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def set_capture_group_message_count(chat_id: int, message_count: int, *, last_spawn_id: Optional[int] = None) -> None:
+    chat_id = int(chat_id)
+    message_count = max(0, int(message_count))
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO capture_group_state (
+                        chat_id,
+                        message_count,
+                        total_messages,
+                        last_counted_message_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, 0, NOW(), NOW())
+                    ON CONFLICT (chat_id) DO UPDATE SET
+                        message_count = EXCLUDED.message_count,
+                        last_counted_message_at = NOW(),
+                        updated_at = NOW()
+                    """,
+                    (chat_id, message_count),
+                )
+
+                if last_spawn_id is not None:
+                    cur.execute(
+                        """
+                        UPDATE capture_group_state
+                        SET last_spawn_id = %s,
+                            updated_at = NOW()
+                        WHERE chat_id = %s
+                        """,
+                        (int(last_spawn_id), chat_id),
+                    )
+
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def reset_capture_group_message_count(chat_id: int, *, last_spawn_id: Optional[int] = None) -> None:
+    set_capture_group_message_count(chat_id, 0, last_spawn_id=last_spawn_id)
+
+
+def create_capture_spawn(
+    chat_id: int,
+    character_id: int,
+    character_name: str,
+    anime_name: str,
+    image_url: str,
+    is_curated: bool,
+    is_manual: bool,
+    expires_at_ts: float,
+) -> Optional[Dict[str, Any]]:
+    try:
+        row = _run(
+            """
+            INSERT INTO capture_spawns (
+                chat_id,
+                character_id,
+                character_name,
+                anime_name,
+                image_url,
+                is_curated,
+                is_manual,
+                status,
+                spawn_message_id,
+                spawn_has_photo,
+                purchase_price,
+                created_at,
+                updated_at,
+                expires_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', 0, TRUE, 0, NOW(), NOW(), %s)
+            RETURNING *
+            """,
+            (
+                int(chat_id),
+                int(character_id),
+                str(character_name or "").strip(),
+                str(anime_name or "").strip(),
+                str(image_url or "").strip(),
+                bool(is_curated),
+                bool(is_manual),
+                datetime.fromtimestamp(float(expires_at_ts), tz=SP_TZ),
+            ),
+            fetch="one",
+        )
+    except UniqueViolation:
+        return None
+
+    return _capture_spawn_row_to_dict(row)
+
+
+def get_capture_spawn(spawn_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (int(spawn_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def get_active_capture_spawn(chat_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE chat_id = %s
+          AND status = 'active'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (int(chat_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def get_latest_capture_spawn(chat_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE chat_id = %s
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (int(chat_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def list_active_capture_spawns(limit: int = 500) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE status = 'active'
+        ORDER BY expires_at ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all",
+    ) or []
+    return [item for item in (_capture_spawn_row_to_dict(row) for row in rows) if item]
+
+
+def list_open_capture_purchase_spawns(limit: int = 500) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE status = 'captured_offer_open'
+        ORDER BY purchase_expires_at ASC NULLS LAST
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch="all",
+    ) or []
+    return [item for item in (_capture_spawn_row_to_dict(row) for row in rows) if item]
+
+
+def attach_capture_spawn_message(spawn_id: int, message_id: int, has_photo: bool) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        UPDATE capture_spawns
+        SET spawn_message_id = %s,
+            spawn_has_photo = %s,
+            updated_at = NOW()
+        WHERE id = %s
+          AND status = 'active'
+        RETURNING *
+        """,
+        (int(message_id or 0), bool(has_photo), int(spawn_id)),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def delete_capture_spawn(spawn_id: int) -> None:
+    _run(
+        """
+        DELETE FROM capture_spawns
+        WHERE id = %s
+        """,
+        (int(spawn_id),),
+    )
+
+
+def mark_capture_spawn_escaped(spawn_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        UPDATE capture_spawns
+        SET status = 'escaped',
+            updated_at = NOW()
+        WHERE id = %s
+          AND status = 'active'
+        RETURNING *
+        """,
+        (int(spawn_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def mark_capture_spawn_captured(
+    spawn_id: int,
+    *,
+    winner_user_id: int,
+    winner_name: str,
+    purchase_token: str,
+    purchase_price: int,
+    purchase_expires_at_ts: float,
+) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        UPDATE capture_spawns
+        SET status = 'captured_offer_open',
+            winner_user_id = %s,
+            winner_name = %s,
+            purchase_token = %s,
+            purchase_price = %s,
+            purchase_expires_at = %s,
+            captured_at = NOW(),
+            updated_at = NOW()
+        WHERE id = %s
+          AND status = 'active'
+        RETURNING *
+        """,
+        (
+            int(winner_user_id),
+            str(winner_name or "").strip(),
+            str(purchase_token or "").strip(),
+            int(purchase_price),
+            datetime.fromtimestamp(float(purchase_expires_at_ts), tz=SP_TZ),
+            int(spawn_id),
+        ),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def mark_capture_purchase_expired(spawn_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        UPDATE capture_spawns
+        SET status = 'captured_offer_expired',
+            updated_at = NOW()
+        WHERE id = %s
+          AND status = 'captured_offer_open'
+        RETURNING *
+        """,
+        (int(spawn_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def mark_capture_purchase_completed(spawn_id: int) -> Optional[Dict[str, Any]]:
+    row = _run(
+        """
+        UPDATE capture_spawns
+        SET status = 'purchased',
+            updated_at = NOW()
+        WHERE id = %s
+          AND status = 'captured_offer_open'
+        RETURNING *
+        """,
+        (int(spawn_id),),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def get_capture_spawn_by_purchase_token(purchase_token: str) -> Optional[Dict[str, Any]]:
+    token = str(purchase_token or "").strip()
+    if not token:
+        return None
+
+    row = _run(
+        """
+        SELECT *
+        FROM capture_spawns
+        WHERE purchase_token = %s
+        LIMIT 1
+        """,
+        (token,),
+        fetch="one",
+    )
+    return _capture_spawn_row_to_dict(row)
+
+
+def get_recent_capture_character_ids(chat_id: int, limit: int = 12) -> List[int]:
+    rows = _run(
+        """
+        SELECT character_id
+        FROM capture_spawns
+        WHERE chat_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (int(chat_id), max(1, int(limit) * 3)),
+        fetch="all",
+    ) or []
+
+    out: List[int] = []
+    seen = set()
+
+    for row in rows:
+        cid = int(row.get("character_id") or 0)
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        out.append(cid)
+        if len(out) >= limit:
+            break
+
+    return out
+
+
+def finalize_capture_card_purchase(user_id: int, character_id: int, price: int) -> Dict[str, Any]:
+    user_id = int(user_id)
+    character_id = int(character_id)
+    price = max(0, int(price))
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                initial_slot = _slot_number_from_dt(_now_sp())
+                cur.execute(
+                    """
+                    INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
+                    VALUES (%s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (user_id, DADO_INITIAL_BALANCE, initial_slot),
+                )
+
+                cur.execute(
+                    """
+                    SELECT coins
+                    FROM users
+                    WHERE user_id = %s
+                    FOR UPDATE
+                    """,
+                    (user_id,),
+                )
+                user_row = cur.fetchone() or {}
+                current_coins = int(user_row.get("coins") or 0)
+
+                if current_coins < price:
+                    conn.commit()
+                    return {
+                        "ok": False,
+                        "reason": "insufficient_coins",
+                        "coins_left": current_coins,
+                    }
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET coins = coins - %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    RETURNING coins
+                    """,
+                    (price, user_id),
+                )
+                coins_row = cur.fetchone() or {}
+                coins_left = int(coins_row.get("coins") or 0)
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+                    VALUES (%s, %s, 1, NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    RETURNING quantity
+                    """,
+                    (user_id, character_id),
+                )
+                card_row = cur.fetchone() or {}
+                quantity_after = int(card_row.get("quantity") or 0)
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "coins_left": coins_left,
+                    "quantity_after": quantity_after,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
+def complete_capture_purchase(purchase_token: str, user_id: int) -> Dict[str, Any]:
+    token = str(purchase_token or "").strip()
+    user_id = int(user_id)
+
+    if not token:
+        return {"ok": False, "reason": "missing_token"}
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM capture_spawns
+                    WHERE purchase_token = %s
+                    FOR UPDATE
+                    """,
+                    (token,),
+                )
+                spawn_row = cur.fetchone()
+                spawn = _capture_spawn_row_to_dict(spawn_row)
+
+                if not spawn:
+                    conn.commit()
+                    return {"ok": False, "reason": "not_found"}
+
+                status = str(spawn.get("status") or "").strip().lower()
+                if status == "captured_offer_expired":
+                    conn.commit()
+                    return {"ok": False, "reason": "expired", "spawn": spawn}
+                if status == "purchased":
+                    conn.commit()
+                    return {"ok": False, "reason": "already_purchased", "spawn": spawn}
+                if status != "captured_offer_open":
+                    conn.commit()
+                    return {"ok": False, "reason": "not_open", "spawn": spawn}
+
+                if int(spawn.get("winner_user_id") or 0) != user_id:
+                    conn.commit()
+                    return {"ok": False, "reason": "forbidden", "spawn": spawn}
+
+                expires_at_ts = float(spawn.get("purchase_expires_at_ts") or 0.0)
+                if expires_at_ts and expires_at_ts <= time.time():
+                    cur.execute(
+                        """
+                        UPDATE capture_spawns
+                        SET status = 'captured_offer_expired',
+                            updated_at = NOW()
+                        WHERE id = %s
+                        RETURNING *
+                        """,
+                        (int(spawn["id"]),),
+                    )
+                    expired_row = cur.fetchone()
+                    conn.commit()
+                    return {
+                        "ok": False,
+                        "reason": "expired",
+                        "spawn": _capture_spawn_row_to_dict(expired_row),
+                    }
+
+                initial_slot = _slot_number_from_dt(_now_sp())
+                cur.execute(
+                    """
+                    INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
+                    VALUES (%s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (user_id, DADO_INITIAL_BALANCE, initial_slot),
+                )
+
+                cur.execute(
+                    """
+                    SELECT coins
+                    FROM users
+                    WHERE user_id = %s
+                    FOR UPDATE
+                    """,
+                    (user_id,),
+                )
+                user_row = cur.fetchone() or {}
+                current_coins = int(user_row.get("coins") or 0)
+                price = int(spawn.get("purchase_price") or 0)
+
+                if current_coins < price:
+                    conn.commit()
+                    return {
+                        "ok": False,
+                        "reason": "insufficient_coins",
+                        "coins_left": current_coins,
+                        "spawn": spawn,
+                    }
+
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET coins = coins - %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                    RETURNING coins
+                    """,
+                    (price, user_id),
+                )
+                coins_row = cur.fetchone() or {}
+                coins_left = int(coins_row.get("coins") or 0)
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (user_id, character_id, quantity, updated_at)
+                    VALUES (%s, %s, 1, NOW())
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET
+                        quantity = user_card_collection.quantity + 1,
+                        updated_at = NOW()
+                    RETURNING quantity
+                    """,
+                    (user_id, int(spawn.get("character_id") or 0)),
+                )
+                collection_row = cur.fetchone() or {}
+                quantity_after = int(collection_row.get("quantity") or 0)
+
+                cur.execute(
+                    """
+                    UPDATE capture_spawns
+                    SET status = 'purchased',
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING *
+                    """,
+                    (int(spawn["id"]),),
+                )
+                purchased_row = cur.fetchone()
+
+                conn.commit()
+                return {
+                    "ok": True,
+                    "spawn": _capture_spawn_row_to_dict(purchased_row),
+                    "coins_left": coins_left,
+                    "quantity_after": quantity_after,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
 # =========================================================
 # BALTIGOFLIX / AFILIADOS / COMPRAS
