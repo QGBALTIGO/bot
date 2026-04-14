@@ -1,11 +1,9 @@
 import os
-import random
-import time
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers.capture_spawn import ACTIVE_SPAWNS, get_spawn_pool
+from handlers.capture_spawn import ACTIVE_SPAWNS, start_spawn
 
 
 ADMIN_IDS = set(
@@ -22,28 +20,15 @@ async def spawn_personagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
 
-    characters = get_spawn_pool()
-    if not characters:
-        await update.message.reply_text("Dataset de personagens não carregado.")
+    if update.effective_chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Use esse comando em um grupo para testar o spawn.")
         return
 
     chat_id = update.effective_chat.id
-    character = random.choice(characters)
+    if chat_id in ACTIVE_SPAWNS:
+        await update.message.reply_text("Ja tem um personagem em campo nesse grupo.")
+        return
 
-    ACTIVE_SPAWNS[chat_id] = {
-        "character": character,
-        "time": time.time(),
-    }
-
-    caption = (
-        "🧪 <b>SPAWN DE TESTE</b>\n\n"
-        "🕵️ Quem é esse personagem?\n\n"
-        "Use:\n"
-        "<code>/capturar nome</code>"
-    )
-
-    await update.message.reply_photo(
-        photo=character["image"],
-        caption=caption,
-        parse_mode="HTML",
-    )
+    spawned = await start_spawn(update.message, context, manual=True)
+    if not spawned:
+        await update.message.reply_text("Nao consegui iniciar o spawn agora.")
