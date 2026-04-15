@@ -52,7 +52,7 @@ MAX_ATTEMPTS    = 6
 WORD_LENGTH     = 6
 ANTI_FLOOD_SECS = 1.5
 XP_REWARD       = 10
-HINT_COST_COINS = 5            # custo para pedir dica
+HINT_COST_COINS = 20            # custo para pedir dica
 
 ADMIN_IDS: Set[int] = {
     int(x.strip())
