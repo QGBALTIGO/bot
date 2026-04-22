@@ -28,6 +28,7 @@ from premium_webapp_ui import (
     build_collection_page as build_collection_page_html,
     build_dado_page as build_dado_page_html,
     build_home_page as build_home_page_html,
+    build_memory_page as build_memory_page_html,
     build_media_catalog_page as build_media_catalog_page_html,
     build_menu_page as build_menu_page_html,
     build_request_center_page as build_request_center_page_html,
@@ -3609,6 +3610,22 @@ def api_cards_subcategory(
 @app.get("/cards", response_class=HTMLResponse)
 def cards_page():
     return HTMLResponse(build_cards_home_page_html(top_banner_url=CARDS_TOP_BANNER_URL))
+
+
+@app.get("/memoria", response_class=HTMLResponse)
+def memory_page(level: str = Query(default="medium")):
+    return HTMLResponse(
+        build_memory_page_html(
+            banner_url=CARDS_TOP_BANNER_URL,
+            default_level=str(level or "medium"),
+        )
+    )
+
+
+@app.get("/memory", response_class=HTMLResponse)
+def memory_alias(level: str = Query(default="medium")):
+    return memory_page(level=level)
+
 
     html = """
 <!doctype html>
