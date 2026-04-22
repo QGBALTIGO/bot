@@ -3159,7 +3159,10 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   display:grid;
   gap:10px;
   margin-top:14px;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+.memory-board.level-medium{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
 }
 .memory-board.level-hard,
 .memory-board.level-extreme{
@@ -3314,7 +3317,7 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
     grid-template-columns:repeat(4, minmax(0, 1fr));
   }
   .memory-board.level-hard{
-    grid-template-columns:repeat(5, minmax(0, 1fr));
+    grid-template-columns:repeat(6, minmax(0, 1fr));
   }
   .memory-board.level-extreme{
     grid-template-columns:repeat(6, minmax(0, 1fr));
