@@ -141,7 +141,7 @@ def _build_caption(
             f"│ 🎬 <i>{html.escape(title)}</i>",
             "│",
             f"│ ✨ <b>Raridade:</b> <i>{html.escape(rarity)}</i>",
-            f"│ 🛡️ <b>PA:</b> <i>{html.escape(power)}</i>",
+            f"│ 🛡️ <b>BP:</b> <i>{html.escape(power)}</i>",
             "│",
             f"╰─ 📚 <b>{quantity}x na sua xcoleção</b>",
         ]
