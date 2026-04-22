@@ -56,7 +56,7 @@ def _build_variant_keyboard(
 
         buttons.append(
             InlineKeyboardButton(
-                f"🎴 {index + 1}/{total}",
+                f"{index + 1}/{total}",
                 callback_data="xcardnoop",
             )
         )
