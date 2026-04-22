@@ -1,7 +1,7 @@
 import html
 from typing import Any, Dict, List, Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.ext import ContextTypes
 
 from database import (
@@ -22,6 +22,20 @@ def _trim_text(text: Any, limit: int) -> str:
     return value[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _dup_emoji(qty: int) -> str:
+    if qty >= 20:
+        return " 🏆"
+    if qty >= 15:
+        return " 🌟"
+    if qty >= 10:
+        return " ⭐"
+    if qty >= 5:
+        return " 💫"
+    if qty >= 2:
+        return " ✨"
+    return ""
+
+
 def _build_variant_keyboard(
     owner_id: int,
     character_id: int,
@@ -35,14 +49,14 @@ def _build_variant_keyboard(
         if index > 0:
             buttons.append(
                 InlineKeyboardButton(
-                    "<",
+                    "◀️",
                     callback_data=f"xcardnav:{owner_id}:{character_id}:{index - 1}",
                 )
             )
 
         buttons.append(
             InlineKeyboardButton(
-                f"{index + 1}/{total}",
+                f"🎴 {index + 1}/{total}",
                 callback_data="xcardnoop",
             )
         )
@@ -50,13 +64,13 @@ def _build_variant_keyboard(
         if index < (total - 1):
             buttons.append(
                 InlineKeyboardButton(
-                    ">",
+                    "▶️",
                     callback_data=f"xcardnav:{owner_id}:{character_id}:{index + 1}",
                 )
             )
 
     stats_button = InlineKeyboardButton(
-        "Stats",
+        "📊 Stats",
         callback_data=f"xcardstats:{card_id}",
     )
 
@@ -108,36 +122,44 @@ def _build_caption(
 
     effect = _safe_pt_br(card, "efeito", "effect") or "-"
     trigger = _safe_pt_br(card, "acionar", "trigger") or "-"
+    product_name = str(card.get("product_name") or "").strip() or "-"
+    alt_art = bool(card.get("alt_art"))
+    name = str(card.get("name") or "Sem nome")
+    name_with_dup = name + _dup_emoji(quantity)
 
-    lines = [
-        f"<b>{html.escape(str(card.get('name') or 'Sem nome'))}</b>",
-        f"Obra: <b>{html.escape(title)}</b>",
-        f"Card ID: <code>{card_id}</code>",
-        f"Personagem ID: <code>{character_id}</code>",
-        f"Codigo: <code>{html.escape(str(card.get('card_no') or '-'))}</code>",
-        f"Variante: <b>{current_index + 1}/{total_variants}</b>",
-        "",
-        f"Raridade: <b>{html.escape(rarity)}</b>",
-        f"Energia necessaria: <b>{html.escape(required_energy)}</b>",
-        f"Custo AP: <b>{html.escape(ap_cost)}</b>",
-        f"Tipo de cartao: <b>{html.escape(card_type)}</b>",
-        f"PA: <b>{html.escape(power)}</b>",
-        f"Afinidade: <b>{html.escape(affinity)}</b>",
-        f"Energia Gerada: <b>{html.escape(generated_energy)}</b>",
-        "",
-        f"Efeito: {html.escape(_trim_text(effect, 260))}",
-        f"Acionar: {html.escape(_trim_text(trigger, 220))}",
-        "",
-        f"Na sua xcolecao: <b>{quantity}x</b>",
+    presets = [
+        {"product": 70, "affinity": 180, "effect": 230, "trigger": 150},
+        {"product": 50, "affinity": 130, "effect": 170, "trigger": 100},
+        {"product": 36, "affinity": 90, "effect": 110, "trigger": 70},
     ]
 
-    caption = "\n".join(lines)
-    if len(caption) > 1024:
-        effect_line = f"Efeito: {html.escape(_trim_text(effect, 140))}"
-        trigger_line = f"Acionar: {html.escape(_trim_text(trigger, 120))}"
-        lines[15] = effect_line
-        lines[16] = trigger_line
+    for limits in presets:
+        lines = [
+            f"╭─ 🃏 <b>XCard</b> <code>#{card_id}</code>",
+            "│",
+            f"│ 👤 <b>{html.escape(name_with_dup)}</b>",
+            f"│ 🎬 {html.escape(title)}",
+            f"│ 🏷️ <code>{html.escape(str(card.get('card_no') or '-'))}</code> • <b>{current_index + 1}/{total_variants}</b>",
+            f"│ 🧬 Personagem <code>#{character_id}</code>",
+            f"│ 📦 {_trim_text(html.escape(product_name), limits['product'])}",
+            f"│ {'🎨 Alt-Art' if alt_art else '🎴 Arte padrão'}",
+            "│",
+            f"│ ✨ Raridade: <b>{html.escape(rarity)}</b>",
+            f"│ ⚡ Energia: <b>{html.escape(required_energy)}</b>",
+            f"│ 🎯 Custo AP: <b>{html.escape(ap_cost)}</b>",
+            f"│ 🃟 Tipo: <b>{html.escape(card_type)}</b>",
+            f"│ 🛡️ PA: <b>{html.escape(power)}</b>",
+            f"│ 🔋 Energia gerada: <b>{html.escape(generated_energy)}</b>",
+            f"│ 🧩 Afinidade: <b>{html.escape(_trim_text(affinity, limits['affinity']))}</b>",
+            "│",
+            f"│ 📝 Efeito: <i>{html.escape(_trim_text(effect, limits['effect']))}</i>",
+            f"│ 🎲 Acionar: <i>{html.escape(_trim_text(trigger, limits['trigger']))}</i>",
+            "│",
+            f"╰─ 📚 <b>{quantity}x na sua xcoleção</b>",
+        ]
         caption = "\n".join(lines)
+        if len(caption) <= 1024:
+            return caption
 
     if len(caption) > 1024:
         caption = caption[:1021] + "..."
@@ -180,9 +202,12 @@ async def _send_xcard_message(
         message = update.callback_query.message
         try:
             if image and message.photo:
-                await message.edit_caption(
-                    caption=caption,
-                    parse_mode="HTML",
+                await message.edit_media(
+                    media=InputMediaPhoto(
+                        media=image,
+                        caption=caption,
+                        parse_mode="HTML",
+                    ),
                     reply_markup=keyboard,
                 )
             elif image:
@@ -227,7 +252,7 @@ async def xcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_html(
-            "<b>XCard</b>\n\n"
+            "🃏 <b>XCard</b>\n\n"
             "Use:\n"
             "<code>/xcard Nome do personagem</code>\n"
             "<code>/xcard ID do personagem</code>\n"
@@ -248,7 +273,7 @@ async def xcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if resolved.get("type") == "none":
-        await update.message.reply_text("Nao encontrei esse personagem/card nos xcards.")
+        await update.message.reply_text("❌ Não encontrei esse personagem/card nos xcards.")
         return
 
     if resolved.get("type") == "card":
@@ -279,12 +304,12 @@ async def xcard_nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if int(owner_id) != int(q.from_user.id):
-        await q.answer("Esse xcard nao e seu.", show_alert=True)
+        await q.answer("Esse xcard não é seu.", show_alert=True)
         return
 
     cards = get_xcards_for_character(int(character_id))
     if not cards:
-        await q.answer("Nao encontrei as variantes.", show_alert=True)
+        await q.answer("Não encontrei as variantes.", show_alert=True)
         return
 
     await q.answer()
@@ -307,7 +332,7 @@ async def xcard_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     total_copies = int(get_xcard_total_copies(parsed_card_id) or 0)
 
     await q.answer(
-        f"Usuarios com esse xcard: {owners}\n"
-        f"Total de copias: {total_copies}",
+        f"📊 Usuários com esse xcard: {owners}\n"
+        f"📦 Total de cópias: {total_copies}",
         show_alert=True,
     )
