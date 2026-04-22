@@ -13,7 +13,7 @@ if not BASE_URL:
 
 MEMORIA_BANNER_URL = os.getenv(
     "MEMORIA_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg",
+    "https://photo.chelpbot.me/AgACAgEAAxkBarsAAXNp6UYolngW58ajeAQuGSywL1tCUwAC2AxrG0EGSUeuM-DG-3kWUgEAAwIAA3cAAzsE/photo.jpg",
 ).strip()
 
 _LEVEL_MAP = {
@@ -63,9 +63,7 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "🧠 <b>JOGO DA MEMORIA ANIME</b>\n\n"
         "Forme pares usando os banners das obras que ja existem no sistema de cards.\n\n"
-        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n"
-        "🎴 Pares montados com banners reais do catalogo\n"
-        "📱 Layout pensado para abrir bonito dentro do Telegram\n\n"
+        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n"
         "Toque abaixo para abrir o mini app."
     )
 
