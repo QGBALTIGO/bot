@@ -64,7 +64,7 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "🧠 <b>JOGO DA MEMORIA ANIME</b>\n\n"
         "Forme pares usando os banners das obras que ja existem no sistema de cards.\n\n"
-        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n""
+        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n"
         "Toque abaixo para abrir o mini app."
     )
 
