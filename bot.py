@@ -29,6 +29,7 @@ from commands.start import start
 from commands.menu import menu
 from commands.perfil import perfil
 from commands.reset_users import reset_user, reset_all
+from commands.memoria import memoria
 
 from commands.anime import anime
 from commands.manga import manga
@@ -220,6 +221,8 @@ def register_commands(app: Application):
     # misc
     app.add_handler(CommandHandler("pedido", pedido))
     app.add_handler(CommandHandler("nivel", nivel))
+    app.add_handler(CommandHandler("memoria", memoria))
+    app.add_handler(CommandHandler("memory", memoria))
 
     # dado
     app.add_handler(CommandHandler("dado", dado))
