@@ -3087,10 +3087,13 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
 .memory-board{
   display:grid;
   gap:12px;
-  margin-top:16px;
+  margin-top:18px;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  align-items:stretch;
+}
+.memory-board.level-medium{
   grid-template-columns:repeat(3, minmax(0, 1fr));
 }
-.memory-board.level-medium,
 .memory-board.level-hard,
 .memory-board.level-extreme{
   grid-template-columns:repeat(4, minmax(0, 1fr));
@@ -3098,20 +3101,23 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
 .memory-card{
   position:relative;
   width:100%;
-  aspect-ratio:.78;
+  aspect-ratio:.82;
   padding:0;
   border:0;
   background:none;
   cursor:pointer;
-  perspective:1200px;
+  perspective:1400px;
+  -webkit-tap-highlight-color:transparent;
 }
 .memory-card:disabled{ cursor:default; }
 .memory-card__inner{
   position:relative;
+  display:block;
   width:100%;
   height:100%;
   transform-style:preserve-3d;
-  transition:transform .56s cubic-bezier(.2,.7,.18,1);
+  will-change:transform;
+  transition:transform .62s cubic-bezier(.22,.8,.2,1), filter .22s ease;
 }
 .memory-card.is-flipped .memory-card__inner,
 .memory-card.is-matched .memory-card__inner{
@@ -3120,23 +3126,33 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
 .memory-face{
   position:absolute;
   inset:0;
+  display:flex;
+  flex-direction:column;
   overflow:hidden;
-  border-radius:24px;
-  border:1px solid rgba(255,255,255,.10);
-  box-shadow:var(--shadow-md);
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 18px 32px rgba(0,0,0,.28);
   backface-visibility:hidden;
 }
 .memory-face--back{
-  display:flex;
-  flex-direction:column;
   justify-content:space-between;
-  padding:14px;
+  padding:12px;
   background:
-    radial-gradient(circle at 20% 12%, rgba(122,213,255,.20), transparent 36%),
-    radial-gradient(circle at 84% 0%, rgba(255,111,148,.18), transparent 24%),
-    linear-gradient(180deg, rgba(15,24,46,.98), rgba(7,11,20,.98));
+    radial-gradient(circle at 18% 18%, rgba(122,213,255,.18), transparent 34%),
+    radial-gradient(circle at 84% 0%, rgba(255,111,148,.16), transparent 22%),
+    linear-gradient(180deg, rgba(14,21,42,.98), rgba(7,11,21,.98));
+}
+.memory-face--back::after{
+  content:"";
+  position:absolute;
+  inset:10px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  pointer-events:none;
 }
 .memory-back-top{
+  position:relative;
+  z-index:1;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -3147,11 +3163,11 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-height:28px;
-  padding:7px 10px;
+  min-height:26px;
+  padding:6px 9px;
   border-radius:999px;
   border:1px solid rgba(255,255,255,.14);
-  background:rgba(8,14,28,.42);
+  background:rgba(8,14,28,.48);
   color:var(--muted-strong);
   font-size:10px;
   font-weight:800;
@@ -3159,62 +3175,70 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   text-transform:uppercase;
 }
 .memory-back-mark{
+  position:relative;
+  z-index:1;
   display:flex;
   align-items:center;
   justify-content:center;
   flex:1;
   font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
-  font-size:clamp(18px, 5vw, 30px);
+  font-size:clamp(17px, 5vw, 28px);
   font-weight:800;
-  letter-spacing:-.05em;
-  text-align:left;
-  line-height:1.05;
+  letter-spacing:-.04em;
+  text-align:center;
+  line-height:1;
 }
 .memory-back-copy{
+  position:relative;
+  z-index:1;
   color:var(--muted);
   font-size:11px;
   line-height:1.45;
 }
 .memory-face--front{
+  justify-content:flex-end;
   transform:rotateY(180deg);
-  background:linear-gradient(180deg, rgba(14,22,42,.96), rgba(8,12,22,.96));
+  background:
+    linear-gradient(180deg, rgba(10,16,32,.16), rgba(6,10,20,.82)),
+    linear-gradient(120deg, rgba(122,213,255,.08), transparent 38%, rgba(255,111,148,.16));
 }
 .memory-face--front img{
+  position:absolute;
+  inset:0;
   width:100%;
   height:100%;
   object-fit:cover;
+  object-position:center;
   display:block;
+  transform:scale(1.04);
 }
 .memory-face--front::after{
   content:"";
   position:absolute;
   inset:0;
   background:
-    linear-gradient(180deg, rgba(4,7,14,.04) 30%, rgba(4,7,14,.72) 100%),
-    linear-gradient(120deg, rgba(122,213,255,.10), transparent 38%, rgba(255,111,148,.18));
+    linear-gradient(180deg, rgba(4,7,14,.06) 26%, rgba(4,7,14,.82) 100%),
+    linear-gradient(135deg, rgba(255,255,255,.06), transparent 40%, rgba(122,213,255,.12));
   pointer-events:none;
 }
 .memory-front-copy{
-  position:absolute;
-  left:10px;
-  right:10px;
-  bottom:10px;
+  position:relative;
   z-index:1;
   display:flex;
   flex-direction:column;
   gap:8px;
+  padding:10px;
 }
 .memory-front-kicker{
   width:max-content;
   display:inline-flex;
   align-items:center;
-  gap:6px;
-  min-height:26px;
-  padding:7px 10px;
+  min-height:24px;
+  padding:6px 9px;
   border-radius:999px;
   border:1px solid rgba(255,255,255,.16);
-  background:rgba(8,14,28,.50);
-  backdrop-filter:blur(16px);
+  background:rgba(8,14,28,.54);
+  backdrop-filter:blur(18px);
   color:var(--muted-strong);
   font-size:10px;
   font-weight:800;
@@ -3226,27 +3250,25 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   overflow:hidden;
   -webkit-line-clamp:2;
   -webkit-box-orient:vertical;
-  padding:12px 12px 13px;
-  border-radius:18px;
+  min-height:48px;
+  padding:11px 12px 12px;
+  border-radius:16px;
   border:1px solid rgba(255,255,255,.14);
   background:rgba(7,12,24,.58);
   backdrop-filter:blur(18px);
   font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
-  font-size:14px;
+  font-size:13px;
   font-weight:700;
-  line-height:1.2;
-}
-.memory-card.is-matched{
-  transform:scale(.985);
+  line-height:1.18;
 }
 .memory-card.is-matched .memory-face{
   border-color:rgba(81,222,181,.34);
-  box-shadow:0 18px 40px rgba(81,222,181,.14), var(--shadow-md);
+  box-shadow:0 18px 36px rgba(81,222,181,.14), 0 12px 22px rgba(0,0,0,.24);
 }
 .memory-card.is-matched .memory-face--front::after{
   background:
-    linear-gradient(180deg, rgba(3,8,16,.10) 30%, rgba(3,8,16,.62) 100%),
-    linear-gradient(120deg, rgba(81,222,181,.14), transparent 38%, rgba(122,213,255,.12));
+    linear-gradient(180deg, rgba(4,7,14,.12) 22%, rgba(4,7,14,.68) 100%),
+    linear-gradient(135deg, rgba(81,222,181,.14), transparent 38%, rgba(122,213,255,.12));
 }
 .memory-card.is-blocked{ pointer-events:none; }
 .memory-card[data-entry]{
@@ -3290,7 +3312,7 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
     grid-template-columns:repeat(4, minmax(0, 1fr));
   }
   .memory-board.level-hard{
-    grid-template-columns:repeat(6, minmax(0, 1fr));
+    grid-template-columns:repeat(5, minmax(0, 1fr));
   }
   .memory-board.level-extreme{
     grid-template-columns:repeat(6, minmax(0, 1fr));
@@ -3300,14 +3322,11 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   .memory-board{
     gap:10px;
   }
-  .memory-face{
-    border-radius:20px;
-  }
-  .memory-back-mark{
-    font-size:18px;
-  }
+  .memory-face{ border-radius:20px; }
+  .memory-back-mark{ font-size:17px; }
   .memory-front-title{
     font-size:12px;
+    min-height:42px;
     padding:10px 10px 11px;
   }
   .memory-result-grid{
@@ -3519,7 +3538,7 @@ function updateMemoryHeroBanner(){{
   const featured = Array.isArray(memoryState.currentSelection) && memoryState.currentSelection.length
     ? memoryState.currentSelection[Math.floor(Math.random() * memoryState.currentSelection.length)]
     : null;
-  const image = featured && featured.image ? featured.image : MEMORY_HERO_FALLBACK;
+  const image = featured && (featured.hero || featured.image) ? (featured.hero || featured.image) : MEMORY_HERO_FALLBACK;
   if (memoryEls.heroImage) memoryEls.heroImage.src = image || MEMORY_HERO_FALLBACK;
 }}
 
@@ -3587,36 +3606,51 @@ function updateMemoryUrlLevel(){{
   }}catch(err){{}}
 }}
 
-function buildMemoryCardMarkup(card, index){{
+function memoryCardClass(card){{
   const flipped = !!card.revealed || !!card.matched;
   const matched = !!card.matched;
   const disabled = matched || memoryState.busy || memoryState.flippedIds.length >= 2;
-  const classes = [
+  return [
     "memory-card",
     flipped ? "is-flipped" : "",
     matched ? "is-matched" : "",
     disabled && !flipped ? "is-blocked" : ""
   ].filter(Boolean).join(" ");
+}}
+
+function buildMemoryCardMarkup(card, index){{
+  const flipped = !!card.revealed || !!card.matched;
+  const classes = memoryCardClass(card);
   const badge = "Par " + String(card.position || 0);
   const safeTitle = esc(card.title || "Anime");
   const safeImage = esc(card.image || "");
   return ''
     + '<button type="button" class="' + classes + '" data-cardid="' + esc(card.id) + '" data-entry style="animation-delay:' + String(index * 24) + 'ms;">'
-    +   '<span class="memory-card__inner">'
-    +     '<span class="memory-face memory-face--back">'
-    +       '<span class="memory-back-top"><span class="memory-back-kicker">Anime</span><span class="memory-back-index">' + esc(badge) + '</span></span>'
-    +       '<span class="memory-back-mark">Match<br>Board</span>'
-    +       '<span class="memory-back-copy">Toque para revelar o banner escondido.</span>'
-    +     '</span>'
-    +     '<span class="memory-face memory-face--front">'
+    +   '<div class="memory-card__inner">'
+    +     '<div class="memory-face memory-face--back">'
+    +       '<div class="memory-back-top"><span class="memory-back-kicker">Anime</span><span class="memory-back-index">' + esc(badge) + '</span></div>'
+    +       '<div class="memory-back-mark">Pair<br>Shift</div>'
+    +       '<div class="memory-back-copy">Toque para revelar a obra escondida.</div>'
+    +     '</div>'
+    +     '<div class="memory-face memory-face--front">'
     +       (safeImage ? '<img src="' + safeImage + '" alt="' + safeTitle + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">' : '')
-    +       '<span class="memory-front-copy"><span class="memory-front-kicker">Obra</span><span class="memory-front-title">' + safeTitle + '</span></span>'
-    +     '</span>'
-    +   '</span>'
+    +       '<div class="memory-front-copy"><span class="memory-front-kicker">Obra</span><span class="memory-front-title">' + safeTitle + '</span></div>'
+    +     '</div>'
+    +   '</div>'
     + '</button>';
 }}
 
-function renderMemoryBoard(){{
+function syncMemoryBoardNodes(){{
+  const nodes = Array.from(memoryEls.board.querySelectorAll("[data-cardid]"));
+  memoryState.deck.forEach(function(card, index){{
+    const node = nodes[index];
+    if (!node) return;
+    node.className = memoryCardClass(card);
+    node.disabled = !!card.matched || !!memoryState.busy || (memoryState.flippedIds.length >= 2 && !card.revealed);
+  }});
+}}
+
+function renderMemoryBoard(forceRebuild){{
   const root = memoryEls.board;
   const config = memoryLevels[memoryState.level] || memoryLevels.medium;
   root.className = "memory-board level-" + String(memoryState.level || "medium");
@@ -3627,15 +3661,19 @@ function renderMemoryBoard(){{
     return;
   }}
   memoryEls.empty.style.display = "none";
-  root.innerHTML = memoryState.deck.map(function(card, index){{
-    return buildMemoryCardMarkup(card, index);
-  }}).join("");
+  if (forceRebuild || root.childElementCount !== memoryState.deck.length){{
+    root.innerHTML = memoryState.deck.map(function(card, index){{
+      return buildMemoryCardMarkup(card, index);
+    }}).join("");
+    root.querySelectorAll("[data-cardid]").forEach(function(button){{
+      button.onclick = function(){{
+        handleMemoryFlip(button.getAttribute("data-cardid") || "");
+      }};
+    }});
+  }} else {{
+    syncMemoryBoardNodes();
+  }}
   memoryEls.boardMeta.textContent = "N\\u00edvel " + config.label + " . " + String(memoryState.totalPairs || 0) + " pares . " + String(memoryState.deck.length || 0) + " cartas";
-  root.querySelectorAll("[data-cardid]").forEach(function(button){{
-    button.onclick = function(){{
-      handleMemoryFlip(button.getAttribute("data-cardid") || "");
-    }};
-  }});
 }}
 
 function findMemoryCard(cardId){{
@@ -3694,7 +3732,7 @@ function openMemoryLevel(level, options){{
   updateMemoryUrlLevel();
   updateMemoryHeroBanner();
   syncMemoryChrome();
-  renderMemoryBoard();
+  renderMemoryBoard(true);
   setMemoryNote("Tabuleiro pronto em " + config.label + ".", "success");
 }}
 
@@ -3743,7 +3781,7 @@ function resolveMemoryPair(){{
   }}
   memoryState.flippedIds = [];
   memoryState.busy = false;
-  renderMemoryBoard();
+  renderMemoryBoard(false);
   syncMemoryChrome();
   if (memoryState.matches >= memoryState.totalPairs && memoryState.totalPairs > 0){{
     completeMemoryGame();
@@ -3757,10 +3795,11 @@ function handleMemoryFlip(cardId){{
   if (!memoryState.startedAt) startMemoryTimer();
   card.revealed = true;
   memoryState.flippedIds.push(String(cardId));
-  renderMemoryBoard();
+  renderMemoryBoard(false);
   if (memoryState.flippedIds.length >= 2){{
     memoryState.moves += 1;
     memoryState.busy = true;
+    syncMemoryBoardNodes();
     syncMemoryChrome();
     window.setTimeout(resolveMemoryPair, 760);
   }} else {{
@@ -3775,10 +3814,13 @@ async function fetchMemoryCatalog(){{
   const data = await response.json();
   const items = Array.isArray(data.items) ? data.items : [];
   memoryState.catalog = items.map(function(item){{
+    const cover = String(item.cover_image || "").trim();
+    const banner = String(item.banner_image || "").trim();
     return {{
       anime_id: Number(item.anime_id || 0),
       anime: String(item.anime || "").trim(),
-      image: String(item.banner_image || item.cover_image || "").trim()
+      image: cover || banner,
+      hero: banner || cover
     }};
   }}).filter(function(item){{
     return item.anime_id > 0 && item.anime && item.image;
