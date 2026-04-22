@@ -337,7 +337,7 @@ async def _send_title_missing(update, context, title: Dict[str, Any], page: int,
 
     items, _, total_pages, current_page = _paginate(missing, page)
     lines = [
-        f"❔ <b>Faltam em {title['name']}</b>",
+        f"🃏 <b>Faltam em {title['name']}</b>",
         "",
         f"📦 <i>Progresso:</i> <b>{len(all_cards) - len(missing)}/{len(all_cards)}</b>",
         f"📖 <i>Página:</i> <b>{current_page}/{total_pages}</b>",
@@ -345,9 +345,8 @@ async def _send_title_missing(update, context, title: Dict[str, Any], page: int,
     ]
     for card in items:
         lines.append(
-            f"❔ <code>{card['id']}</code>. "
-            f"<b>{card['name']}</b> — "
-            f"<code>{card['card_no']}</code>"
+            f"🃏 <code>{card['id']}</code>. "
+            f"<b>{card['name']}</b>"
         )
 
     text = "\n".join(lines)
