@@ -1947,118 +1947,209 @@ def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
   color:var(--text);
   font-size:13px;
 }
-.xshop-overview{
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:12px;
-  margin-top:16px;
+.xshop-strip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
 }
-.xshop-info{
-  min-height:116px;
+.xmini-card{
+  overflow:hidden;
+  border-color:rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(12,18,36,.82), rgba(8,13,24,.94));
+}
+.xmini-card--rare{
+  border-color:rgba(122,213,255,.24);
+}
+.xmini-card--special{
+  border-color:rgba(255,111,148,.28);
+  box-shadow:0 18px 42px rgba(255,111,148,.08), var(--shadow-md);
+}
+.xmini-card .media-cover{
+  aspect-ratio:.72;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(122,213,255,.18), transparent 36%),
+    radial-gradient(circle at 85% 0%, rgba(255,111,148,.18), transparent 24%),
+    linear-gradient(180deg, rgba(15,22,43,.98), rgba(8,12,22,.98));
+}
+.xmini-card .media-cover img{
+  object-fit:contain;
   padding:16px;
-  border-radius:20px;
-  border:1px solid rgba(255,255,255,.10);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  position:relative;
+  z-index:0;
 }
-.xshop-info-label{
-  display:block;
+.xmini-card .media-cover::after{
+  background:linear-gradient(180deg, rgba(2,5,12,.00) 36%, rgba(2,5,12,.74) 100%);
+}
+.xmini-price{
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:1;
+  min-height:34px;
+  padding:9px 11px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(8,14,28,.54);
+  backdrop-filter:blur(18px);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.xmini-anime{
+  margin-top:8px;
   color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+  min-height:36px;
+}
+.xmini-status{
+  margin-top:12px;
+  color:var(--muted-strong);
+  font-size:12px;
+  line-height:1.5;
+  min-height:36px;
+}
+.xmini-open{
+  width:100%;
+  margin-top:14px;
+}
+.xdetail-sheet{
+  width:min(940px, 100%);
+}
+.xdetail-sheet .control-btn{
+  width:auto;
+}
+.xdetail-layout{
+  display:grid;
+  gap:16px;
+}
+.xdetail-preview,
+.xdetail-content{
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  padding:16px;
+}
+.xdetail-image-shell{
+  position:relative;
+  overflow:hidden;
+  aspect-ratio:.72;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.10);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(122,213,255,.22), transparent 34%),
+    radial-gradient(circle at 84% 0%, rgba(255,111,148,.20), transparent 24%),
+    linear-gradient(180deg, rgba(13,20,39,.98), rgba(8,12,22,.98));
+}
+.xdetail-image-shell img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  padding:22px;
+  display:block;
+}
+.xdetail-image-shell::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(2,5,12,.02) 40%, rgba(2,5,12,.58) 100%);
+  pointer-events:none;
+}
+.xdetail-preview-copy{
+  margin-top:14px;
+}
+.xdetail-preview-copy .card-title{
+  font-size:26px;
+}
+.xdetail-preview-copy .section-meta{
+  margin-top:8px;
+}
+.xdetail-table{
+  display:grid;
+  gap:10px;
+}
+.xdetail-row{
+  display:grid;
+  grid-template-columns:150px minmax(0, 1fr);
+  gap:10px;
+}
+.xdetail-label{
+  display:flex;
+  align-items:center;
+  padding:14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.06);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.xdetail-value{
+  display:flex;
+  align-items:center;
+  padding:14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(6,10,20,.72);
+  color:var(--text);
+  font-size:14px;
+  font-weight:700;
+  line-height:1.55;
+  word-break:break-word;
+}
+.xdetail-section{
+  margin-top:14px;
+  overflow:hidden;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+}
+.xdetail-section-title{
+  padding:12px 14px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  color:var(--muted-strong);
   font-size:11px;
   font-weight:800;
   letter-spacing:.16em;
   text-transform:uppercase;
 }
-.xshop-info-value{
-  display:block;
-  margin-top:10px;
-  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
-  font-size:28px;
-  font-weight:700;
-  line-height:1;
-}
-.xshop-info-sub{
-  display:block;
-  margin-top:10px;
-  color:var(--muted-strong);
-  font-size:12px;
-  line-height:1.45;
-}
-.xgroup-stack{
-  display:grid;
-  gap:16px;
-  margin-top:16px;
-}
-.xgroup-block{
+.xdetail-section-body{
   padding:16px;
-  border-radius:22px;
-  border:1px solid rgba(255,255,255,.10);
-  background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
-}
-.xoffer-card .media-cover{
-  aspect-ratio:.72;
-  background:
-    radial-gradient(circle at 20% 10%, rgba(122,213,255,.20), transparent 34%),
-    radial-gradient(circle at 80% 0%, rgba(255,111,148,.18), transparent 26%),
-    linear-gradient(180deg, rgba(12,18,34,.98), rgba(8,12,22,.98));
-}
-.xoffer-card .media-cover img{
-  object-fit:contain;
-  padding:14px;
-  position:relative;
-  z-index:0;
-}
-.xoffer-card .media-cover::after{
-  background:linear-gradient(180deg, rgba(2,5,12,.06) 32%, rgba(2,5,12,.74) 100%);
-}
-.xoffer-card--rare{
-  border-color:rgba(122,213,255,.28);
-}
-.xoffer-card--special{
-  border-color:rgba(255,111,148,.34);
-  box-shadow:0 26px 54px rgba(255,111,148,.10), var(--shadow-md);
-}
-.xoffer-stats{
-  display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:10px;
-  margin-top:14px;
-}
-.xoffer-stat{
-  padding:10px 12px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.08);
-  background:rgba(255,255,255,.04);
-}
-.xoffer-stat-label{
-  display:block;
-  color:var(--muted);
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-}
-.xoffer-stat-value{
-  display:block;
-  margin-top:6px;
-  font-size:14px;
-  font-weight:800;
-  line-height:1.2;
-}
-.xoffer-copy{
-  margin-top:12px;
   color:var(--muted-strong);
+  font-size:14px;
+  line-height:1.7;
+  white-space:pre-wrap;
+}
+.xdetail-buybar{
+  margin-top:14px;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg, rgba(122,213,255,.08), rgba(255,255,255,.02));
+}
+.xdetail-buyhint{
+  margin-top:10px;
+  color:var(--muted);
   font-size:12px;
   line-height:1.55;
-  display:-webkit-box;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:3;
-  overflow:hidden;
 }
-.xoffer-copy.xoffer-copy--muted{
-  color:var(--muted);
+.xdetail-buybtn{
+  width:100%;
+  margin-top:14px;
 }
-@media (max-width: 880px){
-  .xshop-overview{ grid-template-columns:1fr; }
+@media (min-width:860px){
+  .xdetail-layout{
+    grid-template-columns:minmax(280px, 340px) minmax(0, 1fr);
+  }
+}
+@media (max-width:680px){
+  .xdetail-row{
+    grid-template-columns:1fr;
+  }
 }
 """
     body = f"""
@@ -2068,7 +2159,7 @@ def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
   <div class="hero-content">
     <div class="eyebrow-chip">Baltigo Economy</div>
     <h1 class="hero-title">Loja Baltigo</h1>
-    <p class="hero-subtitle">Venda cards normais, compre recursos da conta e acompanhe a sele&ccedil;&atilde;o di&aacute;ria de XCARDS com regras de n&iacute;vel, raridade e slot especial.</p>
+    <p class="hero-subtitle">Venda cards normais, compre recursos da conta e descubra a vitrine di&aacute;ria de XCARDS sem poluir a tela.</p>
     <div class="hero-metrics">
       <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="shopPlayerHero">...</span></div>
       <div class="metric-card"><span class="metric-label">Coins</span><span class="metric-value" id="shopCoinsHero">0</span></div>
@@ -2136,65 +2227,57 @@ def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
 
 <section class="panel panel--soft" id="xcardsView" style="display:none;">
   <div class="section-head">
-    <div><div class="section-kicker">XCARDS</div><h2 class="section-title">Loja di&aacute;ria de cartas</h2></div>
+    <div><div class="section-kicker">XCARDS</div><h2 class="section-title">Vitrine di&aacute;ria</h2></div>
     <div class="section-meta" id="xcardsMeta">Preparando a sele&ccedil;&atilde;o do dia...</div>
   </div>
-  <div class="xshop-overview">
-    <article class="xshop-info">
-      <span class="xshop-info-label">Renova&ccedil;&atilde;o</span>
-      <span class="xshop-info-value" id="xshopRefreshCountdown">--</span>
-      <span class="xshop-info-sub" id="xshopRefreshSub">A loja de XCARDS renova a cada 24h.</span>
-    </article>
-    <article class="xshop-info">
-      <span class="xshop-info-label">Seu n&iacute;vel</span>
-      <span class="xshop-info-value" id="xshopLevelValue">1</span>
-      <span class="xshop-info-sub">Faixas maiores de BP pedem n&iacute;veis mais altos.</span>
-    </article>
-    <article class="xshop-info">
-      <span class="xshop-info-label">Cole&ccedil;&atilde;o X</span>
-      <span class="xshop-info-value" id="xshopCollectionValue">0</span>
-      <span class="xshop-info-sub">Quantidade de XCARDS &uacute;nicos que j&aacute; s&atilde;o seus.</span>
-    </article>
+  <div class="xshop-strip">
+    <span class="soft-pill soft-pill--cool" id="xshopCompactRefresh">Renova&ccedil;&atilde;o: --</span>
+    <span class="soft-pill" id="xshopCompactLevel">N&iacute;vel: --</span>
+    <span class="soft-pill" id="xshopCompactCollection">XCards: --</span>
   </div>
-  <div class="pill-row" style="margin-top:14px;">
-    <span class="soft-pill soft-pill--cool">6 normais</span>
-    <span class="soft-pill">2 raros</span>
-    <span class="soft-pill soft-pill--accent">1 especial</span>
-    <span class="soft-pill">R soma +10</span>
-    <span class="soft-pill">SR soma +25</span>
-    <span class="soft-pill">Alt-art &eacute; cosm&eacute;tico</span>
-  </div>
-  <div class="shop-inline-note">
-    <strong>Din&acirc;mica da vitrine di&aacute;ria.</strong>
-    Os slots seguem faixa de BP e exigem n&iacute;vel m&iacute;nimo. UR, SP e Alt-Art ficam reservados ao slot especial. Alt-art n&atilde;o &eacute; mais forte: &eacute; item de cole&ccedil;&atilde;o.
-  </div>
-  <div class="xgroup-stack">
-    <div class="xgroup-block">
-      <div class="section-head">
-        <div><div class="section-kicker">Normais</div><h3 class="card-title">Base da rota&ccedil;&atilde;o</h3></div>
-        <div class="section-meta" id="xcardsNormalMeta">Carregando slots normais...</div>
-      </div>
-      <div class="media-grid" id="xcardsNormalGrid" style="margin-top:14px;"></div>
-      <div id="xcardsNormalEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem cards normais</strong>A rota&ccedil;&atilde;o de hoje ainda n&atilde;o foi montada.</div>
-    </div>
-    <div class="xgroup-block">
-      <div class="section-head">
-        <div><div class="section-kicker">Raros</div><h3 class="card-title">Vitrine intermedi&aacute;ria</h3></div>
-        <div class="section-meta" id="xcardsRareMeta">Carregando slots raros...</div>
-      </div>
-      <div class="media-grid" id="xcardsRareGrid" style="margin-top:14px;"></div>
-      <div id="xcardsRareEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem cards raros</strong>Nenhuma oferta rara foi encontrada para hoje.</div>
-    </div>
-    <div class="xgroup-block">
-      <div class="section-head">
-        <div><div class="section-kicker">Especial</div><h3 class="card-title">Slot premium do dia</h3></div>
-        <div class="section-meta" id="xcardsSpecialMeta">Carregando slot especial...</div>
-      </div>
-      <div class="media-grid" id="xcardsSpecialGrid" style="margin-top:14px;"></div>
-      <div id="xcardsSpecialEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem slot especial</strong>O slot especial ainda n&atilde;o foi gerado.</div>
-    </div>
-  </div>
+  <div class="media-grid" id="xcardsGrid" style="margin-top:14px;"></div>
+  <div id="xcardsGridEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Nenhum XCARD hoje</strong>A vitrine do dia ainda n&atilde;o foi preparada.</div>
 </section>
+
+<div class="sheet-backdrop" id="xcardDetailBackdrop">
+  <div class="sheet xdetail-sheet">
+    <div class="sheet-head">
+      <div>
+        <h3 class="sheet-title" id="xcardDetailTitle">Detalhes do card</h3>
+        <div class="section-meta" id="xcardDetailMeta">Carregando...</div>
+      </div>
+      <button class="control-btn" id="closeXcardDetailBtn">Fechar</button>
+    </div>
+    <div class="sheet-body">
+      <div class="xdetail-layout">
+        <div class="xdetail-preview">
+          <div class="xdetail-image-shell" id="xcardDetailImageShell"></div>
+          <div class="xdetail-preview-copy">
+            <h3 class="card-title" id="xcardDetailName">XCard</h3>
+            <div class="section-meta" id="xcardDetailAnime">--</div>
+            <div class="pill-row" id="xcardDetailPills" style="margin-top:12px;"></div>
+          </div>
+        </div>
+        <div class="xdetail-content">
+          <div class="xdetail-table" id="xcardDetailTable"></div>
+          <section class="xdetail-section">
+            <div class="xdetail-section-title">Efeito</div>
+            <div class="xdetail-section-body" id="xcardDetailEffect">--</div>
+          </section>
+          <section class="xdetail-section">
+            <div class="xdetail-section-title">Acionar</div>
+            <div class="xdetail-section-body" id="xcardDetailTrigger">--</div>
+          </section>
+          <div class="xdetail-buybar">
+            <div class="pill-row" id="xcardDetailBuyPills"></div>
+            <div class="xdetail-buyhint" id="xcardDetailBuyHint">Selecione o card para ver as condi&ccedil;&otilde;es de compra.</div>
+            <button class="action-btn action-btn--cool xdetail-buybtn" id="xcardDetailBuyBtn">Comprar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="shopNote" class="floating-note">Loja sendo carregada...</div>
 <div class="footer-note">Baltigo . Loja</div>
@@ -2205,6 +2288,7 @@ const tgShop = getTelegramWebApp();
 if (tgShop) {{ try {{ tgShop.ready(); tgShop.expand(); }} catch(err) {{}} }}
 
 const shopNote = document.getElementById("shopNote");
+const xcardDetailBackdrop = document.getElementById("xcardDetailBackdrop");
 const shopState = {{
   tab: "sell",
   items: [],
@@ -2213,7 +2297,8 @@ const shopState = {{
   q: "",
   profile: null,
   refresh: null,
-  xcards: {{ normal: [], rare: [], special: [] }}
+  xcards: {{ normal: [], rare: [], special: [], all: [] }},
+  selectedOffer: null
 }};
 
 function setShopNote(message, tone){{
@@ -2230,6 +2315,7 @@ function userDisplayName(){{
 
 function setShopTab(tab){{
   shopState.tab = String(tab || "sell");
+  if (shopState.tab !== "xcards") closeXcardDetail();
   document.getElementById("tabSellBtn").classList.toggle("active", shopState.tab === "sell");
   document.getElementById("tabBuyBtn").classList.toggle("active", shopState.tab === "buy");
   document.getElementById("tabXcardsBtn").classList.toggle("active", shopState.tab === "xcards");
@@ -2258,11 +2344,9 @@ function syncShopHero(){{
   document.getElementById("shopXCollectionPill").textContent = "XCards: " + String(xcollectionTotal || 0);
   document.getElementById("shopRefreshPill").textContent = "Renova\\u00e7\\u00e3o: " + refreshCountdown;
   document.getElementById("shopMeta").textContent = "Atualizado " + humanClock() + " . Coins " + String(shopState.coins || 0) + " . Dados " + String(shopState.dado_balance || 0) + " . XCARDS " + refreshCountdown + " at\\u00e9 " + refreshClock;
-
-  document.getElementById("xshopRefreshCountdown").textContent = refreshCountdown;
-  document.getElementById("xshopRefreshSub").textContent = "Renova hoje novamente \\u00e0s " + refreshClock + ".";
-  document.getElementById("xshopLevelValue").textContent = String(level || 1);
-  document.getElementById("xshopCollectionValue").textContent = String(xcollectionTotal || 0);
+  document.getElementById("xshopCompactRefresh").textContent = "Renova\\u00e7\\u00e3o: " + refreshCountdown;
+  document.getElementById("xshopCompactLevel").textContent = "N\\u00edvel: " + String(level || 1);
+  document.getElementById("xshopCompactCollection").textContent = "XCards: " + String(xcollectionTotal || 0);
 }}
 
 function renderSellGrid(){{
@@ -2323,12 +2407,56 @@ function xcardGroupTone(group){{
 function xcardActionState(item){{
   const price = Number(item.price || 0);
   const coins = Number(shopState.coins || 0);
-  if (item.purchased) return {{ disabled: true, label: "Comprado hoje", tone: "cool" }};
-  if (item.locked) return {{ disabled: true, label: "N\\u00edvel " + String(item.level_required || 1), tone: "" }};
-  if (coins < price) return {{ disabled: true, label: "Faltam " + String(price - coins) + " coins", tone: "" }};
-  if (item.slot_group === "special") return {{ disabled: false, label: "Comprar slot especial", tone: "primary" }};
-  if (item.slot_group === "rare") return {{ disabled: false, label: "Comprar card raro", tone: "cool" }};
-  return {{ disabled: false, label: "Comprar card", tone: "cool" }};
+  if (item.purchased) return {{ disabled: true, label: "Comprado hoje", tone: "cool", status: "Este slot j\\u00e1 foi comprado hoje." }};
+  if (item.locked) return {{ disabled: true, label: "N\\u00edvel " + String(item.level_required || 1), tone: "", status: "Dispon\\u00edvel a partir do n\\u00edvel " + String(item.level_required || 1) + "." }};
+  if (coins < price) return {{ disabled: true, label: "Coins insuficientes", tone: "", status: "Faltam " + String(price - coins) + " coins para comprar." }};
+  if (item.slot_group === "special") return {{ disabled: false, label: "Comprar por " + String(price) + " coins", tone: "primary", status: "Slot especial dispon\\u00edvel hoje." }};
+  if (item.slot_group === "rare") return {{ disabled: false, label: "Comprar por " + String(price) + " coins", tone: "cool", status: "Card raro pronto para compra." }};
+  return {{ disabled: false, label: "Comprar por " + String(price) + " coins", tone: "cool", status: "Card dispon\\u00edvel agora." }};
+}}
+
+function xcardActionClass(action){{
+  return action.tone === "primary"
+    ? "action-btn action-btn--primary"
+    : action.tone === "cool"
+      ? "action-btn action-btn--cool"
+      : "action-btn";
+}}
+
+function xcardAllOffers(){{
+  return Array.isArray((shopState.xcards || {{}}).all) ? shopState.xcards.all : [];
+}}
+
+function getXcardOfferBySlot(slotCode){{
+  return xcardAllOffers().find(function(item){{
+    return String(item.slot_code || "") === String(slotCode || "");
+  }}) || null;
+}}
+
+function xcardDetailOpen(){{
+  return xcardDetailBackdrop && xcardDetailBackdrop.style.display === "flex";
+}}
+
+function closeXcardDetail(){{
+  if (xcardDetailBackdrop) xcardDetailBackdrop.style.display = "none";
+}}
+
+function openXcardDetail(item){{
+  shopState.selectedOffer = item || null;
+  renderXcardDetail();
+  if (xcardDetailBackdrop) xcardDetailBackdrop.style.display = "flex";
+}}
+
+function xcardDisplayText(value, fallback){{
+  const text = String(value || "").trim();
+  return text && text !== "-" ? text : (fallback || "--");
+}}
+
+function xcardJoinList(listValue, fallback){{
+  const items = Array.isArray(listValue)
+    ? listValue.map(function(entry){{ return String(entry || "").trim(); }}).filter(Boolean)
+    : [];
+  return items.length ? items.join(" . ") : (fallback || "--");
 }}
 
 function renderXcardOffer(item){{
@@ -2336,44 +2464,112 @@ function renderXcardOffer(item){{
   const action = xcardActionState(item);
   const image = card.image ? '<img src="' + esc(card.image) + '" alt="' + esc(card.name || "XCard") + '" loading="lazy" onerror="setImageFallback(this,\\'XCARD\\')">' : "";
   const pills = []
-    .concat(card.anime ? ['<span class="soft-pill soft-pill--cool">' + esc(card.anime) + '</span>'] : [])
-    .concat(card.card_no ? ['<span class="soft-pill">ID ' + esc(card.card_no) + '</span>'] : [])
-    .concat(card.rarity_label ? ['<span class="soft-pill' + (item.slot_group === "special" ? ' soft-pill--accent' : '') + '">' + esc(card.rarity_label) + '</span>'] : [])
+    .concat(item.locked ? ['<span class="soft-pill">Nv. ' + esc(item.level_required || 1) + '</span>'] : [])
     .concat(card.alt_art ? ['<span class="soft-pill soft-pill--accent">Alt-Art</span>'] : [])
-    .concat(item.purchased ? ['<span class="soft-pill">Comprado hoje</span>'] : [])
+    .concat(item.purchased ? ['<span class="soft-pill">Comprado</span>'] : [])
     .join("");
-  const effect = String(card.effect || "").trim();
-  const trigger = String(card.trigger || "").trim();
-  const actionClass = action.tone === "primary" ? "action-btn action-btn--primary" : action.tone === "cool" ? "action-btn action-btn--cool" : "action-btn";
   return ''
-    + '<article class="media-card xoffer-card xoffer-card--' + esc(item.slot_group || "normal") + '">'
-    +   '<div class="media-cover">' + image + '<div class="media-badge' + (xcardGroupTone(item.slot_group) ? (' media-badge--' + xcardGroupTone(item.slot_group)) : '') + '">' + esc(item.slot_group_label || "Normal") + '</div><div class="media-count">' + esc(card.rarity || "--") + '</div></div>'
+    + '<article class="media-card xmini-card xmini-card--' + esc(item.slot_group || "normal") + '">'
+    +   '<div class="media-cover">' + image + '<div class="media-badge' + (xcardGroupTone(item.slot_group) ? (' media-badge--' + xcardGroupTone(item.slot_group)) : '') + '">' + esc(item.slot_group_label || "Normal") + '</div><div class="xmini-price">' + esc(item.price || 0) + ' coins</div></div>'
     +   '<div class="media-body">'
     +     '<h3 class="card-title">' + esc(card.name || "XCard") + '</h3>'
+    +     '<div class="xmini-anime">' + esc(card.anime || "Obra n\\u00e3o registrada") + '</div>'
     +     '<div class="pill-row">' + pills + '</div>'
-    +     '<div class="xoffer-stats">'
-    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">Pre\\u00e7o</span><span class="xoffer-stat-value">' + esc(item.price || 0) + ' coins</span></div>'
-    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">N\\u00edvel</span><span class="xoffer-stat-value">Nv. ' + esc(item.level_required || 1) + '</span></div>'
-    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">PA</span><span class="xoffer-stat-value">' + esc(card.bp || "--") + '</span></div>'
-    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">Custo AP</span><span class="xoffer-stat-value">' + esc(card.ap_cost || "--") + '</span></div>'
-    +     '</div>'
-    +     '<div class="xoffer-copy">' + esc(effect || "Sem efeito registrado para este card.") + '</div>'
-    +     '<div class="xoffer-copy xoffer-copy--muted">' + esc(trigger && trigger !== "-" ? ("Acionar: " + trigger) : (card.alt_art ? "Alt-art conta como a mesma carta para constru\\u00e7\\u00e3o de deck. Ela \\u00e9 cosm\\u00e9tica." : "Acionar n\\u00e3o registrado.")) + '</div>'
-    +     '<button class="' + actionClass + '" style="width:100%; margin-top:14px;" data-xbuy="' + esc(item.slot_code || "") + '"' + (action.disabled ? ' disabled' : '') + '>' + esc(action.label) + '</button>'
+    +     '<div class="xmini-status">' + esc(action.status) + '</div>'
+    +     '<button class="action-btn action-btn--cool xmini-open" data-xopen="' + esc(item.slot_code || "") + '">Abrir card</button>'
     +   '</div>'
     + '</article>';
 }}
 
-function renderXcardGroup(groupName, rootId, emptyId, metaId){{
-  const root = document.getElementById(rootId);
-  const empty = document.getElementById(emptyId);
-  const items = Array.isArray((shopState.xcards || {{}})[groupName]) ? shopState.xcards[groupName] : [];
-  const labels = {{
-    normal: "6 slots de entrada para montar cole\\u00e7\\u00e3o.",
-    rare: "2 slots com cards mais valiosos.",
-    special: "1 slot premium com UR, SP ou Alt-Art."
-  }};
-  document.getElementById(metaId).textContent = items.length ? labels[groupName] : "Nenhuma oferta dispon\\u00edvel agora.";
+function renderXcardDetail(){{
+  const item = shopState.selectedOffer;
+  if (!item) return;
+  const card = item.card || {{}};
+  const action = xcardActionState(item);
+  const imageHtml = card.image
+    ? '<img src="' + esc(card.image) + '" alt="' + esc(card.name || "XCard") + '" loading="lazy" onerror="setImageFallback(this,\\'XCARD\\')">'
+    : '<div class="media-fallback" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">XCARD</div>';
+  const detailRows = [
+    ["Energia necess\\u00e1ria", xcardDisplayText(card.required_energy, "--")],
+    ["Custo AP", xcardDisplayText(card.ap_cost, "--")],
+    ["Tipo do cart\\u00e3o", xcardDisplayText(card.card_type, "--")],
+    ["PA", xcardDisplayText(card.bp, "--")],
+    ["Afinidade", xcardDisplayText(card.affinity, "--")],
+    ["Energia gerada", xcardJoinList(card.generated_energy, "--")]
+  ];
+  const pills = []
+    .concat(card.anime ? ['<span class="soft-pill soft-pill--cool">' + esc(card.anime) + '</span>'] : [])
+    .concat(card.card_no ? ['<span class="soft-pill">ID ' + esc(card.card_no) + '</span>'] : [])
+    .concat(card.rarity_label ? ['<span class="soft-pill' + (item.slot_group === "special" ? ' soft-pill--accent' : '') + '">' + esc(card.rarity_label) + '</span>'] : [])
+    .concat(item.slot_group_label ? ['<span class="soft-pill">' + esc(item.slot_group_label) + '</span>'] : [])
+    .concat(card.alt_art ? ['<span class="soft-pill soft-pill--accent">Alt-Art</span>'] : [])
+    .join("");
+  document.getElementById("xcardDetailTitle").textContent = String(card.name || "Detalhes do card");
+  document.getElementById("xcardDetailMeta").textContent = item.purchased
+    ? "Card j\\u00e1 comprado hoje."
+    : "Toque em comprar quando decidir levar este card.";
+  document.getElementById("xcardDetailImageShell").innerHTML = imageHtml;
+  document.getElementById("xcardDetailName").textContent = String(card.name || "XCard");
+  document.getElementById("xcardDetailAnime").textContent = String(card.anime || "Obra n\\u00e3o registrada");
+  document.getElementById("xcardDetailPills").innerHTML = pills;
+  document.getElementById("xcardDetailTable").innerHTML = detailRows.map(function(row){{
+    return '<div class="xdetail-row"><div class="xdetail-label">' + esc(row[0]) + '</div><div class="xdetail-value">' + esc(row[1]) + '</div></div>';
+  }}).join("");
+  document.getElementById("xcardDetailEffect").textContent = xcardDisplayText(card.effect, "Sem efeito registrado.");
+  document.getElementById("xcardDetailTrigger").textContent = xcardDisplayText(card.trigger, "Acionar n\\u00e3o registrado.");
+  document.getElementById("xcardDetailBuyPills").innerHTML = ''
+    + '<span class="soft-pill soft-pill--cool">Pre\\u00e7o: ' + esc(item.price || 0) + ' coins</span>'
+    + '<span class="soft-pill">N\\u00edvel: ' + esc(item.level_required || 1) + '</span>'
+    + '<span class="soft-pill' + (item.purchased ? '' : (item.slot_group === "special" ? ' soft-pill--accent' : '')) + '">' + esc(card.rarity_label || card.rarity || "--") + '</span>';
+  document.getElementById("xcardDetailBuyHint").textContent = action.status + (card.product_name ? (" Produto: " + String(card.product_name)) : "");
+  const buyBtn = document.getElementById("xcardDetailBuyBtn");
+  buyBtn.className = xcardActionClass(action) + " xdetail-buybtn";
+  buyBtn.textContent = action.label;
+  buyBtn.disabled = !!action.disabled;
+}}
+
+async function buySelectedXcard(){{
+  const item = shopState.selectedOffer;
+  if (!item) return;
+  const action = xcardActionState(item);
+  if (action.disabled) return;
+  const buyBtn = document.getElementById("xcardDetailBuyBtn");
+  buyBtn.disabled = true;
+  setShopNote("Comprando XCARD...", "");
+  const response = await authJson("/api/shop/xcards/buy", {{ uid: SHOP_UID, method: "POST", json: {{ slot_code: item.slot_code }} }});
+  if (!response.ok || !response.data.ok){{
+    setShopNote("Erro ao comprar XCARD: " + ((response.data && response.data.error) || "N\\u00e3o foi poss\\u00edvel concluir a compra."), "error");
+    await loadShopState({{ silent: true }});
+    await loadXcardDailyShop({{ silent: true }});
+    syncShopHero();
+    renderXcardDetail();
+    return;
+  }}
+  shopState.coins = Number(response.data.coins || shopState.coins || 0);
+  await loadShopContext({{ silent: true }});
+  await loadShopState({{ silent: true }});
+  await loadXcardDailyShop({{ silent: true }});
+  syncShopHero();
+  closeXcardDetail();
+  const purchase = (response.data && response.data.purchase) || {{}};
+  setShopNote("XCARD comprado: " + String(purchase.card_name || (item.card || {{}}).name || "Card") + ".", "success");
+}}
+
+function syncSelectedOfferFromState(){{
+  if (!shopState.selectedOffer || !shopState.selectedOffer.slot_code) return;
+  const latest = getXcardOfferBySlot(shopState.selectedOffer.slot_code);
+  if (!latest) return;
+  shopState.selectedOffer = latest;
+  if (xcardDetailOpen()) renderXcardDetail();
+}}
+
+function renderXcards(){{
+  const root = document.getElementById("xcardsGrid");
+  const empty = document.getElementById("xcardsGridEmpty");
+  const items = xcardAllOffers();
+  document.getElementById("xcardsMeta").textContent = items.length
+    ? "Toque em um card para abrir a ficha completa."
+    : "Nenhuma oferta dispon\\u00edvel agora.";
   if (!items.length){{
     root.innerHTML = "";
     empty.style.display = "";
@@ -2381,39 +2577,14 @@ function renderXcardGroup(groupName, rootId, emptyId, metaId){{
   }}
   empty.style.display = "none";
   root.innerHTML = items.map(renderXcardOffer).join("");
-  root.querySelectorAll("[data-xbuy]").forEach(function(button){{
+  root.querySelectorAll("[data-xopen]").forEach(function(button){{
     button.onclick = async function(){{
-      const slotCode = String(button.getAttribute("data-xbuy") || "");
-      const item = items.find(function(entry){{ return String(entry.slot_code || "") === slotCode; }});
+      const slotCode = String(button.getAttribute("data-xopen") || "");
+      const item = getXcardOfferBySlot(slotCode);
       if (!item) return;
-      const card = item.card || {{}};
-      const confirmMessage = 'Tem certeza que deseja comprar "' + String(card.name || "XCard") + '" (' + String(card.card_no || "--") + ') por ' + String(item.price || 0) + ' coins?';
-      if (!window.confirm(confirmMessage)) return;
-      button.disabled = true;
-      setShopNote("Comprando XCARD...", "");
-      const response = await authJson("/api/shop/xcards/buy", {{ uid: SHOP_UID, method: "POST", json: {{ slot_code: slotCode }} }});
-      if (!response.ok || !response.data.ok){{
-        setShopNote("Erro ao comprar XCARD: " + ((response.data && response.data.error) || "N\\u00e3o foi poss\\u00edvel concluir a compra."), "error");
-        await loadShopState({{ silent: true }});
-        await loadXcardDailyShop({{ silent: true }});
-        syncShopHero();
-        return;
-      }}
-      shopState.coins = Number(response.data.coins || shopState.coins || 0);
-      await loadShopContext({{ silent: true }});
-      await loadShopState({{ silent: true }});
-      await loadXcardDailyShop({{ silent: true }});
-      syncShopHero();
-      const purchase = (response.data && response.data.purchase) || {{}};
-      setShopNote('XCARD comprado: ' + String(purchase.card_name || card.name || "Card") + '.', "success");
+      openXcardDetail(item);
     }};
   }});
-}}
-
-function renderXcards(){{
-  renderXcardGroup("normal", "xcardsNormalGrid", "xcardsNormalEmpty", "xcardsNormalMeta");
-  renderXcardGroup("rare", "xcardsRareGrid", "xcardsRareEmpty", "xcardsRareMeta");
-  renderXcardGroup("special", "xcardsSpecialGrid", "xcardsSpecialEmpty", "xcardsSpecialMeta");
 }}
 
 async function loadShopContext(options){{
@@ -2457,13 +2628,17 @@ async function loadShopCollection(options){{
 async function loadXcardDailyShop(options){{
   const opts = options || {{}};
   if (!opts.silent){{
-    setSkeleton("xcardsNormalGrid", 6);
-    setSkeleton("xcardsRareGrid", 2);
-    setSkeleton("xcardsSpecialGrid", 1);
+    setSkeleton("xcardsGrid", 6);
   }}
   const response = await authJson("/api/shop/xcards/daily", {{ uid: SHOP_UID }});
   if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar a loja di\\u00e1ria de XCARDS.");
-  shopState.xcards = response.data.groups || {{ normal: [], rare: [], special: [] }};
+  const groups = response.data.groups || {{}};
+  shopState.xcards = {{
+    normal: Array.isArray(groups.normal) ? groups.normal : [],
+    rare: Array.isArray(groups.rare) ? groups.rare : [],
+    special: Array.isArray(groups.special) ? groups.special : [],
+    all: Array.isArray(response.data.offers) ? response.data.offers : []
+  }};
   if (response.data.refresh) shopState.refresh = response.data.refresh;
   shopState.coins = Number(response.data.coins || shopState.coins || 0);
   if (shopState.profile){{
@@ -2472,7 +2647,7 @@ async function loadXcardDailyShop(options){{
   }}
   renderXcards();
   syncShopHero();
-  document.getElementById("xcardsMeta").textContent = "9 ofertas por dia . 6 normais . 2 raros . 1 especial.";
+  syncSelectedOfferFromState();
   if (!opts.silent) setShopNote("Loja di\\u00e1ria de XCARDS carregada.", "success");
 }}
 
@@ -2491,6 +2666,9 @@ document.getElementById("sellSearchInput").addEventListener("input", debounce(fu
 document.getElementById("tabSellBtn").onclick = function(){{ setShopTab("sell"); }};
 document.getElementById("tabBuyBtn").onclick = function(){{ setShopTab("buy"); }};
 document.getElementById("tabXcardsBtn").onclick = function(){{ setShopTab("xcards"); }};
+document.getElementById("closeXcardDetailBtn").onclick = closeXcardDetail;
+document.getElementById("xcardDetailBackdrop").onclick = function(event){{ if (event.target.id === "xcardDetailBackdrop") closeXcardDetail(); }};
+document.getElementById("xcardDetailBuyBtn").onclick = buySelectedXcard;
 
 document.getElementById("buyDadoBtn").onclick = async function(){{
   if (!window.confirm("Tem certeza que deseja comprar 1 dado por 2 coins?")) return;
