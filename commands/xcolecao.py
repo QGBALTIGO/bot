@@ -403,7 +403,7 @@ async def _send_title_gallery(update, context, title: Dict[str, Any], index: int
     text = (
         f"🖼️ <b>{title['name']}</b>\n\n"
         f"📦 <b>{owned_total}/{len(cards)}</b>\n"
-        f"📖 </i> <b>{index + 1}/{len(cards)}</b>\n\n"
+        f"📖 <b>{index + 1}/{len(cards)}</b>\n\n"
         f"🃏 <b>{card['name']}</b>{marker}\n"
         f"📦 <b>{qty_text}</b>"
     )
