@@ -58,12 +58,13 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     requested_level = _normalize_level(" ".join(context.args).strip()) if context.args else "medium"
     level_label = _LEVEL_LABELS.get(requested_level, "Médio")
-    url = f"{BASE_URL}/memoria?level={requested_level}"
+    user_id = int(update.effective_user.id) if update.effective_user else 0
+    url = f"{BASE_URL}/memoria?level={requested_level}&uid={user_id}"
 
     texto = (
         "🧠 <b>JOGO DA MEMORIA ANIME</b>\n\n"
         "Forme pares usando os banners das obras que ja existem no sistema de cards.\n\n"
-        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n"
+        f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n""
         "Toque abaixo para abrir o mini app."
     )
 
