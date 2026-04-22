@@ -37,6 +37,7 @@ from commands.baltigoflix import baltigoflix
 
 from commands.cards import cards
 from commands.card import card, card_stats_callback
+from commands.xcard import xcard, xcard_nav_callback, xcard_stats_callback
 
 from commands.colecao import (
     colecao,
@@ -45,7 +46,14 @@ from commands.colecao import (
     colecao_f_callback,
     colecao_x_callback,
 )
-from commands.cccolecao import colec
+from commands.xcolecao import (
+    xcolecao,
+    xcolecao_callback,
+    xcolecao_s_callback,
+    xcolecao_f_callback,
+    xcolecao_x_callback,
+)
+from commands.cccolecao import cccolecao
 
 from commands.loja import loja
 from commands.daily import daily
@@ -185,10 +193,12 @@ def register_commands(app: Application):
     # cards
     app.add_handler(CommandHandler("cards", cards))
     app.add_handler(CommandHandler("card", card))
+    app.add_handler(CommandHandler("xcard", xcard))
 
     # coleção
     app.add_handler(CommandHandler("colecao", colecao))
-    app.add_handler(CommandHandler("colec", colec))
+    app.add_handler(CommandHandler("xcolecao", xcolecao))
+    app.add_handler(CommandHandler("cccolecao", cccolecao))
 
     # economia
     app.add_handler(CommandHandler("loja", loja))
@@ -249,12 +259,20 @@ def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
 
     app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
+    app.add_handler(CallbackQueryHandler(xcard_nav_callback, pattern=r"^xcardnav:"))
+    app.add_handler(CallbackQueryHandler(xcard_stats_callback, pattern=r"^xcardstats:"))
+    app.add_handler(CallbackQueryHandler(xcard_nav_callback, pattern=r"^xcardnoop$"))
     app.add_handler(CallbackQueryHandler(capture_purchase_callback, pattern=r"^capturebuy:"))
 
     app.add_handler(CallbackQueryHandler(colecao_callback, pattern=r"^colecao:"))
     app.add_handler(CallbackQueryHandler(colecao_s_callback, pattern=r"^colecao_s:"))
     app.add_handler(CallbackQueryHandler(colecao_f_callback, pattern=r"^colecao_f:"))
     app.add_handler(CallbackQueryHandler(colecao_x_callback, pattern=r"^colecao_x:"))
+    app.add_handler(CallbackQueryHandler(xcolecao_callback, pattern=r"^xcolecao:"))
+    app.add_handler(CallbackQueryHandler(xcolecao_s_callback, pattern=r"^xcolecao_s:"))
+    app.add_handler(CallbackQueryHandler(xcolecao_f_callback, pattern=r"^xcolecao_f:"))
+    app.add_handler(CallbackQueryHandler(xcolecao_x_callback, pattern=r"^xcolecao_x:"))
+    app.add_handler(CallbackQueryHandler(xcolecao_callback, pattern=r"^xcolecao_noop$"))
 
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
