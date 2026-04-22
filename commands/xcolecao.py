@@ -41,13 +41,13 @@ def _antiflood(user_id: int) -> bool:
 
 def _duplicate_marker(quantity: int) -> str:
     if quantity >= 20:
-        return " [20x]"
+        return " 🏆"
     if quantity >= 10:
-        return " [10x]"
+        return " ⭐"
     if quantity >= 5:
-        return " [5x]"
+        return " 💫"
     if quantity >= 2:
-        return " [2x]"
+        return " ✨"
     return ""
 
 
@@ -87,17 +87,17 @@ def _build_keyboard(prefix: str, user_id: int, page: int, total_pages: int, extr
     if page > 1:
         row.append(
             InlineKeyboardButton(
-                "<",
+                "◀️",
                 callback_data=f"{prefix}:{user_id}:{extra}:{page - 1}",
             )
         )
 
-    row.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="xcolecao_noop"))
+    row.append(InlineKeyboardButton(f"📖 {page}/{total_pages}", callback_data="xcolecao_noop"))
 
     if page < total_pages:
         row.append(
             InlineKeyboardButton(
-                ">",
+                "▶️",
                 callback_data=f"{prefix}:{user_id}:{extra}:{page + 1}",
             )
         )
@@ -110,17 +110,17 @@ def _build_gallery_keyboard(prefix: str, user_id: int, title_id: int, index: int
     if index > 0:
         row.append(
             InlineKeyboardButton(
-                "<",
+                "◀️",
                 callback_data=f"{prefix}:{user_id}:{title_id}:{index - 1}",
             )
         )
 
-    row.append(InlineKeyboardButton(f"{index + 1}/{total}", callback_data="xcolecao_noop"))
+    row.append(InlineKeyboardButton(f"🎴 {index + 1}/{total}", callback_data="xcolecao_noop"))
 
     if index < (total - 1):
         row.append(
             InlineKeyboardButton(
-                ">",
+                "▶️",
                 callback_data=f"{prefix}:{user_id}:{title_id}:{index + 1}",
             )
         )
@@ -184,21 +184,29 @@ def get_user_xcards(user_id: int) -> List[Dict[str, Any]]:
 def _build_owned_text(cards: List[Dict[str, Any]], page: int) -> str:
     items, total, total_pages, page = _paginate(cards, page)
 
+    if total <= 0:
+        return (
+            "📚 <b>Minha XColeção</b>\n\n"
+            "Você ainda não possui xcards.\n"
+            "Quando começarmos a liberar drops/pack/loja para esse sistema,\n"
+            "eles vão aparecer aqui separados da coleção normal."
+        )
+
     lines = [
-        "<b>Minha XColecao</b>",
+        "📚 <b>Minha XColeção</b>",
         "",
-        f"Total de xcards: <b>{total}</b>",
-        f"Pagina: <b>{page}/{total_pages}</b>",
+        f"📦 <i>Total de xcards:</i> <b>{total}</b>",
+        f"📖 <i>Página:</i> <b>{page}/{total_pages}</b>",
         "",
     ]
 
     for item in items:
         marker = _duplicate_marker(int(item["quantity"]))
+        qty_text = f" x{int(item['quantity'])}" if int(item["quantity"]) > 1 else ""
         lines.append(
-            f"<code>{item['card_id']}</code>. "
-            f"<b>{item['name']}</b>{marker} - "
-            f"<i>{item['title']}</i> - "
-            f"<code>{item['card_no']}</code>"
+            f"🃏 <code>{item['card_id']}</code>. "
+            f"<b>{item['name']}</b>{marker}{qty_text} — "
+            f"<i>{item['title']}</i>"
         )
 
     return "\n".join(lines)
@@ -242,7 +250,7 @@ async def _send_title_owned(update, context, title: Dict[str, Any], page: int, *
 
     cover = str(title.get("cover_image") or title.get("logo_image") or "").strip() or _default_cover()
     if not owned_cards:
-        text = f"Voce ainda nao tem xcards de <b>{title['name']}</b>."
+        text = f"📚 Você ainda não tem xcards de <b>{title['name']}</b>."
         if edit and update.callback_query:
             message = update.callback_query.message
             try:
@@ -262,17 +270,18 @@ async def _send_title_owned(update, context, title: Dict[str, Any], page: int, *
 
     items, _, total_pages, current_page = _paginate(owned_cards, page)
     lines = [
-        f"<b>{title['name']}</b>",
+        f"📚 <b>{title['name']}</b>",
         "",
-        f"XCards obtidos: <b>{len(owned_cards)}/{len(all_cards)}</b>",
-        f"Pagina: <b>{current_page}/{total_pages}</b>",
+        f"📦 <i>Obtidos:</i> <b>{len(owned_cards)}/{len(all_cards)}</b>",
+        f"📖 <i>Página:</i> <b>{current_page}/{total_pages}</b>",
         "",
     ]
     for item in items:
         marker = _duplicate_marker(int(item["quantity"]))
+        qty_text = f" x{int(item['quantity'])}" if int(item["quantity"]) > 1 else ""
         lines.append(
-            f"<code>{item['card_id']}</code>. "
-            f"<b>{item['name']}</b>{marker} - "
+            f"🃏 <code>{item['card_id']}</code>. "
+            f"<b>{item['name']}</b>{marker}{qty_text} — "
             f"<code>{item['card_no']}</code>"
         )
 
@@ -308,7 +317,7 @@ async def _send_title_missing(update, context, title: Dict[str, Any], page: int,
     cover = str(title.get("cover_image") or title.get("logo_image") or "").strip() or _default_cover()
 
     if not missing:
-        text = f"Voce completou os xcards de <b>{title['name']}</b>."
+        text = f"🎉 Você completou os xcards de <b>{title['name']}</b>."
         if edit and update.callback_query:
             message = update.callback_query.message
             try:
@@ -328,16 +337,16 @@ async def _send_title_missing(update, context, title: Dict[str, Any], page: int,
 
     items, _, total_pages, current_page = _paginate(missing, page)
     lines = [
-        f"<b>Faltam em {title['name']}</b>",
+        f"❔ <b>Faltam em {title['name']}</b>",
         "",
-        f"Progresso: <b>{len(all_cards) - len(missing)}/{len(all_cards)}</b>",
-        f"Pagina: <b>{current_page}/{total_pages}</b>",
+        f"📦 <i>Progresso:</i> <b>{len(all_cards) - len(missing)}/{len(all_cards)}</b>",
+        f"📖 <i>Página:</i> <b>{current_page}/{total_pages}</b>",
         "",
     ]
     for card in items:
         lines.append(
-            f"<code>{card['id']}</code>. "
-            f"<b>{card['name']}</b> - "
+            f"❔ <code>{card['id']}</code>. "
+            f"<b>{card['name']}</b> — "
             f"<code>{card['card_no']}</code>"
         )
 
@@ -368,7 +377,7 @@ async def _send_title_gallery(update, context, title: Dict[str, Any], index: int
     title_id = int(title["id"])
     cards = get_xcards_for_title(title_id)
     if not cards:
-        text = f"Nao encontrei xcards para <b>{title['name']}</b>."
+        text = f"❌ Não encontrei xcards para <b>{title['name']}</b>."
         if edit and update.callback_query:
             try:
                 await update.callback_query.message.edit_caption(
@@ -388,16 +397,20 @@ async def _send_title_gallery(update, context, title: Dict[str, Any], index: int
     quantity = int(owned_map.get(int(card.get("id") or 0), 0))
     owned_total = sum(1 for item in cards if int(item.get("id") or 0) in owned_map)
     marker = _duplicate_marker(quantity)
-    prefix = "Tem" if quantity > 0 else "Falta"
+    status = "✅ Tem na coleção" if quantity > 0 else "❔ Ainda falta"
+    qty_text = f"x{quantity}" if quantity > 0 else "0x"
+    rarity = str(card.get("rarity") or "-").strip() or "-"
 
     text = (
-        f"<b>{title['name']}</b>\n\n"
-        f"Progresso: <b>{owned_total}/{len(cards)}</b>\n"
-        f"Card: <b>{index + 1}/{len(cards)}</b>\n\n"
-        f"{prefix}: <code>{card['id']}</code>. "
-        f"<b>{card['name']}</b>{marker}\n"
-        f"Codigo: <code>{card['card_no']}</code>\n"
-        f"Na sua xcolecao: <b>{quantity}x</b>"
+        f"🖼️ <b>{title['name']}</b>\n\n"
+        f"📦 <i>Progresso:</i> <b>{owned_total}/{len(cards)}</b>\n"
+        f"🎴 <i>Card:</i> <b>{index + 1}/{len(cards)}</b>\n\n"
+        f"🃏 <b>{card['name']}</b>{marker}\n"
+        f"🆔 <code>{card['id']}</code>\n"
+        f"🏷️ <code>{card['card_no']}</code>\n"
+        f"✨ <i>Raridade:</i> <b>{rarity}</b>\n"
+        f"📚 <i>Status:</i> <b>{status}</b>\n"
+        f"📦 <i>Na sua xcoleção:</i> <b>{qty_text}</b>"
     )
 
     keyboard = _build_gallery_keyboard("xcolecao_x", user_id, title_id, index, len(cards))
@@ -447,7 +460,7 @@ async def xcolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title_query = " ".join(args[1:]).strip()
         title = find_xtitle(title_query)
         if not title:
-            await update.effective_message.reply_text("Obra de xcards nao encontrada.")
+            await update.effective_message.reply_text("❌ Obra de xcards não encontrada.")
             return
 
         if mode == "s":
@@ -468,7 +481,7 @@ async def xcolecao_callback(update, context):
         return
 
     if not _antiflood(q.from_user.id):
-        await q.answer("Calma", show_alert=False)
+        await q.answer("Calma 🙂", show_alert=False)
         return
 
     try:
@@ -478,7 +491,7 @@ async def xcolecao_callback(update, context):
         return
 
     if int(owner_id) != int(q.from_user.id):
-        await q.answer("Essa xcolecao nao e sua.", show_alert=True)
+        await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
     await q.answer()
@@ -491,7 +504,7 @@ async def xcolecao_s_callback(update, context):
         return
 
     if not _antiflood(q.from_user.id):
-        await q.answer("Calma", show_alert=False)
+        await q.answer("Calma 🙂", show_alert=False)
         return
 
     try:
@@ -501,12 +514,12 @@ async def xcolecao_s_callback(update, context):
         return
 
     if int(owner_id) != int(q.from_user.id):
-        await q.answer("Essa xcolecao nao e sua.", show_alert=True)
+        await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
     title = find_xtitle(title_id)
     if not title:
-        await q.answer("Obra nao encontrada.", show_alert=True)
+        await q.answer("Obra não encontrada.", show_alert=True)
         return
 
     await q.answer()
@@ -519,7 +532,7 @@ async def xcolecao_f_callback(update, context):
         return
 
     if not _antiflood(q.from_user.id):
-        await q.answer("Calma", show_alert=False)
+        await q.answer("Calma 🙂", show_alert=False)
         return
 
     try:
@@ -529,12 +542,12 @@ async def xcolecao_f_callback(update, context):
         return
 
     if int(owner_id) != int(q.from_user.id):
-        await q.answer("Essa xcolecao nao e sua.", show_alert=True)
+        await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
     title = find_xtitle(title_id)
     if not title:
-        await q.answer("Obra nao encontrada.", show_alert=True)
+        await q.answer("Obra não encontrada.", show_alert=True)
         return
 
     await q.answer()
@@ -547,7 +560,7 @@ async def xcolecao_x_callback(update, context):
         return
 
     if not _antiflood(q.from_user.id):
-        await q.answer("Calma", show_alert=False)
+        await q.answer("Calma 🙂", show_alert=False)
         return
 
     try:
@@ -557,12 +570,12 @@ async def xcolecao_x_callback(update, context):
         return
 
     if int(owner_id) != int(q.from_user.id):
-        await q.answer("Essa xcolecao nao e sua.", show_alert=True)
+        await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
     title = find_xtitle(title_id)
     if not title:
-        await q.answer("Obra nao encontrada.", show_alert=True)
+        await q.answer("Obra não encontrada.", show_alert=True)
         return
 
     await q.answer()
