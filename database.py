@@ -3450,6 +3450,45 @@ def create_shop_tables():
     ON shop_card_sales (user_id, sold_at DESC)
     """)
 
+    _run("""
+    CREATE TABLE IF NOT EXISTS shop_xcard_daily_offers (
+        id BIGSERIAL PRIMARY KEY,
+        offer_date DATE NOT NULL,
+        slot_code TEXT NOT NULL,
+        slot_group TEXT NOT NULL,
+        display_order INTEGER NOT NULL,
+        card_id BIGINT NOT NULL,
+        character_id BIGINT,
+        price INTEGER NOT NULL,
+        level_required INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (offer_date, slot_code)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_shop_xcard_daily_offers_date
+    ON shop_xcard_daily_offers (offer_date, display_order ASC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_shop_xcard_daily_purchases (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        offer_date DATE NOT NULL,
+        slot_code TEXT NOT NULL,
+        card_id BIGINT NOT NULL,
+        price_paid INTEGER NOT NULL,
+        purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, offer_date, slot_code)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_shop_xcard_daily_purchases_user
+    ON user_shop_xcard_daily_purchases (user_id, offer_date DESC, purchased_at DESC)
+    """)
+
 def record_coin_transaction(user_id: int, tx_type: str, amount: int, metadata=None):
     row = _run(
         "SELECT coins FROM users WHERE user_id = %s",
@@ -3607,6 +3646,452 @@ def get_user_shop_history(user_id: int, limit: int = 20):
     )
 
     return rows or []
+
+
+def _next_shop_daily_refresh_dt(now: Optional[datetime] = None) -> datetime:
+    current = (now or _sp_now()).astimezone(SP_TZ)
+    next_day = current.date() + timedelta(days=1)
+    return datetime.combine(next_day, dt_time(0, 0), tzinfo=SP_TZ)
+
+
+def get_daily_xcard_shop_refresh_info(now: Optional[datetime] = None) -> Dict[str, Any]:
+    current = (now or _sp_now()).astimezone(SP_TZ)
+    next_dt = _next_shop_daily_refresh_dt(current)
+    delta = max(int((next_dt - current).total_seconds()), 0)
+    hours = delta // 3600
+    minutes = (delta % 3600) // 60
+    return {
+        "today": current.date().isoformat(),
+        "today_iso": current.date().isoformat(),
+        "next_refresh_iso": next_dt.isoformat(),
+        "next_refresh_hhmm": next_dt.strftime("%H:%M"),
+        "countdown_label": f"{hours:02d}h {minutes:02d}m",
+    }
+
+
+def _xcard_shop_bp_value(card: Dict[str, Any]) -> int:
+    raw_value = card.get("bp_value")
+    try:
+        if raw_value is not None and str(raw_value).strip() != "":
+            return int(raw_value)
+    except Exception:
+        pass
+
+    text = str(card.get("bp") or "").strip().replace(".", "").replace(",", "")
+    match = re.search(r"\d+", text)
+    if not match:
+        return 0
+    try:
+        return int(match.group(0))
+    except Exception:
+        return 0
+
+
+def _xcard_shop_tier(bp_value: int) -> Optional[Tuple[int, int]]:
+    bp = int(bp_value or 0)
+    if 1000 <= bp <= 1999:
+        return (10, 1)
+    if 2000 <= bp <= 2999:
+        return (20, 2)
+    if 3000 <= bp <= 3499:
+        return (30, 3)
+    if 3500 <= bp <= 3999:
+        return (40, 4)
+    if 4000 <= bp <= 4499:
+        return (55, 5)
+    if bp >= 4500:
+        return (70, 6)
+    return None
+
+
+def _xcard_shop_bonus(card: Dict[str, Any]) -> int:
+    rarity = str(card.get("rarity") or "").strip().upper()
+    bonus = 0
+
+    if rarity == "R":
+        bonus += 10
+    elif rarity == "SR":
+        bonus += 25
+    elif rarity == "UR":
+        bonus += 40
+    elif rarity == "SP":
+        bonus += 55
+
+    if bool(card.get("alt_art")):
+        bonus += 20
+
+    return bonus
+
+
+def _xcard_shop_slot_group(card: Dict[str, Any]) -> Optional[str]:
+    rarity = str(card.get("rarity") or "").strip().upper()
+    card_type = str(card.get("card_type") or "").strip().lower()
+    pt_br = card.get("pt_br") if isinstance(card.get("pt_br"), dict) else {}
+    pt_type = str(pt_br.get("tipo_de_cartao") or "").strip().lower()
+
+    is_character = card_type == "character" or pt_type == "personagem"
+    if not is_character:
+        return None
+
+    if bool(card.get("alt_art")) or rarity in {"UR", "SP"}:
+        return "special"
+    if rarity in {"R", "SR"}:
+        return "rare"
+    return "normal"
+
+
+def _build_daily_xcard_offer_rows(for_date: date) -> List[Dict[str, Any]]:
+    from xcards_service import build_xcards_data
+    import random
+
+    data = build_xcards_data()
+    cards = list(data.get("cards_list") or [])
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {
+        "normal": [],
+        "rare": [],
+        "special": [],
+    }
+
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+
+        bp_value = _xcard_shop_bp_value(card)
+        tier = _xcard_shop_tier(bp_value)
+        if not tier:
+            continue
+
+        slot_group = _xcard_shop_slot_group(card)
+        if slot_group is None:
+            continue
+
+        base_price, level_required = tier
+        grouped[slot_group].append({
+            "card_id": int(card.get("id") or 0),
+            "character_id": int(card.get("character_id") or 0),
+            "slot_group": slot_group,
+            "bp_value": int(bp_value),
+            "price": int(base_price + _xcard_shop_bonus(card)),
+            "level_required": int(level_required),
+        })
+
+    rng = random.Random(f"xcard-shop:{for_date.isoformat()}")
+    used_card_ids = set()
+    used_character_ids = set()
+
+    def pick_from_pool(pool_name: str, count: int) -> List[Dict[str, Any]]:
+        pool = list(grouped.get(pool_name) or [])
+        rng.shuffle(pool)
+        chosen: List[Dict[str, Any]] = []
+
+        for enforce_unique_character in (True, False):
+            for item in pool:
+                card_id = int(item.get("card_id") or 0)
+                character_id = int(item.get("character_id") or 0)
+                if card_id <= 0 or card_id in used_card_ids:
+                    continue
+                if enforce_unique_character and character_id > 0 and character_id in used_character_ids:
+                    continue
+
+                chosen.append(item)
+                used_card_ids.add(card_id)
+                if character_id > 0:
+                    used_character_ids.add(character_id)
+                if len(chosen) >= count:
+                    return chosen
+        return chosen
+
+    normal = pick_from_pool("normal", 6)
+    rare = pick_from_pool("rare", 2)
+    special = pick_from_pool("special", 1)
+
+    if len(normal) < 6 or len(rare) < 2 or len(special) < 1:
+        fallback_pool = list(grouped.get("special") or []) + list(grouped.get("rare") or []) + list(grouped.get("normal") or [])
+        rng.shuffle(fallback_pool)
+        target_sizes = {"normal": 6, "rare": 2, "special": 1}
+        buckets = {"normal": normal, "rare": rare, "special": special}
+
+        for item in fallback_pool:
+            card_id = int(item.get("card_id") or 0)
+            character_id = int(item.get("character_id") or 0)
+            if card_id <= 0 or card_id in used_card_ids:
+                continue
+
+            target_group = str(item.get("slot_group") or "normal")
+            if len(buckets[target_group]) >= target_sizes[target_group]:
+                continue
+
+            if character_id > 0 and character_id in used_character_ids:
+                continue
+
+            buckets[target_group].append(item)
+            used_card_ids.add(card_id)
+            if character_id > 0:
+                used_character_ids.add(character_id)
+
+            if (
+                len(buckets["normal"]) >= target_sizes["normal"]
+                and len(buckets["rare"]) >= target_sizes["rare"]
+                and len(buckets["special"]) >= target_sizes["special"]
+            ):
+                break
+
+        normal, rare, special = buckets["normal"], buckets["rare"], buckets["special"]
+
+    offers = normal + rare + special
+    if len(offers) < 9:
+        raise RuntimeError("Nao foi possivel montar a loja diaria de xcards.")
+
+    rows: List[Dict[str, Any]] = []
+    ordered_groups = [("normal", normal), ("rare", rare), ("special", special)]
+    display_order = 1
+
+    for group_name, items in ordered_groups:
+        for index, item in enumerate(items[: 6 if group_name == "normal" else 2 if group_name == "rare" else 1], start=1):
+            rows.append({
+                "offer_date": for_date,
+                "slot_code": f"{group_name}_{index}",
+                "slot_group": group_name,
+                "display_order": display_order,
+                "card_id": int(item["card_id"]),
+                "character_id": int(item.get("character_id") or 0),
+                "price": int(item["price"]),
+                "level_required": int(item["level_required"]),
+            })
+            display_order += 1
+
+    return rows
+
+
+def get_or_create_daily_xcard_shop_offers(for_date: Optional[date] = None) -> List[Dict[str, Any]]:
+    target_date = for_date or _sp_today()
+    rows = _run(
+        """
+        SELECT offer_date, slot_code, slot_group, display_order, card_id, character_id, price, level_required
+        FROM shop_xcard_daily_offers
+        WHERE offer_date = %s
+        ORDER BY display_order ASC, slot_code ASC
+        """,
+        (target_date,),
+        fetch="all",
+    ) or []
+
+    if len(rows) == 9:
+        return rows
+
+    generated = _build_daily_xcard_offer_rows(target_date)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "DELETE FROM shop_xcard_daily_offers WHERE offer_date = %s",
+                (target_date,),
+            )
+            for item in generated:
+                cur.execute(
+                    """
+                    INSERT INTO shop_xcard_daily_offers
+                    (offer_date, slot_code, slot_group, display_order, card_id, character_id, price, level_required)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (offer_date, slot_code) DO UPDATE
+                    SET slot_group = EXCLUDED.slot_group,
+                        display_order = EXCLUDED.display_order,
+                        card_id = EXCLUDED.card_id,
+                        character_id = EXCLUDED.character_id,
+                        price = EXCLUDED.price,
+                        level_required = EXCLUDED.level_required
+                    """,
+                    (
+                        item["offer_date"],
+                        item["slot_code"],
+                        item["slot_group"],
+                        item["display_order"],
+                        item["card_id"],
+                        item["character_id"],
+                        item["price"],
+                        item["level_required"],
+                    ),
+                )
+        conn.commit()
+
+    return _run(
+        """
+        SELECT offer_date, slot_code, slot_group, display_order, card_id, character_id, price, level_required
+        FROM shop_xcard_daily_offers
+        WHERE offer_date = %s
+        ORDER BY display_order ASC, slot_code ASC
+        """,
+        (target_date,),
+        fetch="all",
+    ) or []
+
+
+def get_user_daily_xcard_shop_purchase_map(user_id: int, for_date: Optional[date] = None) -> Dict[str, Dict[str, Any]]:
+    target_date = for_date or _sp_today()
+    rows = _run(
+        """
+        SELECT slot_code, card_id, price_paid, purchased_at
+        FROM user_shop_xcard_daily_purchases
+        WHERE user_id = %s
+          AND offer_date = %s
+        ORDER BY purchased_at DESC
+        """,
+        (int(user_id), target_date),
+        fetch="all",
+    ) or []
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        slot_code = str(row.get("slot_code") or "").strip().lower()
+        if not slot_code:
+            continue
+        out[slot_code] = {
+            "card_id": int(row.get("card_id") or 0),
+            "price_paid": int(row.get("price_paid") or 0),
+            "purchased_at": row.get("purchased_at"),
+        }
+    return out
+
+
+def buy_daily_xcard_shop_offer(user_id: int, slot_code: str, for_date: Optional[date] = None) -> Dict[str, Any]:
+    from xcards_service import get_xcard_by_id
+
+    create_or_get_user(user_id)
+    ensure_progress_row(user_id)
+
+    normalized_slot = str(slot_code or "").strip().lower()
+    if not normalized_slot:
+        return {"ok": False, "error": "invalid_slot"}
+
+    target_date = for_date or _sp_today()
+    offers = get_or_create_daily_xcard_shop_offers(target_date)
+    selected = None
+    for offer in offers:
+        if str(offer.get("slot_code") or "").strip().lower() == normalized_slot:
+            selected = offer
+            break
+
+    if not selected:
+        return {"ok": False, "error": "offer_not_found"}
+
+    level_required = int(selected.get("level_required") or 1)
+    price = int(selected.get("price") or 0)
+    card_id = int(selected.get("card_id") or 0)
+    progress = get_progress_row(user_id) or {}
+    current_level = int(progress.get("level") or 1)
+
+    if current_level < level_required:
+        return {
+            "ok": False,
+            "error": "level_locked",
+            "required_level": level_required,
+            "current_level": current_level,
+        }
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM user_shop_xcard_daily_purchases
+                WHERE user_id = %s
+                  AND offer_date = %s
+                  AND slot_code = %s
+                LIMIT 1
+                """,
+                (int(user_id), target_date, normalized_slot),
+            )
+            if cur.fetchone():
+                conn.rollback()
+                return {"ok": False, "error": "already_bought"}
+
+            cur.execute(
+                """
+                SELECT coins
+                FROM users
+                WHERE user_id = %s
+                FOR UPDATE
+                """,
+                (int(user_id),),
+            )
+            user_row = cur.fetchone() or {}
+            current_coins = int(user_row.get("coins") or 0)
+
+            if current_coins < price:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "error": "no_coins",
+                    "price": price,
+                    "coins": current_coins,
+                }
+
+            new_balance = current_coins - price
+
+            cur.execute(
+                """
+                UPDATE users
+                SET coins = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                """,
+                (new_balance, int(user_id)),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO user_xcard_collection (user_id, card_id, quantity, first_obtained_at, updated_at)
+                VALUES (%s, %s, 1, NOW(), NOW())
+                ON CONFLICT (user_id, card_id) DO UPDATE
+                SET quantity = user_xcard_collection.quantity + 1,
+                    updated_at = NOW()
+                """,
+                (int(user_id), card_id),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO user_shop_xcard_daily_purchases
+                (user_id, offer_date, slot_code, card_id, price_paid, purchased_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                """,
+                (int(user_id), target_date, normalized_slot, card_id, price),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO shop_transactions
+                (user_id, type, amount, balance_after, metadata, created_at)
+                VALUES (%s, %s, %s, %s, %s::jsonb, NOW())
+                """,
+                (
+                    int(user_id),
+                    "buy_xcard_daily",
+                    -price,
+                    new_balance,
+                    json.dumps(
+                        {
+                            "offer_date": target_date.isoformat(),
+                            "slot_code": normalized_slot,
+                            "card_id": card_id,
+                            "level_required": level_required,
+                        },
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+        conn.commit()
+
+    card = get_xcard_by_id(card_id) or {}
+    return {
+        "ok": True,
+        "card_id": card_id,
+        "card_no": str(card.get("card_no") or "").strip(),
+        "card_name": str(card.get("name") or "").strip(),
+        "price": price,
+        "required_level": level_required,
+    }
 
 # =========================================================
 # COINS SYSTEM (COMPATIBILITY HELPERS)
