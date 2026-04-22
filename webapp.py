@@ -5759,7 +5759,12 @@ def api_webapp_context(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
 ):
-    from database import get_progress_row, get_profile_settings, get_user_status
+    from database import (
+        get_progress_row,
+        get_profile_settings,
+        get_user_status,
+        get_user_xcard_collection,
+    )
 
     ctx = _resolve_webapp_user(
         x_telegram_init_data=x_telegram_init_data,
@@ -5778,6 +5783,7 @@ def api_webapp_context(
     settings = get_profile_settings(user_id) or {}
     cards_data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
     cards = _collection_cards_from_snapshot(cards_data, qty_by_char, subcategory_map)
+    xcards = get_user_xcard_collection(user_id) or []
 
     display_name = (
         str(settings.get("nickname") or "").strip()
@@ -5797,6 +5803,8 @@ def api_webapp_context(
             "dado_balance": int(user.get("dado_balance") or 0),
             "level": int(progress.get("level") or 1),
             "collection_total": len(cards),
+            "xcollection_total": len(xcards),
+            "xcollection_copies": sum(int(item.get("quantity") or 0) for item in xcards),
             "auth_mode": str(ctx.get("auth_mode") or ""),
         },
     })
@@ -8312,6 +8320,118 @@ def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
     return out
 
 
+def _shop_parse_bp_value(card: Dict[str, Any]) -> int:
+    raw_value = card.get("bp_value")
+    try:
+        if raw_value is not None and str(raw_value).strip() != "":
+            return int(raw_value)
+    except Exception:
+        pass
+
+    text = str(
+        ((card.get("pt_br") or {}).get("pa"))
+        or card.get("bp")
+        or ""
+    ).strip()
+    match = re.search(r"\d+", text.replace(".", "").replace(",", ""))
+    if not match:
+        return 0
+    try:
+        return int(match.group(0))
+    except Exception:
+        return 0
+
+
+def _shop_serialize_xcard_offer(
+    offer: Dict[str, Any],
+    purchase_map: Dict[str, Dict[str, Any]],
+    current_level: int,
+) -> Dict[str, Any]:
+    from xcards_service import get_xcard_by_id
+
+    slot_code = str(offer.get("slot_code") or "").strip()
+    slot_group = str(offer.get("slot_group") or "normal").strip().lower()
+    card = get_xcard_by_id(int(offer.get("card_id") or 0)) or {}
+    pt_br = card.get("pt_br") if isinstance(card.get("pt_br"), dict) else {}
+    rarity = str(card.get("rarity") or "").strip().upper()
+    is_alt_art = bool(card.get("alt_art"))
+    purchased = purchase_map.get(slot_code.lower()) or {}
+    purchased_at = purchased.get("purchased_at")
+    if purchased_at is None:
+        purchased_at_iso = ""
+    elif hasattr(purchased_at, "isoformat"):
+        purchased_at_iso = purchased_at.isoformat()
+    else:
+        purchased_at_iso = str(purchased_at).strip()
+    level_required = int(offer.get("level_required") or 1)
+    price = int(offer.get("price") or 0)
+    bp_value = _shop_parse_bp_value(card)
+    generated_energy = [
+        str(item or "").strip()
+        for item in (pt_br.get("energia_gerada") or card.get("generated_energy") or [])
+        if str(item or "").strip()
+    ]
+    affinities = [
+        str(item or "").strip()
+        for item in (pt_br.get("afinidades") or card.get("affinities") or [])
+        if str(item or "").strip()
+    ]
+    effect_keywords = [
+        str(item or "").strip()
+        for item in (pt_br.get("keywords_efeito") or card.get("effect_keywords") or [])
+        if str(item or "").strip()
+    ]
+    trigger_keywords = [
+        str(item or "").strip()
+        for item in (pt_br.get("keywords_acionar") or card.get("trigger_keywords") or [])
+        if str(item or "").strip()
+    ]
+
+    return {
+        "slot_code": slot_code,
+        "slot_group": slot_group,
+        "slot_group_label": {
+            "normal": "Normal",
+            "rare": "Raro",
+            "special": "Especial",
+        }.get(slot_group, "Normal"),
+        "display_order": int(offer.get("display_order") or 0),
+        "price": price,
+        "level_required": level_required,
+        "locked": int(current_level or 1) < level_required,
+        "purchased": bool(purchased),
+        "purchased_at": purchased_at_iso,
+        "price_paid": int(purchased.get("price_paid") or 0),
+        "card": {
+            "id": int(card.get("id") or 0),
+            "character_id": int(card.get("character_id") or 0),
+            "card_no": str(card.get("card_no") or "").strip(),
+            "base_card_no": str(card.get("base_card_no") or "").strip(),
+            "name": str(card.get("name") or "").strip() or "XCard",
+            "anime": str(pt_br.get("anime") or card.get("title") or "").strip(),
+            "title": str(card.get("title") or "").strip(),
+            "product_name": str(pt_br.get("produto") or card.get("product_name") or "").strip(),
+            "image": _web_image_url(card.get("image")),
+            "rarity": rarity,
+            "rarity_label": str(pt_br.get("raridade") or rarity).strip(),
+            "alt_art": is_alt_art,
+            "required_energy": str(pt_br.get("energia_necessaria") or card.get("required_energy") or "").strip(),
+            "ap_cost": str(pt_br.get("custo_ap") or card.get("ap_cost") or "").strip(),
+            "card_type": str(pt_br.get("tipo_de_cartao") or card.get("card_type") or "").strip(),
+            "bp": str(pt_br.get("pa") or card.get("bp") or "").strip(),
+            "bp_value": bp_value,
+            "affinity": str(pt_br.get("afinidade") or card.get("affinity") or "").strip(),
+            "affinities": affinities,
+            "generated_energy": generated_energy,
+            "effect": str(pt_br.get("efeito") or card.get("effect") or "").strip(),
+            "effect_keywords": effect_keywords,
+            "trigger": str(pt_br.get("acionar") or card.get("trigger") or "").strip(),
+            "trigger_keywords": trigger_keywords,
+            "cosmetic_only": is_alt_art,
+        },
+    }
+
+
 def _collection_character_subcategory_map(data: Dict[str, Any]) -> Dict[int, str]:
     out: Dict[int, str] = {}
     for raw_name, chars in (data.get("subcategories") or {}).items():
@@ -8907,7 +9027,12 @@ def api_shop_state(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
 ):
-    from database import get_user_status
+    from database import (
+        get_daily_xcard_shop_refresh_info,
+        get_progress_row,
+        get_user_status,
+        get_user_xcard_collection,
+    )
 
     tg = _resolve_webapp_user(
         x_telegram_init_data=x_telegram_init_data,
@@ -8917,10 +9042,16 @@ def api_shop_state(
     user_id = int(tg["user_id"])
 
     row = get_user_status(user_id) or {}
+    progress = get_progress_row(user_id) or {}
+    refresh = get_daily_xcard_shop_refresh_info()
+    xcards = get_user_xcard_collection(user_id) or []
     return JSONResponse({
         "ok": True,
         "coins": int(row.get("coins") or 0),
         "dado_balance": int(row.get("dado_balance") or 0),
+        "level": int(progress.get("level") or 1),
+        "xcollection_total": len(xcards),
+        "refresh": refresh,
     })
 
 
@@ -9179,6 +9310,141 @@ def api_shop_buy_nickname(
 # =========================================================
 # PAGE — /shop
 # =========================================================
+
+@app.get("/api/shop/xcards/daily")
+def api_shop_xcards_daily(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from database import (
+        get_daily_xcard_shop_refresh_info,
+        get_or_create_daily_xcard_shop_offers,
+        get_progress_row,
+        get_user_daily_xcard_shop_purchase_map,
+        get_user_status,
+        get_user_xcard_collection,
+    )
+
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(tg["user_id"])
+
+    row = get_user_status(user_id) or {}
+    progress = get_progress_row(user_id) or {}
+    current_level = int(progress.get("level") or 1)
+    refresh = get_daily_xcard_shop_refresh_info()
+    offers = get_or_create_daily_xcard_shop_offers()
+    purchase_map = get_user_daily_xcard_shop_purchase_map(user_id)
+    xcards = get_user_xcard_collection(user_id) or []
+    serialized = [
+        _shop_serialize_xcard_offer(offer, purchase_map, current_level)
+        for offer in offers
+    ]
+
+    groups = {
+        "normal": [item for item in serialized if item.get("slot_group") == "normal"],
+        "rare": [item for item in serialized if item.get("slot_group") == "rare"],
+        "special": [item for item in serialized if item.get("slot_group") == "special"],
+    }
+
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+        "level": current_level,
+        "xcollection_total": len(xcards),
+        "xcollection_copies": sum(int(item.get("quantity") or 0) for item in xcards),
+        "refresh": refresh,
+        "groups": groups,
+        "offers": serialized,
+    })
+
+
+@app.post("/api/shop/xcards/buy")
+def api_shop_xcards_buy(
+    payload: dict = Body(default={}),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from database import (
+        buy_daily_xcard_shop_offer,
+        get_progress_row,
+        get_user_status,
+        get_user_xcard_collection,
+    )
+    from xcards_service import get_xcard_by_id
+
+    tg = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
+    user_id = int(tg["user_id"])
+
+    slot_code = str((payload or {}).get("slot_code") or "").strip().lower()
+    if not slot_code:
+        return JSONResponse(
+            {"ok": False, "error": "slot_code inv\u00e1lido", "error_code": "invalid_slot"},
+            status_code=400,
+        )
+
+    if not _shop_rate_limit(user_id, f"buy_xcard:{slot_code}", 0.9):
+        return JSONResponse({"ok": False, "error": "rate_limited", "error_code": "rate_limited"}, status_code=200)
+
+    result = buy_daily_xcard_shop_offer(user_id, slot_code)
+    if not result or not result.get("ok"):
+        error_code = str((result or {}).get("error") or "buy_failed").strip().lower()
+        current_level = int((result or {}).get("current_level") or 1)
+        required_level = int((result or {}).get("required_level") or 0)
+        price = int((result or {}).get("price") or 0)
+        current_coins = int((result or {}).get("coins") or 0)
+        error_map = {
+            "invalid_slot": "Oferta inv\u00e1lida.",
+            "offer_not_found": "Essa oferta n\u00e3o est\u00e1 dispon\u00edvel agora.",
+            "already_bought": "Voc\u00ea j\u00e1 comprou esse slot hoje.",
+            "level_locked": f"Seu n\u00edvel atual \u00e9 {current_level}. Esta compra exige n\u00edvel {required_level}.",
+            "no_coins": f"Voc\u00ea precisa de {price} coins, mas tem {current_coins}.",
+            "buy_failed": "N\u00e3o foi poss\u00edvel concluir a compra agora.",
+        }
+        return JSONResponse({
+            "ok": False,
+            "error": error_map.get(error_code, "N\u00e3o foi poss\u00edvel concluir a compra agora."),
+            "error_code": error_code,
+            "required_level": required_level,
+            "current_level": current_level,
+            "price": price,
+            "coins": current_coins,
+        }, status_code=200)
+
+    row = get_user_status(user_id) or {}
+    progress = get_progress_row(user_id) or {}
+    xcards = get_user_xcard_collection(user_id) or []
+    card = get_xcard_by_id(int(result.get("card_id") or 0)) or {}
+    pt_br = card.get("pt_br") if isinstance(card.get("pt_br"), dict) else {}
+
+    return JSONResponse({
+        "ok": True,
+        "coins": int(row.get("coins") or 0),
+        "level": int(progress.get("level") or 1),
+        "xcollection_total": len(xcards),
+        "xcollection_copies": sum(int(item.get("quantity") or 0) for item in xcards),
+        "purchase": {
+            "slot_code": slot_code,
+            "card_id": int(result.get("card_id") or 0),
+            "card_no": str(result.get("card_no") or "").strip(),
+            "card_name": str(result.get("card_name") or "").strip(),
+            "anime": str(pt_br.get("anime") or card.get("title") or "").strip(),
+            "image": _web_image_url(card.get("image")),
+            "price": int(result.get("price") or 0),
+            "required_level": int(result.get("required_level") or 1),
+        },
+    })
+
 
 @app.get("/shop", response_class=HTMLResponse)
 def shop_page(uid: int = Query(default=0)):
