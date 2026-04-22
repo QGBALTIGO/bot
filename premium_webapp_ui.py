@@ -3033,7 +3033,7 @@ document.getElementById("collectionDetailGalleryBtn").onclick = async function()
     return _page_template("Colecao", body, extra_js=js, include_tg=True)
 
 
-def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
+def build_memory_page(*, uid: int = 0, banner_url: str, default_level: str = "medium") -> str:
     safe_level = str(default_level or "medium").strip().lower()
     if safe_level not in {"easy", "medium", "hard", "extreme"}:
         safe_level = "medium"
@@ -3393,6 +3393,7 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
     js = f"""
 const MEMORY_DEFAULT_LEVEL = {_j(safe_level)};
 const MEMORY_HERO_FALLBACK = {_j(banner_url)};
+const MEMORY_UID = resolveWebappUid({int(uid)});
 const tgMemory = getTelegramWebApp();
 if (tgMemory) {{ try {{ tgMemory.ready(); tgMemory.expand(); }} catch(err) {{}} }}
 
@@ -3414,7 +3415,7 @@ const memoryLevels = {{
   }},
   extreme: {{
     label: "Muito dif\\u00edcil",
-    pairs: 15,
+    pairs: 18,
     helper: "Grade grande para quem quer se testar de verdade."
   }}
 }};
@@ -3490,6 +3491,18 @@ function saveMemoryBest(){{
   }}catch(err){{}}
 }}
 
+function applyMemoryBest(level, timeMs, moves){{
+  const safeLevel = normalizeMemoryLevel(level);
+  const safeTimeMs = Number(timeMs || 0);
+  const safeMoves = Number(moves || 0);
+  if (!safeLevel || !safeTimeMs || !safeMoves) return;
+  memoryState.best[safeLevel] = {{
+    timeMs: safeTimeMs,
+    moves: safeMoves
+  }};
+  saveMemoryBest();
+}}
+
 function formatMemoryDuration(ms){{
   const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -3501,6 +3514,55 @@ function memoryBestLabel(level){{
   const entry = (memoryState.best || {{}})[String(level || "")] || null;
   if (!entry || !entry.timeMs) return "--";
   return formatMemoryDuration(entry.timeMs) + " . " + String(entry.moves || 0) + " jog.";
+}}
+
+function renderMemoryResultState(level, current, isBest, metaText){{
+  const best = (memoryState.best || {{}})[level] || current;
+  memoryEls.resultMeta.textContent = metaText || (isBest ? "Novo recorde salvo neste n\\u00edvel." : "Partida conclu\\u00edda com sucesso.");
+  memoryEls.resultTime.textContent = formatMemoryDuration(current.timeMs || 0);
+  memoryEls.resultMoves.textContent = String(current.moves || 0);
+  memoryEls.recordText.innerHTML = isBest
+    ? "<strong>Recorde novo.</strong> Tempo " + esc(formatMemoryDuration(best.timeMs || 0)) + " com " + esc(best.moves || 0) + " jogadas."
+    : "Seu melhor neste n\\u00edvel est\\u00e1 em <strong>" + esc(formatMemoryDuration(best.timeMs || 0)) + "</strong> com <strong>" + esc(best.moves || 0) + "</strong> jogadas.";
+  memoryEls.resultPanel.style.display = "";
+}}
+
+async function loadMemoryRemoteBest(){{
+  try{{
+    const response = await authJson("/api/memory/best", {{ uid: MEMORY_UID }});
+    if (!response.ok || !response.data || !response.data.ok) return;
+    const byLevel = response.data.by_level || {{}};
+    Object.keys(byLevel).forEach(function(level){{
+      const entry = byLevel[level] || {{}};
+      applyMemoryBest(level, Number(entry.time_ms || 0), Number(entry.moves || 0));
+    }});
+    syncMemoryChrome();
+  }}catch(err){{
+    console.warn("memory best sync failed", err);
+  }}
+}}
+
+async function persistMemoryResult(level, current){{
+  const response = await authJson("/api/memory/finish", {{
+    uid: MEMORY_UID,
+    method: "POST",
+    json: {{
+      level: level,
+      time_ms: Number(current.timeMs || 0),
+      moves: Number(current.moves || 0)
+    }}
+  }});
+  if (!response.ok || !response.data || !response.data.ok){{
+    throw new Error((response.data && response.data.message) ? response.data.message : "Nao consegui salvar o resultado.");
+  }}
+  const best = response.data.best || {{}};
+  return {{
+    newRecord: !!response.data.new_record,
+    best: {{
+      timeMs: Number(best.time_ms || 0),
+      moves: Number(best.moves || 0)
+    }}
+  }};
 }}
 
 function updateMemoryHeroBanner(){{
@@ -3688,27 +3750,35 @@ function openMemoryLevel(level, options){{
   setMemoryNote("Tabuleiro pronto . " + String(config.label) + " . " + String(config.pairs) + " pares.", "success");
 }}
 
-function completeMemoryGame(){{
+async function completeMemoryGame(){{
   stopMemoryTimer();
   const level = memoryState.level;
   const previous = (memoryState.best || {{}})[level] || null;
   const current = {{ timeMs: Number(memoryState.elapsedMs || 0), moves: Number(memoryState.moves || 0) }};
   let isBest = false;
   if (!previous || !previous.timeMs || current.timeMs < previous.timeMs || (current.timeMs === previous.timeMs && current.moves < (previous.moves || 0))){{
-    memoryState.best[level] = current;
-    saveMemoryBest();
+    applyMemoryBest(level, current.timeMs, current.moves);
     isBest = true;
   }}
   syncMemoryChrome();
-  memoryEls.resultMeta.textContent = isBest ? "Novo recorde salvo neste n\\u00edvel." : "Partida conclu\\u00edda com sucesso.";
-  memoryEls.resultTime.textContent = formatMemoryDuration(memoryState.elapsedMs);
-  memoryEls.resultMoves.textContent = String(memoryState.moves || 0);
-  const best = (memoryState.best || {{}})[level] || current;
-  memoryEls.recordText.innerHTML = isBest
-    ? "<strong>Recorde novo.</strong> Tempo " + esc(formatMemoryDuration(best.timeMs)) + " com " + esc(best.moves) + " jogadas."
-    : "Seu melhor neste n\\u00edvel est\\u00e1 em <strong>" + esc(formatMemoryDuration(best.timeMs || 0)) + "</strong> com <strong>" + esc(best.moves || 0) + "</strong> jogadas.";
-  memoryEls.resultPanel.style.display = "";
+  renderMemoryResultState(level, current, isBest, isBest ? "Novo recorde salvo neste n\\u00edvel." : "Partida conclu\\u00edda com sucesso.");
   setMemoryNote("Partida concluida.", "success");
+  try{{
+    const saved = await persistMemoryResult(level, current);
+    if (saved && saved.best && saved.best.timeMs && saved.best.moves){{
+      applyMemoryBest(level, saved.best.timeMs, saved.best.moves);
+      syncMemoryChrome();
+      renderMemoryResultState(
+        level,
+        current,
+        !!saved.newRecord,
+        saved.newRecord ? "Novo recorde salvo no ranking." : "Resultado sincronizado com o ranking."
+      );
+    }}
+  }}catch(err){{
+    console.warn("memory result sync failed", err);
+    setMemoryNote("Partida concluida. O ranking nao sincronizou agora.", "");
+  }}
 }}
 
 function resolveMemoryPair(){{
@@ -3736,7 +3806,10 @@ function resolveMemoryPair(){{
   renderMemoryBoard(false);
   syncMemoryChrome();
   if (memoryState.matches >= memoryState.totalPairs && memoryState.totalPairs > 0){{
-    completeMemoryGame();
+    completeMemoryGame().catch(function(err){{
+      console.error(err);
+      setMemoryNote("Partida concluida, mas houve uma falha ao finalizar.", "error");
+    }});
   }}
 }}
 
@@ -3810,6 +3883,7 @@ memoryEls.tabs.forEach(function(button){{
     const initialLevel = parseMemoryLevelFromQuery();
     memoryState.level = initialLevel;
     syncMemoryChrome();
+    await loadMemoryRemoteBest();
     await fetchMemoryCatalog();
     openMemoryLevel(initialLevel, {{ keepSelection: false }});
   }}catch(err){{
