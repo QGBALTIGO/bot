@@ -276,6 +276,7 @@ def create_tables():
     create_shop_tables()
     create_daily_tables()
     create_weekly_ranking_tables()
+    create_memory_tables()
     create_trades_table()
     create_duel_tables()
     create_message_tables()
@@ -4478,6 +4479,162 @@ def get_all_termo_ranking_rows() -> List[Dict[str, Any]]:
     return rows or []
 
 
+def get_memory_best_summary(user_id: int) -> Dict[str, Any]:
+    rows = _run(
+        """
+        SELECT
+            level,
+            best_time_ms,
+            best_moves,
+            games_played,
+            completed_games,
+            updated_at
+        FROM memory_level_bests
+        WHERE user_id = %s
+        ORDER BY CASE level
+            WHEN 'easy' THEN 1
+            WHEN 'medium' THEN 2
+            WHEN 'hard' THEN 3
+            WHEN 'extreme' THEN 4
+            ELSE 99
+        END ASC
+        """,
+        (user_id,),
+        fetch="all",
+    ) or []
+
+    summary = _run(
+        """
+        SELECT
+            COUNT(*) AS levels_completed,
+            AVG(best_time_ms) AS avg_best_time_ms,
+            AVG(best_moves) AS avg_best_moves,
+            COALESCE(SUM(completed_games), 0) AS completed_games
+        FROM memory_level_bests
+        WHERE user_id = %s
+        """,
+        (user_id,),
+        fetch="one",
+    ) or {}
+
+    return {
+        "rows": rows,
+        "summary": summary,
+    }
+
+
+def save_memory_game_result(user_id: int, level: str, time_ms: int, moves: int) -> Dict[str, Any]:
+    safe_level = str(level or "").strip().lower()
+    if safe_level not in {"easy", "medium", "hard", "extreme"}:
+        raise ValueError("nivel de memoria invalido")
+
+    safe_time_ms = int(time_ms or 0)
+    safe_moves = int(moves or 0)
+    if safe_time_ms <= 0:
+        raise ValueError("tempo invalido")
+    if safe_moves <= 0:
+        raise ValueError("jogadas invalidas")
+
+    previous = _run(
+        """
+        SELECT best_time_ms, best_moves
+        FROM memory_level_bests
+        WHERE user_id = %s AND level = %s
+        """,
+        (user_id, safe_level),
+        fetch="one",
+    )
+
+    prev_time = int((previous or {}).get("best_time_ms") or 0)
+    prev_moves = int((previous or {}).get("best_moves") or 0)
+    is_new_record = (
+        previous is None
+        or safe_time_ms < prev_time
+        or (safe_time_ms == prev_time and safe_moves < prev_moves)
+    )
+
+    row = _run(
+        """
+        INSERT INTO memory_level_bests (
+            user_id,
+            level,
+            best_time_ms,
+            best_moves,
+            games_played,
+            completed_games,
+            created_at,
+            updated_at
+        )
+        VALUES (%s, %s, %s, %s, 1, 1, NOW(), NOW())
+        ON CONFLICT (user_id, level) DO UPDATE
+        SET
+            games_played = memory_level_bests.games_played + 1,
+            completed_games = memory_level_bests.completed_games + 1,
+            best_time_ms = CASE
+                WHEN EXCLUDED.best_time_ms < memory_level_bests.best_time_ms THEN EXCLUDED.best_time_ms
+                WHEN EXCLUDED.best_time_ms = memory_level_bests.best_time_ms
+                     AND EXCLUDED.best_moves < memory_level_bests.best_moves THEN EXCLUDED.best_time_ms
+                ELSE memory_level_bests.best_time_ms
+            END,
+            best_moves = CASE
+                WHEN EXCLUDED.best_time_ms < memory_level_bests.best_time_ms THEN EXCLUDED.best_moves
+                WHEN EXCLUDED.best_time_ms = memory_level_bests.best_time_ms
+                     AND EXCLUDED.best_moves < memory_level_bests.best_moves THEN EXCLUDED.best_moves
+                ELSE memory_level_bests.best_moves
+            END,
+            updated_at = NOW()
+        RETURNING
+            user_id,
+            level,
+            best_time_ms,
+            best_moves,
+            games_played,
+            completed_games,
+            updated_at
+        """,
+        (user_id, safe_level, safe_time_ms, safe_moves),
+        fetch="one",
+    ) or {}
+
+    summary = get_memory_best_summary(user_id)
+    return {
+        "new_record": is_new_record,
+        "best": row,
+        "summary": summary.get("summary") or {},
+        "levels": summary.get("rows") or [],
+    }
+
+
+def get_all_memory_ranking_rows() -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT
+            mlb.user_id,
+            u.username,
+            u.full_name,
+            ups.nickname,
+            COUNT(*) AS levels_completed,
+            AVG(mlb.best_time_ms) AS avg_best_time_ms,
+            AVG(mlb.best_moves) AS avg_best_moves,
+            COALESCE(SUM(mlb.completed_games), 0) AS completed_games
+        FROM memory_level_bests mlb
+        LEFT JOIN users u
+               ON u.user_id = mlb.user_id
+        LEFT JOIN user_profile_settings ups
+               ON ups.user_id = mlb.user_id
+        GROUP BY mlb.user_id, u.username, u.full_name, ups.nickname
+        HAVING COUNT(*) > 0
+        ORDER BY AVG(mlb.best_time_ms) ASC,
+                 AVG(mlb.best_moves) ASC,
+                 COUNT(*) DESC,
+                 COALESCE(SUM(mlb.completed_games), 0) DESC,
+                 mlb.user_id ASC
+        """,
+        fetch="all",
+    )
+    return rows or []
+
+
 def has_weekly_ranking_post_for_week(week_key: date) -> bool:
     row = _run(
         """
@@ -4508,6 +4665,39 @@ def save_weekly_ranking_post(week_key: date, payload: Dict[str, Any]) -> bool:
         fetch="one"
     )
     return bool(row)
+
+
+def create_memory_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS memory_level_bests (
+        user_id BIGINT NOT NULL,
+        level TEXT NOT NULL,
+        best_time_ms BIGINT NOT NULL,
+        best_moves INTEGER NOT NULL,
+        games_played INTEGER NOT NULL DEFAULT 0,
+        completed_games INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, level),
+        CONSTRAINT chk_memory_level
+            CHECK (level IN ('easy', 'medium', 'hard', 'extreme')),
+        CONSTRAINT chk_memory_best_time_ms
+            CHECK (best_time_ms > 0),
+        CONSTRAINT chk_memory_best_moves
+            CHECK (best_moves > 0)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_memory_level_bests_user
+    ON memory_level_bests (user_id, updated_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_memory_level_bests_global
+    ON memory_level_bests (best_time_ms ASC, best_moves ASC, user_id ASC)
+    """)
+
 
 # =========================================================
 # DUELS / XCARD COMBAT
