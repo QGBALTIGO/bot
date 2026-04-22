@@ -277,6 +277,7 @@ def create_tables():
     create_daily_tables()
     create_weekly_ranking_tables()
     create_trades_table()
+    create_duel_tables()
     create_message_tables()
     create_card_contrib_tables()
     create_global_character_images_table()
@@ -4507,6 +4508,169 @@ def save_weekly_ranking_post(week_key: date, payload: Dict[str, Any]) -> bool:
         fetch="one"
     )
     return bool(row)
+
+# =========================================================
+# DUELS / XCARD COMBAT
+# =========================================================
+
+def create_duel_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS duels (
+        duel_id BIGSERIAL PRIMARY KEY,
+        challenger_user_id BIGINT NOT NULL,
+        challenged_user_id BIGINT NOT NULL,
+        group_chat_id BIGINT NOT NULL,
+        group_chat_title TEXT,
+        group_message_id BIGINT,
+        state TEXT NOT NULL DEFAULT 'pending_challenge',
+        mode TEXT,
+        current_round INTEGER NOT NULL DEFAULT 0,
+        challenge_expires_at TIMESTAMPTZ NOT NULL,
+        prep_expires_at TIMESTAMPTZ,
+        round_expires_at TIMESTAMPTZ,
+        timeout_policy_prepare TEXT NOT NULL DEFAULT 'cancel',
+        timeout_policy_round TEXT NOT NULL DEFAULT 'forfeit_match',
+        timeout_policy_private TEXT NOT NULL DEFAULT 'cancel',
+        entry_fee INTEGER NOT NULL DEFAULT 0,
+        entry_fee_applied BOOLEAN NOT NULL DEFAULT FALSE,
+        entry_fee_refunded BOOLEAN NOT NULL DEFAULT FALSE,
+        winner_user_id BIGINT,
+        loser_user_id BIGINT,
+        resolution_reason TEXT,
+        reward_card_id BIGINT,
+        reward_transfer_status TEXT NOT NULL DEFAULT 'none',
+        players_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+        teams_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duels_state_updated
+    ON duels (state, updated_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duels_challenger_state
+    ON duels (challenger_user_id, state, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duels_challenged_state
+    ON duels (challenged_user_id, state, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duels_group_chat_created
+    ON duels (group_chat_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS duel_user_presence (
+        user_id BIGINT PRIMARY KEY,
+        duel_id BIGINT NOT NULL,
+        presence_state TEXT NOT NULL DEFAULT 'reserved',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duel_user_presence_duel
+    ON duel_user_presence (duel_id, updated_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_xcard_locks (
+        lock_id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        card_id BIGINT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        scope_type TEXT NOT NULL,
+        scope_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        released_at TIMESTAMPTZ
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_xcard_locks_user_status
+    ON user_xcard_locks (user_id, status, created_at DESC)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_xcard_locks_scope
+    ON user_xcard_locks (scope_type, scope_id, status)
+    """)
+
+    _run("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_user_xcard_locks_active_scope
+    ON user_xcard_locks (user_id, card_id, scope_type, scope_id)
+    WHERE status = 'active'
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS duel_rounds (
+        duel_id BIGINT NOT NULL,
+        round_no INTEGER NOT NULL,
+        choices_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        result_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (duel_id, round_no)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duel_rounds_duel_created
+    ON duel_rounds (duel_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS duel_events (
+        event_id BIGSERIAL PRIMARY KEY,
+        duel_id BIGINT NOT NULL,
+        actor_user_id BIGINT,
+        event_type TEXT NOT NULL,
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duel_events_duel_created
+    ON duel_events (duel_id, created_at DESC)
+    """)
+
+    _run("""
+    CREATE TABLE IF NOT EXISTS duel_stats (
+        user_id BIGINT PRIMARY KEY,
+        total_duels INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0,
+        friendly_wins INTEGER NOT NULL DEFAULT 0,
+        friendly_losses INTEGER NOT NULL DEFAULT 0,
+        wager_wins INTEGER NOT NULL DEFAULT 0,
+        wager_losses INTEGER NOT NULL DEFAULT 0,
+        surrendered INTEGER NOT NULL DEFAULT 0,
+        timeouts INTEGER NOT NULL DEFAULT 0,
+        cards_won INTEGER NOT NULL DEFAULT 0,
+        cards_lost INTEGER NOT NULL DEFAULT 0,
+        coins_spent INTEGER NOT NULL DEFAULT 0,
+        coins_refunded INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_duel_stats_wins
+    ON duel_stats (wins DESC, losses ASC, user_id ASC)
+    """)
+
 
 # =========================================================
 # CARD TRADES
