@@ -1930,83 +1930,341 @@ document.getElementById("deleteBtn").onclick = async function(){{ if (!window.co
 
 
 def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
+    extra_css = r"""
+.shop-inline-note{
+  margin-top:14px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(122,213,255,.20);
+  background:linear-gradient(180deg, rgba(122,213,255,.10), rgba(122,213,255,.04));
+  color:var(--muted-strong);
+  font-size:13px;
+  line-height:1.55;
+}
+.shop-inline-note strong{
+  display:block;
+  margin-bottom:4px;
+  color:var(--text);
+  font-size:13px;
+}
+.xshop-overview{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.xshop-info{
+  min-height:116px;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+}
+.xshop-info-label{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+.xshop-info-value{
+  display:block;
+  margin-top:10px;
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:28px;
+  font-weight:700;
+  line-height:1;
+}
+.xshop-info-sub{
+  display:block;
+  margin-top:10px;
+  color:var(--muted-strong);
+  font-size:12px;
+  line-height:1.45;
+}
+.xgroup-stack{
+  display:grid;
+  gap:16px;
+  margin-top:16px;
+}
+.xgroup-block{
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+}
+.xoffer-card .media-cover{
+  aspect-ratio:.72;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(122,213,255,.20), transparent 34%),
+    radial-gradient(circle at 80% 0%, rgba(255,111,148,.18), transparent 26%),
+    linear-gradient(180deg, rgba(12,18,34,.98), rgba(8,12,22,.98));
+}
+.xoffer-card .media-cover img{
+  object-fit:contain;
+  padding:14px;
+  position:relative;
+  z-index:0;
+}
+.xoffer-card .media-cover::after{
+  background:linear-gradient(180deg, rgba(2,5,12,.06) 32%, rgba(2,5,12,.74) 100%);
+}
+.xoffer-card--rare{
+  border-color:rgba(122,213,255,.28);
+}
+.xoffer-card--special{
+  border-color:rgba(255,111,148,.34);
+  box-shadow:0 26px 54px rgba(255,111,148,.10), var(--shadow-md);
+}
+.xoffer-stats{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.xoffer-stat{
+  padding:10px 12px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.04);
+}
+.xoffer-stat-label{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.xoffer-stat-value{
+  display:block;
+  margin-top:6px;
+  font-size:14px;
+  font-weight:800;
+  line-height:1.2;
+}
+.xoffer-copy{
+  margin-top:12px;
+  color:var(--muted-strong);
+  font-size:12px;
+  line-height:1.55;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:3;
+  overflow:hidden;
+}
+.xoffer-copy.xoffer-copy--muted{
+  color:var(--muted);
+}
+@media (max-width: 880px){
+  .xshop-overview{ grid-template-columns:1fr; }
+}
+"""
     body = f"""
 <section class="hero-card hero-card--compact">
-  <div class="hero-media"><img src="{_h(shop_banner_url)}" alt="Shop"></div>
+  <div class="hero-media"><img src="{_h(shop_banner_url)}" alt="Loja"></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="eyebrow-chip">Baltigo economy</div>
+    <div class="eyebrow-chip">Baltigo Economy</div>
     <h1 class="hero-title">Loja Baltigo</h1>
-    <p class="hero-subtitle">Venda cards, acompanhe o saldo real da conta e compre recursos com atualizacao silenciosa para refletir setfoto, exclusoes e mudancas da colecao sem reload manual.</p>
+    <p class="hero-subtitle">Venda cards normais, compre recursos da conta e acompanhe a sele&ccedil;&atilde;o di&aacute;ria de XCARDS com regras de n&iacute;vel, raridade e slot especial.</p>
     <div class="hero-metrics">
       <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="shopPlayerHero">...</span></div>
-      <div class="metric-card"><span class="metric-label">Coins</span><span class="metric-value" id="shopCoinsHero">...</span></div>
-      <div class="metric-card"><span class="metric-label">Dados</span><span class="metric-value" id="shopDadoHero">...</span></div>
-      <div class="metric-card"><span class="metric-label">Estado</span><span class="metric-value"><span class="pulse-dot"></span> Live sync</span></div>
+      <div class="metric-card"><span class="metric-label">Coins</span><span class="metric-value" id="shopCoinsHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">Dados</span><span class="metric-value" id="shopDadoHero">0</span></div>
+      <div class="metric-card"><span class="metric-label">N&iacute;vel</span><span class="metric-value" id="shopLevelHero">1</span></div>
     </div>
   </div>
 </section>
 
 <section class="panel">
   <div class="section-head">
-    <div><div class="section-kicker">Economia</div><h2 class="section-title">Compra e venda</h2></div>
-    <div class="section-meta" id="shopMeta">Carregando loja...</div>
+    <div><div class="section-kicker">Economia</div><h2 class="section-title">Compra, venda e rota&ccedil;&atilde;o di&aacute;ria</h2></div>
+    <div class="section-meta" id="shopMeta">Preparando a loja...</div>
   </div>
   <div class="pill-row" style="margin-top:14px;">
     <span class="soft-pill soft-pill--cool" id="shopNicknamePill">Conta: ...</span>
-    <span class="soft-pill" id="shopCollectionPill">Colecao: ...</span>
+    <span class="soft-pill" id="shopCollectionPill">Cole&ccedil;&atilde;o: ...</span>
+    <span class="soft-pill" id="shopXCollectionPill">XCards: ...</span>
+    <span class="soft-pill" id="shopRefreshPill">Renova&ccedil;&atilde;o: ...</span>
     <span class="soft-pill">UID {_h(uid) if int(uid) > 0 else "--"}</span>
   </div>
   <div class="segmented" style="margin-top:14px;">
     <button type="button" class="segmented-btn active" id="tabSellBtn">Vender</button>
     <button type="button" class="segmented-btn" id="tabBuyBtn">Comprar</button>
+    <button type="button" class="segmented-btn" id="tabXcardsBtn">XCARDS</button>
   </div>
 </section>
 
 <section class="panel panel--soft" id="sellView">
   <div class="stack">
     <div class="section-head">
-      <div><div class="section-kicker">Colecao</div><h2 class="section-title">Vender personagens</h2></div>
-      <div class="section-meta" id="sellMeta">Carregando colecao...</div>
+      <div><div class="section-kicker">Cole&ccedil;&atilde;o</div><h2 class="section-title">Vender personagens normais</h2></div>
+      <div class="section-meta" id="sellMeta">Carregando cards da sua cole&ccedil;&atilde;o...</div>
     </div>
     <label class="searchbar"><span class="input-icon">Busca</span><input id="sellSearchInput" type="text" placeholder="Buscar personagem ou anime..."></label>
     <div class="media-grid" id="sellGrid"></div>
-    <div id="sellEmpty" class="empty-state" style="display:none;"><strong>Nada para vender</strong>Sua busca nao encontrou cards ou a colecao esta vazia.</div>
+    <div id="sellEmpty" class="empty-state" style="display:none;"><strong>Nada para vender</strong>Sua busca n&atilde;o encontrou cards ou a cole&ccedil;&atilde;o est&aacute; vazia.</div>
   </div>
 </section>
 
 <section class="panel panel--soft" id="buyView" style="display:none;">
   <div class="section-head">
-    <div><div class="section-kicker">Loja</div><h2 class="section-title">Recursos disponiveis</h2></div>
-    <div class="section-meta">A mesma linguagem visual da colecao, so que agora com foco em decisao rapida.</div>
+    <div><div class="section-kicker">Conta</div><h2 class="section-title">Compras r&aacute;pidas</h2></div>
+    <div class="section-meta">Toda compra pede confirma&ccedil;&atilde;o antes de gastar suas coins.</div>
+  </div>
+  <div class="shop-inline-note">
+    <strong>Compras simples, sem polui&ccedil;&atilde;o visual.</strong>
+    O foco aqui &eacute; resolver r&aacute;pido: mais um dado para continuar usando o sistema ou uma nova altera&ccedil;&atilde;o de nickname quando voc&ecirc; quiser mudar a identidade da conta.
   </div>
   <div class="buy-grid" style="margin-top:14px;">
-    <article class="buy-tile"><h3 class="buy-title">Comprar dado</h3><p class="buy-copy">Adiciona mais um dado ao seu saldo atual para continuar usando o sistema sem esperar.</p><div class="buy-price">Preco: 2 coins</div><button class="action-btn action-btn--cool" id="buyDadoBtn" style="margin-top:14px; width:100%;">Comprar dado</button></article>
-    <article class="buy-tile"><h3 class="buy-title">Alterar nickname</h3><p class="buy-copy">Libera uma nova troca de nickname no seu perfil. Ideal para quem quer mudar a identidade visual da conta.</p><div class="buy-price">Preco: 3 coins</div><button class="action-btn action-btn--primary" id="buyNickBtn" style="margin-top:14px; width:100%;">Comprar nickname</button></article>
+    <article class="buy-tile">
+      <h3 class="buy-title">Comprar dado</h3>
+      <p class="buy-copy">Adiciona mais um dado ao seu saldo atual para continuar usando o sistema sem esperar a recarga natural.</p>
+      <div class="buy-price">Pre&ccedil;o: 2 coins</div>
+      <button class="action-btn action-btn--cool" id="buyDadoBtn" style="margin-top:14px; width:100%;">Comprar dado</button>
+    </article>
+    <article class="buy-tile">
+      <h3 class="buy-title">Alterar nickname</h3>
+      <p class="buy-copy">Libera uma nova troca de nickname no seu perfil para quando voc&ecirc; quiser renovar o nome exibido no bot.</p>
+      <div class="buy-price">Pre&ccedil;o: 3 coins</div>
+      <button class="action-btn action-btn--primary" id="buyNickBtn" style="margin-top:14px; width:100%;">Comprar altera&ccedil;&atilde;o</button>
+    </article>
+  </div>
+</section>
+
+<section class="panel panel--soft" id="xcardsView" style="display:none;">
+  <div class="section-head">
+    <div><div class="section-kicker">XCARDS</div><h2 class="section-title">Loja di&aacute;ria de cartas</h2></div>
+    <div class="section-meta" id="xcardsMeta">Preparando a sele&ccedil;&atilde;o do dia...</div>
+  </div>
+  <div class="xshop-overview">
+    <article class="xshop-info">
+      <span class="xshop-info-label">Renova&ccedil;&atilde;o</span>
+      <span class="xshop-info-value" id="xshopRefreshCountdown">--</span>
+      <span class="xshop-info-sub" id="xshopRefreshSub">A loja de XCARDS renova a cada 24h.</span>
+    </article>
+    <article class="xshop-info">
+      <span class="xshop-info-label">Seu n&iacute;vel</span>
+      <span class="xshop-info-value" id="xshopLevelValue">1</span>
+      <span class="xshop-info-sub">Faixas maiores de BP pedem n&iacute;veis mais altos.</span>
+    </article>
+    <article class="xshop-info">
+      <span class="xshop-info-label">Cole&ccedil;&atilde;o X</span>
+      <span class="xshop-info-value" id="xshopCollectionValue">0</span>
+      <span class="xshop-info-sub">Quantidade de XCARDS &uacute;nicos que j&aacute; s&atilde;o seus.</span>
+    </article>
+  </div>
+  <div class="pill-row" style="margin-top:14px;">
+    <span class="soft-pill soft-pill--cool">6 normais</span>
+    <span class="soft-pill">2 raros</span>
+    <span class="soft-pill soft-pill--accent">1 especial</span>
+    <span class="soft-pill">R soma +10</span>
+    <span class="soft-pill">SR soma +25</span>
+    <span class="soft-pill">Alt-art &eacute; cosm&eacute;tico</span>
+  </div>
+  <div class="shop-inline-note">
+    <strong>Din&acirc;mica da vitrine di&aacute;ria.</strong>
+    Os slots seguem faixa de BP e exigem n&iacute;vel m&iacute;nimo. UR, SP e Alt-Art ficam reservados ao slot especial. Alt-art n&atilde;o &eacute; mais forte: &eacute; item de cole&ccedil;&atilde;o.
+  </div>
+  <div class="xgroup-stack">
+    <div class="xgroup-block">
+      <div class="section-head">
+        <div><div class="section-kicker">Normais</div><h3 class="card-title">Base da rota&ccedil;&atilde;o</h3></div>
+        <div class="section-meta" id="xcardsNormalMeta">Carregando slots normais...</div>
+      </div>
+      <div class="media-grid" id="xcardsNormalGrid" style="margin-top:14px;"></div>
+      <div id="xcardsNormalEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem cards normais</strong>A rota&ccedil;&atilde;o de hoje ainda n&atilde;o foi montada.</div>
+    </div>
+    <div class="xgroup-block">
+      <div class="section-head">
+        <div><div class="section-kicker">Raros</div><h3 class="card-title">Vitrine intermedi&aacute;ria</h3></div>
+        <div class="section-meta" id="xcardsRareMeta">Carregando slots raros...</div>
+      </div>
+      <div class="media-grid" id="xcardsRareGrid" style="margin-top:14px;"></div>
+      <div id="xcardsRareEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem cards raros</strong>Nenhuma oferta rara foi encontrada para hoje.</div>
+    </div>
+    <div class="xgroup-block">
+      <div class="section-head">
+        <div><div class="section-kicker">Especial</div><h3 class="card-title">Slot premium do dia</h3></div>
+        <div class="section-meta" id="xcardsSpecialMeta">Carregando slot especial...</div>
+      </div>
+      <div class="media-grid" id="xcardsSpecialGrid" style="margin-top:14px;"></div>
+      <div id="xcardsSpecialEmpty" class="empty-state" style="display:none; margin-top:14px;"><strong>Sem slot especial</strong>O slot especial ainda n&atilde;o foi gerado.</div>
+    </div>
   </div>
 </section>
 
 <div id="shopNote" class="floating-note">Loja sendo carregada...</div>
-<div class="footer-note">Source Baltigo . Shop</div>
+<div class="footer-note">Baltigo . Loja</div>
 """
     js = f"""
 const SHOP_UID = resolveWebappUid({int(uid)});
 const tgShop = getTelegramWebApp();
 if (tgShop) {{ try {{ tgShop.ready(); tgShop.expand(); }} catch(err) {{}} }}
+
 const shopNote = document.getElementById("shopNote");
-const shopState = {{ items: [], coins: 0, dado_balance: 0, q: "", profile: null }};
-function setShopNote(message, tone){{ shopNote.textContent = message || ""; shopNote.dataset.tone = tone || ""; }}
-function syncShopHero(){{
+const shopState = {{
+  tab: "sell",
+  items: [],
+  coins: 0,
+  dado_balance: 0,
+  q: "",
+  profile: null,
+  refresh: null,
+  xcards: {{ normal: [], rare: [], special: [] }}
+}};
+
+function setShopNote(message, tone){{
+  shopNote.textContent = message || "";
+  shopNote.dataset.tone = tone || "";
+}}
+
+function userDisplayName(){{
   const profile = shopState.profile || {{}};
   const nickname = String(profile.nickname || "").trim();
   const displayName = String(profile.display_name || profile.full_name || (SHOP_UID > 0 ? ("UID " + SHOP_UID) : "Jogador"));
-  document.getElementById("shopPlayerHero").textContent = nickname || displayName;
+  return nickname || displayName;
+}}
+
+function setShopTab(tab){{
+  shopState.tab = String(tab || "sell");
+  document.getElementById("tabSellBtn").classList.toggle("active", shopState.tab === "sell");
+  document.getElementById("tabBuyBtn").classList.toggle("active", shopState.tab === "buy");
+  document.getElementById("tabXcardsBtn").classList.toggle("active", shopState.tab === "xcards");
+  document.getElementById("sellView").style.display = shopState.tab === "sell" ? "" : "none";
+  document.getElementById("buyView").style.display = shopState.tab === "buy" ? "" : "none";
+  document.getElementById("xcardsView").style.display = shopState.tab === "xcards" ? "" : "none";
+}}
+
+function syncShopHero(){{
+  const profile = shopState.profile || {{}};
+  const nickname = String(profile.nickname || "").trim();
+  const displayName = userDisplayName();
+  const level = Number((profile.level != null ? profile.level : 1) || 1);
+  const collectionTotal = Number(profile.collection_total || 0);
+  const xcollectionTotal = Number(profile.xcollection_total || 0);
+  const refresh = shopState.refresh || {{}};
+  const refreshCountdown = String(refresh.countdown_label || "--");
+  const refreshClock = String(refresh.next_refresh_hhmm || "--:--");
+
+  document.getElementById("shopPlayerHero").textContent = displayName;
   document.getElementById("shopCoinsHero").textContent = String(shopState.coins || 0);
   document.getElementById("shopDadoHero").textContent = String(shopState.dado_balance || 0);
-  document.getElementById("shopNicknamePill").textContent = nickname ? ("@" + nickname) : displayName;
-  document.getElementById("shopCollectionPill").textContent = "Colecao: " + String(profile.collection_total || 0);
-  document.getElementById("shopMeta").textContent = "Atualizado " + humanClock() + " . Coins " + String(shopState.coins || 0) + " . Dados " + String(shopState.dado_balance || 0);
+  document.getElementById("shopLevelHero").textContent = String(level || 1);
+  document.getElementById("shopNicknamePill").textContent = nickname ? ("Conta: @" + nickname) : ("Conta: " + displayName);
+  document.getElementById("shopCollectionPill").textContent = "Cole\\u00e7\\u00e3o: " + String(collectionTotal || 0);
+  document.getElementById("shopXCollectionPill").textContent = "XCards: " + String(xcollectionTotal || 0);
+  document.getElementById("shopRefreshPill").textContent = "Renova\\u00e7\\u00e3o: " + refreshCountdown;
+  document.getElementById("shopMeta").textContent = "Atualizado " + humanClock() + " . Coins " + String(shopState.coins || 0) + " . Dados " + String(shopState.dado_balance || 0) + " . XCARDS " + refreshCountdown + " at\\u00e9 " + refreshClock;
+
+  document.getElementById("xshopRefreshCountdown").textContent = refreshCountdown;
+  document.getElementById("xshopRefreshSub").textContent = "Renova hoje novamente \\u00e0s " + refreshClock + ".";
+  document.getElementById("xshopLevelValue").textContent = String(level || 1);
+  document.getElementById("xshopCollectionValue").textContent = String(xcollectionTotal || 0);
 }}
+
 function renderSellGrid(){{
   const root = document.getElementById("sellGrid");
   const empty = document.getElementById("sellEmpty");
@@ -2016,7 +2274,7 @@ function renderSellGrid(){{
     const hay = (String(item.character_id || "") + " " + String(item.character_name || "") + " " + String(item.anime_title || "")).toLowerCase();
     return hay.includes(q);
   }});
-  document.getElementById("sellMeta").textContent = "Mostrando " + String(items.length) + " cards disponiveis para venda";
+  document.getElementById("sellMeta").textContent = "Mostrando " + String(items.length) + " cards dispon\\u00edveis para venda";
   if (!items.length){{
     root.innerHTML = "";
     empty.style.display = "";
@@ -2028,29 +2286,136 @@ function renderSellGrid(){{
     const img = item.image ? '<img src="' + esc(item.image) + '" alt="' + esc(item.character_name) + '" loading="lazy" onerror="setImageFallback(this,\\'CARD\\')">' : "";
     return ''
       + '<article class="media-card">'
-      + '<div class="media-cover">' + img + '<div class="media-badge media-badge--cool">Sell</div><div class="media-count">x' + esc(item.quantity || 0) + '</div></div>'
+      + '<div class="media-cover">' + img + '<div class="media-badge media-badge--cool">Venda</div><div class="media-count">x' + esc(item.quantity || 0) + '</div></div>'
       + '<div class="media-body"><h3 class="card-title">' + esc(item.character_name) + '</h3><div class="pill-row"><span class="soft-pill">' + esc(item.anime_title || "") + '</span>' + rarity + '</div><button class="action-btn action-btn--primary" style="width:100%; margin-top:14px;" data-sell="' + esc(item.character_id) + '">Vender +1 coin</button></div>'
       + '</article>';
   }}).join("");
   root.querySelectorAll("[data-sell]").forEach(function(button){{
     button.onclick = async function(){{
       const characterId = Number(button.getAttribute("data-sell") || 0);
+      const item = shopState.items.find(function(entry){{ return Number(entry.character_id || 0) === characterId; }}) || {{}};
+      const targetName = String(item.character_name || "este personagem");
+      if (!window.confirm('Tem certeza que deseja vender "' + targetName + '" por 1 coin?')) return;
       button.disabled = true;
       setShopNote("Vendendo personagem...", "");
       const response = await authJson("/api/shop/sell/confirm", {{ uid: SHOP_UID, method: "POST", json: {{ character_id: characterId }} }});
       if (!response.ok || !response.data.ok){{
-        setShopNote("Erro ao vender: " + ((response.data && response.data.error) || "Nao foi possivel vender."), "error");
+        setShopNote("Erro ao vender: " + ((response.data && response.data.error) || "N\\u00e3o foi poss\\u00edvel vender."), "error");
         button.disabled = false;
         return;
       }}
       shopState.coins = Number(response.data.coins || shopState.coins || 0);
-      syncShopHero();
       await loadShopCollection({{ silent: true }});
       await loadShopContext({{ silent: true }});
+      await loadShopState({{ silent: true }});
+      syncShopHero();
       setShopNote("Personagem vendido com sucesso.", "success");
     }};
   }});
 }}
+
+function xcardGroupTone(group){{
+  if (group === "special") return "accent";
+  if (group === "rare") return "cool";
+  return "";
+}}
+
+function xcardActionState(item){{
+  const price = Number(item.price || 0);
+  const coins = Number(shopState.coins || 0);
+  if (item.purchased) return {{ disabled: true, label: "Comprado hoje", tone: "cool" }};
+  if (item.locked) return {{ disabled: true, label: "N\\u00edvel " + String(item.level_required || 1), tone: "" }};
+  if (coins < price) return {{ disabled: true, label: "Faltam " + String(price - coins) + " coins", tone: "" }};
+  if (item.slot_group === "special") return {{ disabled: false, label: "Comprar slot especial", tone: "primary" }};
+  if (item.slot_group === "rare") return {{ disabled: false, label: "Comprar card raro", tone: "cool" }};
+  return {{ disabled: false, label: "Comprar card", tone: "cool" }};
+}}
+
+function renderXcardOffer(item){{
+  const card = item.card || {{}};
+  const action = xcardActionState(item);
+  const image = card.image ? '<img src="' + esc(card.image) + '" alt="' + esc(card.name || "XCard") + '" loading="lazy" onerror="setImageFallback(this,\\'XCARD\\')">' : "";
+  const pills = []
+    .concat(card.anime ? ['<span class="soft-pill soft-pill--cool">' + esc(card.anime) + '</span>'] : [])
+    .concat(card.card_no ? ['<span class="soft-pill">ID ' + esc(card.card_no) + '</span>'] : [])
+    .concat(card.rarity_label ? ['<span class="soft-pill' + (item.slot_group === "special" ? ' soft-pill--accent' : '') + '">' + esc(card.rarity_label) + '</span>'] : [])
+    .concat(card.alt_art ? ['<span class="soft-pill soft-pill--accent">Alt-Art</span>'] : [])
+    .concat(item.purchased ? ['<span class="soft-pill">Comprado hoje</span>'] : [])
+    .join("");
+  const effect = String(card.effect || "").trim();
+  const trigger = String(card.trigger || "").trim();
+  const actionClass = action.tone === "primary" ? "action-btn action-btn--primary" : action.tone === "cool" ? "action-btn action-btn--cool" : "action-btn";
+  return ''
+    + '<article class="media-card xoffer-card xoffer-card--' + esc(item.slot_group || "normal") + '">'
+    +   '<div class="media-cover">' + image + '<div class="media-badge' + (xcardGroupTone(item.slot_group) ? (' media-badge--' + xcardGroupTone(item.slot_group)) : '') + '">' + esc(item.slot_group_label || "Normal") + '</div><div class="media-count">' + esc(card.rarity || "--") + '</div></div>'
+    +   '<div class="media-body">'
+    +     '<h3 class="card-title">' + esc(card.name || "XCard") + '</h3>'
+    +     '<div class="pill-row">' + pills + '</div>'
+    +     '<div class="xoffer-stats">'
+    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">Pre\\u00e7o</span><span class="xoffer-stat-value">' + esc(item.price || 0) + ' coins</span></div>'
+    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">N\\u00edvel</span><span class="xoffer-stat-value">Nv. ' + esc(item.level_required || 1) + '</span></div>'
+    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">PA</span><span class="xoffer-stat-value">' + esc(card.bp || "--") + '</span></div>'
+    +       '<div class="xoffer-stat"><span class="xoffer-stat-label">Custo AP</span><span class="xoffer-stat-value">' + esc(card.ap_cost || "--") + '</span></div>'
+    +     '</div>'
+    +     '<div class="xoffer-copy">' + esc(effect || "Sem efeito registrado para este card.") + '</div>'
+    +     '<div class="xoffer-copy xoffer-copy--muted">' + esc(trigger && trigger !== "-" ? ("Acionar: " + trigger) : (card.alt_art ? "Alt-art conta como a mesma carta para constru\\u00e7\\u00e3o de deck. Ela \\u00e9 cosm\\u00e9tica." : "Acionar n\\u00e3o registrado.")) + '</div>'
+    +     '<button class="' + actionClass + '" style="width:100%; margin-top:14px;" data-xbuy="' + esc(item.slot_code || "") + '"' + (action.disabled ? ' disabled' : '') + '>' + esc(action.label) + '</button>'
+    +   '</div>'
+    + '</article>';
+}}
+
+function renderXcardGroup(groupName, rootId, emptyId, metaId){{
+  const root = document.getElementById(rootId);
+  const empty = document.getElementById(emptyId);
+  const items = Array.isArray((shopState.xcards || {{}})[groupName]) ? shopState.xcards[groupName] : [];
+  const labels = {{
+    normal: "6 slots de entrada para montar cole\\u00e7\\u00e3o.",
+    rare: "2 slots com cards mais valiosos.",
+    special: "1 slot premium com UR, SP ou Alt-Art."
+  }};
+  document.getElementById(metaId).textContent = items.length ? labels[groupName] : "Nenhuma oferta dispon\\u00edvel agora.";
+  if (!items.length){{
+    root.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }}
+  empty.style.display = "none";
+  root.innerHTML = items.map(renderXcardOffer).join("");
+  root.querySelectorAll("[data-xbuy]").forEach(function(button){{
+    button.onclick = async function(){{
+      const slotCode = String(button.getAttribute("data-xbuy") || "");
+      const item = items.find(function(entry){{ return String(entry.slot_code || "") === slotCode; }});
+      if (!item) return;
+      const card = item.card || {{}};
+      const confirmMessage = 'Tem certeza que deseja comprar "' + String(card.name || "XCard") + '" (' + String(card.card_no || "--") + ') por ' + String(item.price || 0) + ' coins?';
+      if (!window.confirm(confirmMessage)) return;
+      button.disabled = true;
+      setShopNote("Comprando XCARD...", "");
+      const response = await authJson("/api/shop/xcards/buy", {{ uid: SHOP_UID, method: "POST", json: {{ slot_code: slotCode }} }});
+      if (!response.ok || !response.data.ok){{
+        setShopNote("Erro ao comprar XCARD: " + ((response.data && response.data.error) || "N\\u00e3o foi poss\\u00edvel concluir a compra."), "error");
+        await loadShopState({{ silent: true }});
+        await loadXcardDailyShop({{ silent: true }});
+        syncShopHero();
+        return;
+      }}
+      shopState.coins = Number(response.data.coins || shopState.coins || 0);
+      await loadShopContext({{ silent: true }});
+      await loadShopState({{ silent: true }});
+      await loadXcardDailyShop({{ silent: true }});
+      syncShopHero();
+      const purchase = (response.data && response.data.purchase) || {{}};
+      setShopNote('XCARD comprado: ' + String(purchase.card_name || card.name || "Card") + '.', "success");
+    }};
+  }});
+}}
+
+function renderXcards(){{
+  renderXcardGroup("normal", "xcardsNormalGrid", "xcardsNormalEmpty", "xcardsNormalMeta");
+  renderXcardGroup("rare", "xcardsRareGrid", "xcardsRareEmpty", "xcardsRareMeta");
+  renderXcardGroup("special", "xcardsSpecialGrid", "xcardsSpecialEmpty", "xcardsSpecialMeta");
+}}
+
 async function loadShopContext(options){{
   const response = await authJson("/api/webapp/context", {{ uid: SHOP_UID }});
   if (!response.ok || !response.data.ok) throw new Error("Falha ao identificar o jogador da loja.");
@@ -2062,14 +2427,19 @@ async function loadShopContext(options){{
   syncShopHero();
   if (!(options && options.silent)) setShopNote("Jogador identificado com sucesso.", "success");
 }}
+
 async function loadShopState(options){{
   const response = await authJson("/api/shop/state", {{ uid: SHOP_UID }});
-  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar estado da loja.");
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar o estado da loja.");
   shopState.coins = Number(response.data.coins || 0);
   shopState.dado_balance = Number(response.data.dado_balance || 0);
+  if (response.data.refresh) shopState.refresh = response.data.refresh;
+  if (shopState.profile && response.data.level != null) shopState.profile.level = Number(response.data.level || 1);
+  if (shopState.profile && response.data.xcollection_total != null) shopState.profile.xcollection_total = Number(response.data.xcollection_total || 0);
   syncShopHero();
-  if (!(options && options.silent)) setShopNote("Estado da loja carregado.", "success");
+  if (!(options && options.silent)) setShopNote("Estado da loja atualizado.", "success");
 }}
+
 async function loadShopCollection(options){{
   const opts = options || {{}};
   if (!opts.silent && !shopState.items.length) setSkeleton("sellGrid", 6);
@@ -2077,34 +2447,53 @@ async function loadShopCollection(options){{
   if (!response.ok || !response.data.ok){{
     shopState.items = [];
     renderSellGrid();
-    throw new Error("Falha ao carregar personagens da colecao.");
+    throw new Error("Falha ao carregar personagens da cole\\u00e7\\u00e3o.");
   }}
   shopState.items = Array.isArray(response.data.items) ? response.data.items : [];
   renderSellGrid();
-  if (!opts.silent) setShopNote("Colecao carregada para venda.", "success");
+  if (!opts.silent) setShopNote("Cole\\u00e7\\u00e3o pronta para venda.", "success");
 }}
+
+async function loadXcardDailyShop(options){{
+  const opts = options || {{}};
+  if (!opts.silent){{
+    setSkeleton("xcardsNormalGrid", 6);
+    setSkeleton("xcardsRareGrid", 2);
+    setSkeleton("xcardsSpecialGrid", 1);
+  }}
+  const response = await authJson("/api/shop/xcards/daily", {{ uid: SHOP_UID }});
+  if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar a loja di\\u00e1ria de XCARDS.");
+  shopState.xcards = response.data.groups || {{ normal: [], rare: [], special: [] }};
+  if (response.data.refresh) shopState.refresh = response.data.refresh;
+  shopState.coins = Number(response.data.coins || shopState.coins || 0);
+  if (shopState.profile){{
+    shopState.profile.level = Number(response.data.level || shopState.profile.level || 1);
+    shopState.profile.xcollection_total = Number(response.data.xcollection_total || shopState.profile.xcollection_total || 0);
+  }}
+  renderXcards();
+  syncShopHero();
+  document.getElementById("xcardsMeta").textContent = "9 ofertas por dia . 6 normais . 2 raros . 1 especial.";
+  if (!opts.silent) setShopNote("Loja di\\u00e1ria de XCARDS carregada.", "success");
+}}
+
 async function refreshShop(){{
   await loadShopContext({{ silent: true }});
   await loadShopState({{ silent: true }});
   await loadShopCollection({{ silent: true }});
+  await loadXcardDailyShop({{ silent: true }});
 }}
+
 document.getElementById("sellSearchInput").addEventListener("input", debounce(function(event){{
   shopState.q = String(event.target.value || "");
   renderSellGrid();
 }}, 120));
-document.getElementById("tabSellBtn").onclick = function(){{
-  document.getElementById("tabSellBtn").classList.add("active");
-  document.getElementById("tabBuyBtn").classList.remove("active");
-  document.getElementById("sellView").style.display = "";
-  document.getElementById("buyView").style.display = "none";
-}};
-document.getElementById("tabBuyBtn").onclick = function(){{
-  document.getElementById("tabBuyBtn").classList.add("active");
-  document.getElementById("tabSellBtn").classList.remove("active");
-  document.getElementById("buyView").style.display = "";
-  document.getElementById("sellView").style.display = "none";
-}};
+
+document.getElementById("tabSellBtn").onclick = function(){{ setShopTab("sell"); }};
+document.getElementById("tabBuyBtn").onclick = function(){{ setShopTab("buy"); }};
+document.getElementById("tabXcardsBtn").onclick = function(){{ setShopTab("xcards"); }};
+
 document.getElementById("buyDadoBtn").onclick = async function(){{
+  if (!window.confirm("Tem certeza que deseja comprar 1 dado por 2 coins?")) return;
   setShopNote("Comprando dado...", "");
   const response = await authJson("/api/shop/buy/dado", {{ uid: SHOP_UID, method: "POST", json: {{}} }});
   if (!response.ok || !response.data.ok){{
@@ -2113,34 +2502,41 @@ document.getElementById("buyDadoBtn").onclick = async function(){{
   }}
   shopState.coins = Number(response.data.coins || shopState.coins || 0);
   shopState.dado_balance = Number(response.data.dado_balance || shopState.dado_balance || 0);
-  syncShopHero();
   await loadShopContext({{ silent: true }});
+  await loadShopState({{ silent: true }});
+  syncShopHero();
   setShopNote("Dado comprado com sucesso.", "success");
 }};
+
 document.getElementById("buyNickBtn").onclick = async function(){{
-  setShopNote("Comprando alteracao de nickname...", "");
+  if (!window.confirm("Tem certeza que deseja comprar uma nova altera\\u00e7\\u00e3o de nickname por 3 coins?")) return;
+  setShopNote("Comprando altera\\u00e7\\u00e3o de nickname...", "");
   const response = await authJson("/api/shop/buy/nickname", {{ uid: SHOP_UID, method: "POST", json: {{}} }});
   if (!response.ok || !response.data.ok){{
-    setShopNote("Erro ao comprar alteracao: " + ((response.data && response.data.error) || "Coins insuficientes."), "error");
+    setShopNote("Erro ao comprar altera\\u00e7\\u00e3o: " + ((response.data && response.data.error) || "Coins insuficientes."), "error");
     return;
   }}
   shopState.coins = Number(response.data.coins || shopState.coins || 0);
-  syncShopHero();
   await loadShopContext({{ silent: true }});
-  setShopNote("Alteracao de nickname liberada.", "success");
+  await loadShopState({{ silent: true }});
+  syncShopHero();
+  setShopNote("Altera\\u00e7\\u00e3o de nickname liberada.", "success");
 }};
+
 (async function(){{
   try {{
+    setShopTab("sell");
     await loadShopContext({{ silent: true }});
-    await loadShopState({{ silent: false }});
+    await loadShopState({{ silent: true }});
     await loadShopCollection({{ silent: false }});
-    createLiveRefresh(refreshShop, 5000);
+    await loadXcardDailyShop({{ silent: false }});
+    createLiveRefresh(refreshShop, 30000);
   }} catch(err) {{
     setShopNote(err.message, "error");
   }}
 }})();
 """
-    return _page_template("Shop", body, extra_js=js, include_tg=True)
+    return _page_template("Loja", body, extra_css=extra_css, extra_js=js, include_tg=True)
 
 
 def _uid_query(uid: int) -> str:
