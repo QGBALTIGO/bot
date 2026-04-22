@@ -267,6 +267,7 @@ def create_tables():
     create_users_table()
     create_media_request_tables()
     create_cards_tables()
+    create_xcards_tables()
     create_collection_tables()
     create_level_tables()
     create_termo_tables()
@@ -828,6 +829,29 @@ def create_cards_tables():
     _run("""
     CREATE INDEX IF NOT EXISTS idx_user_card_collection_user
     ON user_card_collection (user_id)
+    """)
+
+
+def create_xcards_tables():
+    _run("""
+    CREATE TABLE IF NOT EXISTS user_xcard_collection (
+        user_id BIGINT NOT NULL,
+        card_id BIGINT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, card_id)
+    )
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_xcard_collection_card
+    ON user_xcard_collection (card_id)
+    """)
+
+    _run("""
+    CREATE INDEX IF NOT EXISTS idx_user_xcard_collection_user
+    ON user_xcard_collection (user_id)
     """)
 
 
@@ -1534,6 +1558,148 @@ def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
         WHERE user_id = %s
           AND quantity > 0
         ORDER BY quantity DESC, updated_at DESC, character_id ASC
+        """,
+        (int(user_id),),
+        fetch="all"
+    )
+    return rows or []
+
+
+def get_user_xcard_quantity(user_id: int, card_id: int) -> int:
+    row = _run(
+        """
+        SELECT quantity
+        FROM user_xcard_collection
+        WHERE user_id = %s AND card_id = %s
+        """,
+        (int(user_id), int(card_id)),
+        fetch="one"
+    )
+    if not row:
+        return 0
+    return int(row.get("quantity") or 0)
+
+
+def add_xcard_copy(user_id: int, card_id: int, amount: int = 1):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    _run(
+        """
+        INSERT INTO user_xcard_collection (user_id, card_id, quantity, updated_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id, card_id)
+        DO UPDATE SET
+            quantity = user_xcard_collection.quantity + EXCLUDED.quantity,
+            updated_at = NOW()
+        """,
+        (int(user_id), int(card_id), amount)
+    )
+
+
+def remove_xcard_copy(user_id: int, card_id: int, amount: int = 1):
+    amount = int(amount)
+    if amount <= 0:
+        return
+
+    row = _run(
+        """
+        SELECT quantity
+        FROM user_xcard_collection
+        WHERE user_id = %s AND card_id = %s
+        """,
+        (int(user_id), int(card_id)),
+        fetch="one"
+    )
+
+    current = int((row or {}).get("quantity") or 0)
+    new_qty = max(0, current - amount)
+
+    if current == 0:
+        return
+
+    if new_qty == 0:
+        _run(
+            """
+            DELETE FROM user_xcard_collection
+            WHERE user_id = %s AND card_id = %s
+            """,
+            (int(user_id), int(card_id))
+        )
+    else:
+        _run(
+            """
+            UPDATE user_xcard_collection
+            SET quantity = %s,
+                updated_at = NOW()
+            WHERE user_id = %s AND card_id = %s
+            """,
+            (new_qty, int(user_id), int(card_id))
+        )
+
+
+def set_xcard_quantity(user_id: int, card_id: int, quantity: int):
+    quantity = int(quantity)
+
+    if quantity <= 0:
+        _run(
+            """
+            DELETE FROM user_xcard_collection
+            WHERE user_id = %s AND card_id = %s
+            """,
+            (int(user_id), int(card_id))
+        )
+        return
+
+    _run(
+        """
+        INSERT INTO user_xcard_collection (user_id, card_id, quantity, updated_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id, card_id)
+        DO UPDATE SET
+            quantity = EXCLUDED.quantity,
+            updated_at = NOW()
+        """,
+        (int(user_id), int(card_id), quantity)
+    )
+
+
+def get_xcard_total_copies(card_id: int) -> int:
+    row = _run(
+        """
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM user_xcard_collection
+        WHERE card_id = %s
+        """,
+        (int(card_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def get_xcard_owner_count(card_id: int) -> int:
+    row = _run(
+        """
+        SELECT COUNT(*) AS total
+        FROM user_xcard_collection
+        WHERE card_id = %s
+          AND quantity > 0
+        """,
+        (int(card_id),),
+        fetch="one"
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def get_user_xcard_collection(user_id: int) -> List[Dict[str, Any]]:
+    rows = _run(
+        """
+        SELECT user_id, card_id, quantity, first_obtained_at, updated_at
+        FROM user_xcard_collection
+        WHERE user_id = %s
+          AND quantity > 0
+        ORDER BY quantity DESC, updated_at DESC, card_id ASC
         """,
         (int(user_id),),
         fetch="all"
@@ -3180,6 +3346,7 @@ def delete_user_account(user_id: int):
     user_id = int(user_id)
 
     _run("DELETE FROM user_card_collection WHERE user_id = %s", (user_id,))
+    _run("DELETE FROM user_xcard_collection WHERE user_id = %s", (user_id,))
     _run("DELETE FROM user_progress WHERE user_id = %s", (user_id,))
     _run("DELETE FROM termo_games WHERE user_id = %s", (user_id,))
     _run("DELETE FROM termo_stats WHERE user_id = %s", (user_id,))
@@ -4071,6 +4238,7 @@ def delete_all_users():
         with conn.cursor() as cur:
 
             cur.execute("TRUNCATE TABLE user_card_collection CASCADE")
+            cur.execute("TRUNCATE TABLE user_xcard_collection CASCADE")
             cur.execute("TRUNCATE TABLE user_progress CASCADE")
             cur.execute("TRUNCATE TABLE termo_games CASCADE")
             cur.execute("TRUNCATE TABLE termo_stats CASCADE")
