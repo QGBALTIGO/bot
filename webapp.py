@@ -3613,9 +3613,13 @@ def cards_page():
 
 
 @app.get("/memoria", response_class=HTMLResponse)
-def memory_page(level: str = Query(default="medium")):
+def memory_page(
+    level: str = Query(default="medium"),
+    uid: int = Query(default=0),
+):
     return HTMLResponse(
         build_memory_page_html(
+            uid=int(uid or 0),
             banner_url=CARDS_TOP_BANNER_URL,
             default_level=str(level or "medium"),
         )
@@ -3623,8 +3627,117 @@ def memory_page(level: str = Query(default="medium")):
 
 
 @app.get("/memory", response_class=HTMLResponse)
-def memory_alias(level: str = Query(default="medium")):
-    return memory_page(level=level)
+def memory_alias(
+    level: str = Query(default="medium"),
+    uid: int = Query(default=0),
+):
+    return memory_page(level=level, uid=uid)
+
+
+@app.get("/api/memory/best")
+def api_memory_best(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from database import get_memory_best_summary
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    payload = get_memory_best_summary(user_id)
+    rows = payload.get("rows") or []
+    summary = payload.get("summary") or {}
+
+    by_level = {}
+    for row in rows:
+        level_key = str(row.get("level") or "").strip().lower()
+        if not level_key:
+            continue
+        by_level[level_key] = {
+            "time_ms": int(row.get("best_time_ms") or 0),
+            "moves": int(row.get("best_moves") or 0),
+            "games_played": int(row.get("games_played") or 0),
+            "completed_games": int(row.get("completed_games") or 0),
+        }
+
+    return JSONResponse({
+        "ok": True,
+        "by_level": by_level,
+        "summary": {
+            "levels_completed": int(summary.get("levels_completed") or 0),
+            "avg_best_time_ms": float(summary.get("avg_best_time_ms") or 0),
+            "avg_best_moves": float(summary.get("avg_best_moves") or 0),
+            "completed_games": int(summary.get("completed_games") or 0),
+        },
+    })
+
+
+@app.post("/api/memory/finish")
+def api_memory_finish(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    from database import save_memory_game_result
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=payload.get("uid"),
+        body_uid=payload.get("uid"),
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    touch_user_identity(
+        user_id,
+        username=str(ctx.get("username") or "").strip(),
+        full_name=str(ctx.get("full_name") or "").strip(),
+    )
+
+    level = str(payload.get("level") or "").strip().lower()
+    time_ms = int(payload.get("time_ms") or 0)
+    moves = int(payload.get("moves") or 0)
+
+    if level not in {"easy", "medium", "hard", "extreme"}:
+        return JSONResponse({"ok": False, "message": "Nivel invalido."}, status_code=400)
+    if time_ms <= 0 or time_ms > 7_200_000:
+        return JSONResponse({"ok": False, "message": "Tempo invalido."}, status_code=400)
+    if moves <= 0 or moves > 10_000:
+        return JSONResponse({"ok": False, "message": "Quantidade de jogadas invalida."}, status_code=400)
+
+    try:
+        result = save_memory_game_result(user_id, level, time_ms, moves)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+
+    best = result.get("best") or {}
+    summary = result.get("summary") or {}
+    return JSONResponse({
+        "ok": True,
+        "new_record": bool(result.get("new_record")),
+        "best": {
+            "level": str(best.get("level") or level),
+            "time_ms": int(best.get("best_time_ms") or time_ms),
+            "moves": int(best.get("best_moves") or moves),
+            "games_played": int(best.get("games_played") or 0),
+            "completed_games": int(best.get("completed_games") or 0),
+        },
+        "summary": {
+            "levels_completed": int(summary.get("levels_completed") or 0),
+            "avg_best_time_ms": float(summary.get("avg_best_time_ms") or 0),
+            "avg_best_moves": float(summary.get("avg_best_moves") or 0),
+            "completed_games": int(summary.get("completed_games") or 0),
+        },
+    })
 
 
     html = """
