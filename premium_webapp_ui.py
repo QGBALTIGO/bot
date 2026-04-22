@@ -3033,6 +3033,806 @@ document.getElementById("collectionDetailGalleryBtn").onclick = async function()
     return _page_template("Colecao", body, extra_js=js, include_tg=True)
 
 
+def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
+    safe_level = str(default_level or "medium").strip().lower()
+    if safe_level not in {"easy", "medium", "hard", "extreme"}:
+        safe_level = "medium"
+
+    extra_css = r"""
+.memory-toolbar{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+  margin-top:14px;
+}
+.memory-stat{
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow:var(--shadow-md);
+}
+.memory-stat-label{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+.memory-stat-value{
+  display:block;
+  margin-top:8px;
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:22px;
+  font-weight:800;
+  line-height:1.05;
+}
+.memory-inline-note{
+  margin-top:14px;
+  padding:14px 16px;
+  border-radius:20px;
+  border:1px solid rgba(122,213,255,.18);
+  background:linear-gradient(180deg, rgba(122,213,255,.10), rgba(122,213,255,.04));
+  color:var(--muted-strong);
+  font-size:13px;
+  line-height:1.6;
+}
+.memory-inline-note strong{
+  display:block;
+  margin-bottom:4px;
+  color:var(--text);
+  font-size:13px;
+}
+.memory-board{
+  display:grid;
+  gap:12px;
+  margin-top:16px;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+.memory-board.level-medium,
+.memory-board.level-hard,
+.memory-board.level-extreme{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+}
+.memory-card{
+  position:relative;
+  width:100%;
+  aspect-ratio:.78;
+  padding:0;
+  border:0;
+  background:none;
+  cursor:pointer;
+  perspective:1200px;
+}
+.memory-card:disabled{ cursor:default; }
+.memory-card__inner{
+  position:relative;
+  width:100%;
+  height:100%;
+  transform-style:preserve-3d;
+  transition:transform .56s cubic-bezier(.2,.7,.18,1);
+}
+.memory-card.is-flipped .memory-card__inner,
+.memory-card.is-matched .memory-card__inner{
+  transform:rotateY(180deg);
+}
+.memory-face{
+  position:absolute;
+  inset:0;
+  overflow:hidden;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:var(--shadow-md);
+  backface-visibility:hidden;
+}
+.memory-face--back{
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding:14px;
+  background:
+    radial-gradient(circle at 20% 12%, rgba(122,213,255,.20), transparent 36%),
+    radial-gradient(circle at 84% 0%, rgba(255,111,148,.18), transparent 24%),
+    linear-gradient(180deg, rgba(15,24,46,.98), rgba(7,11,20,.98));
+}
+.memory-back-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.memory-back-kicker,
+.memory-back-index{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:28px;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(8,14,28,.42);
+  color:var(--muted-strong);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.memory-back-mark{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:1;
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:clamp(18px, 5vw, 30px);
+  font-weight:800;
+  letter-spacing:-.05em;
+  text-align:left;
+  line-height:1.05;
+}
+.memory-back-copy{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.45;
+}
+.memory-face--front{
+  transform:rotateY(180deg);
+  background:linear-gradient(180deg, rgba(14,22,42,.96), rgba(8,12,22,.96));
+}
+.memory-face--front img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.memory-face--front::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(180deg, rgba(4,7,14,.04) 30%, rgba(4,7,14,.72) 100%),
+    linear-gradient(120deg, rgba(122,213,255,.10), transparent 38%, rgba(255,111,148,.18));
+  pointer-events:none;
+}
+.memory-front-copy{
+  position:absolute;
+  left:10px;
+  right:10px;
+  bottom:10px;
+  z-index:1;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.memory-front-kicker{
+  width:max-content;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:26px;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(8,14,28,.50);
+  backdrop-filter:blur(16px);
+  color:var(--muted-strong);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.memory-front-title{
+  display:-webkit-box;
+  overflow:hidden;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  padding:12px 12px 13px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(7,12,24,.58);
+  backdrop-filter:blur(18px);
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+.memory-card.is-matched{
+  transform:scale(.985);
+}
+.memory-card.is-matched .memory-face{
+  border-color:rgba(81,222,181,.34);
+  box-shadow:0 18px 40px rgba(81,222,181,.14), var(--shadow-md);
+}
+.memory-card.is-matched .memory-face--front::after{
+  background:
+    linear-gradient(180deg, rgba(3,8,16,.10) 30%, rgba(3,8,16,.62) 100%),
+    linear-gradient(120deg, rgba(81,222,181,.14), transparent 38%, rgba(122,213,255,.12));
+}
+.memory-card.is-blocked{ pointer-events:none; }
+.memory-card[data-entry]{
+  animation:memoryCardIn .42s cubic-bezier(.2,.8,.2,1) both;
+}
+.memory-result{
+  display:grid;
+  gap:14px;
+}
+.memory-result-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+.memory-record{
+  margin-top:12px;
+  color:var(--muted-strong);
+  font-size:13px;
+  line-height:1.6;
+}
+.memory-record strong{
+  color:var(--text);
+}
+.memory-foot{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.55;
+}
+@keyframes memoryCardIn{
+  from{ opacity:0; transform:translateY(14px) scale(.96); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+@media (min-width:860px){
+  .memory-toolbar{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+  }
+  .memory-board.level-easy{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+  }
+  .memory-board.level-medium{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+  }
+  .memory-board.level-hard{
+    grid-template-columns:repeat(6, minmax(0, 1fr));
+  }
+  .memory-board.level-extreme{
+    grid-template-columns:repeat(6, minmax(0, 1fr));
+  }
+}
+@media (max-width:560px){
+  .memory-board{
+    gap:10px;
+  }
+  .memory-face{
+    border-radius:20px;
+  }
+  .memory-back-mark{
+    font-size:18px;
+  }
+  .memory-front-title{
+    font-size:12px;
+    padding:10px 10px 11px;
+  }
+  .memory-result-grid{
+    grid-template-columns:1fr;
+  }
+}
+"""
+
+    body = f"""
+<section class="hero-card hero-card--compact">
+  <div class="hero-media"><img id="memoryHeroImage" src="{_h(banner_url)}" alt="Jogo da mem&oacute;ria anime"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="eyebrow-chip">Anime Memory</div>
+    <h1 class="hero-title">Jogo da mem&oacute;ria com banners de anime</h1>
+    <p class="hero-subtitle">Mesma l&oacute;gica cl&aacute;ssica de formar pares, mas usando os banners das obras que j&aacute; vivem no /cards e nas varia&ccedil;&otilde;es da cole&ccedil;&atilde;o do bot.</p>
+    <div class="hero-metrics">
+      <div class="metric-card"><span class="metric-label">Cat&aacute;logo</span><span class="metric-value" id="memoryHeroCatalog">...</span></div>
+      <div class="metric-card"><span class="metric-label">Dificuldade</span><span class="metric-value" id="memoryHeroLevel">M&eacute;dio</span></div>
+      <div class="metric-card"><span class="metric-label">Recorde</span><span class="metric-value" id="memoryHeroBest">--</span></div>
+      <div class="metric-card"><span class="metric-label">Tempo</span><span class="metric-value" id="memoryHeroTime">00:00</span></div>
+    </div>
+    <div class="hero-actions">
+      <button type="button" class="action-btn action-btn--cool" id="memoryNewBoardBtn">Novo tabuleiro</button>
+      <button type="button" class="action-btn" id="memoryRestartBtn">Reembaralhar</button>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Passatempo</div><h2 class="section-title">Escolha a dificuldade e forme todos os pares</h2></div>
+    <div class="section-meta" id="memoryStatus">Preparando o cat&aacute;logo de animes...</div>
+  </div>
+  <div class="segmented" style="margin-top:14px;" id="memoryLevelTabs">
+    <button type="button" class="segmented-btn" data-level="easy">F&aacute;cil</button>
+    <button type="button" class="segmented-btn" data-level="medium">M&eacute;dio</button>
+    <button type="button" class="segmented-btn" data-level="hard">Dif&iacute;cil</button>
+    <button type="button" class="segmented-btn" data-level="extreme">Muito dif&iacute;cil</button>
+  </div>
+  <div class="memory-toolbar">
+    <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryMovesValue">0</span></article>
+    <article class="memory-stat"><span class="memory-stat-label">Pares feitos</span><span class="memory-stat-value" id="memoryPairsValue">0/0</span></article>
+    <article class="memory-stat"><span class="memory-stat-label">Tempo</span><span class="memory-stat-value" id="memoryTimerValue">00:00</span></article>
+    <article class="memory-stat"><span class="memory-stat-label">Recorde</span><span class="memory-stat-value" id="memoryBestValue">--</span></article>
+  </div>
+  <div class="pill-row" style="margin-top:14px;">
+    <span class="soft-pill soft-pill--cool" id="memoryCatalogPill">Obras com banner: ...</span>
+    <span class="soft-pill" id="memoryPairsPill">Pares: --</span>
+    <span class="soft-pill" id="memoryHintPill">Modo: carregando...</span>
+  </div>
+  <div class="memory-inline-note">
+    <strong>Mesmo conceito cl&aacute;ssico, visual muito mais tem&aacute;tico.</strong>
+    Vire duas cartas por jogada. Se os banners forem do mesmo anime, o par fica resolvido. Se errar, as cartas voltam para baixo e voc&ecirc; precisa lembrar onde cada obra apareceu.
+  </div>
+</section>
+
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Tabuleiro</div><h2 class="section-title">Memorize, compare e feche a grade inteira</h2></div>
+    <div class="section-meta" id="memoryBoardMeta">Aguardando cat&aacute;logo...</div>
+  </div>
+  <div id="memoryBoard" class="memory-board level-medium"></div>
+  <div id="memoryEmpty" class="empty-state" style="display:none; margin-top:14px;">
+    <strong>Sem banners suficientes</strong>
+    O jogo precisa de obras com banner ou capa v&aacute;lidos no sistema de cards para montar os pares.
+  </div>
+</section>
+
+<section class="panel panel--soft" id="memoryResultPanel" style="display:none;">
+  <div class="memory-result">
+    <div class="section-head">
+      <div><div class="section-kicker">Resultado</div><h2 class="section-title">Tabuleiro conclu&iacute;do</h2></div>
+      <div class="section-meta" id="memoryResultMeta">Parab&eacute;ns!</div>
+    </div>
+    <div class="memory-result-grid">
+      <article class="memory-stat"><span class="memory-stat-label">Tempo final</span><span class="memory-stat-value" id="memoryResultTime">00:00</span></article>
+      <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryResultMoves">0</span></article>
+    </div>
+    <div class="memory-record" id="memoryRecordText">Seu recorde aparecer&aacute; aqui.</div>
+    <div class="hero-actions">
+      <button type="button" class="action-btn action-btn--primary" id="memoryPlayAgainBtn">Jogar de novo</button>
+      <button type="button" class="action-btn action-btn--cool" id="memoryKeepLevelBtn">Mesmo n&iacute;vel</button>
+    </div>
+    <div class="memory-foot">Os pares s&atilde;o montados dinamicamente a partir dos banners do cat&aacute;logo de cards, ent&atilde;o cada rodada pode puxar obras diferentes.</div>
+  </div>
+</section>
+
+<div id="memoryNote" class="floating-note">Carregando jogo da mem&oacute;ria...</div>
+<div class="footer-note">Source Baltigo . Memory Game</div>
+"""
+
+    js = f"""
+const MEMORY_DEFAULT_LEVEL = {_j(safe_level)};
+const MEMORY_HERO_FALLBACK = {_j(banner_url)};
+const tgMemory = getTelegramWebApp();
+if (tgMemory) {{ try {{ tgMemory.ready(); tgMemory.expand(); }} catch(err) {{}} }}
+
+const memoryLevels = {{
+  easy: {{
+    label: "F\\u00e1cil",
+    pairs: 6,
+    helper: "Entrada suave para partidas curtinhas e leitura f\\u00e1cil do tabuleiro."
+  }},
+  medium: {{
+    label: "M\\u00e9dio",
+    pairs: 8,
+    helper: "Boa medida para uma rodada r\\u00e1pida sem ficar trivial."
+  }},
+  hard: {{
+    label: "Dif\\u00edcil",
+    pairs: 12,
+    helper: "Mais animes em campo e menos espa\\u00e7o para erro."
+  }},
+  extreme: {{
+    label: "Muito dif\\u00edcil",
+    pairs: 15,
+    helper: "Grade grande para quem quer se testar de verdade."
+  }}
+}};
+
+const memoryEls = {{
+  heroImage: document.getElementById("memoryHeroImage"),
+  heroCatalog: document.getElementById("memoryHeroCatalog"),
+  heroLevel: document.getElementById("memoryHeroLevel"),
+  heroBest: document.getElementById("memoryHeroBest"),
+  heroTime: document.getElementById("memoryHeroTime"),
+  status: document.getElementById("memoryStatus"),
+  boardMeta: document.getElementById("memoryBoardMeta"),
+  note: document.getElementById("memoryNote"),
+  board: document.getElementById("memoryBoard"),
+  empty: document.getElementById("memoryEmpty"),
+  moves: document.getElementById("memoryMovesValue"),
+  pairs: document.getElementById("memoryPairsValue"),
+  timer: document.getElementById("memoryTimerValue"),
+  best: document.getElementById("memoryBestValue"),
+  catalogPill: document.getElementById("memoryCatalogPill"),
+  pairsPill: document.getElementById("memoryPairsPill"),
+  hintPill: document.getElementById("memoryHintPill"),
+  resultPanel: document.getElementById("memoryResultPanel"),
+  resultMeta: document.getElementById("memoryResultMeta"),
+  resultTime: document.getElementById("memoryResultTime"),
+  resultMoves: document.getElementById("memoryResultMoves"),
+  recordText: document.getElementById("memoryRecordText"),
+  tabs: Array.from(document.querySelectorAll("[data-level]"))
+}};
+
+const memoryState = {{
+  catalog: [],
+  level: MEMORY_DEFAULT_LEVEL,
+  deck: [],
+  flippedIds: [],
+  busy: false,
+  moves: 0,
+  matches: 0,
+  totalPairs: 0,
+  elapsedMs: 0,
+  startedAt: 0,
+  timerHandle: null,
+  best: loadMemoryBest(),
+  currentSelection: []
+}};
+
+function setMemoryNote(message, tone){{
+  memoryEls.note.textContent = String(message || "");
+  memoryEls.note.dataset.tone = tone || "";
+}}
+
+function normalizeMemoryLevel(level){{
+  const raw = String(level || "").trim().toLowerCase();
+  if (memoryLevels[raw]) return raw;
+  if (raw === "facil") return "easy";
+  if (raw === "medio") return "medium";
+  if (raw === "dificil") return "hard";
+  if (raw === "muito-dificil" || raw === "muito_dificil" || raw === "muitodificil") return "extreme";
+  return "medium";
+}}
+
+function loadMemoryBest(){{
+  try{{
+    const raw = localStorage.getItem("source-baltigo-memory-best-v1");
+    const data = raw ? JSON.parse(raw) : {{}};
+    return data && typeof data === "object" ? data : {{}};
+  }}catch(err){{
+    return {{}};
+  }}
+}}
+
+function saveMemoryBest(){{
+  try{{
+    localStorage.setItem("source-baltigo-memory-best-v1", JSON.stringify(memoryState.best || {{}}));
+  }}catch(err){{}}
+}}
+
+function formatMemoryDuration(ms){{
+  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+}}
+
+function memoryBestLabel(level){{
+  const entry = (memoryState.best || {{}})[String(level || "")] || null;
+  if (!entry || !entry.timeMs) return "--";
+  return formatMemoryDuration(entry.timeMs) + " . " + String(entry.moves || 0) + " jog.";
+}}
+
+function updateMemoryHeroBanner(){{
+  const featured = Array.isArray(memoryState.currentSelection) && memoryState.currentSelection.length
+    ? memoryState.currentSelection[Math.floor(Math.random() * memoryState.currentSelection.length)]
+    : null;
+  const image = featured && featured.image ? featured.image : MEMORY_HERO_FALLBACK;
+  if (memoryEls.heroImage) memoryEls.heroImage.src = image || MEMORY_HERO_FALLBACK;
+}}
+
+function syncMemoryChrome(){{
+  const level = memoryLevels[memoryState.level] || memoryLevels.medium;
+  const catalogTotal = Array.isArray(memoryState.catalog) ? memoryState.catalog.length : 0;
+  memoryEls.heroCatalog.textContent = String(catalogTotal || 0);
+  memoryEls.heroLevel.textContent = level.label;
+  memoryEls.heroBest.textContent = memoryBestLabel(memoryState.level);
+  memoryEls.heroTime.textContent = formatMemoryDuration(memoryState.elapsedMs);
+  memoryEls.moves.textContent = String(memoryState.moves || 0);
+  memoryEls.pairs.textContent = String(memoryState.matches || 0) + "/" + String(memoryState.totalPairs || 0);
+  memoryEls.timer.textContent = formatMemoryDuration(memoryState.elapsedMs);
+  memoryEls.best.textContent = memoryBestLabel(memoryState.level);
+  memoryEls.catalogPill.textContent = "Obras com banner: " + String(catalogTotal || 0);
+  memoryEls.pairsPill.textContent = "Pares: " + String(level.pairs || 0);
+  memoryEls.hintPill.textContent = "Modo: " + String(level.helper || "");
+  memoryEls.tabs.forEach(function(button){{
+    const active = String(button.getAttribute("data-level") || "") === memoryState.level;
+    button.classList.toggle("active", active);
+  }});
+}}
+
+function stopMemoryTimer(){{
+  if (memoryState.timerHandle) {{
+    window.clearInterval(memoryState.timerHandle);
+    memoryState.timerHandle = null;
+  }}
+}}
+
+function startMemoryTimer(){{
+  if (memoryState.timerHandle) return;
+  memoryState.startedAt = Date.now() - Number(memoryState.elapsedMs || 0);
+  memoryState.timerHandle = window.setInterval(function(){{
+    memoryState.elapsedMs = Math.max(0, Date.now() - Number(memoryState.startedAt || Date.now()));
+    syncMemoryChrome();
+  }}, 250);
+}}
+
+function shuffleMemoryItems(items){{
+  const clone = Array.isArray(items) ? items.slice() : [];
+  for (let index = clone.length - 1; index > 0; index -= 1){{
+    const other = Math.floor(Math.random() * (index + 1));
+    const tmp = clone[index];
+    clone[index] = clone[other];
+    clone[other] = tmp;
+  }}
+  return clone;
+}}
+
+function parseMemoryLevelFromQuery(){{
+  try{{
+    const params = new URLSearchParams(window.location.search || "");
+    return normalizeMemoryLevel(params.get("level") || MEMORY_DEFAULT_LEVEL);
+  }}catch(err){{
+    return normalizeMemoryLevel(MEMORY_DEFAULT_LEVEL);
+  }}
+}}
+
+function updateMemoryUrlLevel(){{
+  try{{
+    const url = new URL(window.location.href);
+    url.searchParams.set("level", memoryState.level);
+    window.history.replaceState({{}}, "", url.pathname + url.search);
+  }}catch(err){{}}
+}}
+
+function buildMemoryCardMarkup(card, index){{
+  const flipped = !!card.revealed || !!card.matched;
+  const matched = !!card.matched;
+  const disabled = matched || memoryState.busy || memoryState.flippedIds.length >= 2;
+  const classes = [
+    "memory-card",
+    flipped ? "is-flipped" : "",
+    matched ? "is-matched" : "",
+    disabled && !flipped ? "is-blocked" : ""
+  ].filter(Boolean).join(" ");
+  const badge = "Par " + String(card.position || 0);
+  const safeTitle = esc(card.title || "Anime");
+  const safeImage = esc(card.image || "");
+  return ''
+    + '<button type="button" class="' + classes + '" data-cardid="' + esc(card.id) + '" data-entry style="animation-delay:' + String(index * 24) + 'ms;">'
+    +   '<span class="memory-card__inner">'
+    +     '<span class="memory-face memory-face--back">'
+    +       '<span class="memory-back-top"><span class="memory-back-kicker">Anime</span><span class="memory-back-index">' + esc(badge) + '</span></span>'
+    +       '<span class="memory-back-mark">Match<br>Board</span>'
+    +       '<span class="memory-back-copy">Toque para revelar o banner escondido.</span>'
+    +     '</span>'
+    +     '<span class="memory-face memory-face--front">'
+    +       (safeImage ? '<img src="' + safeImage + '" alt="' + safeTitle + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">' : '')
+    +       '<span class="memory-front-copy"><span class="memory-front-kicker">Obra</span><span class="memory-front-title">' + safeTitle + '</span></span>'
+    +     '</span>'
+    +   '</span>'
+    + '</button>';
+}}
+
+function renderMemoryBoard(){{
+  const root = memoryEls.board;
+  const config = memoryLevels[memoryState.level] || memoryLevels.medium;
+  root.className = "memory-board level-" + String(memoryState.level || "medium");
+  if (!memoryState.deck.length){{
+    root.innerHTML = "";
+    memoryEls.empty.style.display = "";
+    memoryEls.boardMeta.textContent = "Sem pares suficientes para montar o tabuleiro.";
+    return;
+  }}
+  memoryEls.empty.style.display = "none";
+  root.innerHTML = memoryState.deck.map(function(card, index){{
+    return buildMemoryCardMarkup(card, index);
+  }}).join("");
+  memoryEls.boardMeta.textContent = "N\\u00edvel " + config.label + " . " + String(memoryState.totalPairs || 0) + " pares . " + String(memoryState.deck.length || 0) + " cartas";
+  root.querySelectorAll("[data-cardid]").forEach(function(button){{
+    button.onclick = function(){{
+      handleMemoryFlip(button.getAttribute("data-cardid") || "");
+    }};
+  }});
+}}
+
+function findMemoryCard(cardId){{
+  return memoryState.deck.find(function(card){{ return String(card.id) === String(cardId); }}) || null;
+}}
+
+function resetMemoryState(){{
+  stopMemoryTimer();
+  memoryState.flippedIds = [];
+  memoryState.busy = false;
+  memoryState.moves = 0;
+  memoryState.matches = 0;
+  memoryState.totalPairs = 0;
+  memoryState.elapsedMs = 0;
+  memoryState.startedAt = 0;
+  memoryEls.resultPanel.style.display = "none";
+}}
+
+function buildMemoryDeck(selection){{
+  const deck = [];
+  (selection || []).forEach(function(item, pairIndex){{
+    for (let copy = 0; copy < 2; copy += 1){{
+      deck.push({{
+        id: String(item.anime_id) + "-" + String(pairIndex) + "-" + String(copy) + "-" + String(Math.random().toString(36).slice(2, 8)),
+        pairId: String(item.anime_id),
+        title: String(item.anime || "Anime"),
+        image: String(item.image || ""),
+        revealed: false,
+        matched: false,
+        position: pairIndex + 1
+      }});
+    }}
+  }});
+  return shuffleMemoryItems(deck);
+}}
+
+function pickMemorySelection(level, keepCurrent){{
+  const config = memoryLevels[level] || memoryLevels.medium;
+  const requiredPairs = Number(config.pairs || 0);
+  if (keepCurrent && Array.isArray(memoryState.currentSelection) && memoryState.currentSelection.length === requiredPairs){{
+    return memoryState.currentSelection.slice();
+  }}
+  const source = shuffleMemoryItems(memoryState.catalog).slice(0, requiredPairs);
+  memoryState.currentSelection = source;
+  return source;
+}}
+
+function openMemoryLevel(level, options){{
+  const nextLevel = normalizeMemoryLevel(level);
+  const config = memoryLevels[nextLevel] || memoryLevels.medium;
+  const selection = pickMemorySelection(nextLevel, !!(options && options.keepSelection));
+  resetMemoryState();
+  memoryState.level = nextLevel;
+  memoryState.totalPairs = selection.length;
+  memoryState.deck = buildMemoryDeck(selection);
+  updateMemoryUrlLevel();
+  updateMemoryHeroBanner();
+  syncMemoryChrome();
+  renderMemoryBoard();
+  setMemoryNote("Tabuleiro pronto em " + config.label + ".", "success");
+}}
+
+function completeMemoryGame(){{
+  stopMemoryTimer();
+  const level = memoryState.level;
+  const previous = (memoryState.best || {{}})[level] || null;
+  const current = {{ timeMs: Number(memoryState.elapsedMs || 0), moves: Number(memoryState.moves || 0) }};
+  let isBest = false;
+  if (!previous || !previous.timeMs || current.timeMs < previous.timeMs || (current.timeMs === previous.timeMs && current.moves < (previous.moves || 0))){{
+    memoryState.best[level] = current;
+    saveMemoryBest();
+    isBest = true;
+  }}
+  syncMemoryChrome();
+  memoryEls.resultMeta.textContent = isBest ? "Novo recorde salvo neste n\\u00edvel." : "Partida conclu\\u00edda com sucesso.";
+  memoryEls.resultTime.textContent = formatMemoryDuration(memoryState.elapsedMs);
+  memoryEls.resultMoves.textContent = String(memoryState.moves || 0);
+  const best = (memoryState.best || {{}})[level] || current;
+  memoryEls.recordText.innerHTML = isBest
+    ? "<strong>Recorde novo.</strong> Tempo " + esc(formatMemoryDuration(best.timeMs)) + " com " + esc(best.moves) + " jogadas."
+    : "Seu melhor neste n\\u00edvel est\\u00e1 em <strong>" + esc(formatMemoryDuration(best.timeMs || 0)) + "</strong> com <strong>" + esc(best.moves || 0) + "</strong> jogadas.";
+  memoryEls.resultPanel.style.display = "";
+  setMemoryNote("Tabuleiro fechado. Bora para outra?", "success");
+}}
+
+function resolveMemoryPair(){{
+  const opened = memoryState.flippedIds.map(findMemoryCard).filter(Boolean);
+  if (opened.length < 2){{
+    memoryState.flippedIds = [];
+    memoryState.busy = false;
+    renderMemoryBoard();
+    return;
+  }}
+  const first = opened[0];
+  const second = opened[1];
+  if (String(first.pairId) === String(second.pairId)){{
+    first.matched = true;
+    second.matched = true;
+    memoryState.matches += 1;
+    setMemoryNote("Par encontrado: " + String(first.title || "Anime") + ".", "success");
+  }} else {{
+    first.revealed = false;
+    second.revealed = false;
+    setMemoryNote("N\\u00e3o foi par. Tenta lembrar onde cada obra apareceu.", "");
+  }}
+  memoryState.flippedIds = [];
+  memoryState.busy = false;
+  renderMemoryBoard();
+  syncMemoryChrome();
+  if (memoryState.matches >= memoryState.totalPairs && memoryState.totalPairs > 0){{
+    completeMemoryGame();
+  }}
+}}
+
+function handleMemoryFlip(cardId){{
+  if (!cardId || memoryState.busy) return;
+  const card = findMemoryCard(cardId);
+  if (!card || card.matched || card.revealed) return;
+  if (!memoryState.startedAt) startMemoryTimer();
+  card.revealed = true;
+  memoryState.flippedIds.push(String(cardId));
+  renderMemoryBoard();
+  if (memoryState.flippedIds.length >= 2){{
+    memoryState.moves += 1;
+    memoryState.busy = true;
+    syncMemoryChrome();
+    window.setTimeout(resolveMemoryPair, 760);
+  }} else {{
+    syncMemoryChrome();
+  }}
+}}
+
+async function fetchMemoryCatalog(){{
+  memoryEls.status.textContent = "Baixando banners das obras...";
+  setMemoryNote("Carregando obras do sistema de cards...", "");
+  const response = await fetch("/api/cards/animes?limit=5000&_ts=" + Date.now());
+  const data = await response.json();
+  const items = Array.isArray(data.items) ? data.items : [];
+  memoryState.catalog = items.map(function(item){{
+    return {{
+      anime_id: Number(item.anime_id || 0),
+      anime: String(item.anime || "").trim(),
+      image: String(item.banner_image || item.cover_image || "").trim()
+    }};
+  }}).filter(function(item){{
+    return item.anime_id > 0 && item.anime && item.image;
+  }});
+  if (!memoryState.catalog.length){{
+    throw new Error("Nenhuma obra com banner dispon\\u00edvel.");
+  }}
+  memoryEls.status.textContent = "Cat\\u00e1logo carregado. Montando o tabuleiro...";
+}}
+
+document.getElementById("memoryNewBoardBtn").onclick = function(){{
+  openMemoryLevel(memoryState.level, {{ keepSelection: false }});
+}};
+
+document.getElementById("memoryRestartBtn").onclick = function(){{
+  openMemoryLevel(memoryState.level, {{ keepSelection: true }});
+}};
+
+document.getElementById("memoryPlayAgainBtn").onclick = function(){{
+  openMemoryLevel(memoryState.level, {{ keepSelection: false }});
+}};
+
+document.getElementById("memoryKeepLevelBtn").onclick = function(){{
+  openMemoryLevel(memoryState.level, {{ keepSelection: true }});
+}};
+
+memoryEls.tabs.forEach(function(button){{
+  button.onclick = function(){{
+    const level = button.getAttribute("data-level") || "medium";
+    openMemoryLevel(level, {{ keepSelection: false }});
+  }};
+}});
+
+(async function initMemoryGame(){{
+  try{{
+    const initialLevel = parseMemoryLevelFromQuery();
+    memoryState.level = initialLevel;
+    syncMemoryChrome();
+    await fetchMemoryCatalog();
+    openMemoryLevel(initialLevel, {{ keepSelection: false }});
+  }}catch(err){{
+    console.error(err);
+    memoryState.deck = [];
+    renderMemoryBoard();
+    memoryEls.status.textContent = "N\\u00e3o foi poss\\u00edvel montar o jogo agora.";
+    memoryEls.boardMeta.textContent = "Verifique se o cat\\u00e1logo de cards est\\u00e1 acess\\u00edvel.";
+    setMemoryNote("Erro ao carregar o jogo: " + (err && err.message ? err.message : "falha inesperada"), "error");
+  }}
+}})();
+"""
+
+    return _page_template("Jogo da Memoria", body, extra_css=extra_css, extra_js=js, include_tg=True)
+
+
 def build_request_center_page(*, uid: int, banner_url: str) -> str:
     body = f"""
 <section class="hero-card hero-card--compact">
