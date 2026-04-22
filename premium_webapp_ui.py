@@ -3039,59 +3039,126 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
         safe_level = "medium"
 
     extra_css = r"""
+.memory-shell{
+  display:grid;
+  gap:14px;
+}
+.memory-top{
+  overflow:hidden;
+  padding:0;
+}
+.memory-banner{
+  position:relative;
+  overflow:hidden;
+  aspect-ratio:16 / 8;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  background:
+    radial-gradient(circle at 20% 18%, rgba(122,213,255,.16), transparent 34%),
+    linear-gradient(180deg, rgba(12,18,36,.98), rgba(7,10,20,.98));
+}
+.memory-banner img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+  display:block;
+}
+.memory-banner::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(5,8,16,.08), rgba(5,8,16,.68));
+}
+.memory-top-body{
+  padding:16px;
+}
+.memory-head{
+  display:grid;
+  gap:6px;
+}
+.memory-title{
+  margin:0;
+  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  font-size:32px;
+  line-height:.96;
+  letter-spacing:-.05em;
+}
+.memory-sub{
+  margin:0;
+  color:var(--muted-strong);
+  font-size:13px;
+  line-height:1.45;
+}
+.memory-status{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+}
+.memory-difficulty{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.memory-difficulty .segmented-btn{
+  min-height:52px;
+  font-size:13px;
+  letter-spacing:.08em;
+}
 .memory-toolbar{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:12px;
+  gap:10px;
   margin-top:14px;
 }
 .memory-stat{
-  padding:16px;
-  border-radius:22px;
+  padding:14px;
+  border-radius:18px;
   border:1px solid rgba(255,255,255,.10);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-  box-shadow:var(--shadow-md);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
 }
 .memory-stat-label{
   display:block;
   color:var(--muted);
-  font-size:11px;
+  font-size:10px;
   font-weight:800;
   letter-spacing:.16em;
   text-transform:uppercase;
 }
 .memory-stat-value{
   display:block;
-  margin-top:8px;
+  margin-top:6px;
   font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
   font-size:22px;
   font-weight:800;
-  line-height:1.05;
+  line-height:1.02;
 }
-.memory-inline-note{
+.memory-actions{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
   margin-top:14px;
-  padding:14px 16px;
-  border-radius:20px;
-  border:1px solid rgba(122,213,255,.18);
-  background:linear-gradient(180deg, rgba(122,213,255,.10), rgba(122,213,255,.04));
-  color:var(--muted-strong);
-  font-size:13px;
-  line-height:1.6;
 }
-.memory-inline-note strong{
-  display:block;
-  margin-bottom:4px;
-  color:var(--text);
-  font-size:13px;
+.memory-actions .action-btn{
+  width:100%;
+  min-height:50px;
+}
+.memory-board-panel{
+  padding-top:16px;
+}
+.memory-board-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+}
+.memory-board-head .section-meta{
+  flex-shrink:0;
 }
 .memory-board{
   display:grid;
-  gap:12px;
-  margin-top:18px;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  align-items:stretch;
-}
-.memory-board.level-medium{
+  gap:10px;
+  margin-top:14px;
   grid-template-columns:repeat(3, minmax(0, 1fr));
 }
 .memory-board.level-hard,
@@ -3101,178 +3168,82 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
 .memory-card{
   position:relative;
   width:100%;
-  aspect-ratio:.82;
-  padding:0;
+  aspect-ratio:.72;
   border:0;
+  padding:0;
   background:none;
   cursor:pointer;
-  perspective:1400px;
   -webkit-tap-highlight-color:transparent;
 }
-.memory-card:disabled{ cursor:default; }
-.memory-card__inner{
-  position:relative;
-  display:block;
-  width:100%;
-  height:100%;
-  transform-style:preserve-3d;
-  will-change:transform;
-  transition:transform .62s cubic-bezier(.22,.8,.2,1), filter .22s ease;
+.memory-card:disabled{
+  cursor:default;
 }
-.memory-card.is-flipped .memory-card__inner,
-.memory-card.is-matched .memory-card__inner{
-  transform:rotateY(180deg);
-}
-.memory-face{
+.memory-card__face{
   position:absolute;
   inset:0;
-  display:flex;
-  flex-direction:column;
   overflow:hidden;
-  border-radius:22px;
-  border:1px solid rgba(255,255,255,.12);
-  box-shadow:0 18px 32px rgba(0,0,0,.28);
-  backface-visibility:hidden;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 14px 28px rgba(0,0,0,.24);
+  transition:opacity .24s ease, transform .24s ease, box-shadow .24s ease, border-color .24s ease;
 }
-.memory-face--back{
-  justify-content:space-between;
-  padding:12px;
+.memory-card__back{
   background:
-    radial-gradient(circle at 18% 18%, rgba(122,213,255,.18), transparent 34%),
-    radial-gradient(circle at 84% 0%, rgba(255,111,148,.16), transparent 22%),
-    linear-gradient(180deg, rgba(14,21,42,.98), rgba(7,11,21,.98));
+    radial-gradient(circle at 20% 18%, rgba(122,213,255,.16), transparent 30%),
+    radial-gradient(circle at 84% 0%, rgba(255,111,148,.14), transparent 24%),
+    linear-gradient(180deg, rgba(14,21,40,.98), rgba(8,11,20,.98));
 }
-.memory-face--back::after{
+.memory-card__back::before,
+.memory-card__back::after{
   content:"";
   position:absolute;
-  inset:10px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.08);
-  pointer-events:none;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  border-radius:18px;
 }
-.memory-back-top{
-  position:relative;
-  z-index:1;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
+.memory-card__back::before{
+  width:54%;
+  height:54%;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.02);
+  box-shadow:inset 0 0 0 1px rgba(122,213,255,.08);
 }
-.memory-back-kicker,
-.memory-back-index{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:26px;
-  padding:6px 9px;
+.memory-card__back::after{
+  width:22%;
+  height:22%;
   border-radius:999px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(8,14,28,.48);
-  color:var(--muted-strong);
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:.14em;
-  text-transform:uppercase;
+  background:linear-gradient(180deg, rgba(122,213,255,.42), rgba(255,111,148,.34));
+  box-shadow:0 0 0 8px rgba(255,255,255,.03);
 }
-.memory-back-mark{
-  position:relative;
-  z-index:1;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex:1;
-  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
-  font-size:clamp(17px, 5vw, 28px);
-  font-weight:800;
-  letter-spacing:-.04em;
-  text-align:center;
-  line-height:1;
+.memory-card__front{
+  opacity:0;
+  transform:scale(.96);
+  background:linear-gradient(180deg, rgba(12,18,34,.22), rgba(6,10,20,.80));
 }
-.memory-back-copy{
-  position:relative;
-  z-index:1;
-  color:var(--muted);
-  font-size:11px;
-  line-height:1.45;
-}
-.memory-face--front{
-  justify-content:flex-end;
-  transform:rotateY(180deg);
-  background:
-    linear-gradient(180deg, rgba(10,16,32,.16), rgba(6,10,20,.82)),
-    linear-gradient(120deg, rgba(122,213,255,.08), transparent 38%, rgba(255,111,148,.16));
-}
-.memory-face--front img{
-  position:absolute;
-  inset:0;
+.memory-card__front img{
   width:100%;
   height:100%;
   object-fit:cover;
   object-position:center;
   display:block;
-  transform:scale(1.04);
 }
-.memory-face--front::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  background:
-    linear-gradient(180deg, rgba(4,7,14,.06) 26%, rgba(4,7,14,.82) 100%),
-    linear-gradient(135deg, rgba(255,255,255,.06), transparent 40%, rgba(122,213,255,.12));
+.memory-card.is-open .memory-card__back,
+.memory-card.is-matched .memory-card__back{
+  opacity:0;
+  transform:scale(.94);
+}
+.memory-card.is-open .memory-card__front,
+.memory-card.is-matched .memory-card__front{
+  opacity:1;
+  transform:scale(1);
+}
+.memory-card.is-matched .memory-card__front{
+  border-color:rgba(81,222,181,.38);
+  box-shadow:0 16px 30px rgba(81,222,181,.16), 0 10px 20px rgba(0,0,0,.22);
+}
+.memory-card.is-locked{
   pointer-events:none;
-}
-.memory-front-copy{
-  position:relative;
-  z-index:1;
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  padding:10px;
-}
-.memory-front-kicker{
-  width:max-content;
-  display:inline-flex;
-  align-items:center;
-  min-height:24px;
-  padding:6px 9px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.16);
-  background:rgba(8,14,28,.54);
-  backdrop-filter:blur(18px);
-  color:var(--muted-strong);
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-}
-.memory-front-title{
-  display:-webkit-box;
-  overflow:hidden;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
-  min-height:48px;
-  padding:11px 12px 12px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(7,12,24,.58);
-  backdrop-filter:blur(18px);
-  font-family:"Space Grotesk", "Plus Jakarta Sans", sans-serif;
-  font-size:13px;
-  font-weight:700;
-  line-height:1.18;
-}
-.memory-card.is-matched .memory-face{
-  border-color:rgba(81,222,181,.34);
-  box-shadow:0 18px 36px rgba(81,222,181,.14), 0 12px 22px rgba(0,0,0,.24);
-}
-.memory-card.is-matched .memory-face--front::after{
-  background:
-    linear-gradient(180deg, rgba(4,7,14,.12) 22%, rgba(4,7,14,.68) 100%),
-    linear-gradient(135deg, rgba(81,222,181,.14), transparent 38%, rgba(122,213,255,.12));
-}
-.memory-card.is-blocked{ pointer-events:none; }
-.memory-card[data-entry]{
-  animation:memoryCardIn .42s cubic-bezier(.2,.8,.2,1) both;
 }
 .memory-result{
   display:grid;
@@ -3301,8 +3272,39 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
   from{ opacity:0; transform:translateY(14px) scale(.96); }
   to{ opacity:1; transform:translateY(0) scale(1); }
 }
-@media (min-width:860px){
+@media (max-width:560px){
+  .memory-title{
+    font-size:26px;
+  }
+  .memory-banner{
+    aspect-ratio:16 / 9;
+  }
+  .memory-toolbar,
+  .memory-actions,
+  .memory-difficulty{
+    gap:9px;
+  }
+  .memory-stat{
+    padding:13px;
+  }
+  .memory-stat-value{
+    font-size:20px;
+  }
+  .memory-board{
+    gap:8px;
+  }
+  .memory-card__face{
+    border-radius:16px;
+  }
+  .memory-result-grid{
+    grid-template-columns:1fr;
+  }
+}
+@media (min-width:720px){
   .memory-toolbar{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+  }
+  .memory-difficulty{
     grid-template-columns:repeat(4, minmax(0, 1fr));
   }
   .memory-board.level-easy{
@@ -3318,105 +3320,71 @@ def build_memory_page(*, banner_url: str, default_level: str = "medium") -> str:
     grid-template-columns:repeat(6, minmax(0, 1fr));
   }
 }
-@media (max-width:560px){
-  .memory-board{
-    gap:10px;
-  }
-  .memory-face{ border-radius:20px; }
-  .memory-back-mark{ font-size:17px; }
-  .memory-front-title{
-    font-size:12px;
-    min-height:42px;
-    padding:10px 10px 11px;
-  }
-  .memory-result-grid{
-    grid-template-columns:1fr;
-  }
-}
 """
 
     body = f"""
-<section class="hero-card hero-card--compact">
-  <div class="hero-media"><img id="memoryHeroImage" src="{_h(banner_url)}" alt="Jogo da mem&oacute;ria anime"></div>
-  <div class="hero-overlay"></div>
-  <div class="hero-content">
-    <div class="eyebrow-chip">Anime Memory</div>
-    <h1 class="hero-title">Jogo da mem&oacute;ria com banners de anime</h1>
-    <p class="hero-subtitle">Mesma l&oacute;gica cl&aacute;ssica de formar pares, mas usando os banners das obras que j&aacute; vivem no /cards e nas varia&ccedil;&otilde;es da cole&ccedil;&atilde;o do bot.</p>
-    <div class="hero-metrics">
-      <div class="metric-card"><span class="metric-label">Cat&aacute;logo</span><span class="metric-value" id="memoryHeroCatalog">...</span></div>
-      <div class="metric-card"><span class="metric-label">Dificuldade</span><span class="metric-value" id="memoryHeroLevel">M&eacute;dio</span></div>
-      <div class="metric-card"><span class="metric-label">Recorde</span><span class="metric-value" id="memoryHeroBest">--</span></div>
-      <div class="metric-card"><span class="metric-label">Tempo</span><span class="metric-value" id="memoryHeroTime">00:00</span></div>
+<div class="memory-shell">
+  <section class="panel panel--soft memory-top">
+    <div class="memory-banner"><img id="memoryHeroImage" src="{_h(banner_url)}" alt="Memory anime"></div>
+    <div class="memory-top-body">
+      <div class="memory-head">
+        <h1 class="memory-title">Memoria anime</h1>
+        <p class="memory-sub">Forme pares usando capas e banners do catalogo de /cards.</p>
+        <div class="memory-status" id="memoryStatus">Preparando as obras...</div>
+      </div>
+      <div class="memory-difficulty" id="memoryLevelTabs">
+        <button type="button" class="segmented-btn" data-level="easy">Facil</button>
+        <button type="button" class="segmented-btn" data-level="medium">Medio</button>
+        <button type="button" class="segmented-btn" data-level="hard">Dificil</button>
+        <button type="button" class="segmented-btn" data-level="extreme">Muito dificil</button>
+      </div>
+      <div class="memory-toolbar">
+        <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryMovesValue">0</span></article>
+        <article class="memory-stat"><span class="memory-stat-label">Pares</span><span class="memory-stat-value" id="memoryPairsValue">0/0</span></article>
+        <article class="memory-stat"><span class="memory-stat-label">Tempo</span><span class="memory-stat-value" id="memoryTimerValue">00:00</span></article>
+        <article class="memory-stat"><span class="memory-stat-label">Recorde</span><span class="memory-stat-value" id="memoryBestValue">--</span></article>
+      </div>
+      <div class="memory-actions">
+        <button type="button" class="action-btn action-btn--cool" id="memoryNewBoardBtn">Novo</button>
+        <button type="button" class="action-btn" id="memoryRestartBtn">Reiniciar</button>
+      </div>
     </div>
-    <div class="hero-actions">
-      <button type="button" class="action-btn action-btn--cool" id="memoryNewBoardBtn">Novo tabuleiro</button>
-      <button type="button" class="action-btn" id="memoryRestartBtn">Reembaralhar</button>
-    </div>
-  </div>
-</section>
+  </section>
 
-<section class="panel">
-  <div class="section-head">
-    <div><div class="section-kicker">Passatempo</div><h2 class="section-title">Escolha a dificuldade e forme todos os pares</h2></div>
-    <div class="section-meta" id="memoryStatus">Preparando o cat&aacute;logo de animes...</div>
-  </div>
-  <div class="segmented" style="margin-top:14px;" id="memoryLevelTabs">
-    <button type="button" class="segmented-btn" data-level="easy">F&aacute;cil</button>
-    <button type="button" class="segmented-btn" data-level="medium">M&eacute;dio</button>
-    <button type="button" class="segmented-btn" data-level="hard">Dif&iacute;cil</button>
-    <button type="button" class="segmented-btn" data-level="extreme">Muito dif&iacute;cil</button>
-  </div>
-  <div class="memory-toolbar">
-    <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryMovesValue">0</span></article>
-    <article class="memory-stat"><span class="memory-stat-label">Pares feitos</span><span class="memory-stat-value" id="memoryPairsValue">0/0</span></article>
-    <article class="memory-stat"><span class="memory-stat-label">Tempo</span><span class="memory-stat-value" id="memoryTimerValue">00:00</span></article>
-    <article class="memory-stat"><span class="memory-stat-label">Recorde</span><span class="memory-stat-value" id="memoryBestValue">--</span></article>
-  </div>
-  <div class="pill-row" style="margin-top:14px;">
-    <span class="soft-pill soft-pill--cool" id="memoryCatalogPill">Obras com banner: ...</span>
-    <span class="soft-pill" id="memoryPairsPill">Pares: --</span>
-    <span class="soft-pill" id="memoryHintPill">Modo: carregando...</span>
-  </div>
-  <div class="memory-inline-note">
-    <strong>Mesmo conceito cl&aacute;ssico, visual muito mais tem&aacute;tico.</strong>
-    Vire duas cartas por jogada. Se os banners forem do mesmo anime, o par fica resolvido. Se errar, as cartas voltam para baixo e voc&ecirc; precisa lembrar onde cada obra apareceu.
-  </div>
-</section>
-
-<section class="panel panel--soft">
-  <div class="section-head">
-    <div><div class="section-kicker">Tabuleiro</div><h2 class="section-title">Memorize, compare e feche a grade inteira</h2></div>
-    <div class="section-meta" id="memoryBoardMeta">Aguardando cat&aacute;logo...</div>
-  </div>
-  <div id="memoryBoard" class="memory-board level-medium"></div>
-  <div id="memoryEmpty" class="empty-state" style="display:none; margin-top:14px;">
-    <strong>Sem banners suficientes</strong>
-    O jogo precisa de obras com banner ou capa v&aacute;lidos no sistema de cards para montar os pares.
-  </div>
-</section>
-
-<section class="panel panel--soft" id="memoryResultPanel" style="display:none;">
-  <div class="memory-result">
-    <div class="section-head">
-      <div><div class="section-kicker">Resultado</div><h2 class="section-title">Tabuleiro conclu&iacute;do</h2></div>
-      <div class="section-meta" id="memoryResultMeta">Parab&eacute;ns!</div>
+  <section class="panel panel--soft memory-board-panel">
+    <div class="memory-board-head">
+      <div>
+        <div class="section-kicker">Tabuleiro</div>
+        <h2 class="section-title">Encontre todos os pares</h2>
+      </div>
+      <div class="section-meta" id="memoryBoardMeta">Carregando...</div>
     </div>
-    <div class="memory-result-grid">
-      <article class="memory-stat"><span class="memory-stat-label">Tempo final</span><span class="memory-stat-value" id="memoryResultTime">00:00</span></article>
-      <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryResultMoves">0</span></article>
+    <div id="memoryBoard" class="memory-board level-medium"></div>
+    <div id="memoryEmpty" class="empty-state" style="display:none; margin-top:14px;">
+      <strong>Sem imagens suficientes</strong>
+      O jogo precisa de obras com imagem valida no catalogo.
     </div>
-    <div class="memory-record" id="memoryRecordText">Seu recorde aparecer&aacute; aqui.</div>
-    <div class="hero-actions">
-      <button type="button" class="action-btn action-btn--primary" id="memoryPlayAgainBtn">Jogar de novo</button>
-      <button type="button" class="action-btn action-btn--cool" id="memoryKeepLevelBtn">Mesmo n&iacute;vel</button>
-    </div>
-    <div class="memory-foot">Os pares s&atilde;o montados dinamicamente a partir dos banners do cat&aacute;logo de cards, ent&atilde;o cada rodada pode puxar obras diferentes.</div>
-  </div>
-</section>
+  </section>
 
-<div id="memoryNote" class="floating-note">Carregando jogo da mem&oacute;ria...</div>
-<div class="footer-note">Source Baltigo . Memory Game</div>
+  <section class="panel panel--soft" id="memoryResultPanel" style="display:none;">
+    <div class="memory-result">
+      <div class="section-head">
+        <div><div class="section-kicker">Resultado</div><h2 class="section-title">Voce fechou o tabuleiro</h2></div>
+        <div class="section-meta" id="memoryResultMeta">Fim de partida</div>
+      </div>
+      <div class="memory-result-grid">
+        <article class="memory-stat"><span class="memory-stat-label">Tempo</span><span class="memory-stat-value" id="memoryResultTime">00:00</span></article>
+        <article class="memory-stat"><span class="memory-stat-label">Jogadas</span><span class="memory-stat-value" id="memoryResultMoves">0</span></article>
+      </div>
+      <div class="memory-record" id="memoryRecordText">Seu melhor tempo aparece aqui.</div>
+      <div class="memory-actions">
+        <button type="button" class="action-btn action-btn--primary" id="memoryPlayAgainBtn">Novo sorteio</button>
+        <button type="button" class="action-btn action-btn--cool" id="memoryKeepLevelBtn">Mesmo nivel</button>
+      </div>
+      <div class="memory-foot">As cartas usam imagens reais do catalogo, entao cada partida pode puxar obras diferentes.</div>
+    </div>
+  </section>
+</div>
 """
 
     js = f"""
@@ -3450,22 +3418,14 @@ const memoryLevels = {{
 
 const memoryEls = {{
   heroImage: document.getElementById("memoryHeroImage"),
-  heroCatalog: document.getElementById("memoryHeroCatalog"),
-  heroLevel: document.getElementById("memoryHeroLevel"),
-  heroBest: document.getElementById("memoryHeroBest"),
-  heroTime: document.getElementById("memoryHeroTime"),
   status: document.getElementById("memoryStatus"),
   boardMeta: document.getElementById("memoryBoardMeta"),
-  note: document.getElementById("memoryNote"),
   board: document.getElementById("memoryBoard"),
   empty: document.getElementById("memoryEmpty"),
   moves: document.getElementById("memoryMovesValue"),
   pairs: document.getElementById("memoryPairsValue"),
   timer: document.getElementById("memoryTimerValue"),
   best: document.getElementById("memoryBestValue"),
-  catalogPill: document.getElementById("memoryCatalogPill"),
-  pairsPill: document.getElementById("memoryPairsPill"),
-  hintPill: document.getElementById("memoryHintPill"),
   resultPanel: document.getElementById("memoryResultPanel"),
   resultMeta: document.getElementById("memoryResultMeta"),
   resultTime: document.getElementById("memoryResultTime"),
@@ -3490,9 +3450,15 @@ const memoryState = {{
   currentSelection: []
 }};
 
+if (memoryEls.heroImage) {{
+  memoryEls.heroImage.onerror = function(){{
+    this.src = MEMORY_HERO_FALLBACK;
+  }};
+}}
+
 function setMemoryNote(message, tone){{
-  memoryEls.note.textContent = String(message || "");
-  memoryEls.note.dataset.tone = tone || "";
+  memoryEls.status.textContent = String(message || "");
+  memoryEls.status.dataset.tone = tone || "";
 }}
 
 function normalizeMemoryLevel(level){{
@@ -3545,17 +3511,11 @@ function updateMemoryHeroBanner(){{
 function syncMemoryChrome(){{
   const level = memoryLevels[memoryState.level] || memoryLevels.medium;
   const catalogTotal = Array.isArray(memoryState.catalog) ? memoryState.catalog.length : 0;
-  memoryEls.heroCatalog.textContent = String(catalogTotal || 0);
-  memoryEls.heroLevel.textContent = level.label;
-  memoryEls.heroBest.textContent = memoryBestLabel(memoryState.level);
-  memoryEls.heroTime.textContent = formatMemoryDuration(memoryState.elapsedMs);
   memoryEls.moves.textContent = String(memoryState.moves || 0);
   memoryEls.pairs.textContent = String(memoryState.matches || 0) + "/" + String(memoryState.totalPairs || 0);
   memoryEls.timer.textContent = formatMemoryDuration(memoryState.elapsedMs);
   memoryEls.best.textContent = memoryBestLabel(memoryState.level);
-  memoryEls.catalogPill.textContent = "Obras com banner: " + String(catalogTotal || 0);
-  memoryEls.pairsPill.textContent = "Pares: " + String(level.pairs || 0);
-  memoryEls.hintPill.textContent = "Modo: " + String(level.helper || "");
+  memoryEls.status.textContent = String(catalogTotal || 0) + " obras prontas . Nivel " + String(level.label);
   memoryEls.tabs.forEach(function(button){{
     const active = String(button.getAttribute("data-level") || "") === memoryState.level;
     button.classList.toggle("active", active);
@@ -3612,31 +3572,20 @@ function memoryCardClass(card){{
   const disabled = matched || memoryState.busy || memoryState.flippedIds.length >= 2;
   return [
     "memory-card",
-    flipped ? "is-flipped" : "",
+    flipped ? "is-open" : "",
     matched ? "is-matched" : "",
-    disabled && !flipped ? "is-blocked" : ""
+    disabled && !flipped ? "is-locked" : ""
   ].filter(Boolean).join(" ");
 }}
 
 function buildMemoryCardMarkup(card, index){{
-  const flipped = !!card.revealed || !!card.matched;
   const classes = memoryCardClass(card);
   const badge = "Par " + String(card.position || 0);
-  const safeTitle = esc(card.title || "Anime");
   const safeImage = esc(card.image || "");
   return ''
     + '<button type="button" class="' + classes + '" data-cardid="' + esc(card.id) + '" data-entry style="animation-delay:' + String(index * 24) + 'ms;">'
-    +   '<div class="memory-card__inner">'
-    +     '<div class="memory-face memory-face--back">'
-    +       '<div class="memory-back-top"><span class="memory-back-kicker">Anime</span><span class="memory-back-index">' + esc(badge) + '</span></div>'
-    +       '<div class="memory-back-mark">Pair<br>Shift</div>'
-    +       '<div class="memory-back-copy">Toque para revelar a obra escondida.</div>'
-    +     '</div>'
-    +     '<div class="memory-face memory-face--front">'
-    +       (safeImage ? '<img src="' + safeImage + '" alt="' + safeTitle + '" loading="lazy" onerror="setImageFallback(this,\\'ANIME\\')">' : '')
-    +       '<div class="memory-front-copy"><span class="memory-front-kicker">Obra</span><span class="memory-front-title">' + safeTitle + '</span></div>'
-    +     '</div>'
-    +   '</div>'
+    +   '<span class="memory-card__face memory-card__back" aria-hidden="true"></span>'
+    +   '<span class="memory-card__face memory-card__front">' + (safeImage ? '<img src="' + safeImage + '" alt="' + esc(badge) + '" loading="lazy" onerror="this.remove()">' : '') + '</span>'
     + '</button>';
 }}
 
@@ -3733,7 +3682,7 @@ function openMemoryLevel(level, options){{
   updateMemoryHeroBanner();
   syncMemoryChrome();
   renderMemoryBoard(true);
-  setMemoryNote("Tabuleiro pronto em " + config.label + ".", "success");
+  setMemoryNote("Tabuleiro pronto . " + String(config.label) + " . " + String(config.pairs) + " pares.", "success");
 }}
 
 function completeMemoryGame(){{
@@ -3756,7 +3705,7 @@ function completeMemoryGame(){{
     ? "<strong>Recorde novo.</strong> Tempo " + esc(formatMemoryDuration(best.timeMs)) + " com " + esc(best.moves) + " jogadas."
     : "Seu melhor neste n\\u00edvel est\\u00e1 em <strong>" + esc(formatMemoryDuration(best.timeMs || 0)) + "</strong> com <strong>" + esc(best.moves || 0) + "</strong> jogadas.";
   memoryEls.resultPanel.style.display = "";
-  setMemoryNote("Tabuleiro fechado. Bora para outra?", "success");
+  setMemoryNote("Partida concluida.", "success");
 }}
 
 function resolveMemoryPair(){{
@@ -3773,11 +3722,11 @@ function resolveMemoryPair(){{
     first.matched = true;
     second.matched = true;
     memoryState.matches += 1;
-    setMemoryNote("Par encontrado: " + String(first.title || "Anime") + ".", "success");
+    setMemoryNote("Par encontrado.", "success");
   }} else {{
     first.revealed = false;
     second.revealed = false;
-    setMemoryNote("N\\u00e3o foi par. Tenta lembrar onde cada obra apareceu.", "");
+    setMemoryNote("Nao foi par.", "");
   }}
   memoryState.flippedIds = [];
   memoryState.busy = false;
@@ -3808,8 +3757,7 @@ function handleMemoryFlip(cardId){{
 }}
 
 async function fetchMemoryCatalog(){{
-  memoryEls.status.textContent = "Baixando banners das obras...";
-  setMemoryNote("Carregando obras do sistema de cards...", "");
+  memoryEls.status.textContent = "Carregando obras do catalogo...";
   const response = await fetch("/api/cards/animes?limit=5000&_ts=" + Date.now());
   const data = await response.json();
   const items = Array.isArray(data.items) ? data.items : [];
@@ -3828,7 +3776,7 @@ async function fetchMemoryCatalog(){{
   if (!memoryState.catalog.length){{
     throw new Error("Nenhuma obra com banner dispon\\u00edvel.");
   }}
-  memoryEls.status.textContent = "Cat\\u00e1logo carregado. Montando o tabuleiro...";
+  memoryEls.status.textContent = String(memoryState.catalog.length) + " obras prontas para jogar.";
 }}
 
 document.getElementById("memoryNewBoardBtn").onclick = function(){{
@@ -3865,8 +3813,8 @@ memoryEls.tabs.forEach(function(button){{
     console.error(err);
     memoryState.deck = [];
     renderMemoryBoard();
-    memoryEls.status.textContent = "N\\u00e3o foi poss\\u00edvel montar o jogo agora.";
-    memoryEls.boardMeta.textContent = "Verifique se o cat\\u00e1logo de cards est\\u00e1 acess\\u00edvel.";
+    memoryEls.status.textContent = "Nao foi possivel carregar o jogo.";
+    memoryEls.boardMeta.textContent = "Revise o catalogo de cards.";
     setMemoryNote("Erro ao carregar o jogo: " + (err && err.message ? err.message : "falha inesperada"), "error");
   }}
 }})();
