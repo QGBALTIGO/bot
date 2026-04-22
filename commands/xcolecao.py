@@ -402,14 +402,10 @@ async def _send_title_gallery(update, context, title: Dict[str, Any], index: int
 
     text = (
         f"🖼️ <b>{title['name']}</b>\n\n"
-        f"📦 <i>Progresso:</i> <b>{owned_total}/{len(cards)}</b>\n"
-        f"🎴 <i>Card:</i> <b>{index + 1}/{len(cards)}</b>\n\n"
+        f"📦 <b>{owned_total}/{len(cards)}</b>\n"
+        f"📖 </i> <b>{index + 1}/{len(cards)}</b>\n\n"
         f"🃏 <b>{card['name']}</b>{marker}\n"
-        f"🆔 <code>{card['id']}</code>\n"
-        f"🏷️ <code>{card['card_no']}</code>\n"
-        f"✨ <i>Raridade:</i> <b>{rarity}</b>\n"
-        f"📚 <i>Status:</i> <b>{status}</b>\n"
-        f"📦 <i>Na sua xcoleção:</i> <b>{qty_text}</b>"
+        f"📦 <b>{qty_text}</b>"
     )
 
     keyboard = _build_gallery_keyboard("xcolecao_x", user_id, title_id, index, len(cards))
