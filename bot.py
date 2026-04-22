@@ -70,6 +70,7 @@ from commands.trocar import (
     trade_accept,
     trade_reject,
 )
+from commands.duelo import duelo, duel_callback
 
 from commands.ranking import ranking, callback_ranking
 
@@ -121,6 +122,7 @@ from commands.messages import (
 from commands.messages_help import msgtutorial
 
 from handlers.capture_spawn import capture_message_handler, restore_capture_runtime
+from duel_service import restore_duel_runtime
 
 
 # =========================================================
@@ -210,6 +212,7 @@ def register_commands(app: Application):
 
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
+    app.add_handler(CommandHandler("duelo", duelo))
 
     # ranking
     app.add_handler(CommandHandler("ranking", ranking))
@@ -257,6 +260,7 @@ def register_commands(app: Application):
 def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(trade_accept, pattern=r"^trade_accept"))
     app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade_reject"))
+    app.add_handler(CallbackQueryHandler(duel_callback, pattern=r"^duel"))
 
     app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     app.add_handler(CallbackQueryHandler(xcard_nav_callback, pattern=r"^xcardnav:"))
@@ -303,6 +307,7 @@ def build_application():
     async def post_init(app: Application):
         await restore_capture_runtime(app)
         await restore_capture_purchase_runtime(app)
+        await restore_duel_runtime(app)
 
     app = (
         Application.builder()
