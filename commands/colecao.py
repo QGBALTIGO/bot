@@ -274,8 +274,8 @@ def build_collection_text(uid, cards, page):
 # COLECAO NORMAL
 # =========================================================
 
-async def send_collection(update, context, page, edit=False):
-    uid = update.effective_user.id
+async def send_collection(update, context, page, edit=False, target_uid=None):
+    uid = int(target_uid) if target_uid is not None else update.effective_user.id
     cards = get_user_cards(uid)
 
     text, total_pages, page = build_collection_text(uid, cards, page)
@@ -345,8 +345,8 @@ async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # COLECAO S
 # =========================================================
 
-async def send_collection_anime_owned(update, context, anime, page, edit=False):
-    uid = update.effective_user.id
+async def send_collection_anime_owned(update, context, anime, page, edit=False, target_uid=None):
+    uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
     all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
@@ -420,8 +420,8 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False):
 # COLECAO F
 # =========================================================
 
-async def send_collection_anime_missing(update, context, anime, page, edit=False):
-    uid = update.effective_user.id
+async def send_collection_anime_missing(update, context, anime, page, edit=False, target_uid=None):
+    uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
     all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
@@ -511,8 +511,8 @@ async def send_collection_anime_missing(update, context, anime, page, edit=False
 # COLECAO X (GALERIA COMPLETA)
 # =========================================================
 
-async def send_collection_gallery(update, context, anime, index, edit=False):
-    uid = update.effective_user.id
+async def send_collection_gallery(update, context, anime, index, edit=False, target_uid=None):
+    uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
     chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
@@ -607,12 +607,8 @@ async def colecao_callback(update, context):
         await q.answer()
         return
 
-    if uid != int(owner):
-        await q.answer("Essa coleção não é sua.", show_alert=True)
-        return
-
     await q.answer()
-    await send_collection(update, context, int(page), edit=True)
+    await send_collection(update, context, int(page), edit=True, target_uid=int(owner))
 
 
 async def colecao_s_callback(update, context):
@@ -632,17 +628,20 @@ async def colecao_s_callback(update, context):
         await q.answer()
         return
 
-    if uid != int(owner):
-        await q.answer("Essa coleção não é sua.", show_alert=True)
-        return
-
     anime = find_anime(anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
 
     await q.answer()
-    await send_collection_anime_owned(update, context, anime, int(page), edit=True)
+    await send_collection_anime_owned(
+        update,
+        context,
+        anime,
+        int(page),
+        edit=True,
+        target_uid=int(owner),
+    )
 
 
 async def colecao_f_callback(update, context):
@@ -662,17 +661,20 @@ async def colecao_f_callback(update, context):
         await q.answer()
         return
 
-    if uid != int(owner):
-        await q.answer("Essa coleção não é sua.", show_alert=True)
-        return
-
     anime = find_anime(anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
 
     await q.answer()
-    await send_collection_anime_missing(update, context, anime, int(page), edit=True)
+    await send_collection_anime_missing(
+        update,
+        context,
+        anime,
+        int(page),
+        edit=True,
+        target_uid=int(owner),
+    )
 
 
 async def colecao_x_callback(update, context):
@@ -692,17 +694,20 @@ async def colecao_x_callback(update, context):
         await q.answer()
         return
 
-    if uid != int(owner):
-        await q.answer("Essa coleção não é sua.", show_alert=True)
-        return
-
     anime = find_anime(anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
 
     await q.answer()
-    await send_collection_gallery(update, context, anime, int(index), edit=True)
+    await send_collection_gallery(
+        update,
+        context,
+        anime,
+        int(index),
+        edit=True,
+        target_uid=int(owner),
+    )
 
 
 def get_completed_anime_message(user_id: int, character_id: int):
