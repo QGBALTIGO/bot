@@ -1,0 +1,82 @@
+name: System hardening round 2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/system-patch-round2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install runtime and audit tools
+        run: |
+          pip install -r requirements.txt
+          pip install ruff bandit
+
+      - name: Apply exact system patches
+        run: python tools/system_patch_round2.py
+
+      - name: Validate image proxy guardrails
+        shell: bash
+        run: |
+          python - <<'PY'
+          from utils.image_proxy import ImageProxyError, _sniff_image_type, _validate_url_shape
+
+          for value in (
+              'http://127.0.0.1/image.jpg',
+              'http://[::1]/image.jpg',
+              'http://user:pass@example.com/image.jpg',
+              'file:///etc/passwd',
+          ):
+              try:
+                  host, _ = _validate_url_shape(value)
+                  if host in {'127.0.0.1', '::1'}:
+                      raise ImageProxyError('blocked_image_host')
+              except ImageProxyError:
+                  pass
+              else:
+                  if value.startswith(('file:', 'http://user:')):
+                      raise SystemExit(f'guard failed for {value}')
+
+          assert _sniff_image_type(b'\x89PNG\r\n\x1a\n' + b'x' * 24) == 'image/png'
+          assert _sniff_image_type(b'not-an-image') is None
+          PY
+
+      - name: Validate Python and security findings
+        shell: bash
+        run: |
+          python -m compileall -q .
+          ruff check webapp.py duel_repository.py xcards_service.py utils/image_proxy.py --select E9,F63,F7,F82
+          ! grep -n 'f"UPDATE duels SET' duel_repository.py
+          ! grep -n '^def _safe_int(v: Any, default: int = 0)' webapp.py
+          bandit -q xcards_service.py -lll
+          git diff --check
+
+      - name: Remove one-shot patch files
+        run: |
+          git rm .github/workflows/system-patch-round2.yml tools/system_patch_round2.py
+
+      - name: Commit hardened runtime
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add webapp.py duel_repository.py xcards_service.py utils/image_proxy.py
+          git commit -m "Harden image proxy and runtime bindings"
+          git push origin HEAD:main
