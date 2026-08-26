@@ -26,11 +26,24 @@ RATIO_TOLERANCE = 0.035
 MIN_WIDTH = 1000
 MIN_HEIGHT = 1500
 MIN_SCORE = 82.0
-MAX_CANDIDATES = 3
+MAX_CANDIDATES = 4
 REQUEST_DELAY = max(0.8, float(os.getenv("WALLHAVEN_CURATOR_DELAY", "1.45")))
 
+SEARCH_ALIASES = {
+    40: "Monkey D. Luffy",
+    62: "Roronoa Zoro",
+    61: "Nico Robin",
+    305: "Sanji",
+    2072: "Portgas D. Ace",
+    16342: "Boa Hancock",
+    727: "Shanks",
+    13767: "Trafalgar Law",
+    5: "Ichigo Kurosaki",
+    6: "Rukia Kuchiki",
+}
+
 PRIORITY_CHARACTERS = (
-    "luffy monkey", "zoro roronoa", "nami", "robin nico", "sanji vinsmoke", "ace portgas",
+    "luffy monkey", "zoro roronoa", "nami", "robin nico", "sanji", "sanji vinsmoke", "ace portgas",
     "hancock boa", "shanks", "law trafalgar", "naruto uzumaki", "sasuke uchiha", "sakura haruno",
     "kakashi hatake", "hinata hyuuga", "itachi uchiha", "gaara", "ichigo kurosaki", "rukia kuchiki",
     "orihime inoue", "byakuya kuchiki", "aizen sousuke", "goku son", "vegeta", "bulma",
@@ -162,7 +175,9 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
         return None
 
     other_specific = [x for x in char_tags if tag_best_match(character_name, x) < 0.76]
-    if len(other_specific) >= 3:
+    # Character portraits must be solo. Any second specific character tag
+    # rejects the wallpaper, even when the target character is correct.
+    if other_specific:
         return None
 
     ratio_score = max(0.0, 1.0 - ratio_distance / RATIO_TOLERANCE) * 32.0
@@ -172,7 +187,7 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
     favorites = max(0, int(detail.get("favorites") or 0))
     views = max(0, int(detail.get("views") or 0))
     popularity_score = min(5.0, math.log1p(favorites) * 1.05) + min(3.0, math.log1p(views) * 0.32)
-    solo_bonus = 8.0 if not other_specific else max(0.0, 5.0 - 2.5 * len(other_specific))
+    solo_bonus = 8.0
     type_bonus = 1.5 if str(detail.get("file_type") or "").casefold() in {"image/jpeg", "image/png", "image/webp"} else 0.0
 
     score = round(ratio_score + identity_score + resolution_score + popularity_score + solo_bonus + type_bonus, 3)
@@ -202,8 +217,10 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
 
 
 def character_priority(name: str) -> int:
+    name_norm = norm(name)
+    name_tokens = tokens(name)
     for index, target in enumerate(PRIORITY_CHARACTERS):
-        if similarity(name, target) >= 0.76:
+        if name_norm == norm(target) or (name_tokens and name_tokens == tokens(target)):
             return index
     return len(PRIORITY_CHARACTERS) + 1
 
@@ -320,9 +337,9 @@ def fetch_detail(client: httpx.Client, wallpaper_id: str, api_key: str) -> dict[
 
 
 def curate_one(client: httpx.Client, character: dict[str, Any], api_key: str) -> tuple[dict[str, Any] | None, str]:
-    # Search by character only. Series identity is enforced later using the
-    # Wallhaven Series tags, which is more reliable for AniList name ordering.
-    query = character["name"]
+    # Search by a canonical alias when AniList stores the name in a form
+    # Wallhaven rarely indexes. Series identity is still mandatory in tags.
+    query = SEARCH_ALIASES.get(int(character["id"]), character["name"])
     candidates = search_candidates(client, query, api_key)
     time.sleep(REQUEST_DELAY)
     if not candidates:
@@ -358,7 +375,7 @@ def write_state(output: dict[str, Any], state: dict[str, Any]) -> None:
         "min_score": MIN_SCORE,
         "character_tag_required": True,
         "series_tag_required": True,
-        "max_other_specific_characters": 2,
+        "max_other_specific_characters": 0,
     }
     state["updated_at"] = now_iso()
     OUTPUT_PATH.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

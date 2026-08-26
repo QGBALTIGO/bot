@@ -74,7 +74,7 @@
       "checked_at": "2026-08-26T20:48:06.855346+00:00"
     },
     "13767": {
-      "status": "approved",
+      "status": "rejected_multi_character",
       "character_name": "Law Trafalgar",
       "anime": "ONE PIECE",
       "checked_at": "2026-08-26T20:48:09.974761+00:00"
@@ -128,7 +128,7 @@
       "checked_at": "2026-08-26T20:48:53.667110+00:00"
     },
     "5": {
-      "status": "approved",
+      "status": "rejected_multi_character",
       "character_name": "Ichigo Kurosaki",
       "anime": "BLEACH",
       "checked_at": "2026-08-26T20:48:56.744115+00:00"
