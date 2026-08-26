@@ -13,9 +13,11 @@
       "width": 1200,
       "height": 1800,
       "ratio": 0.66667,
+      "crop_2x3": true,
+      "crop_retention": 1.0,
       "score": 102.145,
       "favorites": 18,
-      "views": 3943,
+      "views": 3942,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -27,7 +29,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/z88g1o",
       "query": "Sanji",
-      "approved_at": "2026-08-26T20:47:55.849891+00:00"
+      "approved_at": "2026-08-26T20:47:55.849891+00:00",
+      "revalidated_at": "2026-08-26T21:26:30.954536+00:00"
     },
     "6": {
       "character_id": 6,
@@ -40,9 +43,11 @@
       "width": 1561,
       "height": 2333,
       "ratio": 0.6691,
-      "score": 101.775,
+      "crop_2x3": true,
+      "crop_retention": 0.99637,
+      "score": 103.879,
       "favorites": 18,
-      "views": 947,
+      "views": 946,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -54,7 +59,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/zp9ypj",
       "query": "Rukia Kuchiki",
-      "approved_at": "2026-08-26T20:49:06.021667+00:00"
+      "approved_at": "2026-08-26T20:49:06.021667+00:00",
+      "revalidated_at": "2026-08-26T21:26:32.515445+00:00"
     },
     "133700": {
       "character_id": 133700,
@@ -67,9 +73,11 @@
       "width": 3607,
       "height": 5418,
       "ratio": 0.66574,
-      "score": 107.306,
+      "crop_2x3": true,
+      "crop_retention": 0.99862,
+      "score": 108.106,
       "favorites": 89,
-      "views": 9330,
+      "views": 9329,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -81,7 +89,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/o5x669",
       "query": "Nobara Kugisaki",
-      "approved_at": "2026-08-26T20:54:08.894598+00:00"
+      "approved_at": "2026-08-26T20:54:08.894598+00:00",
+      "revalidated_at": "2026-08-26T21:26:34.073474+00:00"
     },
     "127518": {
       "character_id": 127518,
@@ -94,9 +103,11 @@
       "width": 2296,
       "height": 3448,
       "ratio": 0.66589,
-      "score": 106.301,
+      "crop_2x3": true,
+      "crop_retention": 0.99884,
+      "score": 106.971,
       "favorites": 37,
-      "views": 4451,
+      "views": 4450,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -108,7 +119,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/73xxeo",
       "query": "Nezuko Kamado",
-      "approved_at": "2026-08-26T20:54:18.126090+00:00"
+      "approved_at": "2026-08-26T20:54:18.126090+00:00",
+      "revalidated_at": "2026-08-26T21:26:35.587609+00:00"
     },
     "136070": {
       "character_id": 136070,
@@ -121,9 +133,11 @@
       "width": 2000,
       "height": 3000,
       "ratio": 0.66667,
+      "crop_2x3": true,
+      "crop_retention": 1.0,
       "score": 107.725,
       "favorites": 68,
-      "views": 5914,
+      "views": 5913,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -135,35 +149,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/721v6v",
       "query": "Shinobu Kochou",
-      "approved_at": "2026-08-26T20:54:33.538338+00:00"
-    },
-    "176754": {
-      "character_id": 176754,
-      "character_name": "Frieren",
-      "anime_id": 154587,
-      "anime": "Sousou no Frieren",
-      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b176754-PCnpqIOkjhFk.png",
-      "url": "https://w.wallhaven.cc/full/21/wallhaven-21ozzg.jpg",
-      "wallhaven_id": "21ozzg",
-      "width": 1200,
-      "height": 1800,
-      "ratio": 0.66667,
-      "score": 102.915,
-      "favorites": 40,
-      "views": 3504,
-      "character_match": 1.0,
-      "series_match": 1.0,
-      "character_tags": [
-        "Fern (Sousou No Frieren)",
-        "Frieren"
-      ],
-      "series_tags": [
-        "Sousou No Frieren"
-      ],
-      "other_characters": [],
-      "source_page": "https://wallhaven.cc/w/21ozzg",
-      "query": "Frieren",
-      "approved_at": "2026-08-26T20:54:44.312690+00:00"
+      "approved_at": "2026-08-26T20:54:33.538338+00:00",
+      "revalidated_at": "2026-08-26T21:26:37.147320+00:00"
     },
     "40": {
       "character_id": 40,
@@ -176,9 +163,11 @@
       "width": 2479,
       "height": 3801,
       "ratio": 0.6522,
-      "score": 97.715,
+      "crop_2x3": true,
+      "crop_retention": 0.9783,
+      "score": 107.31,
       "favorites": 72,
-      "views": 15385,
+      "views": 15384,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -190,7 +179,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/2ep9mg",
       "query": "Monkey D. Luffy",
-      "approved_at": "2026-08-26T20:59:42.380368+00:00"
+      "approved_at": "2026-08-26T20:59:42.380368+00:00",
+      "revalidated_at": "2026-08-26T21:26:40.281209+00:00"
     },
     "62": {
       "character_id": 62,
@@ -203,9 +193,11 @@
       "width": 1488,
       "height": 2256,
       "ratio": 0.65957,
-      "score": 99.251,
+      "crop_2x3": true,
+      "crop_retention": 0.98936,
+      "score": 103.954,
       "favorites": 22,
-      "views": 4225,
+      "views": 4224,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -217,7 +209,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/rdy77m",
       "query": "Roronoa Zoro",
-      "approved_at": "2026-08-26T20:59:50.096373+00:00"
+      "approved_at": "2026-08-26T20:59:50.096373+00:00",
+      "revalidated_at": "2026-08-26T21:26:41.854588+00:00"
     },
     "723": {
       "character_id": 723,
@@ -230,10 +223,12 @@
       "width": 1472,
       "height": 2256,
       "ratio": 0.65248,
-      "score": 92.563,
+      "crop_2x3": true,
+      "crop_retention": 0.97872,
+      "score": 103.209,
       "favorites": 17,
-      "views": 3118,
-      "character_match": 0.96,
+      "views": 3117,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Nami (One Piece)"
@@ -244,7 +239,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/x87113",
       "query": "Nami",
-      "approved_at": "2026-08-26T20:59:57.863546+00:00"
+      "approved_at": "2026-08-26T20:59:57.863546+00:00",
+      "revalidated_at": "2026-08-26T21:26:43.418137+00:00"
     },
     "61": {
       "character_id": 61,
@@ -257,9 +253,11 @@
       "width": 1488,
       "height": 2256,
       "ratio": 0.65957,
-      "score": 99.067,
+      "crop_2x3": true,
+      "crop_retention": 0.98936,
+      "score": 103.77,
       "favorites": 19,
-      "views": 3756,
+      "views": 3755,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -271,7 +269,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/e79oor",
       "query": "Nico Robin",
-      "approved_at": "2026-08-26T21:00:05.628079+00:00"
+      "approved_at": "2026-08-26T21:00:05.628079+00:00",
+      "revalidated_at": "2026-08-26T21:26:44.977333+00:00"
     },
     "16342": {
       "character_id": 16342,
@@ -284,9 +283,11 @@
       "width": 2094,
       "height": 3222,
       "ratio": 0.64991,
-      "score": 95.644,
+      "crop_2x3": true,
+      "crop_retention": 0.97486,
+      "score": 106.758,
       "favorites": 54,
-      "views": 7486,
+      "views": 7485,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -298,7 +299,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/w5d89r",
       "query": "Boa Hancock",
-      "approved_at": "2026-08-26T21:00:13.445163+00:00"
+      "approved_at": "2026-08-26T21:00:13.445163+00:00",
+      "revalidated_at": "2026-08-26T21:26:46.540143+00:00"
     },
     "907": {
       "character_id": 907,
@@ -311,9 +313,11 @@
       "width": 3500,
       "height": 5309,
       "ratio": 0.65926,
-      "score": 101.32,
+      "crop_2x3": true,
+      "crop_retention": 0.98889,
+      "score": 106.232,
       "favorites": 23,
-      "views": 5415,
+      "views": 5414,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -325,7 +329,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/y88m1l",
       "query": "Byakuya Kuchiki",
-      "approved_at": "2026-08-26T21:00:35.240619+00:00"
+      "approved_at": "2026-08-26T21:00:35.240619+00:00",
+      "revalidated_at": "2026-08-26T21:26:48.095785+00:00"
     },
     "913": {
       "character_id": 913,
@@ -338,9 +343,11 @@
       "width": 2804,
       "height": 4320,
       "ratio": 0.64907,
-      "score": 95.99,
+      "crop_2x3": true,
+      "crop_retention": 0.97361,
+      "score": 107.656,
       "favorites": 138,
-      "views": 30742,
+      "views": 30741,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -352,7 +359,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/w89gmq",
       "query": "Vegeta",
-      "approved_at": "2026-08-26T21:00:39.920064+00:00"
+      "approved_at": "2026-08-26T21:00:39.920064+00:00",
+      "revalidated_at": "2026-08-26T21:26:49.657980+00:00"
     },
     "136072": {
       "character_id": 136072,
@@ -365,9 +373,11 @@
       "width": 1181,
       "height": 1748,
       "ratio": 0.67563,
-      "score": 96.853,
+      "crop_2x3": true,
+      "crop_retention": 0.98673,
+      "score": 102.802,
       "favorites": 56,
-      "views": 5613,
+      "views": 5612,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -379,7 +389,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/j3gggp",
       "query": "Mitsuri Kanroji",
-      "approved_at": "2026-08-26T21:01:04.747905+00:00"
+      "approved_at": "2026-08-26T21:01:04.747905+00:00",
+      "revalidated_at": "2026-08-26T21:26:51.243047+00:00"
     },
     "129133": {
       "character_id": 129133,
@@ -392,9 +403,11 @@
       "width": 1181,
       "height": 1748,
       "ratio": 0.67563,
-      "score": 95.992,
+      "crop_2x3": true,
+      "crop_retention": 0.98673,
+      "score": 101.941,
       "favorites": 28,
-      "views": 3491,
+      "views": 3490,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -406,7 +419,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/dprrro",
       "query": "Kyoujurou Rengoku",
-      "approved_at": "2026-08-26T21:01:11.054287+00:00"
+      "approved_at": "2026-08-26T21:01:11.054287+00:00",
+      "revalidated_at": "2026-08-26T21:26:52.806721+00:00"
     },
     "2072": {
       "character_id": 2072,
@@ -423,7 +437,7 @@
       "crop_retention": 0.93338,
       "score": 105.783,
       "favorites": 66,
-      "views": 13296,
+      "views": 13295,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -435,7 +449,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/4lmvkl",
       "query": "Portgas D. Ace",
-      "approved_at": "2026-08-26T21:13:40.229383+00:00"
+      "approved_at": "2026-08-26T21:13:40.229383+00:00",
+      "revalidated_at": "2026-08-26T21:26:54.422885+00:00"
     },
     "13767": {
       "character_id": 13767,
@@ -464,7 +479,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/gp1pr7",
       "query": "Trafalgar Law",
-      "approved_at": "2026-08-26T21:13:52.294305+00:00"
+      "approved_at": "2026-08-26T21:13:52.294305+00:00",
+      "revalidated_at": "2026-08-26T21:26:55.985027+00:00"
     },
     "5": {
       "character_id": 5,
@@ -479,9 +495,9 @@
       "ratio": 0.5625,
       "crop_2x3": true,
       "crop_retention": 0.84375,
-      "score": 95.428,
+      "score": 95.427,
       "favorites": 4,
-      "views": 2475,
+      "views": 2474,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -493,7 +509,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/13qvvw",
       "query": "Ichigo Kurosaki",
-      "approved_at": "2026-08-26T21:13:58.271780+00:00"
+      "approved_at": "2026-08-26T21:13:58.271780+00:00",
+      "revalidated_at": "2026-08-26T21:26:57.550980+00:00"
     },
     "678": {
       "character_id": 678,
@@ -510,7 +527,7 @@
       "crop_retention": 0.84375,
       "score": 100.186,
       "favorites": 30,
-      "views": 6551,
+      "views": 6550,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -522,7 +539,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/vgxwr5",
       "query": "Bulma",
-      "approved_at": "2026-08-26T21:14:10.229145+00:00"
+      "approved_at": "2026-08-26T21:14:10.229145+00:00",
+      "revalidated_at": "2026-08-26T21:26:59.087992+00:00"
     },
     "126635": {
       "character_id": 126635,
@@ -539,7 +557,7 @@
       "crop_retention": 0.84375,
       "score": 96.327,
       "favorites": 10,
-      "views": 3097,
+      "views": 3096,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -551,7 +569,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/z855eg",
       "query": "Megumi Fushiguro",
-      "approved_at": "2026-08-26T21:14:16.237500+00:00"
+      "approved_at": "2026-08-26T21:14:16.237500+00:00",
+      "revalidated_at": "2026-08-26T21:27:00.645085+00:00"
     },
     "134167": {
       "character_id": 134167,
@@ -580,7 +599,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/kx9ep6",
       "query": "Maki Zenin",
-      "approved_at": "2026-08-26T21:14:22.276279+00:00"
+      "approved_at": "2026-08-26T21:14:22.276279+00:00",
+      "revalidated_at": "2026-08-26T21:27:02.201147+00:00"
     },
     "129131": {
       "character_id": 129131,
@@ -597,7 +617,7 @@
       "crop_retention": 0.84375,
       "score": 97.103,
       "favorites": 18,
-      "views": 5821,
+      "views": 5820,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -609,7 +629,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/83988y",
       "query": "Zenitsu Agatsuma",
-      "approved_at": "2026-08-26T21:14:29.749225+00:00"
+      "approved_at": "2026-08-26T21:14:29.749225+00:00",
+      "revalidated_at": "2026-08-26T21:27:03.724533+00:00"
     },
     "129130": {
       "character_id": 129130,
@@ -626,7 +647,7 @@
       "crop_retention": 0.92533,
       "score": 105.444,
       "favorites": 63,
-      "views": 10607,
+      "views": 10606,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -638,7 +659,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/l3q8zq",
       "query": "Inosuke Hashibira",
-      "approved_at": "2026-08-26T21:14:37.215589+00:00"
+      "approved_at": "2026-08-26T21:14:37.215589+00:00",
+      "revalidated_at": "2026-08-26T21:27:05.285806+00:00"
     },
     "130050": {
       "character_id": 130050,
@@ -655,7 +677,7 @@
       "crop_retention": 0.92166,
       "score": 103.831,
       "favorites": 20,
-      "views": 3843,
+      "views": 3842,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -667,7 +689,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/6ky9d6",
       "query": "Giyuu Tomioka",
-      "approved_at": "2026-08-26T21:14:44.755218+00:00"
+      "approved_at": "2026-08-26T21:14:44.755218+00:00",
+      "revalidated_at": "2026-08-26T21:27:06.855160+00:00"
     },
     "183965": {
       "character_id": 183965,
@@ -682,10 +705,10 @@
       "ratio": 0.70721,
       "crop_2x3": true,
       "crop_retention": 0.94267,
-      "score": 104.268,
+      "score": 105.507,
       "favorites": 55,
-      "views": 3546,
-      "character_match": 0.96,
+      "views": 3545,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Fern (Sousou No Frieren)"
@@ -696,7 +719,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/l8ojz2",
       "query": "Fern",
-      "approved_at": "2026-08-26T21:14:52.248597+00:00"
+      "approved_at": "2026-08-26T21:14:52.248597+00:00",
+      "revalidated_at": "2026-08-26T21:27:08.416008+00:00"
     },
     "130102": {
       "character_id": 130102,
@@ -711,10 +735,10 @@
       "ratio": 0.62737,
       "crop_2x3": true,
       "crop_retention": 0.94106,
-      "score": 103.023,
+      "score": 104.263,
       "favorites": 17,
-      "views": 3529,
-      "character_match": 0.96,
+      "views": 3528,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Denji (Chainsaw Man)"
@@ -725,7 +749,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/gp8r1l",
       "query": "Denji",
-      "approved_at": "2026-08-26T21:15:04.365441+00:00"
+      "approved_at": "2026-08-26T21:15:04.365441+00:00",
+      "revalidated_at": "2026-08-26T21:27:09.957507+00:00"
     },
     "137080": {
       "character_id": 137080,
@@ -740,10 +765,10 @@
       "ratio": 0.70935,
       "crop_2x3": true,
       "crop_retention": 0.93983,
-      "score": 105.335,
+      "score": 106.575,
       "favorites": 193,
-      "views": 19241,
-      "character_match": 0.96,
+      "views": 19240,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Makima (Chainsaw Man)"
@@ -754,7 +779,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/y8ml2l",
       "query": "Makima",
-      "approved_at": "2026-08-26T21:15:10.499861+00:00"
+      "approved_at": "2026-08-26T21:15:10.499861+00:00",
+      "revalidated_at": "2026-08-26T21:27:11.535016+00:00"
     },
     "148740": {
       "character_id": 148740,
@@ -769,10 +795,10 @@
       "ratio": 0.7146,
       "crop_2x3": true,
       "crop_retention": 0.93292,
-      "score": 105.079,
+      "score": 106.319,
       "favorites": 120,
-      "views": 10569,
-      "character_match": 0.96,
+      "views": 10568,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Reze (Chainsaw Man)"
@@ -783,7 +809,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/dpek9m",
       "query": "Reze",
-      "approved_at": "2026-08-26T21:15:28.437714+00:00"
+      "approved_at": "2026-08-26T21:15:28.437714+00:00",
+      "revalidated_at": "2026-08-26T21:27:13.136664+00:00"
     },
     "40882": {
       "character_id": 40882,
@@ -800,7 +827,7 @@
       "crop_retention": 0.90444,
       "score": 104.525,
       "favorites": 124,
-      "views": 10719,
+      "views": 10718,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -812,7 +839,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/vq9g5m",
       "query": "Eren Yeager",
-      "approved_at": "2026-08-26T21:15:35.890535+00:00"
+      "approved_at": "2026-08-26T21:15:35.890535+00:00",
+      "revalidated_at": "2026-08-26T21:27:14.713865+00:00"
     },
     "45627": {
       "character_id": 45627,
@@ -841,7 +869,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/v9pk55",
       "query": "Levi",
-      "approved_at": "2026-08-26T21:15:43.340260+00:00"
+      "approved_at": "2026-08-26T21:15:43.340260+00:00",
+      "revalidated_at": "2026-08-26T21:27:16.269009+00:00"
     },
     "89028": {
       "character_id": 89028,
@@ -858,7 +887,7 @@
       "crop_retention": 0.84553,
       "score": 100.86,
       "favorites": 18,
-      "views": 2887,
+      "views": 2885,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -870,7 +899,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/zml68j",
       "query": "Izuku Midoriya",
-      "approved_at": "2026-08-26T21:15:59.764788+00:00"
+      "approved_at": "2026-08-26T21:15:59.764788+00:00",
+      "revalidated_at": "2026-08-26T21:27:17.854516+00:00"
     },
     "88892": {
       "character_id": 88892,
@@ -887,7 +917,7 @@
       "crop_retention": 0.84375,
       "score": 96.453,
       "favorites": 13,
-      "views": 2078,
+      "views": 2077,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -899,7 +929,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/9md9e1",
       "query": "Katsuki Bakugou",
-      "approved_at": "2026-08-26T21:16:07.212291+00:00"
+      "approved_at": "2026-08-26T21:16:07.212291+00:00",
+      "revalidated_at": "2026-08-26T21:27:19.437794+00:00"
     },
     "89220": {
       "character_id": 89220,
@@ -916,7 +947,7 @@
       "crop_retention": 0.84375,
       "score": 100.233,
       "favorites": 8,
-      "views": 1958,
+      "views": 1957,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -928,7 +959,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/2edz9g",
       "query": "Shouto Todoroki",
-      "approved_at": "2026-08-26T21:16:11.694672+00:00"
+      "approved_at": "2026-08-26T21:16:11.694672+00:00",
+      "revalidated_at": "2026-08-26T21:27:20.950626+00:00"
     },
     "89221": {
       "character_id": 89221,
@@ -945,7 +977,7 @@
       "crop_retention": 0.94301,
       "score": 106.676,
       "favorites": 208,
-      "views": 23662,
+      "views": 23661,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -957,7 +989,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/vgvg18",
       "query": "Ochako Uraraka",
-      "approved_at": "2026-08-26T21:16:19.170745+00:00"
+      "approved_at": "2026-08-26T21:16:19.170745+00:00",
+      "revalidated_at": "2026-08-26T21:27:22.516156+00:00"
     },
     "27": {
       "character_id": 27,
@@ -974,7 +1007,7 @@
       "crop_retention": 0.85174,
       "score": 95.531,
       "favorites": 3,
-      "views": 3608,
+      "views": 3607,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -986,7 +1019,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/96oz6k",
       "query": "Killua Zoldyck",
-      "approved_at": "2026-08-26T21:16:29.743583+00:00"
+      "approved_at": "2026-08-26T21:16:29.743583+00:00",
+      "revalidated_at": "2026-08-26T21:27:24.069162+00:00"
     },
     "28": {
       "character_id": 28,
@@ -1003,7 +1037,7 @@
       "crop_retention": 0.96889,
       "score": 101.708,
       "favorites": 6,
-      "views": 2120,
+      "views": 2119,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1015,7 +1049,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/o33drp",
       "query": "Kurapika",
-      "approved_at": "2026-08-26T21:16:37.209197+00:00"
+      "approved_at": "2026-08-26T21:16:37.209197+00:00",
+      "revalidated_at": "2026-08-26T21:27:25.629200+00:00"
     },
     "80": {
       "character_id": 80,
@@ -1032,7 +1067,7 @@
       "crop_retention": 0.85174,
       "score": 95.409,
       "favorites": 3,
-      "views": 2461,
+      "views": 2460,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1044,7 +1079,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/ymxmpl",
       "query": "Light Yagami",
-      "approved_at": "2026-08-26T21:18:37.169355+00:00"
+      "approved_at": "2026-08-26T21:18:37.169355+00:00",
+      "revalidated_at": "2026-08-26T21:27:27.141242+00:00"
     },
     "188783": {
       "character_id": 188783,
@@ -1061,7 +1097,7 @@
       "crop_retention": 0.94287,
       "score": 104.325,
       "favorites": 19,
-      "views": 2529,
+      "views": 2528,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1073,7 +1109,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/rrym1w",
       "query": "Kana Arima",
-      "approved_at": "2026-08-26T21:19:27.319229+00:00"
+      "approved_at": "2026-08-26T21:19:27.319229+00:00",
+      "revalidated_at": "2026-08-26T21:27:28.710800+00:00"
     },
     "73935": {
       "character_id": 73935,
@@ -1088,10 +1125,10 @@
       "ratio": 0.6146,
       "crop_2x3": true,
       "crop_retention": 0.92191,
-      "score": 100.101,
+      "score": 101.341,
       "favorites": 40,
-      "views": 4728,
-      "character_match": 0.96,
+      "views": 4727,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Saitama (One-Punch Man)"
@@ -1102,7 +1139,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/odqvjm",
       "query": "Saitama",
-      "approved_at": "2026-08-26T21:19:50.688721+00:00"
+      "approved_at": "2026-08-26T21:19:50.688721+00:00",
+      "revalidated_at": "2026-08-26T21:27:30.272884+00:00"
     },
     "73979": {
       "character_id": 73979,
@@ -1117,10 +1155,10 @@
       "ratio": 0.70655,
       "crop_2x3": true,
       "crop_retention": 0.94356,
-      "score": 98.847,
+      "score": 100.087,
       "favorites": 18,
-      "views": 4940,
-      "character_match": 0.96,
+      "views": 4939,
+      "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
         "Genos (One-Punch Man)"
@@ -1131,7 +1169,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/nekvyl",
       "query": "Genos",
-      "approved_at": "2026-08-26T21:19:58.455322+00:00"
+      "approved_at": "2026-08-26T21:19:58.455322+00:00",
+      "revalidated_at": "2026-08-26T21:27:31.834117+00:00"
     },
     "87275": {
       "character_id": 87275,
@@ -1148,7 +1187,7 @@
       "crop_retention": 0.94278,
       "score": 99.391,
       "favorites": 8,
-      "views": 5407,
+      "views": 5406,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1160,7 +1199,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/r76rvm",
       "query": "Ken Kaneki",
-      "approved_at": "2026-08-26T21:20:04.734595+00:00"
+      "approved_at": "2026-08-26T21:20:04.734595+00:00",
+      "revalidated_at": "2026-08-26T21:27:33.419133+00:00"
     },
     "87277": {
       "character_id": 87277,
@@ -1177,7 +1217,7 @@
       "crop_retention": 0.94312,
       "score": 100.527,
       "favorites": 38,
-      "views": 6346,
+      "views": 6345,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1189,7 +1229,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/491gvw",
       "query": "Touka Kirishima",
-      "approved_at": "2026-08-26T21:20:12.725206+00:00"
+      "approved_at": "2026-08-26T21:20:12.725206+00:00",
+      "revalidated_at": "2026-08-26T21:27:34.989180+00:00"
     },
     "5186": {
       "character_id": 5186,
@@ -1206,7 +1247,7 @@
       "crop_retention": 0.84375,
       "score": 95.982,
       "favorites": 8,
-      "views": 2032,
+      "views": 2031,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1218,7 +1259,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/j35j5y",
       "query": "Lucy Heartfilia",
-      "approved_at": "2026-08-26T21:20:20.578617+00:00"
+      "approved_at": "2026-08-26T21:20:20.578617+00:00",
+      "revalidated_at": "2026-08-26T21:27:36.538580+00:00"
     },
     "5189": {
       "character_id": 5189,
@@ -1233,9 +1275,9 @@
       "ratio": 0.66683,
       "crop_2x3": true,
       "crop_retention": 0.99975,
-      "score": 102.299,
+      "score": 102.298,
       "favorites": 9,
-      "views": 2220,
+      "views": 2219,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1247,7 +1289,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/3km139",
       "query": "Erza Scarlet",
-      "approved_at": "2026-08-26T21:20:28.306666+00:00"
+      "approved_at": "2026-08-26T21:20:28.306666+00:00",
+      "revalidated_at": "2026-08-26T21:27:38.147450+00:00"
     },
     "123285": {
       "character_id": 123285,
@@ -1264,7 +1307,7 @@
       "crop_retention": 0.93819,
       "score": 105.963,
       "favorites": 72,
-      "views": 14415,
+      "views": 14414,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1276,7 +1319,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/3z9xl9",
       "query": "Asta",
-      "approved_at": "2026-08-26T21:20:42.390592+00:00"
+      "approved_at": "2026-08-26T21:20:42.390592+00:00",
+      "revalidated_at": "2026-08-26T21:27:39.665236+00:00"
     },
     "123283": {
       "character_id": 123283,
@@ -1293,7 +1337,7 @@
       "crop_retention": 0.93697,
       "score": 103.732,
       "favorites": 13,
-      "views": 2309,
+      "views": 2308,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1305,7 +1349,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/z8xzxy",
       "query": "Noelle Silva",
-      "approved_at": "2026-08-26T21:21:04.336630+00:00"
+      "approved_at": "2026-08-26T21:21:04.336630+00:00",
+      "revalidated_at": "2026-08-26T21:27:41.232047+00:00"
     },
     "417": {
       "character_id": 417,
@@ -1322,7 +1367,7 @@
       "crop_retention": 0.92308,
       "score": 99.062,
       "favorites": 7,
-      "views": 1236,
+      "views": 1235,
       "character_match": 1.0,
       "series_match": 0.88,
       "character_tags": [
@@ -1334,7 +1379,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/z8ewoj",
       "query": "Lelouch Lamperouge",
-      "approved_at": "2026-08-26T21:21:26.309950+00:00"
+      "approved_at": "2026-08-26T21:21:26.309950+00:00",
+      "revalidated_at": "2026-08-26T21:27:42.800178+00:00"
     },
     "86": {
       "character_id": 86,
@@ -1351,7 +1397,7 @@
       "crop_retention": 0.96899,
       "score": 101.732,
       "favorites": 12,
-      "views": 3022,
+      "views": 3021,
       "character_match": 1.0,
       "series_match": 0.88,
       "character_tags": [
@@ -1363,7 +1409,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/mpwwp1",
       "query": "Rei Ayanami",
-      "approved_at": "2026-08-26T21:21:34.164407+00:00"
+      "approved_at": "2026-08-26T21:21:34.164407+00:00",
+      "revalidated_at": "2026-08-26T21:27:44.317899+00:00"
     },
     "1259": {
       "character_id": 1259,
@@ -1380,7 +1427,7 @@
       "crop_retention": 0.91487,
       "score": 101.646,
       "favorites": 20,
-      "views": 4814,
+      "views": 4813,
       "character_match": 1.0,
       "series_match": 0.88,
       "character_tags": [
@@ -1392,7 +1439,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/dgw1ko",
       "query": "Misato Katsuragi",
-      "approved_at": "2026-08-26T21:21:41.983367+00:00"
+      "approved_at": "2026-08-26T21:21:41.983367+00:00",
+      "revalidated_at": "2026-08-26T21:27:45.892288+00:00"
     },
     "120649": {
       "character_id": 120649,
@@ -1409,7 +1457,7 @@
       "crop_retention": 0.94301,
       "score": 102.362,
       "favorites": 53,
-      "views": 2538,
+      "views": 2537,
       "character_match": 1.0,
       "series_match": 0.8229,
       "character_tags": [
@@ -1421,7 +1469,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/g7ygvl",
       "query": "Kaguya Shinomiya",
-      "approved_at": "2026-08-26T21:23:08.575649+00:00"
+      "approved_at": "2026-08-26T21:23:08.575649+00:00",
+      "revalidated_at": "2026-08-26T21:27:47.444291+00:00"
     },
     "121103": {
       "character_id": 121103,
@@ -1438,7 +1487,7 @@
       "crop_retention": 0.84375,
       "score": 99.423,
       "favorites": 58,
-      "views": 3988,
+      "views": 3987,
       "character_match": 1.0,
       "series_match": 0.8229,
       "character_tags": [
@@ -1450,7 +1499,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/83y3oo",
       "query": "Chika Fujiwara",
-      "approved_at": "2026-08-26T21:23:16.465242+00:00"
+      "approved_at": "2026-08-26T21:23:16.465242+00:00",
+      "revalidated_at": "2026-08-26T21:27:48.999372+00:00"
     },
     "257562": {
       "character_id": 257562,
@@ -1467,7 +1517,7 @@
       "crop_retention": 0.94301,
       "score": 106.073,
       "favorites": 72,
-      "views": 8409,
+      "views": 8408,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1479,7 +1529,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/gp7w1q",
       "query": "Hitori Gotou",
-      "approved_at": "2026-08-26T21:23:24.373855+00:00"
+      "approved_at": "2026-08-26T21:23:24.373855+00:00",
+      "revalidated_at": "2026-08-26T21:27:50.556220+00:00"
     },
     "180692": {
       "character_id": 180692,
@@ -1494,9 +1545,9 @@
       "ratio": 0.6599,
       "crop_2x3": true,
       "crop_retention": 0.98984,
-      "score": 106.766,
+      "score": 106.765,
       "favorites": 38,
-      "views": 5293,
+      "views": 5292,
       "character_match": 1.0,
       "series_match": 1.0,
       "character_tags": [
@@ -1508,7 +1559,8 @@
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/exmvqo",
       "query": "Kafka Hibino",
-      "approved_at": "2026-08-26T21:23:37.068801+00:00"
+      "approved_at": "2026-08-26T21:23:37.068801+00:00",
+      "revalidated_at": "2026-08-26T21:27:52.072001+00:00"
     }
   },
   "generated_at": "2026-08-26T21:23:38.629561+00:00",
@@ -1525,5 +1577,6 @@
     "character_tag_required": true,
     "series_tag_required": true,
     "max_other_specific_characters": 0
-  }
+  },
+  "revalidated_at": "2026-08-26T21:27:52.072300+00:00"
 }

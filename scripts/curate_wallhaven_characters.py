@@ -152,6 +152,33 @@ def tag_best_match(target: str, tag: dict[str, Any]) -> float:
     return max((similarity(target, item) for item in variants(tag.get("name"), tag.get("alias"))), default=0.0)
 
 
+def _strip_character_qualifier(value: Any) -> str:
+    # Wallhaven character tags often contain the series in parentheses, e.g.
+    # "Fern (Sousou No Frieren)". The qualifier must never participate in
+    # character identity matching, otherwise "Fern" can look like
+    # "Frieren" only because the series title contains that token.
+    raw = str(value or "").strip()
+    raw = re.sub(r"\s*[\(\[\{].*?[\)\]\}]\s*$", "", raw).strip()
+    return raw
+
+
+def character_tag_variants(tag: dict[str, Any]) -> list[str]:
+    raw_values = [tag.get("name")]
+    raw_values.extend(re.split(r"[,;/|]", str(tag.get("alias") or "")))
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        cleaned = norm(_strip_character_qualifier(raw))
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            out.append(cleaned)
+    return out
+
+
+def character_tag_best_match(target: str, tag: dict[str, Any]) -> float:
+    return max((similarity(target, item) for item in character_tag_variants(tag)), default=0.0)
+
+
 def specific_character_tags(tags: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for tag in tags:
@@ -194,12 +221,12 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
     char_tags = specific_character_tags(tags)
     series_tags = [x for x in tags if str(x.get("category") or "").casefold() == "series"]
 
-    char_match = max((tag_best_match(character_name, x) for x in char_tags), default=0.0)
+    char_match = max((character_tag_best_match(character_name, x) for x in char_tags), default=0.0)
     series_match = max((tag_best_match(anime_title, x) for x in series_tags), default=0.0)
     if char_match < 0.76 or series_match < 0.58:
         return None
 
-    other_specific = [x for x in char_tags if tag_best_match(character_name, x) < 0.76]
+    other_specific = [x for x in char_tags if character_tag_best_match(character_name, x) < 0.76]
     # Character portraits must be solo. Any second specific character tag
     # rejects the wallpaper, even when the target character is correct.
     if other_specific:

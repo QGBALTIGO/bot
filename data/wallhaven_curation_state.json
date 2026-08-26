@@ -236,10 +236,11 @@
       "checked_at": "2026-08-26T21:14:44.755198+00:00"
     },
     "176754": {
-      "status": "approved",
+      "status": "revalidation_failed",
       "character_name": "Frieren",
       "anime": "Sousou no Frieren",
-      "checked_at": "2026-08-26T20:54:44.312670+00:00"
+      "wallhaven_id": "21ozzg",
+      "checked_at": "2026-08-26T21:26:38.717156+00:00"
     },
     "183965": {
       "status": "approved",
@@ -680,5 +681,6 @@
       "checked_at": "2026-08-26T21:23:38.627003+00:00"
     }
   },
-  "updated_at": "2026-08-26T21:23:38.629569+00:00"
+  "updated_at": "2026-08-26T21:23:38.629569+00:00",
+  "revalidated_at": "2026-08-26T21:27:52.072306+00:00"
 }
