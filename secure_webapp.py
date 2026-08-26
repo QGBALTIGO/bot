@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse as BaseHTMLResponse
 
 import webapp as legacy_webapp
 from game_webapp import register_game_routes
+from utils.route_hygiene import dedupe_http_routes_keep_last
 from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,6 @@ class TelegramWebAppAuthMiddleware:
                 },
             )
 
-        # Legacy request-limit endpoint identifies the user in its query string.
         if path == "/api/pedido/limit":
             raw_uid = (_query_params(scope).get("uid") or [""])[0]
             try:
@@ -268,8 +268,8 @@ class TelegramWebAppAuthMiddleware:
                 separators=(",", ":"),
             ).encode("utf-8")
 
-        # New V2 endpoints do not accept a client-provided uid. The verified
-        # Telegram identity is injected into ASGI state and consumed server-side.
+        # V2 endpoints never trust a uid supplied by the browser. The verified
+        # Telegram identity is injected into request.state for server-side use.
         scope.setdefault("state", {})["telegram_user_id"] = identity.user_id
         scope["state"]["telegram_username"] = identity.username
         scope["state"]["telegram_full_name"] = identity.full_name
@@ -325,12 +325,17 @@ class TelegramWebAppAuthMiddleware:
             )
 
 
-# Transitional security layer: route functions in the legacy module resolve
-# HTMLResponse from module globals at request time. This lets us secure existing
-# pages now, before splitting the legacy WebApp into routers/templates/static.
+# Temporary compatibility layer while legacy pages are split into proper
+# routers/templates/static modules.
 legacy_webapp.HTMLResponse = SecureHTMLResponse
 
 app = legacy_webapp.app
+
+# The legacy file contains old and new implementations registered under the
+# same path+method. Starlette would otherwise execute the first/old route and
+# make the later implementation unreachable. Keep the latest deliberately.
+dedupe_http_routes_keep_last(app)
+
 register_game_routes(app)
 app.add_middleware(
     TelegramWebAppAuthMiddleware,
