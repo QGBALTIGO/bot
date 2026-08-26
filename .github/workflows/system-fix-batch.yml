@@ -1,0 +1,67 @@
+name: Internal runtime fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/system-fix-batch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch only runtime bindings
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('webapp.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              ('safe_name_html = html.escape(raw_name)', 'safe_name_html = __import__("html").escape(raw_name)', 1),
+              ('safe_q_html = html.escape(raw_q)', 'safe_q_html = __import__("html").escape(raw_q)', 1),
+              ('anime_records = _unwrap_records(load_json(CATALOG_PATH))', 'anime_records = _unwrap_records(_pedido_load_json(CATALOG_PATH))', 1),
+              ('manga_records = _unwrap_records(load_json(MANGA_CATALOG_PATH))', 'manga_records = _unwrap_records(_pedido_load_json(MANGA_CATALOG_PATH))', 1),
+          ]
+
+          for old, new, expected in replacements:
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'Expected {expected} occurrence(s) of {old!r}, found {count}; refusing broad edit')
+              text = text.replace(old, new, expected)
+
+          marker = '''def _pedido_reload_indexes():\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('Unique _pedido_reload_indexes marker not found; refusing edit')
+
+          helper = '''def _pedido_load_json(path: str):\n    raw_path = str(path or "").strip()\n    if not raw_path:\n        raise FileNotFoundError("empty path")\n\n    candidates = [raw_path]\n    if not os.path.isabs(raw_path):\n        candidates.extend([\n            os.path.join(os.getcwd(), raw_path),\n            os.path.join("/app", raw_path),\n        ])\n\n    seen = set()\n    for candidate in candidates:\n        candidate = os.path.normpath(candidate)\n        if candidate in seen:\n            continue\n        seen.add(candidate)\n        if os.path.isfile(candidate):\n            with open(candidate, "r", encoding="utf-8") as handle:\n                return json.load(handle)\n\n    raise FileNotFoundError(raw_path)\n\n\n'''
+          text = text.replace(marker, helper + marker, 1)
+          path.write_text(text, encoding='utf-8')
+          print('Applied exact system-only runtime binding fixes.')
+          PY
+
+      - name: Validate Python syntax and critical names
+        run: |
+          python -m py_compile webapp.py
+          python -m pip install -q ruff
+          ruff check webapp.py utils/image_rules.py --select E9,F63,F7,F82
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add webapp.py
+          git commit -m "Fix internal WebApp runtime bindings"
+          git push origin HEAD:main
