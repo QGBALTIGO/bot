@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from database import create_or_get_user, pool, touch_user_identity
@@ -114,18 +115,18 @@ def _update_duel_row(cur, duel_id: int, **fields: Any) -> None:
     if not fields:
         return
 
-    assignments: List[str] = []
+    assignments = []
     params: List[Any] = []
     for column, value in fields.items():
-        assignments.append(f"{column} = %s")
+        assignments.append(sql.SQL("{} = %s").format(sql.Identifier(str(column))))
         params.append(value)
 
-    assignments.append("updated_at = NOW()")
+    assignments.append(sql.SQL("updated_at = NOW()"))
     params.append(int(duel_id))
-    cur.execute(
-        f"UPDATE duels SET {', '.join(assignments)} WHERE duel_id = %s",
-        tuple(params),
+    query = sql.SQL("UPDATE duels SET {} WHERE duel_id = %s").format(
+        sql.SQL(", ").join(assignments)
     )
+    cur.execute(query, tuple(params))
 
 
 def _insert_duel_event(cur, duel_id: int, event_type: str, actor_user_id: Optional[int] = None, payload: Any = None) -> None:

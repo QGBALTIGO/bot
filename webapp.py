@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Query, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from utils.image_proxy import ImageProxyError, fetch_public_image
+
 from premium_webapp_ui import (
     build_baltigoflix_page as build_baltigoflix_page_html,
     build_cards_anime_page as build_cards_anime_page_html,
@@ -150,68 +152,36 @@ def _web_image_url(url: Any) -> str:
 async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000)):
     target = str(url or "").strip()
     parsed = urlparse(target)
-
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="invalid_image_url")
-
     hostname = (parsed.hostname or "").strip().lower()
-    if _is_blocked_image_host(hostname):
-        raise HTTPException(status_code=400, detail="blocked_image_host")
 
     headers = {
         "User-Agent": IMAGE_PROXY_USER_AGENT,
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     }
-
-    referer = f"{parsed.scheme}://{parsed.netloc}/"
-    if referer:
-        headers["Referer"] = referer
-
-    async def _fetch_image(verify: bool = True):
-        async with httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=httpx.Timeout(20.0, connect=10.0),
-            trust_env=False,
-            verify=verify,
-        ) as client:
-            return await client.get(target, headers=headers)
-
-    upstream = None
-    last_error = None
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
 
     try:
-        upstream = await _fetch_image(verify=True)
+        content, media_type, _ = await fetch_public_image(
+            target,
+            headers=headers,
+            timeout=httpx.Timeout(20.0, connect=10.0),
+        )
+    except ImageProxyError as exc:
+        print(
+            f"[image-proxy] rejected host={hostname or '-'} code={exc.code}",
+            flush=True,
+        )
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
     except Exception as exc:
-        last_error = exc
-        try:
-            upstream = await _fetch_image(verify=False)
-            print(
-                f"[image-proxy] tls-fallback host={hostname} url={target}",
-                flush=True,
-            )
-        except Exception as fallback_exc:
-            last_error = fallback_exc
-
-    if upstream is None:
         print(
-            f"[image-proxy] fetch-failed host={hostname} error={repr(last_error)} url={target}",
+            f"[image-proxy] fetch-failed host={hostname or '-'} error={type(exc).__name__}",
             flush=True,
         )
-        raise HTTPException(status_code=502, detail="image_fetch_failed")
-
-    if upstream.status_code >= 400:
-        print(
-            f"[image-proxy] upstream-status host={hostname} status={upstream.status_code} url={target}",
-            flush=True,
-        )
-        raise HTTPException(status_code=502, detail="image_source_unavailable")
-
-    media_type = str(upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-    if not media_type.startswith("image/"):
-        media_type = _guess_image_media_type(target)
+        raise HTTPException(status_code=502, detail="image_fetch_failed") from exc
 
     return Response(
-        content=upstream.content,
+        content=content,
         media_type=media_type,
         headers={
             "Cache-Control": "public, max-age=21600",
@@ -6002,7 +5972,7 @@ async def _tg_send_photo(chat_id: int, photo: str, caption: str) -> bool:
 # DADO — BASE LOCAL
 # =========================================================
 
-def _safe_int(v: Any, default: int = 0) -> int:
+def _dado_safe_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
     except Exception:
@@ -6134,7 +6104,7 @@ def _load_local_dado_pool() -> Dict[str, Any]:
     characters_by_anime: Dict[int, List[Dict[str, Any]]] = {}
 
     for item in raw_items:
-        anime_id = _safe_int(item.get("anime_id"), 0)
+        anime_id = _dado_safe_int(item.get("anime_id"), 0)
         anime_name = _norm_text(item.get("anime"))
         banner_image = _norm_text(item.get("banner_image"))
         cover_image = _norm_text(item.get("cover_image") or item.get("imagem_de_capa"))
@@ -6158,7 +6128,7 @@ def _load_local_dado_pool() -> Dict[str, Any]:
                 if not isinstance(c, dict):
                     continue
 
-                cid = _safe_int(c.get("id"), 0)
+                cid = _dado_safe_int(c.get("id"), 0)
                 cname = _norm_text(c.get("name") or c.get("nome"))
                 canime = _norm_text(c.get("anime") or anime_name)
                 cimg = _norm_text(c.get("image") or c.get("imagem"))

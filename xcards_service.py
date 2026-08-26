@@ -35,7 +35,9 @@ def _slugify(text: Any) -> str:
 
 
 def _allocate_short_id(prefix: str, value: str, used_ids: set) -> int:
-    digest = hashlib.sha1(f"{prefix}:{value}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha1(
+        f"{prefix}:{value}".encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
     base = (int(digest[:10], 16) % 900000000) + 100000000
     step = (int(digest[10:18], 16) % 9973) + 1
     candidate = base
