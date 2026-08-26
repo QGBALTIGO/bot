@@ -29,9 +29,11 @@ from commands.game import dado, daily, giro, jogar
 from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
+from commands.profile import perfil
 from commands.start import start
 from database import create_tables
 from game_repository import create_game_tables
+from identity_repository import create_identity_tables
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -123,12 +125,13 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
 
-    # game center / coleção V2
+    # experiência pessoal V2
     tg_app.add_handler(CommandHandler("jogar", jogar))
     tg_app.add_handler(CommandHandler("daily", daily))
     tg_app.add_handler(CommandHandler("dado", dado))
     tg_app.add_handler(CommandHandler("giro", giro))
     tg_app.add_handler(CommandHandler("colecao", colecao))
+    tg_app.add_handler(CommandHandler("perfil", perfil))
 
     _register_message_handlers(tg_app)
 
@@ -155,6 +158,7 @@ def main() -> None:
     logger.info("Inicializando banco de dados")
     create_tables()
     create_game_tables()
+    create_identity_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
