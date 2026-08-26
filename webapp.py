@@ -856,9 +856,97 @@ def api_decline(payload: dict = Body(...)):
         )
 
 
+def _channel_membership_request(user_id: int) -> dict:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    payload = {"chat_id": REQUIRED_CHANNEL, "user_id": int(user_id)}
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    with httpx.Client(timeout=timeout, trust_env=False) as client:
+        response = client.post(url, json=payload)
+    try:
+        data = response.json()
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["_http_status"] = int(response.status_code)
+    return data
+
+
+def _channel_member_ok(result: dict) -> bool:
+    status = str((result or {}).get("status") or "").strip().lower()
+    if status in {"creator", "administrator", "member"}:
+        return True
+    return status == "restricted" and bool((result or {}).get("is_member", False))
+
+
+def _channel_error_message(data: dict) -> str:
+    description = str((data or {}).get("description") or "").strip()
+    lowered = description.lower()
+    if any(marker in lowered for marker in (
+        "chat not found",
+        "member list is inaccessible",
+        "not enough rights",
+        "administrator rights",
+        "bot is not a member",
+    )):
+        return "O bot não tem permissão para verificar membros do canal obrigatório."
+    return "O Telegram não conseguiu verificar sua inscrição agora."
+
+
+@app.get("/api/channel/selftest")
+def api_channel_selftest():
+    if not BOT_TOKEN:
+        return JSONResponse({"ok": False, "stage": "config", "error": "BOT_TOKEN ausente"}, status_code=500)
+    if not REQUIRED_CHANNEL:
+        return {"ok": True, "stage": "disabled", "channel_required": False}
+
+    try:
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        with httpx.Client(timeout=timeout, trust_env=False) as client:
+            me_response = client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe")
+            me_data = me_response.json()
+
+        if not isinstance(me_data, dict) or not me_data.get("ok"):
+            return JSONResponse({"ok": False, "stage": "getMe", "error": "Telegram recusou getMe"}, status_code=502)
+
+        me = me_data.get("result") or {}
+        bot_id = int(me.get("id") or 0)
+        member_data = _channel_membership_request(bot_id)
+        if not member_data.get("ok"):
+            return JSONResponse({
+                "ok": False,
+                "stage": "getChatMember",
+                "channel": REQUIRED_CHANNEL,
+                "description": str(member_data.get("description") or ""),
+                "message": _channel_error_message(member_data),
+            }, status_code=503)
+
+        result = member_data.get("result") or {}
+        status = str(result.get("status") or "").strip().lower()
+        return {
+            "ok": status in {"administrator", "creator"},
+            "stage": "telegram",
+            "channel": REQUIRED_CHANNEL,
+            "bot_username": str(me.get("username") or ""),
+            "bot_status": status,
+            "can_reliably_check_other_members": status in {"administrator", "creator"},
+        }
+    except Exception as exc:
+        print("❌ ERROR /api/channel/selftest:", repr(exc), flush=True)
+        return JSONResponse({
+            "ok": False,
+            "stage": "network",
+            "error": f"{type(exc).__name__}: {exc}",
+        }, status_code=502)
+
+
 @app.post("/api/channel/check")
 def api_channel_check(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
+    try:
+        uid = int((payload or {}).get("uid") or 0)
+    except (TypeError, ValueError):
+        uid = 0
+
     if uid <= 0:
         return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
@@ -868,27 +956,29 @@ def api_channel_check(payload: dict = Body(...)):
     if not BOT_TOKEN:
         return JSONResponse({"ok": False, "message": "BOT_TOKEN ausente para verificação."}, status_code=500)
 
-    # Verificação via Telegram Bot API (sem requests)
     try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
-        params = {"chat_id": REQUIRED_CHANNEL, "user_id": uid}
+        data = _channel_membership_request(uid)
+    except Exception as exc:
+        print(f"❌ ERROR /api/channel/check network uid={uid}: {type(exc).__name__}: {exc}", flush=True)
+        return JSONResponse(
+            {"ok": False, "message": "Não foi possível consultar o Telegram agora. Tente novamente."},
+            status_code=502,
+        )
 
-        with httpx.Client(timeout=8.0) as client:
-            r = client.get(url, params=params)
-            data = r.json()
+    if not data.get("ok"):
+        description = str(data.get("description") or "").strip()
+        print(
+            f"❌ Telegram getChatMember recusado channel={REQUIRED_CHANNEL!r} "
+            f"http={data.get('_http_status')} description={description!r}",
+            flush=True,
+        )
+        return JSONResponse(
+            {"ok": False, "message": _channel_error_message(data)},
+            status_code=503,
+        )
 
-        if not data.get("ok"):
-            return {"ok": False}
-
-        result = data.get("result") or {}
-        status = (result.get("status") or "").lower()
-        is_member = bool(result.get("is_member", False))
-        ok = (status in ("creator", "administrator", "member")) or (status == "restricted" and is_member)
-        return {"ok": ok}
-
-    except Exception as e:
-        print("❌ ERROR /api/channel/check:", repr(e), flush=True)
-        return {"ok": False}
+    result = data.get("result") or {}
+    return {"ok": _channel_member_ok(result)}
 
 
 # =========================
