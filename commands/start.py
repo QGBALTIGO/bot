@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from database import create_or_get_user, get_user_status, mark_welcome_sent, reset_welcome_sent
 from identity_repository import sync_telegram_identity
 from utils.gatekeeper import TERMS_VERSION
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
 BANNER_URL = os.getenv(
     "TERMS_BANNER_URL",
@@ -17,7 +17,6 @@ WELCOME_BANNER_URL = os.getenv(
     "WELCOME_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
 ).strip()
-BASE_URL = require_public_base_url()
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
@@ -46,20 +45,29 @@ def _member_has_access(member) -> bool:
     return status == "restricted" and bool(getattr(member, "is_member", False))
 
 
-def _main_keyboard(terms_url: str) -> InlineKeyboardMarkup:
+def _webapp(path: str, user) -> str:
+    return build_webapp_url(
+        path,
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
+
+
+def _main_keyboard(terms_url: str, user) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏴‍☠️ Abrir Baltigo", web_app=WebAppInfo(url=f"{BASE_URL}/hub#home"))],
+        [InlineKeyboardButton("🏴‍☠️ Abrir Baltigo", web_app=WebAppInfo(url=_webapp("/hub#home", user)))],
         [
-            InlineKeyboardButton("🎮 Jogar", web_app=WebAppInfo(url=f"{BASE_URL}/game")),
-            InlineKeyboardButton("🎴 Coleção", web_app=WebAppInfo(url=f"{BASE_URL}/collection")),
+            InlineKeyboardButton("🎮 Jogar", web_app=WebAppInfo(url=_webapp("/game", user))),
+            InlineKeyboardButton("🎴 Coleção", web_app=WebAppInfo(url=_webapp("/collection", user))),
         ],
         [
-            InlineKeyboardButton("🔎 Explorar", web_app=WebAppInfo(url=f"{BASE_URL}/hub#explore")),
-            InlineKeyboardButton("👥 Social", web_app=WebAppInfo(url=f"{BASE_URL}/hub#social")),
+            InlineKeyboardButton("🔎 Explorar", web_app=WebAppInfo(url=_webapp("/hub#explore", user))),
+            InlineKeyboardButton("👥 Social", web_app=WebAppInfo(url=_webapp("/hub#social", user))),
         ],
         [
-            InlineKeyboardButton("✅ Missões", web_app=WebAppInfo(url=f"{BASE_URL}/hub#missions")),
-            InlineKeyboardButton("👤 Perfil", web_app=WebAppInfo(url=f"{BASE_URL}/profile")),
+            InlineKeyboardButton("✅ Missões", web_app=WebAppInfo(url=_webapp("/hub#missions", user))),
+            InlineKeyboardButton("👤 Perfil", web_app=WebAppInfo(url=_webapp("/profile", user))),
         ],
         [InlineKeyboardButton("➕ Adicionar ao grupo", url=ADD_TO_GROUP_URL)],
         [
@@ -87,7 +95,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_html(text, reply_markup=keyboard)
         return
 
-    if user_id <= 0:
+    if user_id <= 0 or not user:
         if message:
             await message.reply_text("❌ Não consegui identificar seu usuário.")
         return
@@ -97,9 +105,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sync_telegram_identity(user_id, username=str(user.username or ""), full_name=str(user.full_name or ""))
     except Exception:
         pass
+
     status = get_user_status(user_id) or {}
     terms_ok = bool(status.get("terms_accepted")) and status.get("terms_version") == TERMS_VERSION
-    terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
+    terms_url = _webapp(f"/terms?lang={tg_lang}", user)
 
     if not terms_ok:
         reset_welcome_sent(user_id)
@@ -150,4 +159,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     if message:
-        await message.reply_photo(photo=WELCOME_BANNER_URL, caption=text, parse_mode="HTML", reply_markup=_main_keyboard(terms_url))
+        await message.reply_photo(
+            photo=WELCOME_BANNER_URL,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(terms_url, user),
+        )
