@@ -43,7 +43,7 @@ GROUP_ALLOWED_COMMANDS = {
 }
 
 # Abrir telas/consultas ou iniciar um fluxo social não deve gerar XP por si só.
-# Sistemas como captura concedem XP explicitamente quando a ação é concluída.
+# Sistemas como captura/Termo concedem XP explicitamente quando a ação é concluída.
 IGNORED_PROGRESS_COMMANDS = {
     "/start",
     "/nivel",
@@ -51,6 +51,8 @@ IGNORED_PROGRESS_COMMANDS = {
     "/loja",
     "/colecao",
     "/perfil",
+    "/memoria",
+    "/termo",
     "/xcard",
     "/xcolecao",
     "/capturar",
