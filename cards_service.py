@@ -7,6 +7,8 @@ from copy import deepcopy
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
+from utils.public_character_image import character_portrait_url
+
 from database import (
     delete_global_character_image,
     get_all_global_character_images,
@@ -322,7 +324,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 image = (
                     db_image
                     or manual_image
-                    or wallhaven_image
+                    or character_portrait_url(wallhaven_image)
                     or str(ch.get("image") or "").strip()
                 )
 
@@ -398,7 +400,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             image = (
                 db_image
                 or manual_image
-                or wallhaven_image
+                or character_portrait_url(wallhaven_image)
                 or str(ch.get("image") or "").strip()
             )
 

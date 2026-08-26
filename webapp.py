@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
+from utils.public_character_image import is_own_image_proxy_url
 
 from premium_webapp_ui import (
     build_baltigoflix_page as build_baltigoflix_page_html,
@@ -136,6 +137,8 @@ def _web_image_url(url: Any) -> str:
         return ""
 
     if value.startswith(("data:", "/api/image-proxy?")):
+        return value
+    if is_own_image_proxy_url(value):
         return value
 
     parsed = urlparse(value)
