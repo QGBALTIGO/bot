@@ -18,6 +18,7 @@ from game_repository import (
     resolve_dice_roll,
 )
 from game_rules import SPIN_REWARDS, choose_spin_reward, spin_total_weight
+from system_events import emit_completed_activity, emit_event
 
 
 class GameServiceError(RuntimeError):
@@ -32,7 +33,19 @@ def get_state(user_id: int) -> Dict[str, Any]:
 
 
 def claim_daily_reward(user_id: int) -> Dict[str, Any]:
-    return claim_daily(int(user_id))
+    result = claim_daily(int(user_id))
+    if result.get("claimed"):
+        reward = result.get("reward") or {}
+        streak = int(reward.get("streak") or 1)
+        emit_event(
+            int(user_id),
+            "daily_claimed",
+            label=f"🎁 Daily resgatado • sequência {streak}",
+            metadata={"reward": reward},
+        )
+        emit_event(int(user_id), "daily_streak", amount=streak, absolute=True, label=f"🔥 Streak do Daily: {streak}")
+        emit_completed_activity(int(user_id), label="Daily resgatado")
+    return result
 
 
 def _eligible_animes() -> list[Dict[str, Any]]:
@@ -95,6 +108,12 @@ def roll_dice(user_id: int) -> Dict[str, Any]:
             "Você já tem uma rolagem ativa.",
         ) from exc
 
+    emit_event(
+        int(user_id),
+        "dice_rolled",
+        label=f"🎲 Dado rolado • {dice_value}",
+        metadata={"dice_value": dice_value, "options": [item["id"] for item in options]},
+    )
     return result
 
 
@@ -136,14 +155,24 @@ def pick_dice_anime(user_id: int, roll_token: str, anime_id: int) -> Dict[str, A
     except InvalidDicePickError as exc:
         raise GameServiceError("invalid_pick", "Não foi possível confirmar essa escolha.") from exc
 
+    character_payload = {
+        "id": character_id,
+        "name": str(character.get("name") or "Personagem"),
+        "anime": str(character.get("anime") or ""),
+        "image": str(character.get("image") or ""),
+    }
+    emit_event(
+        int(user_id),
+        "card_obtained",
+        label=f"🎴 {character_payload['name']} entrou na coleção",
+        metadata={"source": "dice", "character_id": character_id, "anime_id": anime_id},
+    )
+    emit_event(int(user_id), "dice_resolved", label=f"🎲 Dado concluído • {character_payload['anime']}")
+    emit_completed_activity(int(user_id), label="Dado concluído")
+
     return {
         **resolved,
-        "character": {
-            "id": character_id,
-            "name": str(character.get("name") or "Personagem"),
-            "anime": str(character.get("anime") or ""),
-            "image": str(character.get("image") or ""),
-        },
+        "character": character_payload,
         "state": get_state(int(user_id)),
     }
 
@@ -170,4 +199,11 @@ def spin(user_id: int) -> Dict[str, Any]:
         }
         for item in SPIN_REWARDS
     ]
+    emit_event(
+        int(user_id),
+        "spin_completed",
+        label=f"🎡 Giro: {reward.label}",
+        metadata={"reward_code": reward.code, "resource": reward.resource, "amount": reward.amount},
+    )
+    emit_completed_activity(int(user_id), label="Giro concluído")
     return result
