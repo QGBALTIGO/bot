@@ -1,0 +1,41 @@
+name: Wallhaven runtime integration
+
+on:
+  push:
+    paths:
+      - ".github/workflows/wallhaven-runtime-integration.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply exact integration patch
+        run: python scripts/apply_wallhaven_cards_service.py
+      - name: Validate integration
+        run: |
+          python -m compileall -q cards_service.py scripts/curate_wallhaven_characters.py
+          git diff --check
+          grep -q "load_wallhaven_character_images" cards_service.py
+          grep -q "wallhaven_images_map" cards_service.py
+      - name: Remove one-shot integration files
+        run: |
+          rm -f scripts/apply_wallhaven_cards_service.py
+          rm -f .github/workflows/wallhaven-runtime-integration.yml
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Use curated Wallhaven overrides across character systems"
+          git push origin HEAD:main
