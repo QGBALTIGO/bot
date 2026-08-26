@@ -5,9 +5,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppI
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
-BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 MANGA_BANNER_URL = os.getenv(
@@ -23,6 +22,7 @@ def _is_group(update: Update) -> bool:
 
 async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
+    user = update.effective_user
     if _is_group(update):
         texto = (
             "⚠️ <b>Catálogo disponível apenas no privado</b>\n\n"
@@ -40,8 +40,15 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg and bloqueio:
             await msg.reply_html(bloqueio)
         return
+    if not user:
+        return
 
-    url = f"{BASE_URL}/mangas"
+    url = build_webapp_url(
+        "/mangas",
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
     texto = (
         "📚 <b>Catálogo de Mangás &amp; Manhwas</b>\n\n"
         "A biblioteca do <b>Source Baltigo</b> está pronta para você explorar.\n\n"
