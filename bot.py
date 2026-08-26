@@ -24,11 +24,13 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
+from commands.game import dado, daily, giro, jogar
 from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.start import start
 from database import create_tables
+from game_repository import create_game_tables
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -109,6 +111,7 @@ def _register_message_handlers(tg_app: Application) -> None:
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
+    # núcleo / descoberta
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("anime", anime))
     tg_app.add_handler(CommandHandler("manga", manga))
@@ -118,6 +121,12 @@ def build_application() -> Application:
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
+
+    # game center V2: todos compartilham a mesma carteira e MiniApp
+    tg_app.add_handler(CommandHandler("jogar", jogar))
+    tg_app.add_handler(CommandHandler("daily", daily))
+    tg_app.add_handler(CommandHandler("dado", dado))
+    tg_app.add_handler(CommandHandler("giro", giro))
 
     _register_message_handlers(tg_app)
 
@@ -143,6 +152,7 @@ def build_application() -> Application:
 def main() -> None:
     logger.info("Inicializando banco de dados")
     create_tables()
+    create_game_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
