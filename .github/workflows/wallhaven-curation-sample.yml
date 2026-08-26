@@ -1,0 +1,39 @@
+name: Wallhaven curation sample
+
+on:
+  push:
+    paths:
+      - ".github/workflows/wallhaven-curation-sample.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install HTTP client
+        run: python -m pip install httpx
+      - name: Count dataset characters
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          raw=json.loads(Path('data/personagens_anilist.txt').read_text(encoding='utf-8'))
+          animes=raw.get('items', []) if isinstance(raw, dict) else raw
+          chars=sum(len((a or {}).get('characters', []) or []) for a in animes or [] if isinstance(a, dict))
+          print('anime_records=', len(animes or []))
+          print('character_records=', chars)
+          PY
+      - name: Dry-run first 30 characters with strict filters
+        env:
+          WALLHAVEN_API_KEY: ${{ secrets.WALLHAVEN_API_KEY }}
+        run: python scripts/curate_wallhaven_characters.py --offset 0 --limit 30
