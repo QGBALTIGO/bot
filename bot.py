@@ -3,7 +3,7 @@ import os
 import threading
 
 import uvicorn
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from commands.anime import anime
 from commands.baltigoflix import baltigoflix
@@ -33,8 +33,15 @@ from commands.profile import perfil
 from commands.ranking_v2 import ranking
 from commands.shop_v2 import loja
 from commands.start import start
+from capture_repository import create_capture_tables
 from database import create_tables
 from game_repository import create_game_tables
+from handlers.capture_v2 import (
+    capturar,
+    capture_activity_handler,
+    capture_buy_callback,
+    restore_capture_runtime,
+)
 from identity_repository import create_identity_tables
 from shop_repository import create_shop_tables
 
@@ -87,6 +94,10 @@ async def on_error(update, context) -> None:
     )
 
 
+async def on_post_init(application: Application) -> None:
+    await restore_capture_runtime(application)
+
+
 def _register_message_handlers(tg_app: Application) -> None:
     if not ENABLE_MESSAGES:
         logger.info("Sistema de mensagens desativado (ENABLE_MESSAGES=false)")
@@ -115,7 +126,12 @@ def _register_message_handlers(tg_app: Application) -> None:
 
 
 def build_application() -> Application:
-    tg_app = Application.builder().token(BOT_TOKEN).build()
+    tg_app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(on_post_init)
+        .build()
+    )
 
     # núcleo / descoberta
     tg_app.add_handler(CommandHandler("start", start))
@@ -137,6 +153,15 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("perfil", perfil))
     tg_app.add_handler(CommandHandler("ranking", ranking))
     tg_app.add_handler(CommandHandler("loja", loja))
+
+    # captura V2: comandos/callbacks ficam no grupo padrão; atividade passiva
+    # observa apenas texto não-comando em um grupo de handlers separado.
+    tg_app.add_handler(CommandHandler("capturar", capturar))
+    tg_app.add_handler(CallbackQueryHandler(capture_buy_callback, pattern=r"^capbuy:"))
+    tg_app.add_handler(
+        MessageHandler(filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, capture_activity_handler),
+        group=1,
+    )
 
     _register_message_handlers(tg_app)
 
@@ -165,6 +190,7 @@ def main() -> None:
     create_game_tables()
     create_identity_tables()
     create_shop_tables()
+    create_capture_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
