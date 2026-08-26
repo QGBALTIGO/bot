@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -8,7 +9,7 @@ from urllib.parse import parse_qsl
 
 
 class WebAppAuthError(ValueError):
-    """Raised when Telegram WebApp init data cannot be trusted."""
+    """Raised when a WebApp identity cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -105,5 +106,119 @@ def validate_telegram_init_data(
         first_name=str(raw_user.get("first_name") or "").strip(),
         last_name=str(raw_user.get("last_name") or "").strip(),
         auth_date=auth_date,
+        raw_user=raw_user,
+    )
+
+
+def _b64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    value = str(value or "").strip()
+    padding = "=" * (-len(value) % 4)
+    try:
+        return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+    except Exception as exc:
+        raise WebAppAuthError("launch token inválido") from exc
+
+
+def _launch_secret(bot_token: str) -> bytes:
+    token = (bot_token or "").strip()
+    if not token:
+        raise WebAppAuthError("BOT_TOKEN ausente")
+    return hmac.new(
+        token.encode("utf-8"),
+        b"SourceBaltigoWebAppLaunchV1",
+        hashlib.sha256,
+    ).digest()
+
+
+def create_webapp_launch_token(
+    user_id: int,
+    bot_token: str,
+    *,
+    username: str = "",
+    full_name: str = "",
+    now: int | None = None,
+) -> str:
+    """Create a short signed launch credential for Telegram WebApp buttons.
+
+    The historical bot passed a naked ``?uid=`` in WebApp URLs. V2 keeps the
+    compatibility benefit of carrying identity in the launch URL, but signs it
+    so changing the user id invalidates the credential.
+    """
+    uid = int(user_id)
+    if uid <= 0:
+        raise WebAppAuthError("user_id inválido")
+    issued_at = int(time.time() if now is None else now)
+    payload = {
+        "v": 1,
+        "uid": uid,
+        "iat": issued_at,
+        "u": str(username or "").strip()[:64],
+        "n": str(full_name or "").strip()[:160],
+    }
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    signature = hmac.new(_launch_secret(bot_token), raw, hashlib.sha256).digest()
+    return f"{_b64url_encode(raw)}.{_b64url_encode(signature)}"
+
+
+def validate_webapp_launch_token(
+    token: str,
+    bot_token: str,
+    *,
+    max_age_seconds: int = 21600,
+    now: int | None = None,
+) -> TelegramWebAppIdentity:
+    """Validate a Source Baltigo signed WebApp launch credential."""
+    token = str(token or "").strip()
+    if not token or "." not in token:
+        raise WebAppAuthError("launch token ausente")
+
+    encoded_payload, encoded_signature = token.split(".", 1)
+    raw = _b64url_decode(encoded_payload)
+    received_signature = _b64url_decode(encoded_signature)
+    expected_signature = hmac.new(
+        _launch_secret(bot_token), raw, hashlib.sha256
+    ).digest()
+    if not hmac.compare_digest(expected_signature, received_signature):
+        raise WebAppAuthError("launch token com assinatura inválida")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        user_id = int(payload.get("uid") or 0)
+        issued_at = int(payload.get("iat") or 0)
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise WebAppAuthError("launch token inválido") from exc
+
+    if int(payload.get("v") or 0) != 1 or user_id <= 0 or issued_at <= 0:
+        raise WebAppAuthError("launch token inválido")
+
+    current_time = int(time.time() if now is None else now)
+    age = current_time - issued_at
+    if age < -30:
+        raise WebAppAuthError("launch token no futuro")
+    if max_age_seconds > 0 and age > max_age_seconds:
+        raise WebAppAuthError("launch token expirado")
+
+    full_name = str(payload.get("n") or "").strip()
+    raw_user = {
+        "id": user_id,
+        "username": str(payload.get("u") or "").strip(),
+        "first_name": full_name,
+        "last_name": "",
+    }
+    return TelegramWebAppIdentity(
+        user_id=user_id,
+        username=raw_user["username"],
+        first_name=full_name,
+        last_name="",
+        auth_date=issued_at,
         raw_user=raw_user,
     )
