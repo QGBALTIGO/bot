@@ -31,10 +31,12 @@ from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.profile import perfil
 from commands.ranking_v2 import ranking
+from commands.shop_v2 import loja
 from commands.start import start
 from database import create_tables
 from game_repository import create_game_tables
 from identity_repository import create_identity_tables
+from shop_repository import create_shop_tables
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -101,7 +103,7 @@ def _register_message_handlers(tg_app: Application) -> None:
         )
     except ImportError as exc:
         raise RuntimeError(
-            "ENABLE_MESSAGES=true, mas a camada de persistência do sistema de mensagens está incompleta."
+            "ENABLE_MESSAGES=true, mas o sistema de mensagens está em reconstrução na V2."
         ) from exc
 
     tg_app.add_handler(CommandHandler("msg", msg))
@@ -134,6 +136,7 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("colecao", colecao))
     tg_app.add_handler(CommandHandler("perfil", perfil))
     tg_app.add_handler(CommandHandler("ranking", ranking))
+    tg_app.add_handler(CommandHandler("loja", loja))
 
     _register_message_handlers(tg_app)
 
@@ -161,6 +164,7 @@ def main() -> None:
     create_tables()
     create_game_tables()
     create_identity_tables()
+    create_shop_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
