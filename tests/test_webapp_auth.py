@@ -4,7 +4,12 @@ import json
 import unittest
 from urllib.parse import urlencode
 
-from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
+from utils.webapp_auth import (
+    WebAppAuthError,
+    create_webapp_launch_token,
+    validate_telegram_init_data,
+    validate_webapp_launch_token,
+)
 
 
 BOT_TOKEN = "123456:TEST_TOKEN_FOR_UNIT_TESTS"
@@ -49,14 +54,12 @@ class TelegramWebAppAuthTests(unittest.TestCase):
             BOT_TOKEN,
             now=NOW,
         )
-
         self.assertEqual(identity.user_id, 123456789)
         self.assertEqual(identity.username, "tester")
         self.assertEqual(identity.full_name, "Source Tester")
 
     def test_rejects_tampered_user_id(self):
         init_data = build_init_data().replace("123456789", "987654321")
-
         with self.assertRaises(WebAppAuthError):
             validate_telegram_init_data(init_data, BOT_TOKEN, now=NOW)
 
@@ -80,6 +83,43 @@ class TelegramWebAppAuthTests(unittest.TestCase):
     def test_rejects_missing_init_data(self):
         with self.assertRaises(WebAppAuthError):
             validate_telegram_init_data("", BOT_TOKEN, now=NOW)
+
+
+class SignedLaunchTokenTests(unittest.TestCase):
+    def test_accepts_valid_launch_token(self):
+        token = create_webapp_launch_token(
+            123456789,
+            BOT_TOKEN,
+            username="tester",
+            full_name="Source Tester",
+            now=NOW,
+        )
+        identity = validate_webapp_launch_token(token, BOT_TOKEN, now=NOW)
+        self.assertEqual(identity.user_id, 123456789)
+        self.assertEqual(identity.username, "tester")
+        self.assertEqual(identity.full_name, "Source Tester")
+
+    def test_rejects_tampered_launch_token(self):
+        token = create_webapp_launch_token(123456789, BOT_TOKEN, now=NOW)
+        payload, signature = token.split(".", 1)
+        tampered = f"{payload[:-1]}A.{signature}"
+        with self.assertRaises(WebAppAuthError):
+            validate_webapp_launch_token(tampered, BOT_TOKEN, now=NOW)
+
+    def test_rejects_launch_token_signed_by_another_bot(self):
+        token = create_webapp_launch_token(123456789, BOT_TOKEN, now=NOW)
+        with self.assertRaises(WebAppAuthError):
+            validate_webapp_launch_token(token, "999999:WRONG_TOKEN", now=NOW)
+
+    def test_rejects_expired_launch_token(self):
+        token = create_webapp_launch_token(123456789, BOT_TOKEN, now=NOW - 7200)
+        with self.assertRaises(WebAppAuthError):
+            validate_webapp_launch_token(
+                token,
+                BOT_TOKEN,
+                max_age_seconds=3600,
+                now=NOW,
+            )
 
 
 if __name__ == "__main__":
