@@ -13,6 +13,7 @@ from database import pool
 
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
+_SELFTEST_USER_ID = -1
 
 _TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS channel_verification_requests (
@@ -170,7 +171,7 @@ def _heartbeat() -> None:
         conn.commit()
 
 
-def worker_health() -> dict[str, Any]:
+def _heartbeat_state() -> dict[str, Any]:
     ensure_channel_verification_tables()
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -197,11 +198,32 @@ def worker_health() -> dict[str, Any]:
     }
 
 
+def worker_health() -> dict[str, Any]:
+    """Live health check including a real Telegram roundtrip through the bot worker."""
+    heartbeat = _heartbeat_state()
+    if not heartbeat.get("ok"):
+        return heartbeat
+
+    probe = wait_for_verification(_SELFTEST_USER_ID, timeout_seconds=5.0)
+    probe_status = str(probe.get("status") or "")
+    return {
+        **heartbeat,
+        "ok": probe_status == "ok",
+        "roundtrip": probe_status,
+        "roundtrip_message": str(probe.get("message") or ""),
+    }
+
+
 def _member_is_valid(member: Any) -> bool:
     status = str(getattr(member, "status", "") or "").strip().lower()
     if status in {"creator", "administrator", "member"}:
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+def _member_is_admin(member: Any) -> bool:
+    status = str(getattr(member, "status", "") or "").strip().lower()
+    return status in {"creator", "administrator"}
 
 
 async def channel_verification_worker(application) -> None:
@@ -222,6 +244,22 @@ async def channel_verification_worker(application) -> None:
                 try:
                     if not REQUIRED_CHANNEL:
                         _complete(request_id, "ok")
+                        continue
+
+                    if user_id == _SELFTEST_USER_ID:
+                        me = await application.bot.get_me()
+                        member = await application.bot.get_chat_member(
+                            chat_id=REQUIRED_CHANNEL,
+                            user_id=me.id,
+                        )
+                        if _member_is_admin(member):
+                            _complete(request_id, "ok")
+                        else:
+                            _complete(
+                                request_id,
+                                "error",
+                                "O bot está no canal, mas não é administrador.",
+                            )
                         continue
 
                     member = await application.bot.get_chat_member(
