@@ -1,5 +1,8 @@
-from PIL import Image
 import io
+import os
+
+from PIL import Image
+
 
 def validate_character_image(image_bytes):
 
