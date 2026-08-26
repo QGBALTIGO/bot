@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
 
 
 def _normalize(value: str) -> str:
@@ -13,28 +12,17 @@ def _normalize(value: str) -> str:
     return raw.rstrip("/")
 
 
-def _is_railway_host(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except Exception:
-        return False
-    return host.endswith(".railway.app") or host.endswith(".up.railway.app")
-
-
 def get_public_base_url() -> str:
-    """Resolve one canonical public origin for every Telegram Mini App.
+    """Resolve the public Mini App origin.
 
-    Railway exposes RAILWAY_PUBLIC_DOMAIN for the current service. If BASE_URL is
-    empty, or if BASE_URL itself points to an old Railway-generated host, prefer
-    the current Railway domain so redeploys/branch switches don't keep sending
-    Telegram users to a stale deployment. Explicit custom domains still win.
+    Keep BASE_URL authoritative for compatibility with the production bot's
+    previously working Telegram WebApp setup. Railway's generated public domain
+    is only a fallback when BASE_URL is not configured at all.
     """
     configured = _normalize(os.getenv("BASE_URL", ""))
-    railway_domain = _normalize(os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
-
-    if railway_domain and (not configured or _is_railway_host(configured)):
-        return railway_domain
-    return configured or railway_domain
+    if configured:
+        return configured
+    return _normalize(os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
 
 
 def require_public_base_url() -> str:
