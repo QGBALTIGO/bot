@@ -4672,7 +4672,7 @@ def cards_subcategory_page(name: str = Query(...)):
 
     raw_name = str(name)
     safe_name = raw_name.replace("\\", "\\\\").replace("'", "\\'")
-    safe_name_html = html.escape(raw_name)
+    safe_name_html = __import__("html").escape(raw_name)
     html = f"""
 <!doctype html>
 <html lang="pt-br">
@@ -4797,7 +4797,7 @@ def cards_search_page(q: str = Query(...)):
 
     raw_q = str(q)
     safe_q = raw_q.replace("\\", "\\\\").replace("'", "\\'")
-    safe_q_html = html.escape(raw_q)
+    safe_q_html = __import__("html").escape(raw_q)
     html = f"""
 <!doctype html>
 <html lang="pt-br">
@@ -4973,16 +4973,41 @@ def _pedido_build_index(records: List[Dict[str, Any]]):
     return idx
 
 
+def _pedido_load_json(path: str):
+    raw_path = str(path or "").strip()
+    if not raw_path:
+        raise FileNotFoundError("empty path")
+
+    candidates = [raw_path]
+    if not os.path.isabs(raw_path):
+        candidates.extend([
+            os.path.join(os.getcwd(), raw_path),
+            os.path.join("/app", raw_path),
+        ])
+
+    seen = set()
+    for candidate in candidates:
+        candidate = os.path.normpath(candidate)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if os.path.isfile(candidate):
+            with open(candidate, "r", encoding="utf-8") as handle:
+                return json.load(handle)
+
+    raise FileNotFoundError(raw_path)
+
+
 def _pedido_reload_indexes():
     global _PEDIDO_ANIME_INDEX, _PEDIDO_MANGA_INDEX
 
     try:
-        anime_records = _unwrap_records(load_json(CATALOG_PATH))
+        anime_records = _unwrap_records(_pedido_load_json(CATALOG_PATH))
     except Exception:
         anime_records = []
 
     try:
-        manga_records = _unwrap_records(load_json(MANGA_CATALOG_PATH))
+        manga_records = _unwrap_records(_pedido_load_json(MANGA_CATALOG_PATH))
     except Exception:
         manga_records = []
 
