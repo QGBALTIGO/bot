@@ -1,4 +1,5 @@
 import os
+import asyncio
 import threading
 import traceback
 
@@ -124,6 +125,7 @@ from commands.messages_help import msgtutorial
 
 from handlers.capture_spawn import capture_message_handler, restore_capture_runtime
 from duel_service import restore_duel_runtime
+from utils.channel_verification_bridge import channel_verification_worker
 
 
 # =========================================================
@@ -316,6 +318,10 @@ def build_application():
         await restore_capture_runtime(app)
         await restore_capture_purchase_runtime(app)
         await restore_duel_runtime(app)
+        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+    channel_verification_worker(app),
+    name="terms-channel-verification",
+)
 
     app = (
         Application.builder()
