@@ -1,0 +1,44 @@
+name: Apply global Wallhaven portrait URLs
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-global-wallhaven-portraits.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Apply integration
+        run: python scripts/apply_global_wallhaven_portraits.py
+      - name: Validate integration
+        run: |
+          python -m compileall -q cards_service.py webapp.py utils/public_character_image.py
+          python -m unittest tests.test_public_character_image -v
+          git diff --check
+          grep -q 'character_portrait_url(wallhaven_image)' cards_service.py
+          grep -q 'is_own_image_proxy_url(value)' webapp.py
+      - name: Remove one-shot files
+        run: |
+          rm -f scripts/apply_global_wallhaven_portraits.py
+          rm -f .github/workflows/apply-global-wallhaven-portraits.yml
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'Use exact 2x3 Wallhaven portraits across bot'
+          git push origin HEAD:main
