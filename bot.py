@@ -24,6 +24,7 @@ from commands.cards_admin import (
     card_subadd,
     card_subremove,
 )
+from commands.collection import colecao
 from commands.game import dado, daily, giro, jogar
 from commands.manga import manga
 from commands.nivel import nivel
@@ -122,11 +123,12 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
 
-    # game center V2: todos compartilham a mesma carteira e MiniApp
+    # game center / coleção V2
     tg_app.add_handler(CommandHandler("jogar", jogar))
     tg_app.add_handler(CommandHandler("daily", daily))
     tg_app.add_handler(CommandHandler("dado", dado))
     tg_app.add_handler(CommandHandler("giro", giro))
+    tg_app.add_handler(CommandHandler("colecao", colecao))
 
     _register_message_handlers(tg_app)
 
