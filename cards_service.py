@@ -26,6 +26,11 @@ CARDS_OVERRIDES_PATH = os.getenv(
     os.path.join(DATA_DIR, "cards_overrides.json"),
 ).strip()
 
+WALLHAVEN_CHARACTER_OVERRIDES_PATH = os.getenv(
+    "WALLHAVEN_CHARACTER_OVERRIDES_PATH",
+    os.path.join(DATA_DIR, "wallhaven_character_overrides.json"),
+).strip()
+
 _LOCK = RLock()
 _CACHE: Optional[Dict[str, Any]] = None
 _CACHE_LOADED_AT: float = 0.0
@@ -205,6 +210,31 @@ def load_cards_overrides() -> Dict[str, Any]:
     return data
 
 
+def load_wallhaven_character_images() -> Dict[int, str]:
+    try:
+        with open(WALLHAVEN_CHARACTER_OVERRIDES_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return {}
+
+    characters = raw.get("characters", {}) if isinstance(raw, dict) else {}
+    if not isinstance(characters, dict):
+        return {}
+
+    out: Dict[int, str] = {}
+    for cid_raw, record in characters.items():
+        cid = _safe_int(cid_raw)
+        if cid is None:
+            continue
+        if isinstance(record, dict):
+            url = str(record.get("url") or "").strip()
+        else:
+            url = str(record or "").strip()
+        if url.startswith("https://"):
+            out[int(cid)] = url
+    return out
+
+
 def save_cards_overrides(data: Dict[str, Any]) -> None:
     _ensure_data_dir()
     _atomic_write_json(CARDS_OVERRIDES_PATH, data)
@@ -232,6 +262,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
 
         assets = load_cards_assets_raw()
         overrides = load_cards_overrides()
+        wallhaven_images_map = load_wallhaven_character_images()
         db_images_map = get_all_global_character_images()
 
         deleted_animes = {
@@ -283,13 +314,17 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
 
                 name = overrides["character_name_overrides"].get(str(cid), ch["name"])
 
-                db_image = db_images_map.get(cid)
-                if db_image:
-                    image = str(db_image).strip()
-                else:
-                    image = overrides["character_image_overrides"].get(
-                        str(cid), ch.get("image", "")
-                    )
+                db_image = str(db_images_map.get(cid) or "").strip()
+                manual_image = str(
+                    overrides["character_image_overrides"].get(str(cid)) or ""
+                ).strip()
+                wallhaven_image = str(wallhaven_images_map.get(cid) or "").strip()
+                image = (
+                    db_image
+                    or manual_image
+                    or wallhaven_image
+                    or str(ch.get("image") or "").strip()
+                )
 
                 char_obj = {
                     "id": cid,
@@ -355,13 +390,17 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 str(cid), str(ch.get("name") or "").strip()
             )
 
-            db_image = db_images_map.get(cid)
-            if db_image:
-                image = str(db_image).strip()
-            else:
-                image = overrides["character_image_overrides"].get(
-                    str(cid), str(ch.get("image") or "").strip()
-                )
+            db_image = str(db_images_map.get(cid) or "").strip()
+            manual_image = str(
+                overrides["character_image_overrides"].get(str(cid)) or ""
+            ).strip()
+            wallhaven_image = str(wallhaven_images_map.get(cid) or "").strip()
+            image = (
+                db_image
+                or manual_image
+                or wallhaven_image
+                or str(ch.get("image") or "").strip()
+            )
 
             if not name:
                 continue
