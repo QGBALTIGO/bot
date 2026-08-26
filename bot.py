@@ -126,6 +126,7 @@ from commands.messages_help import msgtutorial
 from handlers.capture_spawn import capture_message_handler, restore_capture_runtime
 from duel_service import restore_duel_runtime
 from utils.channel_verification_bridge import channel_verification_worker
+from utils.telegram_outbox import telegram_outbox_worker
 
 
 # =========================================================
@@ -317,16 +318,26 @@ def build_application():
             channel_verification_worker(app),
             name="terms-channel-verification",
         )
+        app.bot_data["telegram_outbox_worker"] = asyncio.create_task(
+            telegram_outbox_worker(app),
+            name="telegram-outbox",
+        )
 
     async def post_shutdown(app: Application):
-        task = app.bot_data.pop("terms_channel_worker", None)
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        tasks = [
+            app.bot_data.pop("terms_channel_worker", None),
+            app.bot_data.pop("telegram_outbox_worker", None),
+        ]
+        for task in tasks:
+            if task is not None:
+                task.cancel()
+        for task in tasks:
+            if task is None:
+                continue
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
     app = (

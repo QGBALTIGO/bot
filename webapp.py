@@ -6457,19 +6457,34 @@ async def api_dado_pick(
     image = str(char["image"] or char["anime_cover"] or DADO_BANNER_URL)
     anime_title = str(char["anime_title"] or "Anime")
 
+    reward_caption = (
+        "🎁 <b>VOCÊ GANHOU!</b>\n\n"
+        f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
+        f"<i>{anime_title}</i>\n\n"
+        "📦 <b>Adicionado à sua coleção!</b>"
+    )
+
     try:
-        await _tg_send_photo(
+        from utils.telegram_outbox import enqueue_photo
+
+        await asyncio.to_thread(
+            enqueue_photo,
+            dedupe_key=f"dado:{user_id}:{roll_id}",
             chat_id=user_id,
             photo=image,
-            caption=(
-                "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-                f"🧧 <code>{char_id}</code>. <b>{name}</b>\n"
-                f"<i>{anime_title}</i>\n\n"
-                "📦 <b>Adicionado à sua coleção!</b>"
-            ),
+            caption=reward_caption,
+            parse_mode="HTML",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[dado] falha ao enfileirar entrega no chat: {type(exc).__name__}", flush=True)
+        try:
+            await _tg_send_photo(
+                chat_id=user_id,
+                photo=image,
+                caption=reward_caption,
+            )
+        except Exception:
+            pass
 
     return JSONResponse({
         "ok": True,
