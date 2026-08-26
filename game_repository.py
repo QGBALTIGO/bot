@@ -171,7 +171,8 @@ def create_game_tables() -> None:
                 )
 
                 # Import legacy balances only for users that do not already have
-                # a V2 wallet. This makes the migration safe to run repeatedly.
+                # a V2 wallet. Legacy systems could contain invalid/negative balances,
+                # so values are sanitized to the V2 domain before insertion.
                 users_exists = False
                 cur.execute(
                     """
@@ -189,7 +190,7 @@ def create_game_tables() -> None:
                     has_dice = _column_exists(cur, "users", "dado_balance")
                     has_slot = _column_exists(cur, "users", "dado_slot")
 
-                    coins_sql = "COALESCE(coins, 0)" if has_coins else "0"
+                    coins_sql = "GREATEST(0, COALESCE(coins, 0))" if has_coins else "0"
                     dice_sql = (
                         f"LEAST({DICE_MAX_BALANCE}, GREATEST(0, COALESCE(dado_balance, {DICE_INITIAL_BALANCE})))"
                         if has_dice
@@ -284,6 +285,21 @@ def get_wallet(user_id: int) -> Dict[str, Any]:
                 raise
 
 
+def game_state(user_id: int) -> Dict[str, Any]:
+    wallet = get_wallet(int(user_id))
+    claim = get_last_daily_claim(int(user_id))
+    today = today_sp()
+    return {
+        "wallet": wallet,
+        "daily": {
+            "claimed_today": bool(claim and claim.get("claim_date") == today),
+            "streak": int(claim.get("streak") or 0) if claim else 0,
+            "cycle_day": int(claim.get("cycle_day") or 0) if claim else 0,
+            "next_reward": daily_reward_for_streak(next_streak(claim.get("claim_date") if claim else None, int(claim.get("streak") or 0) if claim else 0, today)).as_dict(),
+        },
+    }
+
+
 def get_last_daily_claim(user_id: int) -> Optional[Dict[str, Any]]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -301,64 +317,51 @@ def get_last_daily_claim(user_id: int) -> Optional[Dict[str, Any]]:
             return dict(row) if row else None
 
 
-def claim_daily(user_id: int, *, current_date: date | None = None) -> Dict[str, Any]:
-    create_or_get_user(int(user_id))
-    claim_date = current_date or today_sp()
+def claim_daily(user_id: int) -> Dict[str, Any]:
+    user_id = int(user_id)
+    create_or_get_user(user_id)
+    current_date = today_sp()
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                wallet = _wallet_row_locked(cur, int(user_id))
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (user_id,))
+                row = _wallet_row_locked(cur, user_id)
 
                 cur.execute(
                     """
-                    SELECT claim_date, streak
+                    SELECT user_id, claim_date, streak, cycle_day, coins, dice, spins, claimed_at
                     FROM game_daily_claims
                     WHERE user_id = %s
                     ORDER BY claim_date DESC
                     LIMIT 1
                     FOR UPDATE
                     """,
-                    (int(user_id),),
+                    (user_id,),
                 )
-                previous = cur.fetchone()
+                last = cur.fetchone()
+                last_dict = dict(last) if last else None
 
-                if previous and previous.get("claim_date") == claim_date:
+                if last_dict and last_dict.get("claim_date") == current_date:
                     conn.commit()
                     return {
-                        "claimed": False,
                         "already_claimed": True,
-                        "wallet": _wallet_payload(wallet),
-                        "last_claim": dict(previous),
+                        "reward": {
+                            "coins": int(last_dict.get("coins") or 0),
+                            "dice": int(last_dict.get("dice") or 0),
+                            "spins": int(last_dict.get("spins") or 0),
+                        },
+                        "streak": int(last_dict.get("streak") or 0),
+                        "cycle_day": int(last_dict.get("cycle_day") or 0),
+                        "wallet": _wallet_payload(row),
                     }
 
-                previous_date = previous.get("claim_date") if previous else None
-                previous_streak = int((previous or {}).get("streak") or 0)
-                streak = next_streak(previous_date, previous_streak, claim_date)
-                reward: DailyReward = daily_reward_for_streak(streak)
-
-                cur.execute(
-                    """
-                    INSERT INTO game_daily_claims
-                    (user_id, claim_date, streak, cycle_day, coins, dice, spins)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id, claim_date) DO NOTHING
-                    RETURNING user_id
-                    """,
-                    (
-                        int(user_id),
-                        claim_date,
-                        reward.streak,
-                        reward.cycle_day,
-                        reward.coins,
-                        reward.dice,
-                        reward.spins,
-                    ),
+                streak = next_streak(
+                    last_dict.get("claim_date") if last_dict else None,
+                    int(last_dict.get("streak") or 0) if last_dict else 0,
+                    current_date,
                 )
-                inserted = cur.fetchone()
-                if not inserted:
-                    conn.rollback()
-                    return claim_daily(int(user_id), current_date=claim_date)
+                reward: DailyReward = daily_reward_for_streak(streak)
 
                 cur.execute(
                     """
@@ -375,12 +378,27 @@ def claim_daily(user_id: int, *, current_date: date | None = None) -> Dict[str, 
                         DICE_MAX_BALANCE,
                         reward.dice,
                         reward.spins,
-                        int(user_id),
+                        user_id,
                     ),
                 )
-                wallet = cur.fetchone() or wallet
+                row = cur.fetchone() or row
 
-                reference = f"daily:{claim_date.isoformat()}"
+                cur.execute(
+                    """
+                    INSERT INTO game_daily_claims
+                        (user_id, claim_date, streak, cycle_day, coins, dice, spins)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        user_id,
+                        current_date,
+                        streak,
+                        reward.cycle_day,
+                        reward.coins,
+                        reward.dice,
+                        reward.spins,
+                    ),
+                )
                 for resource, delta in (
                     ("coins", reward.coins),
                     ("dice", reward.dice),
@@ -390,145 +408,84 @@ def claim_daily(user_id: int, *, current_date: date | None = None) -> Dict[str, 
                         cur.execute(
                             """
                             INSERT INTO game_ledger
-                            (user_id, resource, delta, reason, reference, metadata)
+                                (user_id, resource, delta, reason, reference, metadata)
                             VALUES (%s, %s, %s, 'daily', %s, %s::jsonb)
                             """,
                             (
-                                int(user_id),
+                                user_id,
                                 resource,
-                                int(delta),
-                                reference,
-                                json.dumps({"streak": reward.streak, "cycle_day": reward.cycle_day}),
+                                delta,
+                                current_date.isoformat(),
+                                json.dumps(
+                                    {"streak": streak, "cycle_day": reward.cycle_day},
+                                    ensure_ascii=False,
+                                ),
                             ),
                         )
 
                 conn.commit()
                 return {
-                    "claimed": True,
                     "already_claimed": False,
-                    "reward": {
-                        "streak": reward.streak,
-                        "cycle_day": reward.cycle_day,
-                        "coins": reward.coins,
-                        "dice": reward.dice,
-                        "spins": reward.spins,
-                    },
-                    "wallet": _wallet_payload(wallet),
+                    "reward": reward.as_dict(),
+                    "streak": streak,
+                    "cycle_day": reward.cycle_day,
+                    "wallet": _wallet_payload(row),
                 }
             except Exception:
                 conn.rollback()
                 raise
 
 
-def _decode_options(raw: Any) -> list[Dict[str, Any]]:
-    if isinstance(raw, list):
-        source = raw
-    elif isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-            source = parsed if isinstance(parsed, list) else []
-        except Exception:
-            source = []
-    else:
-        source = []
-
-    items: list[Dict[str, Any]] = []
-    for item in source:
-        if not isinstance(item, dict):
-            continue
-        try:
-            anime_id = int(item.get("id") or 0)
-        except (TypeError, ValueError):
-            continue
-        if anime_id <= 0:
-            continue
-        items.append(
-            {
-                "id": anime_id,
-                "title": str(item.get("title") or "").strip(),
-                "cover": str(item.get("cover") or "").strip(),
-            }
-        )
-    return items
-
-
-def _roll_payload(row: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "roll_token": str(row.get("roll_token") or ""),
-        "user_id": int(row.get("user_id") or 0),
-        "dice_value": int(row.get("dice_value") or 0),
-        "options": _decode_options(row.get("options")),
-        "status": str(row.get("status") or ""),
-        "selected_anime_id": int(row.get("selected_anime_id") or 0) or None,
-        "character_id": int(row.get("character_id") or 0) or None,
-        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
-        "expires_at": row.get("expires_at").isoformat() if row.get("expires_at") else None,
-    }
-
-
 def get_active_dice_roll(user_id: int) -> Optional[Dict[str, Any]]:
+    now = datetime.now().astimezone()
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            try:
-                cur.execute(
-                    """
-                    UPDATE game_dice_rolls
-                    SET status = 'expired'
-                    WHERE user_id = %s
-                      AND status = 'pending'
-                      AND expires_at <= NOW()
-                    """,
-                    (int(user_id),),
-                )
-                cur.execute(
-                    """
-                    SELECT *
-                    FROM game_dice_rolls
-                    WHERE user_id = %s
-                      AND status = 'pending'
-                      AND expires_at > NOW()
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                    """,
-                    (int(user_id),),
-                )
-                row = cur.fetchone()
+            cur.execute(
+                """
+                SELECT roll_token, user_id, dice_value, options, status,
+                       selected_anime_id, character_id, created_at, expires_at, resolved_at
+                FROM game_dice_rolls
+                WHERE user_id = %s
+                  AND status = 'pending'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (int(user_id),),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            expires_at = data.get("expires_at")
+            if expires_at and expires_at <= now:
+                with conn.cursor() as update_cur:
+                    update_cur.execute(
+                        """
+                        UPDATE game_dice_rolls
+                        SET status = 'expired', resolved_at = NOW()
+                        WHERE roll_token = %s AND status = 'pending'
+                        """,
+                        (str(data.get("roll_token") or ""),),
+                    )
                 conn.commit()
-                return _roll_payload(dict(row)) if row else None
-            except Exception:
-                conn.rollback()
-                raise
+                return None
+            return data
 
 
 def create_dice_roll(user_id: int, dice_value: int, options: list[Dict[str, Any]]) -> Dict[str, Any]:
-    create_or_get_user(int(user_id))
-    dice_value = int(dice_value)
-    if not 1 <= dice_value <= 6:
-        raise ValueError("dice_value precisa estar entre 1 e 6")
-    if len(options) != dice_value:
-        raise ValueError("quantidade de opções precisa ser igual ao valor do dado")
-
-    normalized_options = _decode_options(options)
-    if len(normalized_options) != dice_value:
-        raise ValueError("opções inválidas ou duplicadas")
+    user_id = int(user_id)
+    create_or_get_user(user_id)
+    token = secrets.token_urlsafe(24)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                wallet = _wallet_row_locked(cur, int(user_id))
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (user_id,))
+                wallet = _wallet_row_locked(cur, user_id)
+
                 cur.execute(
                     """
-                    UPDATE game_dice_rolls
-                    SET status = 'expired'
-                    WHERE user_id = %s
-                      AND status = 'pending'
-                      AND expires_at <= NOW()
-                    """,
-                    (int(user_id),),
-                )
-                cur.execute(
-                    """
-                    SELECT *
+                    SELECT roll_token, user_id, dice_value, options, status, created_at, expires_at
                     FROM game_dice_rolls
                     WHERE user_id = %s
                       AND status = 'pending'
@@ -537,61 +494,64 @@ def create_dice_roll(user_id: int, dice_value: int, options: list[Dict[str, Any]
                     LIMIT 1
                     FOR UPDATE
                     """,
-                    (int(user_id),),
+                    (user_id,),
                 )
                 active = cur.fetchone()
                 if active:
-                    conn.commit()
-                    raise ActiveDiceRollError(_roll_payload(dict(active)))
+                    raise ActiveDiceRollError(dict(active))
 
                 if int(wallet.get("dice") or 0) <= 0:
-                    conn.commit()
                     raise NoDiceError("no_dice")
 
-                token = secrets.token_urlsafe(18)
+                expires_at = datetime.now().astimezone() + timedelta(minutes=DICE_ROLL_TTL_MINUTES)
                 cur.execute(
                     """
                     UPDATE game_wallets
                     SET dice = dice - 1,
                         updated_at = NOW()
-                    WHERE user_id = %s
+                    WHERE user_id = %s AND dice > 0
                     RETURNING user_id, coins, dice, spins, dice_slot, created_at, updated_at
                     """,
-                    (int(user_id),),
+                    (user_id,),
                 )
-                wallet = cur.fetchone() or wallet
+                wallet = cur.fetchone()
+                if not wallet:
+                    raise NoDiceError("no_dice")
 
                 cur.execute(
                     """
                     INSERT INTO game_dice_rolls
-                    (roll_token, user_id, dice_value, options, expires_at)
-                    VALUES (%s, %s, %s, %s::jsonb, NOW() + (%s * INTERVAL '1 minute'))
-                    RETURNING *
+                        (roll_token, user_id, dice_value, options, expires_at)
+                    VALUES (%s, %s, %s, %s::jsonb, %s)
                     """,
                     (
                         token,
-                        int(user_id),
-                        dice_value,
-                        json.dumps(normalized_options, ensure_ascii=False),
-                        DICE_ROLL_TTL_MINUTES,
+                        user_id,
+                        int(dice_value),
+                        json.dumps(options, ensure_ascii=False),
+                        expires_at,
                     ),
                 )
-                roll = cur.fetchone()
                 cur.execute(
                     """
                     INSERT INTO game_ledger
-                    (user_id, resource, delta, reason, reference)
-                    VALUES (%s, 'dice', -1, 'dice_roll', %s)
+                        (user_id, resource, delta, reason, reference, metadata)
+                    VALUES (%s, 'dice', -1, 'dice_roll', %s, %s::jsonb)
                     """,
-                    (int(user_id), token),
+                    (
+                        user_id,
+                        token,
+                        json.dumps({"dice_value": int(dice_value)}, ensure_ascii=False),
+                    ),
                 )
                 conn.commit()
                 return {
-                    "roll": _roll_payload(dict(roll or {})),
+                    "roll_token": token,
+                    "dice_value": int(dice_value),
+                    "options": options,
+                    "expires_at": expires_at.isoformat(),
                     "wallet": _wallet_payload(dict(wallet)),
                 }
-            except (NoDiceError, ActiveDiceRollError):
-                raise
             except Exception:
                 conn.rollback()
                 raise
@@ -603,56 +563,52 @@ def resolve_dice_roll(
     anime_id: int,
     character_id: int,
 ) -> Dict[str, Any]:
-    roll_token = str(roll_token or "").strip()
-    anime_id = int(anime_id)
-    character_id = int(character_id)
-
+    user_id = int(user_id)
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (user_id,))
                 cur.execute(
                     """
-                    SELECT *
+                    SELECT roll_token, user_id, options, status, expires_at
                     FROM game_dice_rolls
                     WHERE roll_token = %s AND user_id = %s
                     FOR UPDATE
                     """,
-                    (roll_token, int(user_id)),
+                    (str(roll_token), user_id),
                 )
                 row = cur.fetchone()
                 if not row:
                     raise InvalidDicePickError("roll_not_found")
 
-                status = str(row.get("status") or "")
-                if status != "pending":
+                data = dict(row)
+                if data.get("status") != "pending":
                     raise InvalidDicePickError("roll_not_pending")
-                if row.get("expires_at") and row["expires_at"] <= datetime.now(row["expires_at"].tzinfo):
+                if data.get("expires_at") and data["expires_at"] <= datetime.now().astimezone():
                     cur.execute(
-                        "UPDATE game_dice_rolls SET status = 'expired' WHERE roll_token = %s",
-                        (roll_token,),
+                        """
+                        UPDATE game_dice_rolls
+                        SET status = 'expired', resolved_at = NOW()
+                        WHERE roll_token = %s
+                        """,
+                        (str(roll_token),),
                     )
-                    conn.commit()
                     raise DiceRollExpiredError("roll_expired")
 
-                options = _decode_options(row.get("options"))
-                allowed_ids = {int(item["id"]) for item in options}
-                if anime_id not in allowed_ids:
-                    raise InvalidDicePickError("anime_not_in_roll")
+                options = data.get("options") or []
+                if isinstance(options, str):
+                    try:
+                        options = json.loads(options)
+                    except json.JSONDecodeError:
+                        options = []
 
-                cur.execute(
-                    """
-                    INSERT INTO user_card_collection
-                    (user_id, character_id, quantity, first_obtained_at, updated_at)
-                    VALUES (%s, %s, 1, NOW(), NOW())
-                    ON CONFLICT (user_id, character_id)
-                    DO UPDATE SET
-                        quantity = user_card_collection.quantity + 1,
-                        updated_at = NOW()
-                    RETURNING quantity
-                    """,
-                    (int(user_id), character_id),
-                )
-                collection_row = cur.fetchone() or {}
+                allowed_ids = {
+                    int(item.get("id") or 0)
+                    for item in options
+                    if isinstance(item, dict)
+                }
+                if int(anime_id) not in allowed_ids:
+                    raise InvalidDicePickError("anime_not_in_roll")
 
                 cur.execute(
                     """
@@ -661,50 +617,76 @@ def resolve_dice_roll(
                         selected_anime_id = %s,
                         character_id = %s,
                         resolved_at = NOW()
-                    WHERE roll_token = %s
-                    RETURNING *
+                    WHERE roll_token = %s AND status = 'pending'
+                    RETURNING roll_token
                     """,
-                    (anime_id, character_id, roll_token),
+                    (int(anime_id), int(character_id), str(roll_token)),
                 )
-                resolved = cur.fetchone()
+                if not cur.fetchone():
+                    raise InvalidDicePickError("roll_race_lost")
+
+                cur.execute(
+                    """
+                    INSERT INTO user_card_collection (user_id, character_id, quantity)
+                    VALUES (%s, %s, 1)
+                    ON CONFLICT (user_id, character_id)
+                    DO UPDATE SET quantity = user_card_collection.quantity + 1
+                    RETURNING quantity
+                    """,
+                    (user_id, int(character_id)),
+                )
+                quantity_row = cur.fetchone() or {}
                 conn.commit()
                 return {
-                    "roll": _roll_payload(dict(resolved or row)),
-                    "quantity": int(collection_row.get("quantity") or 1),
+                    "roll_token": str(roll_token),
+                    "anime_id": int(anime_id),
+                    "character_id": int(character_id),
+                    "quantity": int(quantity_row.get("quantity") or 1),
                 }
-            except (InvalidDicePickError, DiceRollExpiredError):
-                raise
             except Exception:
                 conn.rollback()
                 raise
 
 
-def consume_spin(user_id: int, segment_index: int, reward: SpinReward) -> Dict[str, Any]:
-    create_or_get_user(int(user_id))
-    if reward.resource not in {"coins", "dice", "spins"}:
-        raise ValueError("recurso de giro inválido")
+def consume_spin(
+    user_id: int,
+    segment_index: int,
+    reward: SpinReward,
+) -> Dict[str, Any]:
+    user_id = int(user_id)
+    create_or_get_user(user_id)
+    spin_token = secrets.token_urlsafe(20)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                wallet = _wallet_row_locked(cur, int(user_id))
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (user_id,))
+                wallet = _wallet_row_locked(cur, user_id)
                 if int(wallet.get("spins") or 0) <= 0:
-                    conn.commit()
                     raise NoSpinsError("no_spins")
 
-                token = secrets.token_urlsafe(18)
-                coins_delta = reward.amount if reward.resource == "coins" else 0
-                dice_delta = reward.amount if reward.resource == "dice" else 0
-                spins_delta = reward.amount if reward.resource == "spins" else 0
+                resource = str(reward.resource)
+                if resource not in {"coins", "dice", "spins"}:
+                    raise GameRepositoryError("invalid_spin_resource")
+
+                reward_amount = int(reward.amount)
+                if reward_amount < 0:
+                    raise GameRepositoryError("invalid_spin_amount")
+
+                dice_delta = reward_amount if resource == "dice" else 0
+                coins_delta = reward_amount if resource == "coins" else 0
+                spins_reward = reward_amount if resource == "spins" else 0
+                spins_delta = spins_reward - 1
 
                 cur.execute(
                     """
                     UPDATE game_wallets
                     SET coins = coins + %s,
                         dice = LEAST(%s, dice + %s),
-                        spins = spins - 1 + %s,
+                        spins = spins + %s,
                         updated_at = NOW()
                     WHERE user_id = %s
+                      AND spins > 0
                     RETURNING user_id, coins, dice, spins, dice_slot, created_at, updated_at
                     """,
                     (
@@ -712,85 +694,68 @@ def consume_spin(user_id: int, segment_index: int, reward: SpinReward) -> Dict[s
                         DICE_MAX_BALANCE,
                         dice_delta,
                         spins_delta,
-                        int(user_id),
+                        user_id,
                     ),
                 )
-                wallet = cur.fetchone() or wallet
+                updated = cur.fetchone()
+                if not updated:
+                    raise NoSpinsError("no_spins")
 
                 cur.execute(
                     """
                     INSERT INTO game_spin_history
-                    (spin_token, user_id, segment_index, reward_code, reward_resource, reward_amount)
+                        (spin_token, user_id, segment_index, reward_code, reward_resource, reward_amount)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        token,
-                        int(user_id),
+                        spin_token,
+                        user_id,
                         int(segment_index),
-                        reward.code,
-                        reward.resource,
-                        int(reward.amount),
+                        str(reward.code),
+                        resource,
+                        reward_amount,
                     ),
                 )
                 cur.execute(
                     """
                     INSERT INTO game_ledger
-                    (user_id, resource, delta, reason, reference, metadata)
-                    VALUES (%s, 'spins', -1, 'spin_cost', %s, '{}'::jsonb)
+                        (user_id, resource, delta, reason, reference, metadata)
+                    VALUES (%s, 'spins', -1, 'spin_consume', %s, '{}'::jsonb)
                     """,
-                    (int(user_id), token),
+                    (user_id, spin_token),
                 )
-                cur.execute(
-                    """
-                    INSERT INTO game_ledger
-                    (user_id, resource, delta, reason, reference, metadata)
-                    VALUES (%s, %s, %s, 'spin_reward', %s, %s::jsonb)
-                    """,
-                    (
-                        int(user_id),
-                        reward.resource,
-                        int(reward.amount),
-                        token,
-                        json.dumps({"reward_code": reward.code, "segment_index": int(segment_index)}),
-                    ),
-                )
+                if reward_amount:
+                    effective_reward = reward_amount
+                    if resource == "dice":
+                        effective_reward = max(
+                            0,
+                            int(updated.get("dice") or 0) - int(wallet.get("dice") or 0),
+                        )
+                    if effective_reward:
+                        cur.execute(
+                            """
+                            INSERT INTO game_ledger
+                                (user_id, resource, delta, reason, reference, metadata)
+                            VALUES (%s, %s, %s, 'spin_reward', %s, %s::jsonb)
+                            """,
+                            (
+                                user_id,
+                                resource,
+                                effective_reward,
+                                spin_token,
+                                json.dumps(
+                                    {"reward_code": reward.code, "segment_index": int(segment_index)},
+                                    ensure_ascii=False,
+                                ),
+                            ),
+                        )
                 conn.commit()
                 return {
-                    "spin_token": token,
+                    "spin_token": spin_token,
                     "segment_index": int(segment_index),
-                    "reward": {
-                        "code": reward.code,
-                        "label": reward.label,
-                        "resource": reward.resource,
-                        "amount": int(reward.amount),
-                    },
-                    "wallet": _wallet_payload(dict(wallet)),
+                    "reward": reward.as_dict(),
+                    "wallet": _wallet_payload(dict(updated)),
                 }
-            except NoSpinsError:
-                raise
             except Exception:
                 conn.rollback()
                 raise
-
-
-def game_state(user_id: int) -> Dict[str, Any]:
-    wallet = get_wallet(int(user_id))
-    last_claim = get_last_daily_claim(int(user_id))
-    active_roll = get_active_dice_roll(int(user_id))
-    today = today_sp()
-
-    claimed_today = bool(last_claim and last_claim.get("claim_date") == today)
-    streak = int((last_claim or {}).get("streak") or 0)
-    cycle_day = int((last_claim or {}).get("cycle_day") or 0)
-
-    return {
-        "wallet": wallet,
-        "daily": {
-            "claimed_today": claimed_today,
-            "streak": streak,
-            "cycle_day": cycle_day,
-            "next_cycle_day": ((streak % 7) + 1) if streak else 1,
-        },
-        "active_dice_roll": active_roll,
-        "timezone": "America/Sao_Paulo",
-    }
