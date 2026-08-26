@@ -1,0 +1,253 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import secrets
+import time
+from datetime import datetime, timezone
+from typing import Any
+
+from psycopg.rows import dict_row
+
+from database import pool
+
+
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
+
+_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS channel_verification_requests (
+    request_id TEXT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_channel_verification_requests_pending
+    ON channel_verification_requests(status, created_at);
+
+CREATE TABLE IF NOT EXISTS channel_verification_worker (
+    worker_key TEXT PRIMARY KEY,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    channel TEXT NOT NULL DEFAULT ''
+);
+"""
+
+
+def ensure_channel_verification_tables() -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_TABLE_SQL)
+        conn.commit()
+
+
+def _cleanup_old_requests() -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM channel_verification_requests "
+                "WHERE created_at < NOW() - INTERVAL '10 minutes'"
+            )
+        conn.commit()
+
+
+def create_verification_request(user_id: int) -> str:
+    ensure_channel_verification_tables()
+    _cleanup_old_requests()
+    request_id = secrets.token_urlsafe(24)
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO channel_verification_requests(request_id, user_id, status)
+                VALUES (%s, %s, 'pending')
+                """,
+                (request_id, int(user_id)),
+            )
+        conn.commit()
+    return request_id
+
+
+def get_verification_result(request_id: str, user_id: int) -> dict[str, Any] | None:
+    ensure_channel_verification_tables()
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT request_id, user_id, status, message, created_at, updated_at
+                FROM channel_verification_requests
+                WHERE request_id = %s AND user_id = %s
+                """,
+                (str(request_id), int(user_id)),
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def wait_for_verification(user_id: int, timeout_seconds: float = 8.0) -> dict[str, Any]:
+    request_id = create_verification_request(user_id)
+    deadline = time.monotonic() + max(1.0, float(timeout_seconds))
+
+    while time.monotonic() < deadline:
+        row = get_verification_result(request_id, user_id)
+        status = str((row or {}).get("status") or "")
+        if status == "ok":
+            return {"ok": True, "status": "ok"}
+        if status == "not_member":
+            return {"ok": False, "status": "not_member"}
+        if status == "error":
+            return {
+                "ok": False,
+                "status": "error",
+                "message": str((row or {}).get("message") or "Não foi possível verificar sua inscrição agora."),
+            }
+        time.sleep(0.20)
+
+    return {
+        "ok": False,
+        "status": "timeout",
+        "message": "A verificação demorou mais que o esperado. Toque em verificar novamente.",
+    }
+
+
+def _claim_pending(limit: int = 10) -> list[dict[str, Any]]:
+    ensure_channel_verification_tables()
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                WITH picked AS (
+                    SELECT request_id
+                    FROM channel_verification_requests
+                    WHERE (
+                        status = 'pending'
+                        OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 seconds')
+                    )
+                    ORDER BY created_at ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT %s
+                )
+                UPDATE channel_verification_requests AS r
+                SET status = 'processing', updated_at = NOW(), message = NULL
+                FROM picked
+                WHERE r.request_id = picked.request_id
+                RETURNING r.request_id, r.user_id
+                """,
+                (max(1, int(limit)),),
+            )
+            rows = cur.fetchall() or []
+        conn.commit()
+    return [dict(row) for row in rows]
+
+
+def _complete(request_id: str, status: str, message: str | None = None) -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE channel_verification_requests
+                SET status = %s, message = %s, updated_at = NOW()
+                WHERE request_id = %s
+                """,
+                (status, message, str(request_id)),
+            )
+        conn.commit()
+
+
+def _heartbeat() -> None:
+    ensure_channel_verification_tables()
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO channel_verification_worker(worker_key, last_seen, channel)
+                VALUES ('telegram-bot', NOW(), %s)
+                ON CONFLICT (worker_key) DO UPDATE
+                SET last_seen = EXCLUDED.last_seen, channel = EXCLUDED.channel
+                """,
+                (REQUIRED_CHANNEL,),
+            )
+        conn.commit()
+
+
+def worker_health() -> dict[str, Any]:
+    ensure_channel_verification_tables()
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT last_seen, channel
+                FROM channel_verification_worker
+                WHERE worker_key = 'telegram-bot'
+                """
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return {"ok": False, "status": "missing"}
+
+    last_seen = row["last_seen"]
+    now = datetime.now(timezone.utc)
+    age = max(0.0, (now - last_seen).total_seconds())
+    return {
+        "ok": age <= 15.0,
+        "status": "online" if age <= 15.0 else "stale",
+        "age_seconds": round(age, 2),
+        "channel": str(row.get("channel") or ""),
+    }
+
+
+def _member_is_valid(member: Any) -> bool:
+    status = str(getattr(member, "status", "") or "").strip().lower()
+    if status in {"creator", "administrator", "member"}:
+        return True
+    return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+async def channel_verification_worker(application) -> None:
+    ensure_channel_verification_tables()
+    print("[terms-membership] worker do bot iniciado", flush=True)
+
+    while True:
+        try:
+            _heartbeat()
+            rows = _claim_pending(limit=10)
+            if not rows:
+                await asyncio.sleep(0.35)
+                continue
+
+            for row in rows:
+                request_id = str(row["request_id"])
+                user_id = int(row["user_id"])
+                try:
+                    if not REQUIRED_CHANNEL:
+                        _complete(request_id, "ok")
+                        continue
+
+                    member = await application.bot.get_chat_member(
+                        chat_id=REQUIRED_CHANNEL,
+                        user_id=user_id,
+                    )
+                    _complete(
+                        request_id,
+                        "ok" if _member_is_valid(member) else "not_member",
+                    )
+                except Exception as exc:
+                    print(
+                        f"[terms-membership] worker falhou user_id={user_id}: "
+                        f"{type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                    _complete(
+                        request_id,
+                        "error",
+                        "O Telegram não conseguiu verificar sua inscrição agora.",
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(
+                f"[terms-membership] erro no worker: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            await asyncio.sleep(1.0)
