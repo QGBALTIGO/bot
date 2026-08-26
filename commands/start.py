@@ -53,7 +53,7 @@ def _map_tg_lang(tg_lang: str | None) -> str:
         return "es"
     if tg_lang.startswith("en"):
         return "en"
-    return "en"
+    return "pt"
 
 
 def _member_has_access(member) -> bool:
@@ -61,6 +61,24 @@ def _member_has_access(member) -> bool:
     if status in ("creator", "administrator", "member"):
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+def _main_keyboard(terms_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🎮 Game Center", web_app=WebAppInfo(url=f"{BASE_URL}/game")),
+            InlineKeyboardButton("🎴 Minha coleção", web_app=WebAppInfo(url=f"{BASE_URL}/collection")),
+        ],
+        [
+            InlineKeyboardButton("📚 Catálogo", web_app=WebAppInfo(url=f"{BASE_URL}/catalogo")),
+            InlineKeyboardButton("📝 Pedidos", web_app=WebAppInfo(url=f"{BASE_URL}/pedido")),
+        ],
+        [InlineKeyboardButton("➕ Adicionar ao grupo", url=ADD_TO_GROUP_URL)],
+        [
+            InlineKeyboardButton("🏴‍☠️ QG Baltigo", url=QG_URL),
+            InlineKeyboardButton("📜 Termos", web_app=WebAppInfo(url=terms_url)),
+        ],
+    ])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,10 +93,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if _is_group(update):
         text = (
-            "⚠️ <b>Acesso indisponível neste chat</b>\n\n"
-            "O <b>Source Baltigo</b> funciona no <b>privado</b> para manter seu <b>perfil</b>, "
-            "<b>coleção</b> e <b>progresso</b> protegidos.\n\n"
-            "🎴 <b>Toque no botão abaixo para abrir o bot no privado:</b>"
+            "⚠️ <b>Abra a sua área no privado</b>\n\n"
+            "Game Center, coleção e configurações usam recursos ligados à sua conta. "
+            "No grupo ficam as experiências coletivas; sua área pessoal abre no privado."
         )
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎴 Abrir Source Baltigo no privado", url=BOT_PRIVATE_URL)]
@@ -102,18 +119,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not terms_ok:
         reset_welcome_sent(user_id)
-
         caption = (
             f"👋 Olá, <b>{safe_name}</b>\n\n"
-            "Antes de continuar sua jornada na <b>Source Baltigo</b> 🎴✨\n\n"
-            "📜 Você precisa ler e aceitar nossos <b>Termos de Uso e Política de Privacidade</b>.\n"
-            "Isso garante uma experiência <b>justa</b>, <b>segura</b> e <b>equilibrada</b> para todos.\n\n"
-            "✅ Quando estiver pronto, toque no botão abaixo para ler e aceitar."
+            "Antes de abrir sua conta na <b>Source Baltigo</b>, leia os Termos de Uso e a Política de Privacidade.\n\n"
+            "Depois do aceite, sua jornada, recursos e coleção ficam disponíveis."
         )
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))]
         ])
-
         if message:
             await message.reply_photo(
                 photo=BANNER_URL,
@@ -136,18 +149,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not channel_ok:
             reset_welcome_sent(user_id)
-
             text = (
                 "📢 <b>Canal oficial obrigatório</b>\n\n"
-                "Para usar o <b>Source Baltigo</b>, você precisa entrar no nosso canal oficial.\n"
-                "Isso ajuda a manter a tripulação informada e o acesso organizado.\n\n"
-                "✅ <b>Entre no canal</b> e depois volte aqui novamente."
+                "Para usar a Source Baltigo, entre no canal oficial e depois volte ao /start."
             )
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📢 Entrar no canal oficial", url=REQUIRED_CHANNEL_URL)],
                 [InlineKeyboardButton("📜 Abrir termos novamente", web_app=WebAppInfo(url=terms_url))],
             ])
-
             if message:
                 await message.reply_html(text, reply_markup=keyboard)
             return
@@ -157,33 +166,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not welcome_sent:
         text = (
             f"🏴‍☠️ <b>Bem-vindo, {safe_name}!</b>\n\n"
-            "<b>Source Baltigo</b>\n"
-            "<i>O seu portal para o mundo dos animes.</i>\n\n"
-            "Aqui você pode:\n"
-            "• 🔎 Descobrir personagens\n"
-            "• 📚 Explorar histórias\n"
-            "• 🎬 Encontrar novos animes para assistir\n\n"
-            "⚔️ <b>Entre para a tripulação</b> e comece sua jornada!"
+            "A Source Baltigo está entrando na sua <b>V2</b>: os sistemas agora começam a conversar entre si.\n\n"
+            "🎁 <b>Daily</b> → entrega coins, dados e giros reais\n"
+            "🎲 <b>Dado</b> → descobre obras e entrega personagem\n"
+            "🎡 <b>Giro</b> → usa giros e credita recompensas reais\n"
+            "🎴 <b>Coleção</b> → reúne o que você conquistou\n"
+            "⭐ <b>Nível</b> → acompanha seu progresso\n"
+            "📚 <b>Catálogo</b> → explora animes, mangás e cards\n\n"
+            "Use os atalhos abaixo ou os comandos /jogar, /daily, /dado, /giro e /colecao."
         )
         mark_welcome_sent(user_id)
     else:
         text = (
             f"⚓ <b>Bem-vindo de volta, {safe_name}!</b>\n\n"
-            "<b>Source Baltigo</b>\n"
-            "Sua jornada continua, escolha o próximo destino e siga explorando. ⚔️✨\n\n"
-            "Se precisar, você pode abrir os <b>termos</b> novamente pelo botão abaixo."
+            "Sua conta está pronta. Continue pelo <b>Game Center</b>, confira sua <b>coleção</b> "
+            "ou explore o <b>catálogo</b>."
         )
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Adicionar ao grupo", url=ADD_TO_GROUP_URL)],
-        [InlineKeyboardButton("🏴‍☠️ QG Baltigo", url=QG_URL)],
-        [InlineKeyboardButton("📜 Termos e condições", web_app=WebAppInfo(url=terms_url))],
-    ])
 
     if message:
         await message.reply_photo(
             photo=WELCOME_BANNER_URL,
             caption=text,
             parse_mode="HTML",
-            reply_markup=keyboard,
+            reply_markup=_main_keyboard(terms_url),
         )
