@@ -48,6 +48,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Probe Railway domains (read-only when token exists)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: python scripts/railway_domain_probe.py
+
       - name: Test deployed Railway WebApps over public internet
         env:
           LIVE_WEBAPP_BASE_URL: https://qgbaltigo-bot-production.up.railway.app
