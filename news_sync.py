@@ -61,7 +61,6 @@ def parse_feed(xml_text: str) -> list[dict[str, Any]]:
     except ET.ParseError:
         return []
     items: list[dict[str, Any]] = []
-    # RSS
     for node in root.findall(".//item"):
         title = _text(node, "title")
         link = _text(node, "link")
@@ -78,27 +77,28 @@ def parse_feed(xml_text: str) -> list[dict[str, Any]]:
         })
     if items:
         return items
-    # Atom (namespace-agnostic)
     for node in root.iter():
         if node.tag.split("}")[-1] != "entry":
             continue
         title = ""; summary = ""; link = ""; published = ""
         for child in list(node):
             name = child.tag.split("}")[-1]
-            if name == "title" and child.text: title = child.text.strip()
-            elif name in {"summary", "content"} and child.text: summary = child.text.strip()
-            elif name in {"published", "updated"} and child.text and not published: published = child.text.strip()
+            if name == "title" and child.text:
+                title = child.text.strip()
+            elif name in {"summary", "content"} and child.text:
+                summary = child.text.strip()
+            elif name in {"published", "updated"} and child.text and not published:
+                published = child.text.strip()
             elif name == "link":
                 href = child.attrib.get("href", "")
-                if href and (child.attrib.get("rel", "alternate") == "alternate" or not link): link = href
+                if href and (child.attrib.get("rel", "alternate") == "alternate" or not link):
+                    link = href
         if title and link:
-            items.append({"title":title[:260],"summary":_clean_summary(summary),"source_url":link[:2000],"published_at":_parse_date(published)})
+            items.append({"title": title[:260], "summary": _clean_summary(summary), "source_url": link[:2000], "published_at": _parse_date(published)})
     return items
 
 
 def _notify_followers(article_id: int, title: str, summary: str, source_url: str) -> None:
-    # Best-effort lexical match. It intentionally only notifies when the article
-    # title contains a library title with at least 4 characters, avoiding broad spam.
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -115,11 +115,7 @@ def _notify_followers(article_id: int, title: str, summary: str, source_url: str
             followers = [dict(row) for row in (cur.fetchall() or [])]
     for row in followers:
         push_notification(
-            int(row["user_id"]),
-            "news",
-            f"📰 {title[:150]}",
-            summary[:400],
-            "/hub#explore",
+            int(row["user_id"]), "news", f"📰 {title[:150]}", summary[:400], "/hub#explore",
             {"news_id": int(article_id), "source_url": source_url, "matched_title": row.get("title")},
         )
 
@@ -128,25 +124,42 @@ def ingest_articles(articles: list[dict[str, Any]]) -> int:
     inserted: list[dict[str, Any]] = []
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            for article in articles:
-                try:
+            try:
+                for article in articles:
+                    source_url = str(article.get("source_url") or "").strip()
+                    if not source_url:
+                        continue
+                    # An advisory lock derived by PostgreSQL guarantees that two workers
+                    # cannot ingest the same URL at once even before a formal migration
+                    # introduces a unique index.
+                    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (source_url,))
+                    cur.execute("SELECT id FROM news_items_v2 WHERE source_url=%s LIMIT 1", (source_url,))
+                    if cur.fetchone():
+                        continue
                     cur.execute(
                         """
                         INSERT INTO news_items_v2 (title,summary,source_url,published_at)
                         VALUES (%s,%s,%s,%s)
-                        ON CONFLICT (source_url) WHERE source_url <> '' DO NOTHING
                         RETURNING id,title,summary,source_url
                         """,
-                        (article["title"],article.get("summary") or "",article["source_url"],article.get("published_at") or datetime.now(timezone.utc)),
+                        (
+                            str(article.get("title") or "Notícia")[:260],
+                            str(article.get("summary") or "")[:700],
+                            source_url[:2000],
+                            article.get("published_at") or datetime.now(timezone.utc),
+                        ),
                     )
                     row = cur.fetchone()
-                    if row: inserted.append(dict(row))
-                except Exception:
-                    logger.exception("Falha ao inserir notícia %s", article.get("source_url"))
-            conn.commit()
+                    if row:
+                        inserted.append(dict(row))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                logger.exception("Falha transacional ao inserir notícias")
+                return 0
     for row in inserted:
         try:
-            _notify_followers(int(row["id"]),str(row["title"]),str(row.get("summary") or ""),str(row.get("source_url") or ""))
+            _notify_followers(int(row["id"]), str(row["title"]), str(row.get("summary") or ""), str(row.get("source_url") or ""))
         except Exception:
             logger.exception("Falha ao notificar seguidores news_id=%s", row.get("id"))
     return len(inserted)
@@ -156,13 +169,12 @@ async def sync_news_once() -> int:
     if not NEWS_RSS_FEEDS:
         return 0
     total = 0
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={"User-Agent":"SourceBaltigo/2.0"}) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={"User-Agent": "SourceBaltigo/2.0"}) as client:
         for feed_url in NEWS_RSS_FEEDS:
             try:
                 response = await client.get(feed_url)
                 response.raise_for_status()
-                articles = parse_feed(response.text)[:NEWS_MAX_PER_FEED]
-                total += ingest_articles(articles)
+                total += ingest_articles(parse_feed(response.text)[:NEWS_MAX_PER_FEED])
             except Exception:
                 logger.exception("Falha no feed de notícias %s", feed_url)
     return total
