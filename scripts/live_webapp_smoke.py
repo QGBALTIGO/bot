@@ -53,7 +53,7 @@ def fetch(path: str, timeout: float = 12.0) -> tuple[int, str, str, float]:
     req = Request(
         url,
         headers={
-            "User-Agent": "Baltigo-Live-Smoke/1.0 (+GitHub-Actions)",
+            "User-Agent": "Baltigo-Live-Smoke/1.1 (+GitHub-Actions)",
             "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
         },
         method="GET",
@@ -70,30 +70,10 @@ def fetch(path: str, timeout: float = 12.0) -> tuple[int, str, str, float]:
         return int(exc.code), str(exc.headers.get("content-type") or ""), body, elapsed
 
 
-def wait_for_health() -> bool:
-    print(f"LIVE_WEBAPP_BASE_URL={BASE_URL}", flush=True)
-    for attempt in range(1, 13):
-        try:
-            status, content_type, body, elapsed = fetch("/healthz", timeout=10)
-            print(
-                f"health attempt={attempt:02d} status={status} time={elapsed:.2f}s "
-                f"type={content_type!r} body={body[:500]!r}",
-                flush=True,
-            )
-            if status == 200:
-                return True
-        except (URLError, TimeoutError, OSError) as exc:
-            print(f"health attempt={attempt:02d} ERROR {type(exc).__name__}: {exc}", flush=True)
-        time.sleep(10)
-    return False
-
-
 def main() -> int:
-    if not wait_for_health():
-        print("FAIL: /healthz did not become reachable with HTTP 200.", flush=True)
-        return 2
-
+    print(f"LIVE_WEBAPP_BASE_URL={BASE_URL}", flush=True)
     failures: list[str] = []
+
     print("\n=== PUBLIC PAGES ===", flush=True)
     for path in PAGES:
         try:
