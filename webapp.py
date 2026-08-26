@@ -11672,3 +11672,7 @@ def baltigoflix_page(uid: int = Query(default=0)):
 </html>
 """
     return HTMLResponse(html)
+
+# System diagnostics: aggregate Wallhaven curator status.
+from utils.wallhaven_curator_status import router as wallhaven_curator_status_router
+app.include_router(wallhaven_curator_status_router)
