@@ -4,55 +4,72 @@ import asyncio
 import os
 from typing import Any
 
-import httpx
 from fastapi import Body, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
+from telegram import Bot
+from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
 
 
-def _is_channel_member(result: dict[str, Any]) -> bool:
-    status = str(result.get("status") or "").strip().lower()
+def _is_channel_member(member: Any) -> bool:
+    status = str(getattr(member, "status", "") or "").strip().lower()
     if status in {"creator", "administrator", "member"}:
         return True
-    return status == "restricted" and bool(result.get("is_member", False))
+    return status == "restricted" and bool(getattr(member, "is_member", False))
 
 
-async def _get_chat_member(user_id: int) -> dict[str, Any]:
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
-    payload = {
-        "chat_id": REQUIRED_CHANNEL,
-        "user_id": int(user_id),
-    }
-    timeout = httpx.Timeout(10.0, connect=5.0)
-    last_error: Exception | None = None
+def _configuration_message(exc: BaseException) -> str | None:
+    text = str(exc or "").strip().lower()
+    markers = (
+        "chat not found",
+        "member list is inaccessible",
+        "not enough rights",
+        "need administrator rights",
+        "bot is not a member",
+    )
+    if any(marker in text for marker in markers):
+        return (
+            "O bot não consegue consultar os membros do canal. "
+            "Adicione o bot como administrador do canal obrigatório e tente novamente."
+        )
+    return None
 
-    # Railway can expose proxy variables in the environment. The bot client itself
-    # works without relying on those proxies, so this request should do the same.
-    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-        for attempt in range(2):
-            try:
-                response = await client.post(url, json=payload)
-                data = response.json()
 
-                # A transient Telegram/server failure deserves one quick retry.
-                if response.status_code >= 500 and attempt == 0:
-                    await asyncio.sleep(0.25)
-                    continue
+async def _get_chat_member(user_id: int) -> Any:
+    last_error: BaseException | None = None
 
-                return data if isinstance(data, dict) else {}
-            except (httpx.HTTPError, ValueError) as exc:
-                last_error = exc
-                if attempt == 0:
-                    await asyncio.sleep(0.25)
-                    continue
+    for attempt in range(2):
+        try:
+            async with Bot(token=BOT_TOKEN) as bot:
+                return await bot.get_chat_member(
+                    chat_id=REQUIRED_CHANNEL,
+                    user_id=int(user_id),
+                )
+        except RetryAfter as exc:
+            last_error = exc
+            if attempt == 0:
+                raw = getattr(exc, "retry_after", 1)
+                try:
+                    seconds = float(raw.total_seconds()) if hasattr(raw, "total_seconds") else float(raw)
+                except (TypeError, ValueError):
+                    seconds = 1.0
+                await asyncio.sleep(max(0.25, min(seconds, 2.0)))
+                continue
+            raise
+        except (TimedOut, NetworkError) as exc:
+            last_error = exc
+            if attempt == 0:
+                await asyncio.sleep(0.35)
+                continue
+            raise
 
     if last_error is not None:
         raise last_error
-    return {}
+    raise RuntimeError("Telegram não retornou o estado do membro.")
 
 
 async def api_channel_check(payload: dict = Body(...)):
@@ -73,47 +90,52 @@ async def api_channel_check(payload: dict = Body(...)):
     if not BOT_TOKEN:
         print("[terms-membership] BOT_TOKEN ausente", flush=True)
         return JSONResponse(
-            {"ok": False, "message": "Não foi possível verificar sua inscrição agora."},
+            {"ok": False, "message": "BOT_TOKEN não configurado no serviço do WebApp."},
             status_code=500,
         )
 
     try:
-        data = await _get_chat_member(user_id)
+        member = await _get_chat_member(user_id)
+    except BadRequest as exc:
+        config_message = _configuration_message(exc)
+        print(
+            f"[terms-membership] Telegram BadRequest user_id={user_id} "
+            f"channel={REQUIRED_CHANNEL!r}: {exc}",
+            flush=True,
+        )
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": config_message or "O Telegram recusou a verificação da inscrição.",
+            },
+            status_code=503,
+        )
+    except TelegramError as exc:
+        print(
+            f"[terms-membership] TelegramError user_id={user_id} "
+            f"channel={REQUIRED_CHANNEL!r}: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return JSONResponse(
+            {"ok": False, "message": "Não foi possível consultar o Telegram agora. Tente novamente."},
+            status_code=502,
+        )
     except Exception as exc:
         print(
-            f"[terms-membership] falha de rede user_id={user_id}: {type(exc).__name__}: {exc}",
+            f"[terms-membership] erro inesperado user_id={user_id}: "
+            f"{type(exc).__name__}: {exc}",
             flush=True,
         )
         return JSONResponse(
-            {"ok": False, "message": "Não foi possível consultar o Telegram agora. Tente novamente em instantes."},
-            status_code=502,
+            {"ok": False, "message": "Falha interna ao verificar a inscrição."},
+            status_code=500,
         )
 
-    if not data.get("ok"):
-        description = str(data.get("description") or "erro desconhecido").strip()
-        error_code = data.get("error_code")
-        print(
-            f"[terms-membership] Telegram recusou getChatMember "
-            f"user_id={user_id} channel={REQUIRED_CHANNEL!r} "
-            f"error_code={error_code!r} description={description!r}",
-            flush=True,
-        )
-        return JSONResponse(
-            {"ok": False, "message": "Não foi possível verificar sua inscrição agora. Tente novamente em instantes."},
-            status_code=502,
-        )
-
-    result = data.get("result") or {}
-    return {"ok": _is_channel_member(result)}
+    return {"ok": _is_channel_member(member)}
 
 
 def install_terms_membership_route(app: FastAPI) -> None:
-    """Replace only the legacy Terms membership endpoint.
-
-    webapp.py is intentionally left untouched: the Terms page keeps calling the
-    same /api/channel/check URL, while this installs the corrected implementation
-    before Uvicorn starts serving requests.
-    """
+    """Replace only the legacy Terms membership endpoint."""
     kept_routes = []
     removed = 0
 
