@@ -8,9 +8,10 @@ from telegram.ext import ContextTypes
 
 from identity_repository import sync_telegram_identity
 from utils.gatekeeper import gatekeeper
+from utils.public_url import require_public_base_url
 
 
-BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
+BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 
 
@@ -64,13 +65,8 @@ async def open_webapp_entry(
             full_name=str(user.full_name or ""),
         )
     except Exception:
-        # Identidade enriquecida melhora perfil/ranking, mas não deve tornar uma
-        # MiniApp inteira indisponível se o sync auxiliar falhar pontualmente.
+        # Identity enrichment must not make a MiniApp unavailable.
         pass
-
-    if not BASE_URL:
-        await msg.reply_text("⚠️ MiniApp indisponível: BASE_URL não configurada.")
-        return
 
     url = f"{BASE_URL}{entry.path}"
     keyboard = InlineKeyboardMarkup(
