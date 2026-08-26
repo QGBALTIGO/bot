@@ -4,9 +4,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppI
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
-BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 BALTIGOFLIX_BANNER_URL = os.getenv(
@@ -22,6 +21,7 @@ def _is_group(update: Update) -> bool:
 
 async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
+    user = update.effective_user
     if not msg:
         return
 
@@ -39,8 +39,15 @@ async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if bloqueio:
             await msg.reply_html(bloqueio)
         return
+    if not user:
+        return
 
-    webapp_url = f"{BASE_URL}/baltigoflix"
+    webapp_url = build_webapp_url(
+        "/baltigoflix",
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
     texto = (
         "🎬 <b>BaltigoFlix</b>\n\n"
         "Acesse a área BaltigoFlix direto pelo Mini App.\n\n"
