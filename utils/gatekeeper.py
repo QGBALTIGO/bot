@@ -34,9 +34,28 @@ ADMIN_COMMANDS = {
     "/card_subremove",
 }
 
+# Comandos que têm um fluxo social real em grupo. Todo o restante continua
+# bloqueado em grupos para evitar respostas acidentais/spam.
+GROUP_ALLOWED_COMMANDS = {
+    "/capturar",
+    "/trocar",
+    "/duelo",
+}
+
+# Abrir telas/consultas ou iniciar um fluxo social não deve gerar XP por si só.
+# Sistemas como captura concedem XP explicitamente quando a ação é concluída.
 IGNORED_PROGRESS_COMMANDS = {
     "/start",
     "/nivel",
+    "/ranking",
+    "/loja",
+    "/colecao",
+    "/perfil",
+    "/xcard",
+    "/xcolecao",
+    "/capturar",
+    "/trocar",
+    "/duelo",
     "/msgconfig",
     "/bloquearmsg",
     "/desbloquearmsg",
@@ -148,7 +167,8 @@ async def gatekeeper(
             return False, ""
         if command_name == "/start":
             return True, ""
-        return False, ""
+        if command_name not in GROUP_ALLOWED_COMMANDS:
+            return False, ""
 
     if command_name == "/start":
         return True, ""
