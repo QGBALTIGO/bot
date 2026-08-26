@@ -34,6 +34,7 @@ from commands.ranking_v2 import ranking
 from commands.shop_v2 import loja
 from commands.start import start
 from commands.trade_v2 import trade_callback, trocar
+from commands.xcards_v2 import xcard, xcolecao
 from capture_repository import create_capture_tables
 from database import create_tables
 from game_repository import create_game_tables
@@ -46,6 +47,7 @@ from handlers.capture_v2 import (
 from identity_repository import create_identity_tables
 from shop_repository import create_shop_tables
 from trade_repository import create_trade_tables
+from xcards_repository import create_xcard_tables
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -156,6 +158,10 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("ranking", ranking))
     tg_app.add_handler(CommandHandler("loja", loja))
 
+    # XCards / Union Arena V2
+    tg_app.add_handler(CommandHandler("xcard", xcard))
+    tg_app.add_handler(CommandHandler("xcolecao", xcolecao))
+
     # interação social V2
     tg_app.add_handler(CommandHandler("trocar", trocar))
     tg_app.add_handler(CallbackQueryHandler(trade_callback, pattern=r"^tradev2:"))
@@ -198,6 +204,7 @@ def main() -> None:
     create_shop_tables()
     create_capture_tables()
     create_trade_tables()
+    create_xcard_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
