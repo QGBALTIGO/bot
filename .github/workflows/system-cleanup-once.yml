@@ -1,0 +1,242 @@
+name: One-shot system cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/system-cleanup-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply system-only runtime cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # bot.py: remove the obsolete Terms route override and close the worker cleanly.
+          bot_path = Path('bot.py')
+          bot = bot_path.read_text(encoding='utf-8')
+
+          old_webapp = '''def run_webapp():
+              try:
+                  from webapp import app as web_app
+                  from utils.terms_membership import install_terms_membership_route
+
+                  # Mantém todo o WebApp original da main e substitui somente a rota
+                  # usada pelo botão "Verificar inscrição" dos Termos.
+                  install_terms_membership_route(web_app)
+
+                  uvicorn.run(
+          '''
+          new_webapp = '''def run_webapp():
+              try:
+                  from webapp import app as web_app
+
+                  uvicorn.run(
+          '''
+          if bot.count(old_webapp) != 1:
+              raise SystemExit('Unexpected run_webapp block; refusing broad edit')
+          bot = bot.replace(old_webapp, new_webapp, 1)
+
+          old_worker = '''        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+              channel_verification_worker(app),
+              name="terms-channel-verification",
+          )
+          '''
+          # Handle the indentation left by the earlier emergency patch too.
+          old_worker_legacy = '''        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+          channel_verification_worker(app),
+          name="terms-channel-verification",
+          )
+          '''
+          old_worker_actual = '''        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+          channel_verification_worker(app),
+          name="terms-channel-verification",
+          )
+          '''
+          replacement_worker = '''        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+              channel_verification_worker(app),
+              name="terms-channel-verification",
+          )
+
+              async def post_shutdown(app: Application):
+                  task = app.bot_data.pop("terms_channel_worker", None)
+                  if task is None:
+                      return
+                  task.cancel()
+                  try:
+                      await task
+                  except asyncio.CancelledError:
+                      pass
+          '''
+
+          # Normalize based on exact source slice rather than relying on visual indentation.
+          marker_start = '        app.bot_data["terms_channel_worker"] = asyncio.create_task(\n'
+          marker_end = '\n\n    app = (\n'
+          start = bot.find(marker_start)
+          end = bot.find(marker_end, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Terms worker startup block not found; refusing broad edit')
+          current_worker = bot[start:end]
+          worker_block = '''        app.bot_data["terms_channel_worker"] = asyncio.create_task(
+              channel_verification_worker(app),
+              name="terms-channel-verification",
+          )
+
+              async def post_shutdown(app: Application):
+                  task = app.bot_data.pop("terms_channel_worker", None)
+                  if task is None:
+                      return
+                  task.cancel()
+                  try:
+                      await task
+                  except asyncio.CancelledError:
+                      pass
+          '''
+          # The function declaration must be at build_application scope (4 spaces).
+          worker_block = worker_block.replace('\n              async def post_shutdown', '\n\n    async def post_shutdown')
+          worker_block = worker_block.replace('\n                  task =', '\n        task =')
+          worker_block = worker_block.replace('\n                  if task is None:', '\n        if task is None:')
+          worker_block = worker_block.replace('\n                      return', '\n            return')
+          worker_block = worker_block.replace('\n                  task.cancel()', '\n        task.cancel()')
+          worker_block = worker_block.replace('\n                  try:', '\n        try:')
+          worker_block = worker_block.replace('\n                      await task', '\n            await task')
+          worker_block = worker_block.replace('\n                  except asyncio.CancelledError:', '\n        except asyncio.CancelledError:')
+          worker_block = worker_block.replace('\n                      pass', '\n            pass')
+          bot = bot[:start] + worker_block + bot[end:]
+
+          builder_marker = '        .post_init(post_init)\n        .build()\n'
+          if bot.count(builder_marker) != 1:
+              raise SystemExit('Application builder marker not found exactly')
+          bot = bot.replace(
+              builder_marker,
+              '        .post_init(post_init)\n        .post_shutdown(post_shutdown)\n        .build()\n',
+              1,
+          )
+          bot_path.write_text(bot, encoding='utf-8')
+
+          # channel_verification_bridge.py: initialize schema once per process and throttle cleanup.
+          bridge_path = Path('utils/channel_verification_bridge.py')
+          bridge = bridge_path.read_text(encoding='utf-8')
+          if 'import threading\n' not in bridge:
+              bridge = bridge.replace('import secrets\n', 'import secrets\nimport threading\n', 1)
+
+          globals_marker = '_SELFTEST_USER_ID = -1\n\n'
+          globals_block = '''_SELFTEST_USER_ID = -1
+_TABLES_READY = False
+_TABLES_LOCK = threading.Lock()
+_CLEANUP_LOCK = threading.Lock()
+_LAST_CLEANUP_MONOTONIC = 0.0
+_CLEANUP_INTERVAL_SECONDS = 60.0
+
+'''
+          if bridge.count(globals_marker) != 1:
+              raise SystemExit('Bridge globals marker not found exactly')
+          bridge = bridge.replace(globals_marker, globals_block, 1)
+
+          old_ensure = '''def ensure_channel_verification_tables() -> None:
+              with pool.connection() as conn:
+                  with conn.cursor() as cur:
+                      cur.execute(_TABLE_SQL)
+                  conn.commit()
+          '''
+          new_ensure = '''def ensure_channel_verification_tables() -> None:
+              global _TABLES_READY
+              if _TABLES_READY:
+                  return
+
+              with _TABLES_LOCK:
+                  if _TABLES_READY:
+                      return
+                  with pool.connection() as conn:
+                      with conn.cursor() as cur:
+                          cur.execute(_TABLE_SQL)
+                      conn.commit()
+                  _TABLES_READY = True
+          '''
+          if bridge.count(old_ensure) != 1:
+              raise SystemExit('Bridge table initializer not found exactly')
+          bridge = bridge.replace(old_ensure, new_ensure, 1)
+
+          old_cleanup = '''def _cleanup_old_requests() -> None:
+              with pool.connection() as conn:
+                  with conn.cursor() as cur:
+                      cur.execute(
+                          "DELETE FROM channel_verification_requests "
+                          "WHERE created_at < NOW() - INTERVAL '10 minutes'"
+                      )
+                  conn.commit()
+          '''
+          new_cleanup = '''def _cleanup_old_requests() -> None:
+              global _LAST_CLEANUP_MONOTONIC
+              now = time.monotonic()
+              if now - _LAST_CLEANUP_MONOTONIC < _CLEANUP_INTERVAL_SECONDS:
+                  return
+
+              with _CLEANUP_LOCK:
+                  now = time.monotonic()
+                  if now - _LAST_CLEANUP_MONOTONIC < _CLEANUP_INTERVAL_SECONDS:
+                      return
+                  with pool.connection() as conn:
+                      with conn.cursor() as cur:
+                          cur.execute(
+                              "DELETE FROM channel_verification_requests "
+                              "WHERE created_at < NOW() - INTERVAL '10 minutes'"
+                          )
+                      conn.commit()
+                  _LAST_CLEANUP_MONOTONIC = now
+          '''
+          if bridge.count(old_cleanup) != 1:
+              raise SystemExit('Bridge cleanup block not found exactly')
+          bridge = bridge.replace(old_cleanup, new_cleanup, 1)
+          bridge_path.write_text(bridge, encoding='utf-8')
+          PY
+
+          cat > .gitignore <<'EOF'
+          __pycache__/
+          *.py[cod]
+          .env
+          .env.*
+          !.env.example
+          *.session
+          *.session-journal
+          .pytest_cache/
+          .ruff_cache/
+          EOF
+
+          git rm --ignore-unmatch \
+            sessao_busca.session \
+            utils/terms_membership.py \
+            .github/workflows/system-fix-batch.yml \
+            .github/workflows/terms-bridge-apply.yml \
+            .github/workflows/terms-direct-fix.yml \
+            .github/workflows/terms-live.yml \
+            .github/workflows/system-cleanup-once.yml
+
+      - name: Validate cleanup
+        shell: bash
+        run: |
+          python -m compileall -q .
+          ! grep -R "terms_membership" -n --include='*.py' .
+          git diff --check
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.py utils/channel_verification_bridge.py .gitignore
+          git commit -m "Harden runtime cleanup and repository hygiene"
+          git push origin HEAD:main
