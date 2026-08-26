@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "processed": {
+    "40": {
+      "status": "no_search_result",
+      "character_name": "Luffy Monkey",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:38.597753+00:00"
+    },
+    "62": {
+      "status": "no_search_result",
+      "character_name": "Zoro Roronoa",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:40.127071+00:00"
+    },
+    "723": {
+      "status": "no_search_result",
+      "character_name": "Nami",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:41.685885+00:00"
+    },
+    "240244": {
+      "status": "no_search_result",
+      "character_name": "Nami Komatsu",
+      "anime": "NANA",
+      "checked_at": "2026-08-26T20:47:43.205865+00:00"
+    },
+    "61": {
+      "status": "no_search_result",
+      "character_name": "Robin Nico",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:44.745359+00:00"
+    },
+    "88419": {
+      "status": "no_strict_match",
+      "character_name": "Nico",
+      "anime": "Tokyo Ghoul",
+      "checked_at": "2026-08-26T20:47:47.838847+00:00"
+    },
+    "340453": {
+      "status": "no_strict_match",
+      "character_name": "Nico",
+      "anime": "Net-juu no Susume",
+      "checked_at": "2026-08-26T20:47:50.983474+00:00"
+    },
+    "305": {
+      "status": "approved",
+      "character_name": "Sanji",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:55.849833+00:00"
+    },
+    "2072": {
+      "status": "no_search_result",
+      "character_name": "Ace Portgas",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:47:57.369624+00:00"
+    },
+    "138150": {
+      "status": "no_strict_match",
+      "character_name": "Ace",
+      "anime": "Bungou Stray Dogs",
+      "checked_at": "2026-08-26T20:48:03.632235+00:00"
+    },
+    "16342": {
+      "status": "no_search_result",
+      "character_name": "Hancock Boa",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:48:05.160247+00:00"
+    },
+    "727": {
+      "status": "no_search_result",
+      "character_name": "Shanks",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:48:06.855346+00:00"
+    },
+    "13767": {
+      "status": "approved",
+      "character_name": "Law Trafalgar",
+      "anime": "ONE PIECE",
+      "checked_at": "2026-08-26T20:48:09.974761+00:00"
+    },
+    "145716": {
+      "status": "no_strict_match",
+      "character_name": "Sakura",
+      "anime": "Ijiranaide, Nagatoro-san",
+      "checked_at": "2026-08-26T20:48:16.218995+00:00"
+    },
+    "156472": {
+      "status": "no_strict_match",
+      "character_name": "Haruno",
+      "anime": "Mairimashita! Iruma-kun",
+      "checked_at": "2026-08-26T20:48:19.301532+00:00"
+    },
+    "20513": {
+      "status": "no_strict_match",
+      "character_name": "Sakura",
+      "anime": "Pocket Monsters",
+      "checked_at": "2026-08-26T20:48:25.574785+00:00"
+    },
+    "29674": {
+      "status": "no_strict_match",
+      "character_name": "Sakura",
+      "anime": "Pocket Monsters",
+      "checked_at": "2026-08-26T20:48:31.811551+00:00"
+    },
+    "247601": {
+      "status": "no_strict_match",
+      "character_name": "Sakura",
+      "anime": "Sonny Boy",
+      "checked_at": "2026-08-26T20:48:38.037988+00:00"
+    },
+    "322120": {
+      "status": "no_strict_match",
+      "character_name": "Sakura",
+      "anime": "Zom 100: Zombie ni Naru Made ni Shitai 100 no Koto",
+      "checked_at": "2026-08-26T20:48:44.289828+00:00"
+    },
+    "130851": {
+      "status": "no_strict_match",
+      "character_name": "Hinata",
+      "anime": "Enen no Shouboutai",
+      "checked_at": "2026-08-26T20:48:50.551672+00:00"
+    },
+    "136576": {
+      "status": "no_strict_match",
+      "character_name": "Itachi",
+      "anime": "Dororo",
+      "checked_at": "2026-08-26T20:48:53.667110+00:00"
+    },
+    "5": {
+      "status": "approved",
+      "character_name": "Ichigo Kurosaki",
+      "anime": "BLEACH",
+      "checked_at": "2026-08-26T20:48:56.744115+00:00"
+    },
+    "124382": {
+      "status": "no_strict_match",
+      "character_name": "Ichigo",
+      "anime": "Darling in the Franxx",
+      "checked_at": "2026-08-26T20:49:01.387912+00:00"
+    },
+    "6": {
+      "status": "approved",
+      "character_name": "Rukia Kuchiki",
+      "anime": "BLEACH",
+      "checked_at": "2026-08-26T20:49:06.021646+00:00"
+    },
+    "7": {
+      "status": "no_search_result",
+      "character_name": "Orihime Inoue",
+      "anime": "BLEACH",
+      "checked_at": "2026-08-26T20:49:07.546149+00:00"
+    }
+  },
+  "updated_at": "2026-08-26T20:49:07.547023+00:00"
+}

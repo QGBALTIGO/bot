@@ -1,5 +1,135 @@
 {
   "version": 1,
   "source": "wallhaven",
-  "characters": {}
+  "characters": {
+    "305": {
+      "character_id": 305,
+      "character_name": "Sanji",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b305-6lisPmHtCnLT.png",
+      "url": "https://w.wallhaven.cc/full/z8/wallhaven-z88g1o.jpg",
+      "wallhaven_id": "z88g1o",
+      "width": 1200,
+      "height": 1800,
+      "ratio": 0.66667,
+      "score": 102.145,
+      "favorites": 18,
+      "views": 3943,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Sanji"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/z88g1o",
+      "query": "Sanji",
+      "approved_at": "2026-08-26T20:47:55.849891+00:00"
+    },
+    "13767": {
+      "character_id": 13767,
+      "character_name": "Law Trafalgar",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b13767-U604OJN9dxCn.jpg",
+      "url": "https://w.wallhaven.cc/full/1k/wallhaven-1kk87g.jpg",
+      "wallhaven_id": "1kk87g",
+      "width": 1200,
+      "height": 1800,
+      "ratio": 0.66667,
+      "score": 93.306,
+      "favorites": 8,
+      "views": 3331,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Sanji",
+        "tony chomper",
+        "Trafalgar Law"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [
+        "Sanji",
+        "tony chomper"
+      ],
+      "source_page": "https://wallhaven.cc/w/1kk87g",
+      "query": "Law Trafalgar",
+      "approved_at": "2026-08-26T20:48:09.974781+00:00"
+    },
+    "5": {
+      "character_id": 5,
+      "character_name": "Ichigo Kurosaki",
+      "anime_id": 269,
+      "anime": "BLEACH",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b5-a7bkJgjhhigE.png",
+      "url": "https://w.wallhaven.cc/full/d6/wallhaven-d6ov6m.png",
+      "wallhaven_id": "d6ov6m",
+      "width": 2048,
+      "height": 3072,
+      "ratio": 0.66667,
+      "score": 99.817,
+      "favorites": 9,
+      "views": 1801,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kurosaki Ichigo",
+        "Kuchiki Rukia"
+      ],
+      "series_tags": [
+        "Bleach"
+      ],
+      "other_characters": [
+        "Kuchiki Rukia"
+      ],
+      "source_page": "https://wallhaven.cc/w/d6ov6m",
+      "query": "Ichigo Kurosaki",
+      "approved_at": "2026-08-26T20:48:56.744135+00:00"
+    },
+    "6": {
+      "character_id": 6,
+      "character_name": "Rukia Kuchiki",
+      "anime_id": 269,
+      "anime": "BLEACH",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b6-25WoBeWMZXBc.png",
+      "url": "https://w.wallhaven.cc/full/zp/wallhaven-zp9ypj.jpg",
+      "wallhaven_id": "zp9ypj",
+      "width": 1561,
+      "height": 2333,
+      "ratio": 0.6691,
+      "score": 101.775,
+      "favorites": 18,
+      "views": 947,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kuchiki Rukia"
+      ],
+      "series_tags": [
+        "Bleach"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/zp9ypj",
+      "query": "Rukia Kuchiki",
+      "approved_at": "2026-08-26T20:49:06.021667+00:00"
+    }
+  },
+  "generated_at": "2026-08-26T20:49:07.547015+00:00",
+  "filters": {
+    "purity": "sfw",
+    "category": "anime",
+    "ratio": "2:3",
+    "ratio_tolerance": 0.035,
+    "min_width": 1000,
+    "min_height": 1500,
+    "min_score": 82.0,
+    "character_tag_required": true,
+    "series_tag_required": true,
+    "max_other_specific_characters": 2
+  }
 }
