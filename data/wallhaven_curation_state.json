@@ -5,19 +5,19 @@
       "status": "no_search_result",
       "character_name": "Luffy Monkey",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:47:38.597753+00:00"
+      "checked_at": "2026-08-26T20:53:39.626531+00:00"
     },
     "62": {
       "status": "no_search_result",
       "character_name": "Zoro Roronoa",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:47:40.127071+00:00"
+      "checked_at": "2026-08-26T20:53:41.167468+00:00"
     },
     "723": {
       "status": "no_search_result",
       "character_name": "Nami",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:47:41.685885+00:00"
+      "checked_at": "2026-08-26T20:53:42.709986+00:00"
     },
     "240244": {
       "status": "no_search_result",
@@ -29,7 +29,7 @@
       "status": "no_search_result",
       "character_name": "Robin Nico",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:47:44.745359+00:00"
+      "checked_at": "2026-08-26T20:53:44.243510+00:00"
     },
     "88419": {
       "status": "no_strict_match",
@@ -53,7 +53,7 @@
       "status": "no_search_result",
       "character_name": "Ace Portgas",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:47:57.369624+00:00"
+      "checked_at": "2026-08-26T20:53:45.783239+00:00"
     },
     "138150": {
       "status": "no_strict_match",
@@ -65,19 +65,19 @@
       "status": "no_search_result",
       "character_name": "Hancock Boa",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:48:05.160247+00:00"
+      "checked_at": "2026-08-26T20:53:47.323765+00:00"
     },
     "727": {
       "status": "no_search_result",
       "character_name": "Shanks",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:48:06.855346+00:00"
+      "checked_at": "2026-08-26T20:53:48.857418+00:00"
     },
     "13767": {
-      "status": "rejected_multi_character",
+      "status": "no_strict_match",
       "character_name": "Law Trafalgar",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:48:09.974761+00:00"
+      "checked_at": "2026-08-26T20:53:51.930831+00:00"
     },
     "145716": {
       "status": "no_strict_match",
@@ -128,10 +128,10 @@
       "checked_at": "2026-08-26T20:48:53.667110+00:00"
     },
     "5": {
-      "status": "rejected_multi_character",
+      "status": "no_strict_match",
       "character_name": "Ichigo Kurosaki",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:48:56.744115+00:00"
+      "checked_at": "2026-08-26T20:53:55.013439+00:00"
     },
     "124382": {
       "status": "no_strict_match",
@@ -149,8 +149,116 @@
       "status": "no_search_result",
       "character_name": "Orihime Inoue",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:49:07.546149+00:00"
+      "checked_at": "2026-08-26T20:53:56.551387+00:00"
+    },
+    "907": {
+      "status": "no_search_result",
+      "character_name": "Byakuya Kuchiki",
+      "anime": "BLEACH",
+      "checked_at": "2026-08-26T20:53:58.090601+00:00"
+    },
+    "1086": {
+      "status": "no_search_result",
+      "character_name": "Sousuke Aizen",
+      "anime": "BLEACH",
+      "checked_at": "2026-08-26T20:53:59.631057+00:00"
+    },
+    "913": {
+      "status": "no_search_result",
+      "character_name": "Vegeta",
+      "anime": "Dragon Ball",
+      "checked_at": "2026-08-26T20:54:01.170556+00:00"
+    },
+    "678": {
+      "status": "no_search_result",
+      "character_name": "Bulma",
+      "anime": "Dragon Ball",
+      "checked_at": "2026-08-26T20:54:02.731926+00:00"
+    },
+    "126635": {
+      "status": "no_search_result",
+      "character_name": "Megumi Fushiguro",
+      "anime": "Jujutsu Kaisen",
+      "checked_at": "2026-08-26T20:54:04.276455+00:00"
+    },
+    "133700": {
+      "status": "approved",
+      "character_name": "Nobara Kugisaki",
+      "anime": "Jujutsu Kaisen",
+      "checked_at": "2026-08-26T20:54:08.894575+00:00"
+    },
+    "134167": {
+      "status": "no_search_result",
+      "character_name": "Maki Zenin",
+      "anime": "Jujutsu Kaisen",
+      "checked_at": "2026-08-26T20:54:10.432029+00:00"
+    },
+    "127518": {
+      "status": "approved",
+      "character_name": "Nezuko Kamado",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:18.126072+00:00"
+    },
+    "129131": {
+      "status": "no_strict_match",
+      "character_name": "Zenitsu Agatsuma",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:21.200471+00:00"
+    },
+    "129130": {
+      "status": "no_strict_match",
+      "character_name": "Inosuke Hashibira",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:25.811799+00:00"
+    },
+    "136070": {
+      "status": "approved",
+      "character_name": "Shinobu Kochou",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:33.538312+00:00"
+    },
+    "136072": {
+      "status": "no_search_result",
+      "character_name": "Mitsuri Kanroji",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:35.072207+00:00"
+    },
+    "129133": {
+      "status": "no_search_result",
+      "character_name": "Kyoujurou Rengoku",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:36.612604+00:00"
+    },
+    "130050": {
+      "status": "no_search_result",
+      "character_name": "Giyuu Tomioka",
+      "anime": "Kimetsu no Yaiba",
+      "checked_at": "2026-08-26T20:54:38.151357+00:00"
+    },
+    "176754": {
+      "status": "approved",
+      "character_name": "Frieren",
+      "anime": "Sousou no Frieren",
+      "checked_at": "2026-08-26T20:54:44.312670+00:00"
+    },
+    "183965": {
+      "status": "no_strict_match",
+      "character_name": "Fern",
+      "anime": "Sousou no Frieren",
+      "checked_at": "2026-08-26T20:54:48.972008+00:00"
+    },
+    "184313": {
+      "status": "no_search_result",
+      "character_name": "Stark",
+      "anime": "Sousou no Frieren",
+      "checked_at": "2026-08-26T20:54:50.506499+00:00"
+    },
+    "130102": {
+      "status": "no_strict_match",
+      "character_name": "Denji",
+      "anime": "Chainsaw Man",
+      "checked_at": "2026-08-26T20:54:55.118097+00:00"
     }
   },
-  "updated_at": "2026-08-26T20:49:07.547023+00:00"
+  "updated_at": "2026-08-26T20:54:55.119214+00:00"
 }

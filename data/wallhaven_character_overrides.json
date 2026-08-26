@@ -18,8 +18,12 @@
       "views": 3943,
       "character_match": 1.0,
       "series_match": 1.0,
-      "character_tags": ["Sanji"],
-      "series_tags": ["One Piece"],
+      "character_tags": [
+        "Sanji"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/z88g1o",
       "query": "Sanji",
@@ -41,15 +45,128 @@
       "views": 947,
       "character_match": 1.0,
       "series_match": 1.0,
-      "character_tags": ["Kuchiki Rukia"],
-      "series_tags": ["Bleach"],
+      "character_tags": [
+        "Kuchiki Rukia"
+      ],
+      "series_tags": [
+        "Bleach"
+      ],
       "other_characters": [],
       "source_page": "https://wallhaven.cc/w/zp9ypj",
       "query": "Rukia Kuchiki",
       "approved_at": "2026-08-26T20:49:06.021667+00:00"
+    },
+    "133700": {
+      "character_id": 133700,
+      "character_name": "Nobara Kugisaki",
+      "anime_id": 113415,
+      "anime": "Jujutsu Kaisen",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b133700-f6sOO3TcgLV6.png",
+      "url": "https://w.wallhaven.cc/full/o5/wallhaven-o5x669.png",
+      "wallhaven_id": "o5x669",
+      "width": 3607,
+      "height": 5418,
+      "ratio": 0.66574,
+      "score": 107.306,
+      "favorites": 89,
+      "views": 9330,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kugisaki Nobara"
+      ],
+      "series_tags": [
+        "Jujutsu Kaisen"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/o5x669",
+      "query": "Nobara Kugisaki",
+      "approved_at": "2026-08-26T20:54:08.894598+00:00"
+    },
+    "127518": {
+      "character_id": 127518,
+      "character_name": "Nezuko Kamado",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b127518-NRlq1CQ1v1ro.png",
+      "url": "https://w.wallhaven.cc/full/73/wallhaven-73xxeo.png",
+      "wallhaven_id": "73xxeo",
+      "width": 2296,
+      "height": 3448,
+      "ratio": 0.66589,
+      "score": 106.301,
+      "favorites": 37,
+      "views": 4451,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kamado Nezuko"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/73xxeo",
+      "query": "Nezuko Kamado",
+      "approved_at": "2026-08-26T20:54:18.126090+00:00"
+    },
+    "136070": {
+      "character_id": 136070,
+      "character_name": "Shinobu Kochou",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b136070-MC9LLxJsHyHE.png",
+      "url": "https://w.wallhaven.cc/full/72/wallhaven-721v6v.png",
+      "wallhaven_id": "721v6v",
+      "width": 2000,
+      "height": 3000,
+      "ratio": 0.66667,
+      "score": 107.725,
+      "favorites": 68,
+      "views": 5914,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kochou Shinobu"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/721v6v",
+      "query": "Shinobu Kochou",
+      "approved_at": "2026-08-26T20:54:33.538338+00:00"
+    },
+    "176754": {
+      "character_id": 176754,
+      "character_name": "Frieren",
+      "anime_id": 154587,
+      "anime": "Sousou no Frieren",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b176754-PCnpqIOkjhFk.png",
+      "url": "https://w.wallhaven.cc/full/21/wallhaven-21ozzg.jpg",
+      "wallhaven_id": "21ozzg",
+      "width": 1200,
+      "height": 1800,
+      "ratio": 0.66667,
+      "score": 102.915,
+      "favorites": 40,
+      "views": 3504,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Fern (Sousou No Frieren)",
+        "Frieren"
+      ],
+      "series_tags": [
+        "Sousou No Frieren"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/21ozzg",
+      "query": "Frieren",
+      "approved_at": "2026-08-26T20:54:44.312690+00:00"
     }
   },
-  "generated_at": "2026-08-26T20:50:00+00:00",
+  "generated_at": "2026-08-26T20:54:55.119206+00:00",
   "filters": {
     "purity": "sfw",
     "category": "anime",
