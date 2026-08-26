@@ -72,15 +72,11 @@ from database import create_tables
 from duel_repository_v2 import create_duel_v2_tables
 from ecosystem_repository import create_ecosystem_tables
 from game_repository import create_game_tables
-from handlers.capture_v2 import (
-    capturar,
-    capture_activity_handler,
-    capture_buy_callback,
-    restore_capture_runtime,
-)
+from handlers.capture_v2 import capturar, capture_activity_handler, capture_buy_callback, restore_capture_runtime
 from identity_repository import create_identity_tables
 from memory_repository import create_memory_v2_tables
 from messages_repository import create_message_tables_v2
+from news_sync import start_news_worker
 from shop_repository import create_shop_tables
 from termo_repository import create_termo_v2_tables
 from trade_repository import create_trade_tables
@@ -100,7 +96,6 @@ try:
     PORT = int(os.getenv("PORT", "8000"))
 except ValueError as exc:
     raise RuntimeError("PORT precisa ser um número inteiro.") from exc
-
 if not 1 <= PORT <= 65535:
     raise RuntimeError("PORT precisa estar entre 1 e 65535.")
 
@@ -126,6 +121,7 @@ async def on_error(update, context) -> None:
 
 async def on_post_init(application: Application) -> None:
     await restore_capture_runtime(application)
+    start_news_worker()
 
 
 def _register_message_handlers(tg_app: Application) -> None:
@@ -146,47 +142,30 @@ def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).post_init(on_post_init).build()
 
     # Entrada / navegação unificada
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(CommandHandler("hub", hub))
-    tg_app.add_handler(CommandHandler("menu", menu))
-    tg_app.add_handler(CommandHandler("ajuda", ajuda))
-    tg_app.add_handler(CommandHandler("configuracoes", configuracoes))
-    tg_app.add_handler(CommandHandler("notificacoes", notificacoes))
-    tg_app.add_handler(CommandHandler("atividade", atividade))
-    tg_app.add_handler(CommandHandler("favoritos", favoritos))
-    tg_app.add_handler(CommandHandler("watchlist", watchlist))
-    tg_app.add_handler(CommandHandler("agenda", agenda))
-    tg_app.add_handler(CommandHandler("noticias", noticias))
-    tg_app.add_handler(CommandHandler("recomendar", recomendar))
-    tg_app.add_handler(CommandHandler("amigos", amigos))
-    tg_app.add_handler(CommandHandler("missoes", missoes))
-    tg_app.add_handler(CommandHandler("conquistas", conquistas))
+    for name, handler in (
+        ("start", start), ("hub", hub), ("menu", menu), ("ajuda", ajuda),
+        ("configuracoes", configuracoes), ("notificacoes", notificacoes), ("atividade", atividade),
+        ("favoritos", favoritos), ("watchlist", watchlist), ("agenda", agenda), ("noticias", noticias),
+        ("recomendar", recomendar), ("amigos", amigos), ("missoes", missoes), ("conquistas", conquistas),
+    ):
+        tg_app.add_handler(CommandHandler(name, handler))
 
     # Descoberta / catálogo
-    tg_app.add_handler(CommandHandler("anime", anime))
-    tg_app.add_handler(CommandHandler("manga", manga))
-    tg_app.add_handler(CommandHandler("cards", cards))
-    tg_app.add_handler(CommandHandler("pedido", pedido))
+    for name, handler in (
+        ("anime", anime), ("manga", manga), ("cards", cards), ("pedido", pedido),
+        ("baltigoflix", baltigoflix), ("contribuir", contribuir), ("sugerircard", sugerircard),
+    ):
+        tg_app.add_handler(CommandHandler(name, handler))
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
-    tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
-    tg_app.add_handler(CommandHandler("contribuir", contribuir))
-    tg_app.add_handler(CommandHandler("sugerircard", sugerircard))
 
     # Conta / progressão
-    tg_app.add_handler(CommandHandler("nivel", nivel))
-    tg_app.add_handler(CommandHandler("colecao", colecao))
-    tg_app.add_handler(CommandHandler("perfil", perfil))
-    tg_app.add_handler(CommandHandler("ranking", ranking))
-    tg_app.add_handler(CommandHandler("loja", loja))
+    for name, handler in (("nivel", nivel), ("colecao", colecao), ("perfil", perfil), ("ranking", ranking), ("loja", loja)):
+        tg_app.add_handler(CommandHandler(name, handler))
 
     # Game Center / minigames
-    tg_app.add_handler(CommandHandler("jogar", jogar))
-    tg_app.add_handler(CommandHandler("daily", daily))
-    tg_app.add_handler(CommandHandler("dado", dado))
-    tg_app.add_handler(CommandHandler("giro", giro))
-    tg_app.add_handler(CommandHandler("memoria", memoria))
-    tg_app.add_handler(CommandHandler("termo", termo))
+    for name, handler in (("jogar", jogar), ("daily", daily), ("dado", dado), ("giro", giro), ("memoria", memoria), ("termo", termo)):
+        tg_app.add_handler(CommandHandler(name, handler))
 
     # XCards / Union Arena
     tg_app.add_handler(CommandHandler("xcard", xcard))
@@ -199,27 +178,20 @@ def build_application() -> Application:
     tg_app.add_handler(CallbackQueryHandler(duel_callback, pattern=r"^duelv2:"))
     tg_app.add_handler(CommandHandler("capturar", capturar))
     tg_app.add_handler(CallbackQueryHandler(capture_buy_callback, pattern=r"^capbuy:"))
-    tg_app.add_handler(
-        MessageHandler(filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, capture_activity_handler),
-        group=1,
-    )
+    tg_app.add_handler(MessageHandler(filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, capture_activity_handler), group=1)
 
     _register_message_handlers(tg_app)
 
-    # Administração de catálogo (migração; painel V2 central será a superfície preferencial)
-    tg_app.add_handler(CommandHandler("card_reload", card_reload))
-    tg_app.add_handler(CommandHandler("card_delchar", card_delchar))
-    tg_app.add_handler(CommandHandler("card_addchar", card_addchar))
-    tg_app.add_handler(CommandHandler("card_setcharimg", card_setcharimg))
-    tg_app.add_handler(CommandHandler("card_setcharname", card_setcharname))
-    tg_app.add_handler(CommandHandler("card_delanime", card_delanime))
-    tg_app.add_handler(CommandHandler("card_addanime", card_addanime))
-    tg_app.add_handler(CommandHandler("card_setanimebanner", card_setanimebanner))
-    tg_app.add_handler(CommandHandler("card_setanimecover", card_setanimecover))
-    tg_app.add_handler(CommandHandler("card_addsubcat", card_addsubcat))
-    tg_app.add_handler(CommandHandler("card_delsubcat", card_delsubcat))
-    tg_app.add_handler(CommandHandler("card_subadd", card_subadd))
-    tg_app.add_handler(CommandHandler("card_subremove", card_subremove))
+    # Administração do catálogo herdada durante migração para painel central V2.
+    for name, handler in (
+        ("card_reload", card_reload), ("card_delchar", card_delchar), ("card_addchar", card_addchar),
+        ("card_setcharimg", card_setcharimg), ("card_setcharname", card_setcharname),
+        ("card_delanime", card_delanime), ("card_addanime", card_addanime),
+        ("card_setanimebanner", card_setanimebanner), ("card_setanimecover", card_setanimecover),
+        ("card_addsubcat", card_addsubcat), ("card_delsubcat", card_delsubcat),
+        ("card_subadd", card_subadd), ("card_subremove", card_subremove),
+    ):
+        tg_app.add_handler(CommandHandler(name, handler))
 
     tg_app.add_error_handler(on_error)
     return tg_app
