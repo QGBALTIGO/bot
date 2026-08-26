@@ -6458,26 +6458,14 @@ async def api_dado_pick(
     anime_title = str(char["anime_title"] or "Anime")
 
     try:
-        from utils.character_image_resolver import resolve_character_portrait
+        from cards_service import get_character_by_id
 
-        portrait = await resolve_character_portrait(
-            character_id=char_id,
-            character_name=name,
-            anime_title=anime_title,
-            fallback_url=image,
-        )
-        if portrait.url:
-            image = portrait.url
-        print(
-            f"[dado-image] character={char_id} source={portrait.source} "
-            f"size={portrait.width}x{portrait.height} cache={portrait.cache_hit}",
-            flush=True,
-        )
+        global_character = get_character_by_id(char_id)
+        global_image = str((global_character or {}).get("image") or "").strip()
+        if global_image:
+            image = global_image
     except Exception as exc:
-        print(
-            f"[dado-image] resolver falhou character={char_id}: {type(exc).__name__}",
-            flush=True,
-        )
+        print(f"[dado] falha ao aplicar imagem global: {type(exc).__name__}", flush=True)
 
     reward_caption = (
         "🎁 <b>VOCÊ GANHOU!</b>\n\n"

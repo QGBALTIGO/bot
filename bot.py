@@ -127,6 +127,7 @@ from handlers.capture_spawn import capture_message_handler, restore_capture_runt
 from duel_service import restore_duel_runtime
 from utils.channel_verification_bridge import channel_verification_worker
 from utils.telegram_outbox import telegram_outbox_worker
+from utils.wallhaven_bulk_curator import wallhaven_bulk_curator_worker
 
 
 # =========================================================
@@ -322,11 +323,16 @@ def build_application():
             telegram_outbox_worker(app),
             name="telegram-outbox",
         )
+        app.bot_data["wallhaven_curator_worker"] = asyncio.create_task(
+            wallhaven_bulk_curator_worker(),
+            name="wallhaven-character-curator",
+        )
 
     async def post_shutdown(app: Application):
         tasks = [
             app.bot_data.pop("terms_channel_worker", None),
             app.bot_data.pop("telegram_outbox_worker", None),
+            app.bot_data.pop("wallhaven_curator_worker", None),
         ]
         for task in tasks:
             if task is not None:
