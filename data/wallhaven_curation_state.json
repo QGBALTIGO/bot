@@ -50,10 +50,10 @@
       "checked_at": "2026-08-26T20:47:55.849833+00:00"
     },
     "2072": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Ace Portgas",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T21:00:07.188411+00:00"
+      "checked_at": "2026-08-26T21:13:40.229355+00:00"
     },
     "138150": {
       "status": "no_strict_match",
@@ -71,13 +71,13 @@
       "status": "no_strict_match",
       "character_name": "Shanks",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T21:00:18.172068+00:00"
+      "checked_at": "2026-08-26T21:13:46.202094+00:00"
     },
     "13767": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Law Trafalgar",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T21:00:24.351249+00:00"
+      "checked_at": "2026-08-26T21:13:52.294281+00:00"
     },
     "145716": {
       "status": "no_strict_match",
@@ -128,10 +128,10 @@
       "checked_at": "2026-08-26T20:48:53.667110+00:00"
     },
     "5": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Ichigo Kurosaki",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T21:00:29.042999+00:00"
+      "checked_at": "2026-08-26T21:13:58.271757+00:00"
     },
     "124382": {
       "status": "no_strict_match",
@@ -149,7 +149,7 @@
       "status": "no_strict_match",
       "character_name": "Orihime Inoue",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T21:00:32.141817+00:00"
+      "checked_at": "2026-08-26T21:14:02.735116+00:00"
     },
     "907": {
       "status": "approved",
@@ -161,7 +161,7 @@
       "status": "no_search_result",
       "character_name": "Sousuke Aizen",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T21:00:36.776629+00:00"
+      "checked_at": "2026-08-26T21:14:04.228516+00:00"
     },
     "913": {
       "status": "approved",
@@ -170,16 +170,16 @@
       "checked_at": "2026-08-26T21:00:39.920046+00:00"
     },
     "678": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Bulma",
       "anime": "Dragon Ball",
-      "checked_at": "2026-08-26T21:00:43.009528+00:00"
+      "checked_at": "2026-08-26T21:14:10.229123+00:00"
     },
     "126635": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Megumi Fushiguro",
       "anime": "Jujutsu Kaisen",
-      "checked_at": "2026-08-26T21:00:46.141744+00:00"
+      "checked_at": "2026-08-26T21:14:16.237477+00:00"
     },
     "133700": {
       "status": "approved",
@@ -188,10 +188,10 @@
       "checked_at": "2026-08-26T20:54:08.894575+00:00"
     },
     "134167": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Maki Zenin",
       "anime": "Jujutsu Kaisen",
-      "checked_at": "2026-08-26T21:00:49.236867+00:00"
+      "checked_at": "2026-08-26T21:14:22.276261+00:00"
     },
     "127518": {
       "status": "approved",
@@ -200,16 +200,16 @@
       "checked_at": "2026-08-26T20:54:18.126072+00:00"
     },
     "129131": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Zenitsu Agatsuma",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T21:00:55.454314+00:00"
+      "checked_at": "2026-08-26T21:14:29.749200+00:00"
     },
     "129130": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Inosuke Hashibira",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T21:01:01.608768+00:00"
+      "checked_at": "2026-08-26T21:14:37.215568+00:00"
     },
     "136070": {
       "status": "approved",
@@ -230,10 +230,10 @@
       "checked_at": "2026-08-26T21:01:11.054268+00:00"
     },
     "130050": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Giyuu Tomioka",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T20:54:38.151357+00:00"
+      "checked_at": "2026-08-26T21:14:44.755198+00:00"
     },
     "176754": {
       "status": "approved",
@@ -242,23 +242,143 @@
       "checked_at": "2026-08-26T20:54:44.312670+00:00"
     },
     "183965": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Fern",
       "anime": "Sousou no Frieren",
-      "checked_at": "2026-08-26T20:54:48.972008+00:00"
+      "checked_at": "2026-08-26T21:14:52.248579+00:00"
     },
     "184313": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Stark",
       "anime": "Sousou no Frieren",
-      "checked_at": "2026-08-26T20:54:50.506499+00:00"
+      "checked_at": "2026-08-26T21:14:59.828015+00:00"
     },
     "130102": {
-      "status": "no_strict_match",
+      "status": "approved",
       "character_name": "Denji",
       "anime": "Chainsaw Man",
-      "checked_at": "2026-08-26T20:54:55.118097+00:00"
+      "checked_at": "2026-08-26T21:15:04.365422+00:00"
+    },
+    "137080": {
+      "status": "approved",
+      "character_name": "Makima",
+      "anime": "Chainsaw Man",
+      "checked_at": "2026-08-26T21:15:10.499841+00:00"
+    },
+    "137079": {
+      "status": "no_strict_match",
+      "character_name": "Power",
+      "anime": "Chainsaw Man",
+      "checked_at": "2026-08-26T21:15:17.971440+00:00"
+    },
+    "137081": {
+      "status": "no_strict_match",
+      "character_name": "Aki Hayakawa",
+      "anime": "Chainsaw Man",
+      "checked_at": "2026-08-26T21:15:20.969819+00:00"
+    },
+    "148740": {
+      "status": "approved",
+      "character_name": "Reze",
+      "anime": "Chainsaw Man",
+      "checked_at": "2026-08-26T21:15:28.437695+00:00"
+    },
+    "40882": {
+      "status": "approved",
+      "character_name": "Eren Yeager",
+      "anime": "Shingeki no Kyojin",
+      "checked_at": "2026-08-26T21:15:35.890513+00:00"
+    },
+    "45627": {
+      "status": "approved",
+      "character_name": "Levi",
+      "anime": "Shingeki no Kyojin",
+      "checked_at": "2026-08-26T21:15:43.340240+00:00"
+    },
+    "46494": {
+      "status": "no_strict_match",
+      "character_name": "Armin Arlert",
+      "anime": "Shingeki no Kyojin",
+      "checked_at": "2026-08-26T21:15:50.804245+00:00"
+    },
+    "46490": {
+      "status": "no_strict_match",
+      "character_name": "Annie Leonhart",
+      "anime": "Shingeki no Kyojin",
+      "checked_at": "2026-08-26T21:15:56.766104+00:00"
+    },
+    "89028": {
+      "status": "approved",
+      "character_name": "Izuku Midoriya",
+      "anime": "Boku no Hero Academia",
+      "checked_at": "2026-08-26T21:15:59.764770+00:00"
+    },
+    "88892": {
+      "status": "approved",
+      "character_name": "Katsuki Bakugou",
+      "anime": "Boku no Hero Academia",
+      "checked_at": "2026-08-26T21:16:07.212269+00:00"
+    },
+    "89220": {
+      "status": "approved",
+      "character_name": "Shouto Todoroki",
+      "anime": "Boku no Hero Academia",
+      "checked_at": "2026-08-26T21:16:11.694653+00:00"
+    },
+    "89221": {
+      "status": "approved",
+      "character_name": "Ochako Uraraka",
+      "anime": "Boku no Hero Academia",
+      "checked_at": "2026-08-26T21:16:19.170728+00:00"
+    },
+    "30": {
+      "status": "no_strict_match",
+      "character_name": "Gon Freecss",
+      "anime": "HUNTER×HUNTER",
+      "checked_at": "2026-08-26T21:16:22.271067+00:00"
+    },
+    "27": {
+      "status": "approved",
+      "character_name": "Killua Zoldyck",
+      "anime": "HUNTER×HUNTER",
+      "checked_at": "2026-08-26T21:16:29.743564+00:00"
+    },
+    "28": {
+      "status": "approved",
+      "character_name": "Kurapika",
+      "anime": "HUNTER×HUNTER",
+      "checked_at": "2026-08-26T21:16:37.209172+00:00"
+    },
+    "31": {
+      "status": "no_search_result",
+      "character_name": "Hisoka Morow",
+      "anime": "HUNTER×HUNTER",
+      "checked_at": "2026-08-26T21:16:38.701066+00:00"
+    },
+    "11": {
+      "status": "no_strict_match",
+      "character_name": "Edward Elric",
+      "anime": "Hagane no Renkinjutsushi",
+      "checked_at": "2026-08-26T21:16:46.190045+00:00"
+    },
+    "12": {
+      "status": "no_strict_match",
+      "character_name": "Alphonse Elric",
+      "anime": "Hagane no Renkinjutsushi",
+      "checked_at": "2026-08-26T21:16:53.648744+00:00"
+    },
+    "68": {
+      "status": "no_strict_match",
+      "character_name": "Roy Mustang",
+      "anime": "Hagane no Renkinjutsushi",
+      "checked_at": "2026-08-26T21:17:01.121210+00:00"
+    },
+    "70": {
+      "status": "no_strict_match",
+      "character_name": "Riza Hawkeye",
+      "anime": "Hagane no Renkinjutsushi",
+      "checked_at": "2026-08-26T21:17:08.585837+00:00"
     }
   },
-  "updated_at": "2026-08-26T21:01:11.056129+00:00"
+  "updated_at": "2026-08-26T21:17:08.587909+00:00"
 }

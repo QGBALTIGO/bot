@@ -407,14 +407,625 @@
       "source_page": "https://wallhaven.cc/w/dprrro",
       "query": "Kyoujurou Rengoku",
       "approved_at": "2026-08-26T21:01:11.054287+00:00"
+    },
+    "2072": {
+      "character_id": 2072,
+      "character_name": "Ace Portgas",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b2072-Lc6jEdsueJUK.jpg",
+      "url": "https://w.wallhaven.cc/full/4l/wallhaven-4lmvkl.jpg",
+      "wallhaven_id": "4lmvkl",
+      "width": 2957,
+      "height": 4140,
+      "ratio": 0.71425,
+      "crop_2x3": true,
+      "crop_retention": 0.93338,
+      "score": 105.783,
+      "favorites": 66,
+      "views": 13296,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Portgas D. Ace"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/4lmvkl",
+      "query": "Portgas D. Ace",
+      "approved_at": "2026-08-26T21:13:40.229383+00:00"
+    },
+    "13767": {
+      "character_id": 13767,
+      "character_name": "Law Trafalgar",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b13767-U604OJN9dxCn.jpg",
+      "url": "https://w.wallhaven.cc/full/gp/wallhaven-gp1pr7.jpg",
+      "wallhaven_id": "gp1pr7",
+      "width": 1448,
+      "height": 2048,
+      "ratio": 0.70703,
+      "crop_2x3": true,
+      "crop_retention": 0.94291,
+      "score": 101.082,
+      "favorites": 11,
+      "views": 2747,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Trafalgar Law"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/gp1pr7",
+      "query": "Trafalgar Law",
+      "approved_at": "2026-08-26T21:13:52.294305+00:00"
+    },
+    "5": {
+      "character_id": 5,
+      "character_name": "Ichigo Kurosaki",
+      "anime_id": 269,
+      "anime": "BLEACH",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b5-a7bkJgjhhigE.png",
+      "url": "https://w.wallhaven.cc/full/13/wallhaven-13qvvw.jpg",
+      "wallhaven_id": "13qvvw",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 95.428,
+      "favorites": 4,
+      "views": 2475,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kurosaki Ichigo"
+      ],
+      "series_tags": [
+        "Bleach"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/13qvvw",
+      "query": "Ichigo Kurosaki",
+      "approved_at": "2026-08-26T21:13:58.271780+00:00"
+    },
+    "678": {
+      "character_id": 678,
+      "character_name": "Bulma",
+      "anime_id": 223,
+      "anime": "Dragon Ball",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b678-2YCe13F0tFos.jpg",
+      "url": "https://w.wallhaven.cc/full/vg/wallhaven-vgxwr5.jpg",
+      "wallhaven_id": "vgxwr5",
+      "width": 1440,
+      "height": 2560,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 100.186,
+      "favorites": 30,
+      "views": 6551,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Bulma"
+      ],
+      "series_tags": [
+        "Dragon Ball"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/vgxwr5",
+      "query": "Bulma",
+      "approved_at": "2026-08-26T21:14:10.229145+00:00"
+    },
+    "126635": {
+      "character_id": 126635,
+      "character_name": "Megumi Fushiguro",
+      "anime_id": 113415,
+      "anime": "Jujutsu Kaisen",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b126635-L0y3I92JSUkN.png",
+      "url": "https://w.wallhaven.cc/full/z8/wallhaven-z855eg.jpg",
+      "wallhaven_id": "z855eg",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 96.327,
+      "favorites": 10,
+      "views": 3097,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Megumi Fushiguro"
+      ],
+      "series_tags": [
+        "Jujutsu Kaisen"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/z855eg",
+      "query": "Megumi Fushiguro",
+      "approved_at": "2026-08-26T21:14:16.237500+00:00"
+    },
+    "134167": {
+      "character_id": 134167,
+      "character_name": "Maki Zenin",
+      "anime_id": 113415,
+      "anime": "Jujutsu Kaisen",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b134167-5TCytk45YByD.png",
+      "url": "https://w.wallhaven.cc/full/kx/wallhaven-kx9ep6.png",
+      "wallhaven_id": "kx9ep6",
+      "width": 2894,
+      "height": 4093,
+      "ratio": 0.70706,
+      "crop_2x3": true,
+      "crop_retention": 0.94287,
+      "score": 105.875,
+      "favorites": 61,
+      "views": 7855,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Zenin Maki"
+      ],
+      "series_tags": [
+        "Jujutsu Kaisen"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/kx9ep6",
+      "query": "Maki Zenin",
+      "approved_at": "2026-08-26T21:14:22.276279+00:00"
+    },
+    "129131": {
+      "character_id": 129131,
+      "character_name": "Zenitsu Agatsuma",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b129131-FZrQ7lSlxmEr.png",
+      "url": "https://w.wallhaven.cc/full/83/wallhaven-83988y.png",
+      "wallhaven_id": "83988y",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 97.103,
+      "favorites": 18,
+      "views": 5821,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Zenitsu Agatsuma"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/83988y",
+      "query": "Zenitsu Agatsuma",
+      "approved_at": "2026-08-26T21:14:29.749225+00:00"
+    },
+    "129130": {
+      "character_id": 129130,
+      "character_name": "Inosuke Hashibira",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/n129130-SJC0Kn1DU39E.jpg",
+      "url": "https://w.wallhaven.cc/full/l3/wallhaven-l3q8zq.jpg",
+      "wallhaven_id": "l3q8zq",
+      "width": 2500,
+      "height": 3470,
+      "ratio": 0.72046,
+      "crop_2x3": true,
+      "crop_retention": 0.92533,
+      "score": 105.444,
+      "favorites": 63,
+      "views": 10607,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Inosuke Hashibira"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/l3q8zq",
+      "query": "Inosuke Hashibira",
+      "approved_at": "2026-08-26T21:14:37.215589+00:00"
+    },
+    "130050": {
+      "character_id": 130050,
+      "character_name": "Giyuu Tomioka",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b130050-qsLThJs5VIbz.png",
+      "url": "https://w.wallhaven.cc/full/6k/wallhaven-6ky9d6.png",
+      "wallhaven_id": "6ky9d6",
+      "width": 2000,
+      "height": 3255,
+      "ratio": 0.61444,
+      "crop_2x3": true,
+      "crop_retention": 0.92166,
+      "score": 103.831,
+      "favorites": 20,
+      "views": 3843,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Giyu Tomioka (Kimetsu no Yaiba)"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/6ky9d6",
+      "query": "Giyuu Tomioka",
+      "approved_at": "2026-08-26T21:14:44.755218+00:00"
+    },
+    "183965": {
+      "character_id": 183965,
+      "character_name": "Fern",
+      "anime_id": 154587,
+      "anime": "Sousou no Frieren",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b183965-uGFohBjlFoTp.png",
+      "url": "https://w.wallhaven.cc/full/l8/wallhaven-l8ojz2.png",
+      "wallhaven_id": "l8ojz2",
+      "width": 2000,
+      "height": 2828,
+      "ratio": 0.70721,
+      "crop_2x3": true,
+      "crop_retention": 0.94267,
+      "score": 104.268,
+      "favorites": 55,
+      "views": 3546,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Fern (Sousou No Frieren)"
+      ],
+      "series_tags": [
+        "Sousou No Frieren"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/l8ojz2",
+      "query": "Fern",
+      "approved_at": "2026-08-26T21:14:52.248597+00:00"
+    },
+    "130102": {
+      "character_id": 130102,
+      "character_name": "Denji",
+      "anime_id": 127230,
+      "anime": "Chainsaw Man",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b130102-FO1VHNnEnLlB.png",
+      "url": "https://w.wallhaven.cc/full/gp/wallhaven-gp8r1l.jpg",
+      "wallhaven_id": "gp8r1l",
+      "width": 2480,
+      "height": 3953,
+      "ratio": 0.62737,
+      "crop_2x3": true,
+      "crop_retention": 0.94106,
+      "score": 103.023,
+      "favorites": 17,
+      "views": 3529,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Denji (Chainsaw Man)"
+      ],
+      "series_tags": [
+        "Chainsaw Man"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/gp8r1l",
+      "query": "Denji",
+      "approved_at": "2026-08-26T21:15:04.365441+00:00"
+    },
+    "137080": {
+      "character_id": 137080,
+      "character_name": "Makima",
+      "anime_id": 127230,
+      "anime": "Chainsaw Man",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b137080-UHcynYNjb5ZU.png",
+      "url": "https://w.wallhaven.cc/full/y8/wallhaven-y8ml2l.png",
+      "wallhaven_id": "y8ml2l",
+      "width": 4000,
+      "height": 5639,
+      "ratio": 0.70935,
+      "crop_2x3": true,
+      "crop_retention": 0.93983,
+      "score": 105.335,
+      "favorites": 193,
+      "views": 19241,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Makima (Chainsaw Man)"
+      ],
+      "series_tags": [
+        "Chainsaw Man"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/y8ml2l",
+      "query": "Makima",
+      "approved_at": "2026-08-26T21:15:10.499861+00:00"
+    },
+    "148740": {
+      "character_id": 148740,
+      "character_name": "Reze",
+      "anime_id": 127230,
+      "anime": "Chainsaw Man",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b148740-ceAibPxLW8rR.png",
+      "url": "https://w.wallhaven.cc/full/dp/wallhaven-dpek9m.jpg",
+      "wallhaven_id": "dpek9m",
+      "width": 3573,
+      "height": 5000,
+      "ratio": 0.7146,
+      "crop_2x3": true,
+      "crop_retention": 0.93292,
+      "score": 105.079,
+      "favorites": 120,
+      "views": 10569,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Reze (Chainsaw Man)"
+      ],
+      "series_tags": [
+        "Chainsaw Man"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/dpek9m",
+      "query": "Reze",
+      "approved_at": "2026-08-26T21:15:28.437714+00:00"
+    },
+    "40882": {
+      "character_id": 40882,
+      "character_name": "Eren Yeager",
+      "anime_id": 16498,
+      "anime": "Shingeki no Kyojin",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b40882-dsj7IP943WFF.jpg",
+      "url": "https://w.wallhaven.cc/full/vq/wallhaven-vq9g5m.jpg",
+      "wallhaven_id": "vq9g5m",
+      "width": 1800,
+      "height": 2442,
+      "ratio": 0.7371,
+      "crop_2x3": true,
+      "crop_retention": 0.90444,
+      "score": 104.525,
+      "favorites": 124,
+      "views": 10719,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Eren Jeager"
+      ],
+      "series_tags": [
+        "Shingeki no Kyojin"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/vq9g5m",
+      "query": "Eren Yeager",
+      "approved_at": "2026-08-26T21:15:35.890535+00:00"
+    },
+    "45627": {
+      "character_id": 45627,
+      "character_name": "Levi",
+      "anime_id": 16498,
+      "anime": "Shingeki no Kyojin",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b45627-CR68RyZmddGG.png",
+      "url": "https://w.wallhaven.cc/full/v9/wallhaven-v9pk55.jpg",
+      "wallhaven_id": "v9pk55",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 97.049,
+      "favorites": 19,
+      "views": 4160,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Levi Ackerman"
+      ],
+      "series_tags": [
+        "Shingeki no Kyojin"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/v9pk55",
+      "query": "Levi",
+      "approved_at": "2026-08-26T21:15:43.340260+00:00"
+    },
+    "89028": {
+      "character_id": 89028,
+      "character_name": "Izuku Midoriya",
+      "anime_id": 21459,
+      "anime": "Boku no Hero Academia",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b89028-8w1I9o1ISHMg.png",
+      "url": "https://w.wallhaven.cc/full/zm/wallhaven-zml68j.jpg",
+      "wallhaven_id": "zml68j",
+      "width": 1664,
+      "height": 2952,
+      "ratio": 0.56369,
+      "crop_2x3": true,
+      "crop_retention": 0.84553,
+      "score": 100.86,
+      "favorites": 18,
+      "views": 2887,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Izuku Midoriya"
+      ],
+      "series_tags": [
+        "Boku no Hero Academia"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/zml68j",
+      "query": "Izuku Midoriya",
+      "approved_at": "2026-08-26T21:15:59.764788+00:00"
+    },
+    "88892": {
+      "character_id": 88892,
+      "character_name": "Katsuki Bakugou",
+      "anime_id": 21459,
+      "anime": "Boku no Hero Academia",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b88892-bdOha3lNcaN6.png",
+      "url": "https://w.wallhaven.cc/full/9m/wallhaven-9md9e1.jpg",
+      "wallhaven_id": "9md9e1",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 96.453,
+      "favorites": 13,
+      "views": 2078,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Katsuki Bakugou"
+      ],
+      "series_tags": [
+        "Boku no Hero Academia"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/9md9e1",
+      "query": "Katsuki Bakugou",
+      "approved_at": "2026-08-26T21:16:07.212291+00:00"
+    },
+    "89220": {
+      "character_id": 89220,
+      "character_name": "Shouto Todoroki",
+      "anime_id": 21459,
+      "anime": "Boku no Hero Academia",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b89220-KNBwaVFAR8FD.png",
+      "url": "https://w.wallhaven.cc/full/2e/wallhaven-2edz9g.png",
+      "wallhaven_id": "2edz9g",
+      "width": 2160,
+      "height": 3840,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 100.233,
+      "favorites": 8,
+      "views": 1958,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Todoroki Shōto"
+      ],
+      "series_tags": [
+        "Boku no Hero Academia"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/2edz9g",
+      "query": "Shouto Todoroki",
+      "approved_at": "2026-08-26T21:16:11.694672+00:00"
+    },
+    "89221": {
+      "character_id": 89221,
+      "character_name": "Ochako Uraraka",
+      "anime_id": 21459,
+      "anime": "Boku no Hero Academia",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b89221-gSF2a4gPbG4m.png",
+      "url": "https://w.wallhaven.cc/full/vg/wallhaven-vgvg18.jpg",
+      "wallhaven_id": "vgvg18",
+      "width": 2480,
+      "height": 3508,
+      "ratio": 0.70696,
+      "crop_2x3": true,
+      "crop_retention": 0.94301,
+      "score": 106.676,
+      "favorites": 208,
+      "views": 23662,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Uraraka Ochako"
+      ],
+      "series_tags": [
+        "Boku no Hero Academia"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/vgvg18",
+      "query": "Ochako Uraraka",
+      "approved_at": "2026-08-26T21:16:19.170745+00:00"
+    },
+    "27": {
+      "character_id": 27,
+      "character_name": "Killua Zoldyck",
+      "anime_id": 136,
+      "anime": "HUNTER×HUNTER",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z5O02kQUydpT.jpg",
+      "url": "https://w.wallhaven.cc/full/96/wallhaven-96oz6k.png",
+      "wallhaven_id": "96oz6k",
+      "width": 1080,
+      "height": 1902,
+      "ratio": 0.56782,
+      "crop_2x3": true,
+      "crop_retention": 0.85174,
+      "score": 95.531,
+      "favorites": 3,
+      "views": 3608,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Killua Zoldyck"
+      ],
+      "series_tags": [
+        "Hunter x Hunter"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/96oz6k",
+      "query": "Killua Zoldyck",
+      "approved_at": "2026-08-26T21:16:29.743583+00:00"
+    },
+    "28": {
+      "character_id": 28,
+      "character_name": "Kurapika",
+      "anime_id": 136,
+      "anime": "HUNTER×HUNTER",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b28-ivA7UGnfE40a.png",
+      "url": "https://w.wallhaven.cc/full/o3/wallhaven-o33drp.jpg",
+      "wallhaven_id": "o33drp",
+      "width": 1500,
+      "height": 2180,
+      "ratio": 0.68807,
+      "crop_2x3": true,
+      "crop_retention": 0.96889,
+      "score": 101.708,
+      "favorites": 6,
+      "views": 2120,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kurapika"
+      ],
+      "series_tags": [
+        "Hunter x Hunter"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/o33drp",
+      "query": "Kurapika",
+      "approved_at": "2026-08-26T21:16:37.209197+00:00"
     }
   },
-  "generated_at": "2026-08-26T21:01:11.056118+00:00",
+  "generated_at": "2026-08-26T21:17:08.587901+00:00",
   "filters": {
     "purity": "sfw",
     "category": "anime",
-    "ratio": "2:3",
-    "ratio_tolerance": 0.045,
+    "output_ratio": "2:3 exact via image proxy crop",
+    "source_ratio_min": 0.55,
+    "source_ratio_max": 0.8,
+    "min_crop_retention": 0.82,
     "min_width": 1000,
     "min_height": 1500,
     "min_score": 82.0,
