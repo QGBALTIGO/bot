@@ -25,14 +25,6 @@ from commands.cards_admin import (
     card_subremove,
 )
 from commands.manga import manga
-from commands.messages import (
-    bloquearmsg,
-    denunciarmsg,
-    msg,
-    msganon,
-    msgconfig,
-    desbloquearmsg,
-)
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.start import start
@@ -55,6 +47,13 @@ except ValueError as exc:
 
 if not 1 <= PORT <= 65535:
     raise RuntimeError("PORT precisa estar entre 1 e 65535.")
+
+ENABLE_MESSAGES = os.getenv("ENABLE_MESSAGES", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def run_webapp() -> None:
@@ -80,6 +79,33 @@ async def on_error(update, context) -> None:
     )
 
 
+def _register_message_handlers(tg_app: Application) -> None:
+    if not ENABLE_MESSAGES:
+        logger.info("Sistema de mensagens desativado (ENABLE_MESSAGES=false)")
+        return
+
+    try:
+        from commands.messages import (
+            bloquearmsg,
+            denunciarmsg,
+            msg,
+            msganon,
+            msgconfig,
+            desbloquearmsg,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            "ENABLE_MESSAGES=true, mas a camada de persistência do sistema de mensagens está incompleta."
+        ) from exc
+
+    tg_app.add_handler(CommandHandler("msg", msg))
+    tg_app.add_handler(CommandHandler("msganon", msganon))
+    tg_app.add_handler(CommandHandler("bloquearmsg", bloquearmsg))
+    tg_app.add_handler(CommandHandler("desbloquearmsg", desbloquearmsg))
+    tg_app.add_handler(CommandHandler("msgconfig", msgconfig))
+    tg_app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
+
+
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).build()
 
@@ -93,13 +119,7 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("nivel", nivel))
     tg_app.add_handler(CommandHandler("baltigoflix", baltigoflix))
 
-    # mensagens entre usuários
-    tg_app.add_handler(CommandHandler("msg", msg))
-    tg_app.add_handler(CommandHandler("msganon", msganon))
-    tg_app.add_handler(CommandHandler("bloquearmsg", bloquearmsg))
-    tg_app.add_handler(CommandHandler("desbloquearmsg", desbloquearmsg))
-    tg_app.add_handler(CommandHandler("msgconfig", msgconfig))
-    tg_app.add_handler(CommandHandler("denunciarmsg", denunciarmsg))
+    _register_message_handlers(tg_app)
 
     # administração dos cards
     tg_app.add_handler(CommandHandler("card_reload", card_reload))
