@@ -22,7 +22,7 @@ API_SEARCH = "https://wallhaven.cc/api/v1/search"
 API_WALLPAPER = "https://wallhaven.cc/api/v1/w/{wallpaper_id}"
 
 TARGET_RATIO = 2.0 / 3.0
-RATIO_TOLERANCE = 0.035
+RATIO_TOLERANCE = 0.045
 MIN_WIDTH = 1000
 MIN_HEIGHT = 1500
 MIN_SCORE = 82.0
@@ -77,6 +77,10 @@ PRIORITY_SERIES = (
 GENERIC_CHARACTER_TAGS = {
     "anime girls", "anime girl", "anime boys", "anime boy", "manga girls", "manga girl",
     "original character", "original characters", "women", "woman", "men", "man",
+}
+GROUP_HINTS = {
+    "two women", "two men", "two girls", "two boys", "2girls", "2boys",
+    "group", "group of people", "couple", "duo", "multiple girls", "multiple boys",
 }
 STOP_TOKENS = {
     "the", "a", "an", "of", "and", "no", "to", "in", "on", "season", "part",
@@ -166,6 +170,14 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
         return None
 
     tags = [x for x in (detail.get("tags") or []) if isinstance(x, dict)]
+    all_tag_variants = {
+        variant
+        for tag in tags
+        for variant in variants(tag.get("name"), tag.get("alias"))
+    }
+    if any(hint in all_tag_variants for hint in GROUP_HINTS):
+        return None
+
     char_tags = specific_character_tags(tags)
     series_tags = [x for x in tags if str(x.get("category") or "").casefold() == "series"]
 
@@ -305,7 +317,19 @@ def retry_after(response: httpx.Response) -> float:
         return 60.0
 
 
+def _search_shape_ok(item: dict[str, Any]) -> bool:
+    width = int(item.get("dimension_x") or 0)
+    height = int(item.get("dimension_y") or 0)
+    if width < MIN_WIDTH or height < MIN_HEIGHT or width >= height:
+        return False
+    ratio = width / height if height else 0.0
+    return abs(ratio - TARGET_RATIO) <= RATIO_TOLERANCE
+
+
 def search_candidates(client: httpx.Client, query: str, api_key: str) -> list[dict[str, Any]]:
+    # Do not use Wallhaven's ratios=2x3 bucket. It excludes many excellent
+    # near-2:3 portraits (e.g. 1488x2256). Fetch high-resolution results and
+    # apply our own numeric ratio rule before spending requests on details.
     params = {
         "q": query,
         "categories": "010",
@@ -313,7 +337,6 @@ def search_candidates(client: httpx.Client, query: str, api_key: str) -> list[di
         "sorting": "relevance",
         "order": "desc",
         "atleast": f"{MIN_WIDTH}x{MIN_HEIGHT}",
-        "ratios": "2x3",
         "page": "1",
     }
     if api_key:
@@ -323,7 +346,8 @@ def search_candidates(client: httpx.Client, query: str, api_key: str) -> list[di
         raise RateLimitError(retry_after(response))
     response.raise_for_status()
     payload = response.json()
-    return [x for x in ((payload or {}).get("data") or []) if isinstance(x, dict)]
+    items = [x for x in ((payload or {}).get("data") or []) if isinstance(x, dict)]
+    return [x for x in items if _search_shape_ok(x)]
 
 
 def fetch_detail(client: httpx.Client, wallpaper_id: str, api_key: str) -> dict[str, Any]:
