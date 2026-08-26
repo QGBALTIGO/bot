@@ -12,7 +12,7 @@ permissions:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Checkout
@@ -21,7 +21,40 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
+          cache: "pip"
 
-      - name: Run pure unit tests
+      - name: Install production dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Compile every Python module
+        run: python -m compileall -q .
+
+      - name: Run unit and contract tests
         run: python -m unittest discover -s tests -v
+
+  live-webapp-smoke:
+    if: github.ref == 'refs/heads/v2/system-overhaul' || github.head_ref == 'v2/system-overhaul'
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Probe Railway domains (read-only when token exists)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: python scripts/railway_domain_probe.py
+
+      - name: Test deployed Railway WebApps over public internet
+        env:
+          LIVE_WEBAPP_BASE_URL: https://qgbaltigo-bot-production.up.railway.app
+        run: python scripts/live_webapp_smoke.py

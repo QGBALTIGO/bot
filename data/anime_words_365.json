@@ -1,0 +1,611 @@
+[
+  {
+    "word": "naruto",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "O ninja que quer ser Hokage"
+  },
+  {
+    "word": "sasuke",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Rival de Naruto do Clã Uchiha"
+  },
+  {
+    "word": "itachi",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Irmão mais velho de Sasuke"
+  },
+  {
+    "word": "hinata",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "Herdeira do Clã Hyuga"
+  },
+  {
+    "word": "sakura",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 1,
+    "hint": "A shinobi médica do Time 7"
+  },
+  {
+    "word": "minato",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "O Yondaime Hokage, Relâmpago Amarelo"
+  },
+  {
+    "word": "madara",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Lendário líder do Clã Uchiha"
+  },
+  {
+    "word": "temari",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Irmã de Gaara que usa leque"
+  },
+  {
+    "word": "kabuto",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Espião médico de Orochimaru"
+  },
+  {
+    "word": "nagato",
+    "category": "personagem",
+    "source": "Naruto",
+    "difficulty": 2,
+    "hint": "Líder da Akatsuki, usuário de Pain"
+  },
+  {
+    "word": "ichigo",
+    "category": "personagem",
+    "source": "Bleach",
+    "difficulty": 1,
+    "hint": "Substituto de Shinigami de cabelo laranja"
+  },
+  {
+    "word": "hollow",
+    "category": "criatura",
+    "source": "Bleach",
+    "difficulty": 2,
+    "hint": "Espírito maligno devorador de almas"
+  },
+  {
+    "word": "espada",
+    "category": "grupo",
+    "source": "Bleach",
+    "difficulty": 2,
+    "hint": "Os dez arrancar mais poderosos de Aizen"
+  },
+  {
+    "word": "vegeta",
+    "category": "personagem",
+    "source": "Dragon Ball",
+    "difficulty": 1,
+    "hint": "Príncipe dos Saiyajins orgulhoso"
+  },
+  {
+    "word": "trunks",
+    "category": "personagem",
+    "source": "Dragon Ball",
+    "difficulty": 2,
+    "hint": "Filho de Vegeta e Bulma do futuro"
+  },
+  {
+    "word": "frieza",
+    "category": "personagem",
+    "source": "Dragon Ball",
+    "difficulty": 1,
+    "hint": "Imperador galáctico arquivilão"
+  },
+  {
+    "word": "yamcha",
+    "category": "personagem",
+    "source": "Dragon Ball",
+    "difficulty": 2,
+    "hint": "Ex-bandido do deserto apaixonado por Bulma"
+  },
+  {
+    "word": "shanks",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Imperador do Mar com braço perdido"
+  },
+  {
+    "word": "franky",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Cyborg carpinteiro do Bando do Chapéu de Palha"
+  },
+  {
+    "word": "bonney",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 3,
+    "hint": "Pirata famosa ligada ao governo"
+  },
+  {
+    "word": "mikasa",
+    "category": "personagem",
+    "source": "Attack on Titan",
+    "difficulty": 1,
+    "hint": "A melhor soldado da Pesquisa, protetora de Eren"
+  },
+  {
+    "word": "reiner",
+    "category": "personagem",
+    "source": "Attack on Titan",
+    "difficulty": 2,
+    "hint": "O Titan Couraçado, traidor revelado"
+  },
+  {
+    "word": "titans",
+    "category": "criatura",
+    "source": "Attack on Titan",
+    "difficulty": 1,
+    "hint": "Gigantes devoradores de humanos"
+  },
+  {
+    "word": "tengen",
+    "category": "personagem",
+    "source": "Demon Slayer",
+    "difficulty": 2,
+    "hint": "Pilar do Som extravagante e fashionista"
+  },
+  {
+    "word": "gyomei",
+    "category": "personagem",
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar da Pedra, o mais forte dos Hashiras"
+  },
+  {
+    "word": "emilia",
+    "category": "personagem",
+    "source": "Re:Zero",
+    "difficulty": 2,
+    "hint": "Candidata ao trono de meio-elfa"
+  },
+  {
+    "word": "subaru",
+    "category": "personagem",
+    "source": "Re:Zero",
+    "difficulty": 1,
+    "hint": "Herói isekai com poder de retornar pela morte"
+  },
+  {
+    "word": "nezuko",
+    "category": "personagem",
+    "source": "Demon Slayer",
+    "difficulty": 1,
+    "hint": "Irmã demônio de Tanjiro que anda em caixinha"
+  },
+  {
+    "word": "bakugo",
+    "category": "personagem",
+    "source": "My Hero Academia",
+    "difficulty": 1,
+    "hint": "Herói explosivo e rabugento"
+  },
+  {
+    "word": "ochako",
+    "category": "personagem",
+    "source": "My Hero Academia",
+    "difficulty": 2,
+    "hint": "Heroína que neutraliza a gravidade"
+  },
+  {
+    "word": "mineta",
+    "category": "personagem",
+    "source": "My Hero Academia",
+    "difficulty": 2,
+    "hint": "Herói de uvas pegajosas e personalidade duvidosa"
+  },
+  {
+    "word": "togata",
+    "category": "personagem",
+    "source": "My Hero Academia",
+    "difficulty": 3,
+    "hint": "O sucessor planejado de All Might, Mirio"
+  },
+  {
+    "word": "shindo",
+    "category": "personagem",
+    "source": "My Hero Academia",
+    "difficulty": 3,
+    "hint": "Herói rival de Deku com Quirk de tremores"
+  },
+  {
+    "word": "shinji",
+    "category": "personagem",
+    "source": "Evangelion",
+    "difficulty": 1,
+    "hint": "Piloto relutante do Eva-01"
+  },
+  {
+    "word": "misato",
+    "category": "personagem",
+    "source": "Evangelion",
+    "difficulty": 2,
+    "hint": "Comandante de operações da NERV"
+  },
+  {
+    "word": "kirito",
+    "category": "personagem",
+    "source": "Sword Art Online",
+    "difficulty": 1,
+    "hint": "O Espadachim Negro preso em SAO"
+  },
+  {
+    "word": "kazuma",
+    "category": "personagem",
+    "source": "KonoSuba",
+    "difficulty": 2,
+    "hint": "Aventureiro azarado com partido cheio de idiotas"
+  },
+  {
+    "word": "albedo",
+    "category": "personagem",
+    "source": "Overlord",
+    "difficulty": 2,
+    "hint": "Guardião Supremo obcecada por Ainz"
+  },
+  {
+    "word": "rimuru",
+    "category": "personagem",
+    "source": "Tensei Slime",
+    "difficulty": 2,
+    "hint": "O slime reencarnado que vira lord"
+  },
+  {
+    "word": "violet",
+    "category": "personagem",
+    "source": "Violet Evergarden",
+    "difficulty": 2,
+    "hint": "Auto Memória Doll que aprendeu a sentir"
+  },
+  {
+    "word": "shizuo",
+    "category": "personagem",
+    "source": "Durarara!!",
+    "difficulty": 2,
+    "hint": "O homem mais forte de Ikebukuro, odeia Izaya"
+  },
+  {
+    "word": "konata",
+    "category": "personagem",
+    "source": "Lucky Star",
+    "difficulty": 2,
+    "hint": "Otaku nerd apaixonada por anime e games"
+  },
+  {
+    "word": "chrome",
+    "category": "personagem",
+    "source": "Dr. Stone",
+    "difficulty": 2,
+    "hint": "Cientista aliado de Senku no mundo de pedra"
+  },
+  {
+    "word": "kuroko",
+    "category": "personagem",
+    "source": "Kuroko no Basket",
+    "difficulty": 1,
+    "hint": "O Fantasma da Geração dos Milagres"
+  },
+  {
+    "word": "akashi",
+    "category": "personagem",
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "Capitão perfeito da Geração dos Milagres"
+  },
+  {
+    "word": "aomine",
+    "category": "personagem",
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "O Ás que desistiu de adversários"
+  },
+  {
+    "word": "kagami",
+    "category": "personagem",
+    "source": "Kuroko no Basket",
+    "difficulty": 2,
+    "hint": "O Tigre que se torna par de Kuroko"
+  },
+  {
+    "word": "senpai",
+    "category": "termo",
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Aluno mais velho ou pessoa admirada"
+  },
+  {
+    "word": "sensei",
+    "category": "termo",
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Professor, mestre ou especialista"
+  },
+  {
+    "word": "nakama",
+    "category": "termo",
+    "source": "Cultura Anime",
+    "difficulty": 2,
+    "hint": "Companheiro, amigo de confiança, tripulação"
+  },
+  {
+    "word": "kawaii",
+    "category": "termo",
+    "source": "Cultura Anime",
+    "difficulty": 1,
+    "hint": "Fofo, adorável em japonês"
+  },
+  {
+    "word": "filler",
+    "category": "termo",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Episódio extra que não avança a história"
+  },
+  {
+    "word": "ending",
+    "category": "termo",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Música e animação do final do episódio"
+  },
+  {
+    "word": "mangas",
+    "category": "termo",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Quadrinhos japoneses em preto e branco"
+  },
+  {
+    "word": "animes",
+    "category": "termo",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Animações japonesas que o mundo ama"
+  },
+  {
+    "word": "seinen",
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Gênero voltado ao público masculino adulto"
+  },
+  {
+    "word": "shonen",
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Gênero para jovens cheio de batalhas"
+  },
+  {
+    "word": "shoujo",
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 2,
+    "hint": "Gênero romântico para o público feminino"
+  },
+  {
+    "word": "isekai",
+    "category": "genero",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Personagem transportado para outro mundo"
+  },
+  {
+    "word": "katana",
+    "category": "objeto",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Espada curva tradicional japonesa"
+  },
+  {
+    "word": "dragon",
+    "category": "criatura",
+    "source": "Anime",
+    "difficulty": 1,
+    "hint": "Criatura mítica de fogo e escamas"
+  },
+  {
+    "word": "pirata",
+    "category": "tema",
+    "source": "One Piece",
+    "difficulty": 1,
+    "hint": "Saqueadores dos mares em busca do tesouro"
+  },
+  {
+    "word": "brooks",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "Esqueleto músico da tripulação"
+  },
+  {
+    "word": "mihawk",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 2,
+    "hint": "O melhor espadachim do mundo"
+  },
+  {
+    "word": "smoker",
+    "category": "personagem",
+    "source": "One Piece",
+    "difficulty": 3,
+    "hint": "Vice-almirante que persegue Luffy"
+  },
+  {
+    "word": "sanemi",
+    "category": "personagem",
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar do Vento rabugento"
+  },
+  {
+    "word": "obanai",
+    "category": "personagem",
+    "source": "Demon Slayer",
+    "difficulty": 3,
+    "hint": "Pilar da Serpente"
+  },
+  {
+    "word": "kaworu",
+    "category": "personagem",
+    "source": "Evangelion",
+    "difficulty": 3,
+    "hint": "O 17° Anjo, amigo misterioso de Shinji"
+  },
+  {
+    "word": "ryuuku",
+    "category": "personagem",
+    "source": "Death Note",
+    "difficulty": 1,
+    "hint": "Shinigami que deixou a Death Note cair"
+  },
+  {
+    "word": "kohaku",
+    "category": "personagem",
+    "source": "Dr. Stone",
+    "difficulty": 2,
+    "hint": "Guerreira do Vilarejo de Ishigami"
+  },
+  {
+    "word": "edward",
+    "category": "personagem",
+    "source": "Fullmetal Alchemist",
+    "difficulty": 1,
+    "hint": "O Alquimista de Aço que busca a Pedra Filosofal"
+  },
+  {
+    "word": "bokuto",
+    "category": "personagem",
+    "source": "Haikyuu!!",
+    "difficulty": 2,
+    "hint": "Jogador de ponta energético e carismático"
+  },
+  {
+    "word": "killua",
+    "category": "personagem",
+    "source": "Hunter x Hunter",
+    "difficulty": 1,
+    "hint": "Assassino herdeiro amigo de Gon"
+  },
+  {
+    "word": "hisoka",
+    "category": "personagem",
+    "source": "Hunter x Hunter",
+    "difficulty": 1,
+    "hint": "Mago palhaço obcecado por lutas fortes"
+  },
+  {
+    "word": "netero",
+    "category": "personagem",
+    "source": "Hunter x Hunter",
+    "difficulty": 2,
+    "hint": "O presidente da Associação Hunter"
+  },
+  {
+    "word": "feitan",
+    "category": "personagem",
+    "source": "Hunter x Hunter",
+    "difficulty": 3,
+    "hint": "Membro da Brigada Fantasma veloz"
+  },
+  {
+    "word": "suzaku",
+    "category": "personagem",
+    "source": "Code Geass",
+    "difficulty": 2,
+    "hint": "O Cavaleiro da Área 11, rival e amigo de Lelouch"
+  },
+  {
+    "word": "kagome",
+    "category": "personagem",
+    "source": "Inuyasha",
+    "difficulty": 1,
+    "hint": "Garota do futuro que cai no poço mágico"
+  },
+  {
+    "word": "megumi",
+    "category": "personagem",
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "Exorcista herdeiro da técnica das sombras"
+  },
+  {
+    "word": "sukuna",
+    "category": "personagem",
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "O Rei das Pragas de mil anos"
+  },
+  {
+    "word": "nobara",
+    "category": "personagem",
+    "source": "Jujutsu Kaisen",
+    "difficulty": 2,
+    "hint": "Exorcista que usa prego e martelo"
+  },
+  {
+    "word": "kurisu",
+    "category": "personagem",
+    "source": "Steins;Gate",
+    "difficulty": 2,
+    "hint": "Neurocientista brilhante, Christina"
+  },
+  {
+    "word": "jellal",
+    "category": "personagem",
+    "source": "Fairy Tail",
+    "difficulty": 3,
+    "hint": "O mago das estrelas de olhos tatuados"
+  },
+  {
+    "word": "toguro",
+    "category": "personagem",
+    "source": "Yu Yu Hakusho",
+    "difficulty": 2,
+    "hint": "O vilão que escolheu se tornar monstro"
+  },
+  {
+    "word": "kurama",
+    "category": "personagem",
+    "source": "Yu Yu Hakusho",
+    "difficulty": 2,
+    "hint": "A Raposa de Nove Caudas em corpo humano"
+  },
+  {
+    "word": "yusuke",
+    "category": "personagem",
+    "source": "Yu Yu Hakusho",
+    "difficulty": 1,
+    "hint": "O detetive espiritual ressuscitado"
+  },
+  {
+    "word": "noelle",
+    "category": "personagem",
+    "source": "Black Clover",
+    "difficulty": 2,
+    "hint": "Princesa da Água que não controla seu poder"
+  }
+]

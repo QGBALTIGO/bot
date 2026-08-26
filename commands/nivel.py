@@ -4,7 +4,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import (
-    add_progress_xp,
     create_or_get_user,
     get_level_progress_values,
     get_progress_row,
@@ -15,11 +14,11 @@ from level_system import (
     format_rank_position,
     get_level_theme,
 )
-from utils.runtime_guard import lock_manager
+from progress_repository import add_progress_xp_atomic
 
 
 async def register_progress(update: Update, xp_gain: int = 3):
-    """Register XP for an allowed user action without breaking the main command."""
+    """Register XP for an allowed action using a PostgreSQL row lock."""
 
     user = update.effective_user
     if not user:
@@ -27,12 +26,7 @@ async def register_progress(update: Update, xp_gain: int = 3):
 
     user_id = user.id
     create_or_get_user(user_id)
-
-    lock = await lock_manager.acquire(f"level-progress:{user_id}")
-    try:
-        data = add_progress_xp(user_id, xp_gain)
-    finally:
-        lock.release()
+    data = add_progress_xp_atomic(user_id, xp_gain)
 
     old_level = int(data["old_level"])
     new_level = int(data["new_level"])
