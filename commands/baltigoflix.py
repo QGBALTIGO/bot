@@ -4,14 +4,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppI
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
+from utils.public_url import require_public_base_url
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
-if not BASE_URL:
-    raise RuntimeError("BASE_URL não configurado.")
-
+BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
-
 BALTIGOFLIX_BANNER_URL = os.getenv(
     "BALTIGOFLIX_BANNER_URL",
     "https://i.imgur.com/8Km9tLL.png",
@@ -31,12 +28,9 @@ async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _is_group(update):
         texto = (
             "🎬 <b>BaltigoFlix</b>\n\n"
-            "Esse comando funciona no <b>chat privado</b>.\n\n"
-            "👇 Toque abaixo para abrir o bot:"
+            "Esse comando funciona no <b>chat privado</b>.\n\n👇 Toque abaixo para abrir o bot:"
         )
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎬 Abrir no privado", url=BOT_PRIVATE_URL)]
-        ])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Abrir no privado", url=BOT_PRIVATE_URL)]])
         await msg.reply_html(texto, reply_markup=kb)
         return
 
@@ -47,26 +41,13 @@ async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     webapp_url = f"{BASE_URL}/baltigoflix"
-
     texto = (
         "🎬 <b>BaltigoFlix</b>\n\n"
         "Acesse a área BaltigoFlix direto pelo Mini App.\n\n"
-        "✨ Experiência integrada\n"
-        "⚡ Acesso rápido\n"
-        "📱 Tudo dentro do Telegram\n\n"
-        "👇 Toque abaixo para continuar:"
+        "✨ Experiência integrada\n⚡ Acesso rápido\n📱 Tudo dentro do Telegram\n\n👇 Toque abaixo para continuar:"
     )
-
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 Abrir BaltigoFlix", web_app=WebAppInfo(url=webapp_url))]
-    ])
-
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Abrir BaltigoFlix", web_app=WebAppInfo(url=webapp_url))]])
     if BALTIGOFLIX_BANNER_URL:
-        await msg.reply_photo(
-            photo=BALTIGOFLIX_BANNER_URL,
-            caption=texto,
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+        await msg.reply_photo(photo=BALTIGOFLIX_BANNER_URL, caption=texto, parse_mode="HTML", reply_markup=kb)
     else:
         await msg.reply_html(texto, reply_markup=kb)
