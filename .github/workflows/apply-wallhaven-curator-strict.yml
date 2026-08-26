@@ -1,0 +1,45 @@
+name: Apply strict Wallhaven curator rules
+
+on:
+  push:
+    paths:
+      - ".github/workflows/apply-wallhaven-curator-strict.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply strict curator patch
+        run: python scripts/patch_wallhaven_curator_strict.py
+      - name: Validate curator
+        run: |
+          python -m compileall -q scripts/curate_wallhaven_characters.py
+          git diff --check
+          grep -q 'if other_specific:' scripts/curate_wallhaven_characters.py
+          grep -q 'max_other_specific_characters": 0' scripts/curate_wallhaven_characters.py
+          grep -q 'Monkey D. Luffy' scripts/curate_wallhaven_characters.py
+      - name: Remove temporary files
+        run: |
+          rm -f scripts/patch_wallhaven_curator_strict.py
+          rm -f .github/workflows/apply-wallhaven-curator-strict.yml
+          rm -f .github/workflows/inspect-dado-wallhaven.yml
+          rm -f .github/workflows/wallhaven-curation-apply-01.yml
+          rm -f .github/workflows/wallhaven-curation-sample.yml
+      - name: Commit strict curator
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Enforce solo Wallhaven character portraits"
+          git push origin HEAD:main
