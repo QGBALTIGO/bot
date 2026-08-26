@@ -34,6 +34,14 @@ a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit;c
 def telegram_bootstrap_js() -> str:
     return r"""
 const tg = window.Telegram?.WebApp || null;
+const v2LaunchFromUrl = new URLSearchParams(window.location.search).get('launch') || '';
+if (v2LaunchFromUrl) {
+  try { sessionStorage.setItem('baltigo_launch', v2LaunchFromUrl); } catch (_) {}
+}
+function v2LaunchToken() {
+  if (v2LaunchFromUrl) return v2LaunchFromUrl;
+  try { return sessionStorage.getItem('baltigo_launch') || ''; } catch (_) { return ''; }
+}
 if (tg) {
   try {
     tg.ready(); tg.expand();
@@ -44,6 +52,8 @@ if (tg) {
 async function v2Api(path, opts={}) {
   const headers = new Headers(opts.headers || {});
   if (tg?.initData) headers.set('X-Telegram-Init-Data', tg.initData);
+  const launch = v2LaunchToken();
+  if (launch) headers.set('X-Baltigo-Launch', launch);
   if (opts.body && !headers.has('Content-Type')) headers.set('Content-Type','application/json');
   const response = await fetch(path, {...opts, headers});
   let data = {};
