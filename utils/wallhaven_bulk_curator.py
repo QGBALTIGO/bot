@@ -22,7 +22,10 @@ SEARCH_URL = "https://wallhaven.cc/api/v1/search"
 DETAIL_URL = "https://wallhaven.cc/api/v1/w/{wallpaper_id}"
 LOCK_KEY = 7341123456821
 
-ENABLED = os.getenv("WALLHAVEN_CURATOR_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+# Retired legacy runtime curator. Kept only for historical/diagnostic use.
+# It must never start implicitly because curated portraits are now versioned
+# in data/wallhaven_character_overrides.json and validated before deployment.
+ENABLED = os.getenv("WALLHAVEN_LEGACY_CURATOR_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 API_KEY = os.getenv("WALLHAVEN_API_KEY", "").strip()
 MIN_WIDTH = max(600, int(os.getenv("WALLHAVEN_CURATOR_MIN_WIDTH", "1000")))
 MIN_HEIGHT = max(900, int(os.getenv("WALLHAVEN_CURATOR_MIN_HEIGHT", "1500")))
