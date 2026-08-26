@@ -58,7 +58,7 @@ ENABLE_MESSAGES = os.getenv("ENABLE_MESSAGES", "false").strip().lower() in {
 
 def run_webapp() -> None:
     try:
-        from webapp import app as web_app
+        from secure_webapp import app as web_app
 
         uvicorn.run(web_app, host="0.0.0.0", port=PORT, log_level="info")
     except Exception:
