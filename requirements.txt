@@ -7,3 +7,4 @@ requests
 beautifulsoup4
 httpx
 lxml
+Pillow>=10.4,<12
