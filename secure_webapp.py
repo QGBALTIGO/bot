@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Iterable
+from urllib.parse import parse_qs
 
 from fastapi.responses import HTMLResponse as BaseHTMLResponse
 
@@ -11,12 +12,33 @@ from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-WEBAPP_AUTH_MAX_AGE_SECONDS = int(
-    os.getenv("WEBAPP_AUTH_MAX_AGE_SECONDS", "3600")
-)
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN não encontrado para autenticação da MiniApp.")
+
+try:
+    WEBAPP_AUTH_MAX_AGE_SECONDS = int(
+        os.getenv("WEBAPP_AUTH_MAX_AGE_SECONDS", "3600")
+    )
+except ValueError as exc:
+    raise RuntimeError("WEBAPP_AUTH_MAX_AGE_SECONDS precisa ser inteiro.") from exc
+
+if WEBAPP_AUTH_MAX_AGE_SECONDS <= 0:
+    raise RuntimeError("WEBAPP_AUTH_MAX_AGE_SECONDS precisa ser maior que zero.")
+
 WEBAPP_ADMIN_TOKEN = os.getenv("WEBAPP_ADMIN_TOKEN", "").strip()
 
 PROTECTED_TELEGRAM_PATHS = {
+    "/api/channel/check",
+    "/api/terms/accept",
+    "/api/terms/decline",
+    "/api/pedido",
+    "/api/pedido/limit",
+    "/api/pedido/search",
+    "/api/pedido/send",
+    "/api/pedido/report",
+}
+
+IDENTITY_BODY_PATHS = {
     "/api/channel/check",
     "/api/terms/accept",
     "/api/terms/decline",
@@ -53,7 +75,7 @@ INIT_DATA_INJECTION = """
 
 
 class SecureHTMLResponse(BaseHTMLResponse):
-    """Inject the signed Telegram initData header into same-origin fetch calls."""
+    """Inject signed Telegram initData into same-origin fetch requests."""
 
     def render(self, content) -> bytes:
         if isinstance(content, bytes):
@@ -64,10 +86,7 @@ class SecureHTMLResponse(BaseHTMLResponse):
         else:
             text = str(content)
 
-        if (
-            "</head>" in text
-            and "source-baltigo-initdata-guard" not in text
-        ):
+        if "</head>" in text and "source-baltigo-initdata-guard" not in text:
             text = text.replace(
                 "</head>",
                 f"{INIT_DATA_INJECTION}\n</head>",
@@ -100,6 +119,11 @@ def _headers_dict(raw_headers: Iterable[tuple[bytes, bytes]]) -> dict[str, str]:
     }
 
 
+def _query_params(scope) -> dict[str, list[str]]:
+    raw = (scope.get("query_string") or b"").decode("utf-8", errors="replace")
+    return parse_qs(raw, keep_blank_values=True)
+
+
 class TelegramWebAppAuthMiddleware:
     def __init__(
         self,
@@ -119,7 +143,6 @@ class TelegramWebAppAuthMiddleware:
             return await self.app(scope, receive, send)
 
         path = scope.get("path") or ""
-        method = (scope.get("method") or "GET").upper()
         headers = _headers_dict(scope.get("headers") or [])
 
         if path in ADMIN_PROTECTED_PATHS:
@@ -131,7 +154,7 @@ class TelegramWebAppAuthMiddleware:
                     {"ok": False, "message": "Endpoint não encontrado."},
                 )
 
-        if path not in PROTECTED_TELEGRAM_PATHS or method != "POST":
+        if path not in PROTECTED_TELEGRAM_PATHS:
             return await self.app(scope, receive, send)
 
         init_data = headers.get("x-telegram-init-data", "")
@@ -152,19 +175,41 @@ class TelegramWebAppAuthMiddleware:
                 },
             )
 
-        body = bytearray()
-        more_body = True
-        while more_body:
-            event = await receive()
-            if event.get("type") != "http.request":
-                continue
-            body.extend(event.get("body") or b"")
-            more_body = bool(event.get("more_body"))
+        # The request-limit endpoint identifies the user in its query string.
+        if path == "/api/pedido/limit":
+            raw_uid = (_query_params(scope).get("uid") or [""])[0]
+            try:
+                claimed_uid = int(raw_uid or 0)
+            except ValueError:
+                claimed_uid = 0
 
-        final_body = bytes(body)
-        content_type = headers.get("content-type", "")
+            if claimed_uid != identity.user_id:
+                return await _send_json(
+                    send,
+                    403,
+                    {"ok": False, "message": "Identidade do Telegram não confere."},
+                )
 
-        if final_body and "application/json" in content_type:
+        final_body = b""
+        if path in IDENTITY_BODY_PATHS:
+            body = bytearray()
+            more_body = True
+            while more_body:
+                event = await receive()
+                if event.get("type") != "http.request":
+                    continue
+                body.extend(event.get("body") or b"")
+                more_body = bool(event.get("more_body"))
+
+            final_body = bytes(body)
+            content_type = headers.get("content-type", "")
+            if "application/json" not in content_type:
+                return await _send_json(
+                    send,
+                    415,
+                    {"ok": False, "message": "Content-Type inválido."},
+                )
+
             try:
                 payload = json.loads(final_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -224,6 +269,8 @@ class TelegramWebAppAuthMiddleware:
 
         async def replay_receive():
             nonlocal sent_body
+            if path not in IDENTITY_BODY_PATHS:
+                return await receive()
             if not sent_body:
                 sent_body = True
                 return {
@@ -233,12 +280,45 @@ class TelegramWebAppAuthMiddleware:
                 }
             return {"type": "http.request", "body": b"", "more_body": False}
 
-        return await self.app(scope, replay_receive, send)
+        pending_start = None
+        replaced_error = False
+
+        async def safe_send(message):
+            nonlocal pending_start, replaced_error
+
+            if message.get("type") == "http.response.start":
+                if int(message.get("status") or 0) == 500:
+                    pending_start = message
+                    return
+                return await send(message)
+
+            if pending_start is not None:
+                if not replaced_error:
+                    replaced_error = True
+                    pending_start = None
+                    return await _send_json(
+                        send,
+                        500,
+                        {"ok": False, "message": "Erro interno. Tente novamente."},
+                    )
+                return
+
+            return await send(message)
+
+        try:
+            return await self.app(scope, replay_receive, safe_send)
+        except Exception:
+            logger.exception("Erro não tratado na MiniApp path=%s", path)
+            return await _send_json(
+                send,
+                500,
+                {"ok": False, "message": "Erro interno. Tente novamente."},
+            )
 
 
-# Route functions in the legacy module resolve HTMLResponse from module globals at
-# request time, so replacing it here secures existing pages without duplicating
-# thousands of lines of embedded HTML/CSS/JS.
+# Transitional security layer: route functions in the legacy module resolve
+# HTMLResponse from module globals at request time. This lets us secure existing
+# pages now, before splitting the 5k+ line legacy WebApp into routers/templates.
 legacy_webapp.HTMLResponse = SecureHTMLResponse
 
 app = legacy_webapp.app
