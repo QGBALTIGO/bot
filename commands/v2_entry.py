@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.ext import ContextTypes
 
+from identity_repository import sync_telegram_identity
 from utils.gatekeeper import gatekeeper
 
 
@@ -55,6 +56,17 @@ async def open_webapp_entry(
         if blocked:
             await msg.reply_html(blocked)
         return
+
+    try:
+        sync_telegram_identity(
+            int(user.id),
+            username=str(user.username or ""),
+            full_name=str(user.full_name or ""),
+        )
+    except Exception:
+        # Identidade enriquecida melhora perfil/ranking, mas não deve tornar uma
+        # MiniApp inteira indisponível se o sync auxiliar falhar pontualmente.
+        pass
 
     if not BASE_URL:
         await msg.reply_text("⚠️ MiniApp indisponível: BASE_URL não configurada.")
