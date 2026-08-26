@@ -14,7 +14,7 @@ from identity_repository import (
     sync_telegram_identity,
     update_profile_settings,
 )
-from level_system import get_rank
+from level_system import get_rank_tag
 
 
 class ProfileServiceError(ValueError):
@@ -64,7 +64,7 @@ def get_profile_state(user_id: int) -> Dict[str, Any]:
         "progress": {
             "xp": xp,
             "level": level,
-            "rank": get_rank(level),
+            "rank": get_rank_tag(level),
             "total_actions": int(progress.get("total_actions") or 0),
         },
         "collection": collection.get("stats") or {},
