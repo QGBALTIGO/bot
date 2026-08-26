@@ -7,10 +7,9 @@ from urllib.parse import parse_qs
 from fastapi.responses import HTMLResponse as BaseHTMLResponse
 
 import webapp as legacy_webapp
-from collection_webapp import register_collection_routes
-from game_webapp import register_game_routes
 from utils.route_hygiene import dedupe_http_routes_keep_last
 from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
+from v2_webapp_registry import PROTECTED_V2_PATHS, register_v2_routes
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +38,7 @@ PROTECTED_TELEGRAM_PATHS = {
     "/api/pedido/search",
     "/api/pedido/send",
     "/api/pedido/report",
-    "/api/v2/game/state",
-    "/api/v2/game/daily/claim",
-    "/api/v2/game/dice/roll",
-    "/api/v2/game/dice/pick",
-    "/api/v2/game/spin",
-    "/api/v2/collection",
-}
+} | PROTECTED_V2_PATHS
 
 IDENTITY_BODY_PATHS = {
     "/api/channel/check",
@@ -329,8 +322,7 @@ legacy_webapp.HTMLResponse = SecureHTMLResponse
 app = legacy_webapp.app
 
 dedupe_http_routes_keep_last(app)
-register_game_routes(app)
-register_collection_routes(app)
+register_v2_routes(app)
 
 app.add_middleware(
     TelegramWebAppAuthMiddleware,
