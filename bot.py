@@ -30,6 +30,7 @@ from commands.manga import manga
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.profile import perfil
+from commands.ranking_v2 import ranking
 from commands.start import start
 from database import create_tables
 from game_repository import create_game_tables
@@ -132,6 +133,7 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("giro", giro))
     tg_app.add_handler(CommandHandler("colecao", colecao))
     tg_app.add_handler(CommandHandler("perfil", perfil))
+    tg_app.add_handler(CommandHandler("ranking", ranking))
 
     _register_message_handlers(tg_app)
 
