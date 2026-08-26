@@ -7,11 +7,6 @@ from utils.public_url import require_public_base_url
 from utils.webapp_auth import create_webapp_launch_token
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN não encontrado para gerar sessão da MiniApp.")
-
-
 def build_webapp_url(
     path: str,
     *,
@@ -25,13 +20,21 @@ def build_webapp_url(
     compatibility hint for legacy JavaScript, but add a signed ``launch`` token
     which is the actual authority used by V2 authentication.
     """
+    bot_token = os.getenv("BOT_TOKEN", "").strip()
+    if not bot_token:
+        raise RuntimeError("BOT_TOKEN não encontrado para gerar sessão da MiniApp.")
+
     raw_path = str(path or "/").strip() or "/"
     parts = urlsplit(raw_path)
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in {"uid", "launch"}]
+    query = [
+        (k, v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if k not in {"uid", "launch"}
+    ]
 
     token = create_webapp_launch_token(
         int(user_id),
-        BOT_TOKEN,
+        bot_token,
         username=str(username or ""),
         full_name=str(full_name or ""),
     )
@@ -42,5 +45,7 @@ def build_webapp_url(
         ]
     )
 
-    relative = urlunsplit(("", "", parts.path or "/", urlencode(query), parts.fragment))
+    relative = urlunsplit(
+        ("", "", parts.path or "/", urlencode(query), parts.fragment)
+    )
     return f"{require_public_base_url()}{relative}"
