@@ -1016,9 +1016,502 @@
       "source_page": "https://wallhaven.cc/w/o33drp",
       "query": "Kurapika",
       "approved_at": "2026-08-26T21:16:37.209197+00:00"
+    },
+    "80": {
+      "character_id": 80,
+      "character_name": "Light Yagami",
+      "anime_id": 1535,
+      "anime": "DEATH NOTE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b80-26EhwSsSqQ50.png",
+      "url": "https://w.wallhaven.cc/full/ym/wallhaven-ymxmpl.png",
+      "wallhaven_id": "ymxmpl",
+      "width": 1080,
+      "height": 1902,
+      "ratio": 0.56782,
+      "crop_2x3": true,
+      "crop_retention": 0.85174,
+      "score": 95.409,
+      "favorites": 3,
+      "views": 2461,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Yagami Light"
+      ],
+      "series_tags": [
+        "Death Note"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/ymxmpl",
+      "query": "Light Yagami",
+      "approved_at": "2026-08-26T21:18:37.169355+00:00"
+    },
+    "188783": {
+      "character_id": 188783,
+      "character_name": "Kana Arima",
+      "anime_id": 166531,
+      "anime": "[Oshi no Ko]",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b188783-77orwP7vNuNg.png",
+      "url": "https://w.wallhaven.cc/full/rr/wallhaven-rrym1w.png",
+      "wallhaven_id": "rrym1w",
+      "width": 2894,
+      "height": 4093,
+      "ratio": 0.70706,
+      "crop_2x3": true,
+      "crop_retention": 0.94287,
+      "score": 104.325,
+      "favorites": 19,
+      "views": 2529,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kana Arima"
+      ],
+      "series_tags": [
+        "Oshi no Ko"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/rrym1w",
+      "query": "Kana Arima",
+      "approved_at": "2026-08-26T21:19:27.319229+00:00"
+    },
+    "73935": {
+      "character_id": 73935,
+      "character_name": "Saitama",
+      "anime_id": 21087,
+      "anime": "One Punch Man",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b73935-ON5d0mAcrItd.jpg",
+      "url": "https://w.wallhaven.cc/full/od/wallhaven-odqvjm.jpg",
+      "wallhaven_id": "odqvjm",
+      "width": 1271,
+      "height": 2068,
+      "ratio": 0.6146,
+      "crop_2x3": true,
+      "crop_retention": 0.92191,
+      "score": 100.101,
+      "favorites": 40,
+      "views": 4728,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Saitama (One-Punch Man)"
+      ],
+      "series_tags": [
+        "One-Punch Man"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/odqvjm",
+      "query": "Saitama",
+      "approved_at": "2026-08-26T21:19:50.688721+00:00"
+    },
+    "73979": {
+      "character_id": 73979,
+      "character_name": "Genos",
+      "anime_id": 21087,
+      "anime": "One Punch Man",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b73979-tVi9maPID881.jpg",
+      "url": "https://w.wallhaven.cc/full/ne/wallhaven-nekvyl.png",
+      "wallhaven_id": "nekvyl",
+      "width": 1187,
+      "height": 1680,
+      "ratio": 0.70655,
+      "crop_2x3": true,
+      "crop_retention": 0.94356,
+      "score": 98.847,
+      "favorites": 18,
+      "views": 4940,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Genos (One-Punch Man)"
+      ],
+      "series_tags": [
+        "One-Punch Man"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/nekvyl",
+      "query": "Genos",
+      "approved_at": "2026-08-26T21:19:58.455322+00:00"
+    },
+    "87275": {
+      "character_id": 87275,
+      "character_name": "Ken Kaneki",
+      "anime_id": 20605,
+      "anime": "Tokyo Ghoul",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b87275-mb13EWZBdbh3.png",
+      "url": "https://w.wallhaven.cc/full/r7/wallhaven-r76rvm.jpg",
+      "wallhaven_id": "r76rvm",
+      "width": 1200,
+      "height": 1697,
+      "ratio": 0.70713,
+      "crop_2x3": true,
+      "crop_retention": 0.94278,
+      "score": 99.391,
+      "favorites": 8,
+      "views": 5407,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kaneki Ken"
+      ],
+      "series_tags": [
+        "Tokyo Ghoul"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/r76rvm",
+      "query": "Ken Kaneki",
+      "approved_at": "2026-08-26T21:20:04.734595+00:00"
+    },
+    "87277": {
+      "character_id": 87277,
+      "character_name": "Touka Kirishima",
+      "anime_id": 20605,
+      "anime": "Tokyo Ghoul",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b87277-oUaqrI1iBzu6.png",
+      "url": "https://w.wallhaven.cc/full/49/wallhaven-491gvw.jpg",
+      "wallhaven_id": "491gvw",
+      "width": 1131,
+      "height": 1600,
+      "ratio": 0.70688,
+      "crop_2x3": true,
+      "crop_retention": 0.94312,
+      "score": 100.527,
+      "favorites": 38,
+      "views": 6346,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kirishima Touka"
+      ],
+      "series_tags": [
+        "Tokyo Ghoul"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/491gvw",
+      "query": "Touka Kirishima",
+      "approved_at": "2026-08-26T21:20:12.725206+00:00"
+    },
+    "5186": {
+      "character_id": 5186,
+      "character_name": "Lucy Heartfilia",
+      "anime_id": 6702,
+      "anime": "FAIRY TAIL",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b5186-izgXf2S86K9u.png",
+      "url": "https://w.wallhaven.cc/full/j3/wallhaven-j35j5y.jpg",
+      "wallhaven_id": "j35j5y",
+      "width": 1080,
+      "height": 1920,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 95.982,
+      "favorites": 8,
+      "views": 2032,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Heartfilia Lucy "
+      ],
+      "series_tags": [
+        "Fairy Tail"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/j35j5y",
+      "query": "Lucy Heartfilia",
+      "approved_at": "2026-08-26T21:20:20.578617+00:00"
+    },
+    "5189": {
+      "character_id": 5189,
+      "character_name": "Erza Scarlet",
+      "anime_id": 6702,
+      "anime": "FAIRY TAIL",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b5189-GR1xdok9SFsN.jpg",
+      "url": "https://w.wallhaven.cc/full/3k/wallhaven-3km139.jpg",
+      "wallhaven_id": "3km139",
+      "width": 1353,
+      "height": 2029,
+      "ratio": 0.66683,
+      "crop_2x3": true,
+      "crop_retention": 0.99975,
+      "score": 102.299,
+      "favorites": 9,
+      "views": 2220,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Scarlet Erza"
+      ],
+      "series_tags": [
+        "Fairy Tail"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/3km139",
+      "query": "Erza Scarlet",
+      "approved_at": "2026-08-26T21:20:28.306666+00:00"
+    },
+    "123285": {
+      "character_id": 123285,
+      "character_name": "Asta",
+      "anime_id": 97940,
+      "anime": "Black Clover",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b123285-tKijiuQErDS0.png",
+      "url": "https://w.wallhaven.cc/full/3z/wallhaven-3z9xl9.jpg",
+      "wallhaven_id": "3z9xl9",
+      "width": 1920,
+      "height": 2702,
+      "ratio": 0.71058,
+      "crop_2x3": true,
+      "crop_retention": 0.93819,
+      "score": 105.963,
+      "favorites": 72,
+      "views": 14415,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Asta"
+      ],
+      "series_tags": [
+        "Black Clover"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/3z9xl9",
+      "query": "Asta",
+      "approved_at": "2026-08-26T21:20:42.390592+00:00"
+    },
+    "123283": {
+      "character_id": 123283,
+      "character_name": "Noelle Silva",
+      "anime_id": 97940,
+      "anime": "Black Clover",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b123283-7nJHtKha0LSm.png",
+      "url": "https://w.wallhaven.cc/full/z8/wallhaven-z8xzxy.png",
+      "wallhaven_id": "z8xzxy",
+      "width": 2348,
+      "height": 3300,
+      "ratio": 0.71152,
+      "crop_2x3": true,
+      "crop_retention": 0.93697,
+      "score": 103.732,
+      "favorites": 13,
+      "views": 2309,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Noelle Silva"
+      ],
+      "series_tags": [
+        "Black Clover"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/z8xzxy",
+      "query": "Noelle Silva",
+      "approved_at": "2026-08-26T21:21:04.336630+00:00"
+    },
+    "417": {
+      "character_id": 417,
+      "character_name": "Lelouch Lamperouge",
+      "anime_id": 1575,
+      "anime": "Code Geass: Hangyaku no Lelouch",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b417-gVLmIJu9phcK.png",
+      "url": "https://w.wallhaven.cc/full/z8/wallhaven-z8ewoj.jpg",
+      "wallhaven_id": "z8ewoj",
+      "width": 1690,
+      "height": 2340,
+      "ratio": 0.72222,
+      "crop_2x3": true,
+      "crop_retention": 0.92308,
+      "score": 99.062,
+      "favorites": 7,
+      "views": 1236,
+      "character_match": 1.0,
+      "series_match": 0.88,
+      "character_tags": [
+        "Lelouch vi Britannia"
+      ],
+      "series_tags": [
+        "Code Geass"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/z8ewoj",
+      "query": "Lelouch Lamperouge",
+      "approved_at": "2026-08-26T21:21:26.309950+00:00"
+    },
+    "86": {
+      "character_id": 86,
+      "character_name": "Rei Ayanami",
+      "anime_id": 30,
+      "anime": "Shin Seiki Evangelion",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/86-cA1zL7fyls8E.jpg",
+      "url": "https://w.wallhaven.cc/full/mp/wallhaven-mpwwp1.jpg",
+      "wallhaven_id": "mpwwp1",
+      "width": 1720,
+      "height": 2500,
+      "ratio": 0.688,
+      "crop_2x3": true,
+      "crop_retention": 0.96899,
+      "score": 101.732,
+      "favorites": 12,
+      "views": 3022,
+      "character_match": 1.0,
+      "series_match": 0.88,
+      "character_tags": [
+        "Ayanami Rei"
+      ],
+      "series_tags": [
+        "Neon Genesis Evangelion"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/mpwwp1",
+      "query": "Rei Ayanami",
+      "approved_at": "2026-08-26T21:21:34.164407+00:00"
+    },
+    "1259": {
+      "character_id": 1259,
+      "character_name": "Misato Katsuragi",
+      "anime_id": 30,
+      "anime": "Shin Seiki Evangelion",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b1259-afTQkZ5SVMOn.png",
+      "url": "https://w.wallhaven.cc/full/dg/wallhaven-dgw1ko.jpg",
+      "wallhaven_id": "dgw1ko",
+      "width": 1993,
+      "height": 2735,
+      "ratio": 0.7287,
+      "crop_2x3": true,
+      "crop_retention": 0.91487,
+      "score": 101.646,
+      "favorites": 20,
+      "views": 4814,
+      "character_match": 1.0,
+      "series_match": 0.88,
+      "character_tags": [
+        "Katsuragi Misato"
+      ],
+      "series_tags": [
+        "Neon Genesis Evangelion"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/dgw1ko",
+      "query": "Misato Katsuragi",
+      "approved_at": "2026-08-26T21:21:41.983367+00:00"
+    },
+    "120649": {
+      "character_id": 120649,
+      "character_name": "Kaguya Shinomiya",
+      "anime_id": 101921,
+      "anime": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b120649-NPaWaIpWy60E.png",
+      "url": "https://w.wallhaven.cc/full/g7/wallhaven-g7ygvl.png",
+      "wallhaven_id": "g7ygvl",
+      "width": 2480,
+      "height": 3508,
+      "ratio": 0.70696,
+      "crop_2x3": true,
+      "crop_retention": 0.94301,
+      "score": 102.362,
+      "favorites": 53,
+      "views": 2538,
+      "character_match": 1.0,
+      "series_match": 0.8229,
+      "character_tags": [
+        "Kaguya Shinomiya"
+      ],
+      "series_tags": [
+        "Kaguya-Sama: Love is War"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/g7ygvl",
+      "query": "Kaguya Shinomiya",
+      "approved_at": "2026-08-26T21:23:08.575649+00:00"
+    },
+    "121103": {
+      "character_id": 121103,
+      "character_name": "Chika Fujiwara",
+      "anime_id": 101921,
+      "anime": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b121103-UGLxT8utLPnq.png",
+      "url": "https://w.wallhaven.cc/full/83/wallhaven-83y3oo.png",
+      "wallhaven_id": "83y3oo",
+      "width": 2250,
+      "height": 4000,
+      "ratio": 0.5625,
+      "crop_2x3": true,
+      "crop_retention": 0.84375,
+      "score": 99.423,
+      "favorites": 58,
+      "views": 3988,
+      "character_match": 1.0,
+      "series_match": 0.8229,
+      "character_tags": [
+        "Chika Fujiwara"
+      ],
+      "series_tags": [
+        "Kaguya-Sama: Love is War"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/83y3oo",
+      "query": "Chika Fujiwara",
+      "approved_at": "2026-08-26T21:23:16.465242+00:00"
+    },
+    "257562": {
+      "character_id": 257562,
+      "character_name": "Hitori Gotou",
+      "anime_id": 130003,
+      "anime": "Bocchi the Rock!",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b257562-Ru35NYPfsqhY.png",
+      "url": "https://w.wallhaven.cc/full/gp/wallhaven-gp7w1q.png",
+      "wallhaven_id": "gp7w1q",
+      "width": 4960,
+      "height": 7016,
+      "ratio": 0.70696,
+      "crop_2x3": true,
+      "crop_retention": 0.94301,
+      "score": 106.073,
+      "favorites": 72,
+      "views": 8409,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Gotou Hitori"
+      ],
+      "series_tags": [
+        "BOCCHI THE ROCK!"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/gp7w1q",
+      "query": "Hitori Gotou",
+      "approved_at": "2026-08-26T21:23:24.373855+00:00"
+    },
+    "180692": {
+      "character_id": 180692,
+      "character_name": "Kafka Hibino",
+      "anime_id": 153288,
+      "anime": "Kaijuu 8-gou",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b180692-rPGXuxhcKw5N.png",
+      "url": "https://w.wallhaven.cc/full/ex/wallhaven-exmvqo.png",
+      "wallhaven_id": "exmvqo",
+      "width": 2534,
+      "height": 3840,
+      "ratio": 0.6599,
+      "crop_2x3": true,
+      "crop_retention": 0.98984,
+      "score": 106.766,
+      "favorites": 38,
+      "views": 5293,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Hibino Kafka (Kaijuu No. 8)"
+      ],
+      "series_tags": [
+        "Kaiju No. 8"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/exmvqo",
+      "query": "Kafka Hibino",
+      "approved_at": "2026-08-26T21:23:37.068801+00:00"
     }
   },
-  "generated_at": "2026-08-26T21:17:08.587901+00:00",
+  "generated_at": "2026-08-26T21:23:38.629561+00:00",
   "filters": {
     "purity": "sfw",
     "category": "anime",

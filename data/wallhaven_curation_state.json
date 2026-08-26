@@ -378,7 +378,307 @@
       "character_name": "Riza Hawkeye",
       "anime": "Hagane no Renkinjutsushi",
       "checked_at": "2026-08-26T21:17:08.585837+00:00"
+    },
+    "80": {
+      "status": "approved",
+      "character_name": "Light Yagami",
+      "anime": "DEATH NOTE",
+      "checked_at": "2026-08-26T21:18:37.169310+00:00"
+    },
+    "71": {
+      "status": "no_strict_match",
+      "character_name": "L Lawliet",
+      "anime": "DEATH NOTE",
+      "checked_at": "2026-08-26T21:18:40.282641+00:00"
+    },
+    "138100": {
+      "status": "no_strict_match",
+      "character_name": "Anya Forger",
+      "anime": "SPY×FAMILY",
+      "checked_at": "2026-08-26T21:18:48.119694+00:00"
+    },
+    "138102": {
+      "status": "no_strict_match",
+      "character_name": "Yor Forger",
+      "anime": "SPY×FAMILY",
+      "checked_at": "2026-08-26T21:18:55.973926+00:00"
+    },
+    "138101": {
+      "status": "no_strict_match",
+      "character_name": "Loid Forger",
+      "anime": "SPY×FAMILY",
+      "checked_at": "2026-08-26T21:19:03.823076+00:00"
+    },
+    "172759": {
+      "status": "no_strict_match",
+      "character_name": "Ai Hoshino",
+      "anime": "[Oshi no Ko]",
+      "checked_at": "2026-08-26T21:19:11.652878+00:00"
+    },
+    "183884": {
+      "status": "no_strict_match",
+      "character_name": "Ruby Hoshino",
+      "anime": "[Oshi no Ko]",
+      "checked_at": "2026-08-26T21:19:19.551931+00:00"
+    },
+    "188783": {
+      "status": "approved",
+      "character_name": "Kana Arima",
+      "anime": "[Oshi no Ko]",
+      "checked_at": "2026-08-26T21:19:27.319214+00:00"
+    },
+    "140856": {
+      "status": "no_search_result",
+      "character_name": "Yoichi Isagi",
+      "anime": "Blue Lock",
+      "checked_at": "2026-08-26T21:19:28.877354+00:00"
+    },
+    "162213": {
+      "status": "no_search_result",
+      "character_name": "Meguru Bachira",
+      "anime": "Blue Lock",
+      "checked_at": "2026-08-26T21:19:30.426063+00:00"
+    },
+    "162969": {
+      "status": "no_search_result",
+      "character_name": "Seishirou Nagi",
+      "anime": "Blue Lock",
+      "checked_at": "2026-08-26T21:19:31.972761+00:00"
+    },
+    "169395": {
+      "status": "no_search_result",
+      "character_name": "Rin Itoshi",
+      "anime": "Blue Lock",
+      "checked_at": "2026-08-26T21:19:33.528574+00:00"
+    },
+    "64769": {
+      "status": "no_strict_match",
+      "character_name": "Shouyou Hinata",
+      "anime": "Haikyuu!!",
+      "checked_at": "2026-08-26T21:19:36.639746+00:00"
+    },
+    "64771": {
+      "status": "no_search_result",
+      "character_name": "Tobio Kageyama",
+      "anime": "Haikyuu!!",
+      "checked_at": "2026-08-26T21:19:38.190547+00:00"
+    },
+    "4004": {
+      "status": "no_strict_match",
+      "character_name": "Dio Brando",
+      "anime": "JoJo no Kimyou na Bouken",
+      "checked_at": "2026-08-26T21:19:41.294831+00:00"
+    },
+    "10529": {
+      "status": "no_search_result",
+      "character_name": "Giorno Giovanna",
+      "anime": "JoJo no Kimyou na Bouken",
+      "checked_at": "2026-08-26T21:19:42.852266+00:00"
+    },
+    "73935": {
+      "status": "approved",
+      "character_name": "Saitama",
+      "anime": "One Punch Man",
+      "checked_at": "2026-08-26T21:19:50.688705+00:00"
+    },
+    "73979": {
+      "status": "approved",
+      "character_name": "Genos",
+      "anime": "One Punch Man",
+      "checked_at": "2026-08-26T21:19:58.455303+00:00"
+    },
+    "87275": {
+      "status": "approved",
+      "character_name": "Ken Kaneki",
+      "anime": "Tokyo Ghoul",
+      "checked_at": "2026-08-26T21:20:04.734581+00:00"
+    },
+    "87277": {
+      "status": "approved",
+      "character_name": "Touka Kirishima",
+      "anime": "Tokyo Ghoul",
+      "checked_at": "2026-08-26T21:20:12.725191+00:00"
+    },
+    "5186": {
+      "status": "approved",
+      "character_name": "Lucy Heartfilia",
+      "anime": "FAIRY TAIL",
+      "checked_at": "2026-08-26T21:20:20.578603+00:00"
+    },
+    "5189": {
+      "status": "approved",
+      "character_name": "Erza Scarlet",
+      "anime": "FAIRY TAIL",
+      "checked_at": "2026-08-26T21:20:28.306652+00:00"
+    },
+    "5187": {
+      "status": "no_strict_match",
+      "character_name": "Natsu Dragneel",
+      "anime": "FAIRY TAIL",
+      "checked_at": "2026-08-26T21:20:34.529059+00:00"
+    },
+    "123285": {
+      "status": "approved",
+      "character_name": "Asta",
+      "anime": "Black Clover",
+      "checked_at": "2026-08-26T21:20:42.390576+00:00"
+    },
+    "123284": {
+      "status": "no_strict_match",
+      "character_name": "Yuno",
+      "anime": "Black Clover",
+      "checked_at": "2026-08-26T21:20:47.116472+00:00"
+    },
+    "214820": {
+      "status": "no_strict_match",
+      "character_name": "Yuno",
+      "anime": "Akatsuki no Yona",
+      "checked_at": "2026-08-26T21:20:51.852937+00:00"
+    },
+    "262756": {
+      "status": "no_strict_match",
+      "character_name": "Yuno",
+      "anime": "Genjitsu Shugi Yuusha no Oukoku Saikenki",
+      "checked_at": "2026-08-26T21:20:56.590540+00:00"
+    },
+    "123283": {
+      "status": "approved",
+      "character_name": "Noelle Silva",
+      "anime": "Black Clover",
+      "checked_at": "2026-08-26T21:21:04.336615+00:00"
+    },
+    "34470": {
+      "status": "no_strict_match",
+      "character_name": "Kurisu Makise",
+      "anime": "Steins;Gate",
+      "checked_at": "2026-08-26T21:21:12.169230+00:00"
+    },
+    "35252": {
+      "status": "no_strict_match",
+      "character_name": "Rintarou Okabe",
+      "anime": "Steins;Gate",
+      "checked_at": "2026-08-26T21:21:18.460978+00:00"
+    },
+    "417": {
+      "status": "approved",
+      "character_name": "Lelouch Lamperouge",
+      "anime": "Code Geass: Hangyaku no Lelouch",
+      "checked_at": "2026-08-26T21:21:26.309939+00:00"
+    },
+    "86": {
+      "status": "approved",
+      "character_name": "Rei Ayanami",
+      "anime": "Shin Seiki Evangelion",
+      "checked_at": "2026-08-26T21:21:34.164386+00:00"
+    },
+    "1259": {
+      "status": "approved",
+      "character_name": "Misato Katsuragi",
+      "anime": "Shin Seiki Evangelion",
+      "checked_at": "2026-08-26T21:21:41.983316+00:00"
+    },
+    "1": {
+      "status": "no_strict_match",
+      "character_name": "Spike Spiegel",
+      "anime": "Cowboy Bebop",
+      "checked_at": "2026-08-26T21:21:46.734869+00:00"
+    },
+    "2": {
+      "status": "no_strict_match",
+      "character_name": "Faye Valentine",
+      "anime": "Cowboy Bebop",
+      "checked_at": "2026-08-26T21:21:52.962665+00:00"
+    },
+    "1905": {
+      "status": "no_strict_match",
+      "character_name": "Rem",
+      "anime": "DEATH NOTE",
+      "checked_at": "2026-08-26T21:22:00.779322+00:00"
+    },
+    "88575": {
+      "status": "no_strict_match",
+      "character_name": "Rem",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:08.631508+00:00"
+    },
+    "88572": {
+      "status": "no_strict_match",
+      "character_name": "Emilia",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:16.469095+00:00"
+    },
+    "88576": {
+      "status": "no_strict_match",
+      "character_name": "Ram",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:24.366823+00:00"
+    },
+    "89361": {
+      "status": "no_strict_match",
+      "character_name": "Megumin",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:29.157225+00:00"
+    },
+    "89362": {
+      "status": "no_strict_match",
+      "character_name": "Aqua",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:37.220916+00:00"
+    },
+    "247460": {
+      "status": "no_strict_match",
+      "character_name": "Aqua",
+      "anime": "Tsuki ga Michibiku Isekai Douchuu",
+      "checked_at": "2026-08-26T21:22:45.084210+00:00"
+    },
+    "89363": {
+      "status": "no_strict_match",
+      "character_name": "Darkness",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:22:52.901005+00:00"
+    },
+    "89122": {
+      "status": "no_strict_match",
+      "character_name": "Albedo",
+      "anime": "Isekai Quartet",
+      "checked_at": "2026-08-26T21:23:00.724158+00:00"
+    },
+    "120649": {
+      "status": "approved",
+      "character_name": "Kaguya Shinomiya",
+      "anime": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+      "checked_at": "2026-08-26T21:23:08.575629+00:00"
+    },
+    "121103": {
+      "status": "approved",
+      "character_name": "Chika Fujiwara",
+      "anime": "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+      "checked_at": "2026-08-26T21:23:16.465227+00:00"
+    },
+    "257562": {
+      "status": "approved",
+      "character_name": "Hitori Gotou",
+      "anime": "Bocchi the Rock!",
+      "checked_at": "2026-08-26T21:23:24.373844+00:00"
+    },
+    "222594": {
+      "status": "no_strict_match",
+      "character_name": "Momo Ayase",
+      "anime": "Dandadan",
+      "checked_at": "2026-08-26T21:23:32.352662+00:00"
+    },
+    "180692": {
+      "status": "approved",
+      "character_name": "Kafka Hibino",
+      "anime": "Kaijuu 8-gou",
+      "checked_at": "2026-08-26T21:23:37.068789+00:00"
+    },
+    "180693": {
+      "status": "no_search_result",
+      "character_name": "Mina Ashiro",
+      "anime": "Kaijuu 8-gou",
+      "checked_at": "2026-08-26T21:23:38.627003+00:00"
     }
   },
-  "updated_at": "2026-08-26T21:17:08.587909+00:00"
+  "updated_at": "2026-08-26T21:23:38.629569+00:00"
 }
