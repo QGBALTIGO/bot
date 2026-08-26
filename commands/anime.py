@@ -5,9 +5,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppI
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
-BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot")
 
 CATALOG_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzeISGmpyjb2CsPEQUv3zfVD-aj7780SAAKzC2sb6qtQRVbTTJ4IyPVIAQADAgADeQADOgQ/photo.jpg"
@@ -18,6 +17,7 @@ def _is_group(update: Update) -> bool:
 
 
 async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     if _is_group(update):
         texto = (
             "⚠️ <b>Catálogo disponível apenas no privado</b>\n\n"
@@ -37,8 +37,15 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message and msg:
             await update.message.reply_html(msg)
         return
+    if not user:
+        return
 
-    url = f"{BASE_URL}/catalogo"
+    url = build_webapp_url(
+        "/catalogo",
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
     teclado = InlineKeyboardMarkup([[InlineKeyboardButton("📺 Abrir Catálogo de Animes", web_app=WebAppInfo(url=url))]])
     texto = (
         "📺 <b>Catálogo de Animes</b>\n\n"
