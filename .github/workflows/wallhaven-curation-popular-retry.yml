@@ -1,0 +1,54 @@
+name: Wallhaven popular strict retry
+
+on:
+  push:
+    paths:
+      - ".github/workflows/wallhaven-curation-popular-retry.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install httpx
+      - name: Reprocess first popular group
+        env:
+          WALLHAVEN_API_KEY: ${{ secrets.WALLHAVEN_API_KEY }}
+          WALLHAVEN_CURATOR_DELAY: "1.45"
+        run: python scripts/curate_wallhaven_characters.py --offset 0 --limit 30 --apply --retry-misses
+      - name: Validate every approved portrait is strict solo 2x3
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('data/wallhaven_character_overrides.json').read_text(encoding='utf-8'))
+          chars=data.get('characters') or {}
+          print('APPROVED_TOTAL', len(chars))
+          for cid,row in chars.items():
+              assert not (row.get('other_characters') or []), (cid,row.get('other_characters'))
+              assert int(row.get('width') or 0) >= 1000
+              assert int(row.get('height') or 0) >= 1500
+              assert abs(float(row.get('ratio') or 0) - (2/3)) <= 0.035
+              assert float(row.get('score') or 0) >= 82
+              print('OK',cid,row.get('character_name'),'/',row.get('anime'),row.get('width'),row.get('height'),row.get('score'),row.get('wallhaven_id'))
+          PY
+          git diff --check
+      - name: Remove one-shot workflow
+        run: rm -f .github/workflows/wallhaven-curation-popular-retry.yml
+      - name: Commit curated portraits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/wallhaven_character_overrides.json data/wallhaven_curation_state.json .github/workflows/wallhaven-curation-popular-retry.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Curate strict solo portraits for popular characters"
+          git push origin HEAD:main
