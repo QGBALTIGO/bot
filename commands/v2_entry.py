@@ -8,10 +8,9 @@ from telegram.ext import ContextTypes
 
 from identity_repository import sync_telegram_identity
 from utils.gatekeeper import gatekeeper
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
 
-BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 
 
@@ -65,10 +64,14 @@ async def open_webapp_entry(
             full_name=str(user.full_name or ""),
         )
     except Exception:
-        # Identity enrichment must not make a MiniApp unavailable.
         pass
 
-    url = f"{BASE_URL}{entry.path}"
+    url = build_webapp_url(
+        entry.path,
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton(entry.button, web_app=WebAppInfo(url=url))]]
     )
