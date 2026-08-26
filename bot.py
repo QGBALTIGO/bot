@@ -28,12 +28,14 @@ from commands.collection import colecao
 from commands.duel_v2 import duel_callback, duelo
 from commands.game import dado, daily, giro, jogar
 from commands.manga import manga
+from commands.memory_v2 import memoria
 from commands.nivel import nivel
 from commands.pedido import pedido
 from commands.profile import perfil
 from commands.ranking_v2 import ranking
 from commands.shop_v2 import loja
 from commands.start import start
+from commands.termo_v2 import termo
 from commands.trade_v2 import trade_callback, trocar
 from commands.xcards_v2 import xcard, xcolecao
 from capture_repository import create_capture_tables
@@ -47,7 +49,9 @@ from handlers.capture_v2 import (
     restore_capture_runtime,
 )
 from identity_repository import create_identity_tables
+from memory_repository import create_memory_v2_tables
 from shop_repository import create_shop_tables
+from termo_repository import create_termo_v2_tables
 from trade_repository import create_trade_tables
 from xcards_repository import create_xcard_tables
 
@@ -159,6 +163,8 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("perfil", perfil))
     tg_app.add_handler(CommandHandler("ranking", ranking))
     tg_app.add_handler(CommandHandler("loja", loja))
+    tg_app.add_handler(CommandHandler("memoria", memoria))
+    tg_app.add_handler(CommandHandler("termo", termo))
 
     # XCards / Union Arena V2
     tg_app.add_handler(CommandHandler("xcard", xcard))
@@ -210,6 +216,8 @@ def main() -> None:
     create_trade_tables()
     create_xcard_tables()
     create_duel_v2_tables()
+    create_memory_v2_tables()
+    create_termo_v2_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
