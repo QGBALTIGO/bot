@@ -146,11 +146,6 @@ PORT = int(os.getenv("PORT", "8000"))
 def run_webapp():
     try:
         from webapp import app as web_app
-        from utils.terms_membership import install_terms_membership_route
-
-        # Mantém todo o WebApp original da main e substitui somente a rota
-        # usada pelo botão "Verificar inscrição" dos Termos.
-        install_terms_membership_route(web_app)
 
         uvicorn.run(
             web_app,
@@ -319,15 +314,27 @@ def build_application():
         await restore_capture_purchase_runtime(app)
         await restore_duel_runtime(app)
         app.bot_data["terms_channel_worker"] = asyncio.create_task(
-    channel_verification_worker(app),
-    name="terms-channel-verification",
-)
+            channel_verification_worker(app),
+            name="terms-channel-verification",
+        )
+
+    async def post_shutdown(app: Application):
+        task = app.bot_data.pop("terms_channel_worker", None)
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 
     app = (
         Application.builder()
         .token(BOT_TOKEN)
         .concurrent_updates(True)
         .post_init(post_init)
+        .post_shutdown(post_shutdown)
         .build()
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -14,6 +15,11 @@ from database import pool
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
 _SELFTEST_USER_ID = -1
+_TABLES_READY = False
+_TABLES_LOCK = threading.Lock()
+_CLEANUP_LOCK = threading.Lock()
+_LAST_CLEANUP_MONOTONIC = 0.0
+_CLEANUP_INTERVAL_SECONDS = 60.0
 
 _TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS channel_verification_requests (
@@ -36,20 +42,38 @@ CREATE TABLE IF NOT EXISTS channel_verification_worker (
 
 
 def ensure_channel_verification_tables() -> None:
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_TABLE_SQL)
-        conn.commit()
+    global _TABLES_READY
+    if _TABLES_READY:
+        return
+
+    with _TABLES_LOCK:
+        if _TABLES_READY:
+            return
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_TABLE_SQL)
+            conn.commit()
+        _TABLES_READY = True
 
 
 def _cleanup_old_requests() -> None:
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM channel_verification_requests "
-                "WHERE created_at < NOW() - INTERVAL '10 minutes'"
-            )
-        conn.commit()
+    global _LAST_CLEANUP_MONOTONIC
+    now = time.monotonic()
+    if now - _LAST_CLEANUP_MONOTONIC < _CLEANUP_INTERVAL_SECONDS:
+        return
+
+    with _CLEANUP_LOCK:
+        now = time.monotonic()
+        if now - _LAST_CLEANUP_MONOTONIC < _CLEANUP_INTERVAL_SECONDS:
+            return
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM channel_verification_requests "
+                    "WHERE created_at < NOW() - INTERVAL '10 minutes'"
+                )
+            conn.commit()
+        _LAST_CLEANUP_MONOTONIC = now
 
 
 def create_verification_request(user_id: int) -> str:
