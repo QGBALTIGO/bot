@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: system-audit-main
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -27,6 +31,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install ruff bandit
+          pip check
       - name: Compile all Python
         run: python -m compileall -q .
       - name: Critical Python diagnostics
@@ -37,7 +42,6 @@ jobs:
           python - <<'PY'
           import ast
           import pathlib
-          import re
           from collections import defaultdict
 
           roots = [p for p in pathlib.Path('.').rglob('*.py') if '.git' not in p.parts]
