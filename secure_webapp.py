@@ -7,6 +7,7 @@ from urllib.parse import parse_qs
 from fastapi.responses import HTMLResponse as BaseHTMLResponse
 
 import webapp as legacy_webapp
+from game_webapp import register_game_routes
 from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,11 @@ PROTECTED_TELEGRAM_PATHS = {
     "/api/pedido/search",
     "/api/pedido/send",
     "/api/pedido/report",
+    "/api/v2/game/state",
+    "/api/v2/game/daily/claim",
+    "/api/v2/game/dice/roll",
+    "/api/v2/game/dice/pick",
+    "/api/v2/game/spin",
 }
 
 IDENTITY_BODY_PATHS = {
@@ -175,7 +181,7 @@ class TelegramWebAppAuthMiddleware:
                 },
             )
 
-        # The request-limit endpoint identifies the user in its query string.
+        # Legacy request-limit endpoint identifies the user in its query string.
         if path == "/api/pedido/limit":
             raw_uid = (_query_params(scope).get("uid") or [""])[0]
             try:
@@ -262,8 +268,11 @@ class TelegramWebAppAuthMiddleware:
                 separators=(",", ":"),
             ).encode("utf-8")
 
+        # New V2 endpoints do not accept a client-provided uid. The verified
+        # Telegram identity is injected into ASGI state and consumed server-side.
         scope.setdefault("state", {})["telegram_user_id"] = identity.user_id
         scope["state"]["telegram_username"] = identity.username
+        scope["state"]["telegram_full_name"] = identity.full_name
 
         sent_body = False
 
@@ -318,10 +327,11 @@ class TelegramWebAppAuthMiddleware:
 
 # Transitional security layer: route functions in the legacy module resolve
 # HTMLResponse from module globals at request time. This lets us secure existing
-# pages now, before splitting the 5k+ line legacy WebApp into routers/templates.
+# pages now, before splitting the legacy WebApp into routers/templates/static.
 legacy_webapp.HTMLResponse = SecureHTMLResponse
 
 app = legacy_webapp.app
+register_game_routes(app)
 app.add_middleware(
     TelegramWebAppAuthMiddleware,
     bot_token=BOT_TOKEN,
