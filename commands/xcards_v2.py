@@ -32,6 +32,14 @@ async def xcard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if not message:
         return
+
+    from utils.gatekeeper import gatekeeper
+    ok, blocked = await gatekeeper(update, context)
+    if not ok:
+        if blocked:
+            await message.reply_html(blocked)
+        return
+
     if not context.args:
         await message.reply_html(
             "🃏 <b>XCard</b>\n\n"
