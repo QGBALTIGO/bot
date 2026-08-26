@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from collection_webapp import register_collection_routes
+from game_webapp import register_game_routes
+from profile_webapp import register_profile_routes
+
+
+PROTECTED_V2_PATHS = {
+    "/api/v2/game/state",
+    "/api/v2/game/daily/claim",
+    "/api/v2/game/dice/roll",
+    "/api/v2/game/dice/pick",
+    "/api/v2/game/spin",
+    "/api/v2/collection",
+    "/api/v2/profile",
+}
+
+
+def register_v2_routes(app) -> None:
+    register_game_routes(app)
+    register_collection_routes(app)
+    register_profile_routes(app)
