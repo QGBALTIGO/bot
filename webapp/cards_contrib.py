@@ -58,6 +58,8 @@ font-size:18px;
 
     return HTMLResponse(html)
 
+
+_LEGACY_RULES_FRAGMENT = """
 <h2>Regras para imagens</h2>
 
 <ul>
@@ -78,3 +80,4 @@ Se aprovada, a nova imagem substituirá a atual em todo o sistema.
 <p>
 Recompensa: <b>+1 coin</b>
 </p>
+"""
