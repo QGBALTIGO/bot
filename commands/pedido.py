@@ -5,9 +5,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppI
 from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
-from utils.public_url import require_public_base_url
+from utils.webapp_url import build_webapp_url
 
-BASE_URL = require_public_base_url()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 PEDIDO_BANNER_URL = os.getenv(
@@ -23,6 +22,7 @@ def _is_group(update: Update) -> bool:
 
 async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
+    user = update.effective_user
     if _is_group(update):
         texto = (
             "⚠️ <b>Central de pedidos disponível apenas no privado</b>\n\n"
@@ -39,8 +39,15 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg and bloqueio:
             await msg.reply_html(bloqueio)
         return
+    if not user:
+        return
 
-    url = f"{BASE_URL}/pedido"
+    url = build_webapp_url(
+        "/pedido",
+        user_id=int(user.id),
+        username=str(user.username or ""),
+        full_name=str(user.full_name or ""),
+    )
     texto = (
         "📩 <b>Central de Pedidos</b>\n\n"
         "Peça <b>animes</b>, <b>mangás</b> ou envie um <b>report de erro</b> em um só lugar.\n\n"
