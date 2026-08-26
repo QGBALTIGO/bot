@@ -5,6 +5,7 @@ from game_webapp import register_game_routes
 from profile_webapp import register_profile_routes
 from ranking_webapp import register_ranking_routes
 from shop_webapp import register_shop_routes
+from xcards_webapp import register_xcards_routes
 
 
 PROTECTED_V2_PATHS = {
@@ -19,6 +20,8 @@ PROTECTED_V2_PATHS = {
     "/api/v2/shop",
     "/api/v2/shop/buy",
     "/api/v2/shop/sell",
+    "/api/v2/xcards/state",
+    "/api/v2/xcards/buy",
 }
 
 
@@ -28,3 +31,4 @@ def register_v2_routes(app) -> None:
     register_profile_routes(app)
     register_ranking_routes(app)
     register_shop_routes(app)
+    register_xcards_routes(app)
