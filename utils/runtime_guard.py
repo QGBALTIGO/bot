@@ -1,5 +1,6 @@
 import asyncio
 import time
+import weakref
 from dataclasses import dataclass
 from typing import Dict
 
@@ -11,7 +12,7 @@ class _RateEntry:
 
 
 class InMemoryRateLimiter:
-    """Async-safe fixed-window rate limiter with bounded stale-entry cleanup."""
+    """Async-safe fixed-window rate limiter with stale-entry cleanup."""
 
     def __init__(self, prune_threshold: int = 1024):
         self._entries: Dict[str, _RateEntry] = {}
@@ -47,7 +48,6 @@ class InMemoryRateLimiter:
             return True
 
     def _maybe_prune(self, now: float) -> None:
-        # Periodic cleanup prevents a long-lived process from retaining every user key.
         if (
             len(self._entries) < self._prune_threshold
             and self._operations % 256 != 0
@@ -64,12 +64,15 @@ class InMemoryRateLimiter:
 
 
 class KeyedLockManager:
-    """Provides per-key locks while pruning old unlocked keys under load."""
+    """Provides per-key locks without retaining inactive keys forever."""
 
-    def __init__(self, prune_threshold: int = 1024):
-        self._locks: Dict[str, asyncio.Lock] = {}
+    def __init__(self):
+        # Active owners/waiters keep strong references to their lock. Once no
+        # coroutine uses a key anymore, the weak mapping can discard it safely.
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
         self._guard = asyncio.Lock()
-        self._prune_threshold = max(128, int(prune_threshold))
 
     async def acquire(self, key: str) -> asyncio.Lock:
         key = str(key or "").strip()
@@ -77,9 +80,6 @@ class KeyedLockManager:
             raise ValueError("lock key cannot be empty")
 
         async with self._guard:
-            if len(self._locks) >= self._prune_threshold:
-                self._prune_unlocked()
-
             lock = self._locks.get(key)
             if lock is None:
                 lock = asyncio.Lock()
@@ -87,13 +87,6 @@ class KeyedLockManager:
 
         await lock.acquire()
         return lock
-
-    def _prune_unlocked(self) -> None:
-        # Removing an unlocked lock is safe: no coroutine owns it. Keep locked
-        # entries so current critical sections are never detached from the map.
-        removable = [key for key, lock in self._locks.items() if not lock.locked()]
-        for key in removable:
-            self._locks.pop(key, None)
 
 
 rate_limiter = InMemoryRateLimiter()
