@@ -5,12 +5,12 @@ from collection_webapp import register_collection_routes
 from contrib_webapp import register_contribution_routes
 from game_webapp import register_game_routes
 from hub_webapp import register_hub_routes
-from memory_webapp import register_memory_routes
+from memory_webapp_v2 import register_memory_routes
 from messages_webapp import register_message_routes
 from profile_webapp import register_profile_routes
 from ranking_webapp import register_ranking_routes
 from shop_webapp import register_shop_routes
-from termo_webapp import register_termo_routes
+from termo_webapp_v2 import register_termo_routes
 from xcards_webapp import register_xcards_routes
 
 
