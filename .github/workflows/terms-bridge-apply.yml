@@ -1,0 +1,196 @@
+name: Apply Terms verification bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/terms-bridge-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-live-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch bot worker and live webapp route only
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          bot_path = Path('bot.py')
+          bot = bot_path.read_text(encoding='utf-8')
+
+          if 'from utils.channel_verification_bridge import channel_verification_worker' not in bot:
+              bot = bot.replace(
+                  'import os\nimport threading\nimport traceback\n',
+                  'import os\nimport asyncio\nimport threading\nimport traceback\n',
+                  1,
+              )
+              bot = bot.replace(
+                  'from duel_service import restore_duel_runtime\n',
+                  'from duel_service import restore_duel_runtime\nfrom utils.channel_verification_bridge import channel_verification_worker\n',
+                  1,
+              )
+
+          old_post_init = '''    async def post_init(app: Application):
+              await restore_capture_runtime(app)
+              await restore_capture_purchase_runtime(app)
+              await restore_duel_runtime(app)
+
+              app = (
+                  Application.builder()
+                  .token(BOT_TOKEN)
+                  .concurrent_updates(True)
+                  .post_init(post_init)
+                  .build()
+              )
+          '''
+          new_post_init = '''    async def post_init(app: Application):
+              await restore_capture_runtime(app)
+              await restore_capture_purchase_runtime(app)
+              await restore_duel_runtime(app)
+              app.bot_data["terms_channel_worker"] = asyncio.create_task(
+                  channel_verification_worker(app),
+                  name="terms-channel-verification",
+              )
+
+              async def post_shutdown(app: Application):
+                  task = app.bot_data.pop("terms_channel_worker", None)
+                  if task is not None:
+                      task.cancel()
+                      try:
+                          await task
+                      except asyncio.CancelledError:
+                          pass
+
+              app = (
+                  Application.builder()
+                  .token(BOT_TOKEN)
+                  .concurrent_updates(True)
+                  .post_init(post_init)
+                  .post_shutdown(post_shutdown)
+                  .build()
+              )
+          '''
+          if old_post_init not in bot:
+              raise SystemExit('bot.py post_init block not found exactly; refusing broad edit')
+          bot = bot.replace(old_post_init, new_post_init, 1)
+          bot_path.write_text(bot, encoding='utf-8')
+
+          web_path = Path('webapp.py')
+          web = web_path.read_text(encoding='utf-8')
+          start_marker = 'def _channel_membership_request(user_id: int) -> dict:\n'
+          end_marker = '\n\n# =========================\n# CONFIG — CATÁLOGO\n# =========================\n'
+          start = web.find(start_marker)
+          end = web.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('webapp.py channel route block markers not found; refusing broad edit')
+
+          replacement = '''from utils.channel_verification_bridge import wait_for_verification, worker_health
+
+
+          @app.get("/api/channel/selftest")
+          def api_channel_selftest():
+              health = worker_health()
+              return JSONResponse(health, status_code=200 if health.get("ok") else 503)
+
+
+          @app.post("/api/channel/check")
+          def api_channel_check(payload: dict = Body(...)):
+              try:
+                  uid = int((payload or {}).get("uid") or 0)
+              except (TypeError, ValueError):
+                  uid = 0
+
+              if uid <= 0:
+                  return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+
+              if not REQUIRED_CHANNEL:
+                  return {"ok": True}
+
+              try:
+                  result = wait_for_verification(uid, timeout_seconds=8.0)
+              except Exception as exc:
+                  print(
+                      f"❌ ERROR /api/channel/check bridge uid={uid}: {type(exc).__name__}: {exc}",
+                      flush=True,
+                  )
+                  return JSONResponse(
+                      {"ok": False, "message": "Não foi possível iniciar a verificação agora."},
+                      status_code=502,
+                  )
+
+              status = str(result.get("status") or "")
+              if status == "ok":
+                  return {"ok": True}
+              if status == "not_member":
+                  return {"ok": False}
+              if status == "timeout":
+                  return JSONResponse(
+                      {"ok": False, "message": str(result.get("message") or "A verificação demorou. Tente novamente.")},
+                      status_code=503,
+                  )
+              return JSONResponse(
+                  {"ok": False, "message": str(result.get("message") or "O Telegram não conseguiu verificar sua inscrição agora.")},
+                  status_code=502,
+              )
+          '''
+          web = web[:start] + replacement + web[end:]
+          web_path.write_text(web, encoding='utf-8')
+          print('Patched bot worker + Terms WebApp route.')
+          PY
+
+      - name: Syntax check only touched runtime modules
+        run: python -m py_compile bot.py webapp.py utils/channel_verification_bridge.py
+
+      - name: Commit bridge directly to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.py webapp.py
+          git commit -m "Route Terms membership verification through bot worker"
+          git push origin HEAD:main
+          echo "PATCH_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Wait for both Railway services and verify worker heartbeat
+        shell: bash
+        run: |
+          BASE="https://bot-production-1980.up.railway.app"
+          echo "Waiting for bridge deployment: $PATCH_SHA"
+          status=""
+          payload=""
+          for attempt in $(seq 1 60); do
+            raw=$(curl -sS --max-time 12 -w '\n%{http_code}' "$BASE/api/channel/selftest?_ts=$(date +%s%N)" || true)
+            status=$(printf '%s' "$raw" | tail -n1)
+            payload=$(printf '%s' "$raw" | sed '$d')
+            echo "attempt=$attempt http=$status body=$payload"
+            if [ "$status" = "200" ] && printf '%s' "$payload" | grep -q '"status":"online"'; then
+              break
+            fi
+            sleep 8
+          done
+
+          echo "FINAL_BRIDGE_HTTP=$status"
+          echo "FINAL_BRIDGE_BODY=$payload"
+          if [ "$status" != "200" ] || ! printf '%s' "$payload" | grep -q '"status":"online"'; then
+            echo "Bridge worker did not become healthy."
+            exit 1
+          fi
+
+          echo "Checking live POST contract..."
+          invalid=$(curl -sS --max-time 12 -w '\n%{http_code}' -X POST \
+            "$BASE/api/channel/check?_ts=$(date +%s%N)" \
+            -H 'Content-Type: application/json' \
+            --data '{"uid":0}')
+          echo "$invalid"
+          invalid_code=$(printf '%s' "$invalid" | tail -n1)
+          [ "$invalid_code" = "400" ]
