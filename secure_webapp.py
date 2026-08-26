@@ -7,6 +7,7 @@ from urllib.parse import parse_qs
 from fastapi.responses import HTMLResponse as BaseHTMLResponse
 
 import webapp as legacy_webapp
+from collection_webapp import register_collection_routes
 from game_webapp import register_game_routes
 from utils.route_hygiene import dedupe_http_routes_keep_last
 from utils.webapp_auth import WebAppAuthError, validate_telegram_init_data
@@ -43,6 +44,7 @@ PROTECTED_TELEGRAM_PATHS = {
     "/api/v2/game/dice/roll",
     "/api/v2/game/dice/pick",
     "/api/v2/game/spin",
+    "/api/v2/collection",
 }
 
 IDENTITY_BODY_PATHS = {
@@ -268,8 +270,6 @@ class TelegramWebAppAuthMiddleware:
                 separators=(",", ":"),
             ).encode("utf-8")
 
-        # V2 endpoints never trust a uid supplied by the browser. The verified
-        # Telegram identity is injected into request.state for server-side use.
         scope.setdefault("state", {})["telegram_user_id"] = identity.user_id
         scope["state"]["telegram_username"] = identity.username
         scope["state"]["telegram_full_name"] = identity.full_name
@@ -325,18 +325,13 @@ class TelegramWebAppAuthMiddleware:
             )
 
 
-# Temporary compatibility layer while legacy pages are split into proper
-# routers/templates/static modules.
 legacy_webapp.HTMLResponse = SecureHTMLResponse
-
 app = legacy_webapp.app
 
-# The legacy file contains old and new implementations registered under the
-# same path+method. Starlette would otherwise execute the first/old route and
-# make the later implementation unreachable. Keep the latest deliberately.
 dedupe_http_routes_keep_last(app)
-
 register_game_routes(app)
+register_collection_routes(app)
+
 app.add_middleware(
     TelegramWebAppAuthMiddleware,
     bot_token=BOT_TOKEN,
