@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import unicodedata
 from copy import deepcopy
 from threading import RLock
@@ -27,6 +28,8 @@ CARDS_OVERRIDES_PATH = os.getenv(
 
 _LOCK = RLock()
 _CACHE: Optional[Dict[str, Any]] = None
+_CACHE_LOADED_AT: float = 0.0
+CARDS_CACHE_TTL_SECONDS = max(5.0, float(os.getenv("CARDS_CACHE_TTL_SECONDS", "60")))
 
 
 def _default_overrides() -> Dict[str, Any]:
@@ -209,15 +212,22 @@ def save_cards_overrides(data: Dict[str, Any]) -> None:
 
 
 def reload_cards_cache() -> None:
-    global _CACHE
+    global _CACHE, _CACHE_LOADED_AT
     _CACHE = None
+    _CACHE_LOADED_AT = 0.0
 
 
 def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
-    global _CACHE
+    global _CACHE, _CACHE_LOADED_AT
 
     with _LOCK:
-        if _CACHE is not None and not force_reload:
+        now = time.monotonic()
+        cache_fresh = (
+            _CACHE is not None
+            and _CACHE_LOADED_AT > 0
+            and (now - _CACHE_LOADED_AT) < CARDS_CACHE_TTL_SECONDS
+        )
+        if cache_fresh and not force_reload:
             return _CACHE
 
         assets = load_cards_assets_raw()
@@ -425,6 +435,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             "overrides": overrides,
         }
 
+        _CACHE_LOADED_AT = time.monotonic()
         return _CACHE
 
 
