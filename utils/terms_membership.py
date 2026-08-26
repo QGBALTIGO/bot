@@ -72,6 +72,48 @@ async def _get_chat_member(user_id: int) -> Any:
     raise RuntimeError("Telegram não retornou o estado do membro.")
 
 
+async def api_channel_selftest():
+    if not BOT_TOKEN:
+        return JSONResponse({"ok": False, "stage": "config", "error": "BOT_TOKEN ausente"}, status_code=500)
+    if not REQUIRED_CHANNEL:
+        return {"ok": True, "stage": "disabled", "channel_required": False}
+
+    try:
+        async with Bot(token=BOT_TOKEN) as bot:
+            me = await bot.get_me()
+            member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=me.id)
+            status = str(getattr(member, "status", "") or "").strip().lower()
+            return {
+                "ok": status in {"administrator", "creator"},
+                "stage": "telegram",
+                "channel": REQUIRED_CHANNEL,
+                "bot_username": getattr(me, "username", None),
+                "bot_status": status,
+                "can_reliably_check_other_members": status in {"administrator", "creator"},
+            }
+    except BadRequest as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "stage": "telegram",
+                "channel": REQUIRED_CHANNEL,
+                "error": str(exc),
+                "message": _configuration_message(exc) or "Telegram recusou o self-test.",
+            },
+            status_code=503,
+        )
+    except TelegramError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "stage": "telegram",
+                "channel": REQUIRED_CHANNEL,
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+            status_code=502,
+        )
+
+
 async def api_channel_check(payload: dict = Body(...)):
     try:
         user_id = int((payload or {}).get("uid") or 0)
@@ -156,6 +198,12 @@ def install_terms_membership_route(app: FastAPI) -> None:
         api_channel_check,
         methods=["POST"],
         name="api_channel_check",
+    )
+    app.add_api_route(
+        "/api/channel/selftest",
+        api_channel_selftest,
+        methods=["GET"],
+        name="api_channel_selftest",
     )
     print(
         f"[terms-membership] rota /api/channel/check instalada; antigas removidas={removed}",
