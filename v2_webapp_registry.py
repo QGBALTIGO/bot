@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from collection_webapp import register_collection_routes
+from contrib_webapp import register_contribution_routes
 from game_webapp import register_game_routes
+from hub_webapp import register_hub_routes
 from memory_webapp import register_memory_routes
+from messages_webapp import register_message_routes
 from profile_webapp import register_profile_routes
 from ranking_webapp import register_ranking_routes
 from shop_webapp import register_shop_routes
@@ -32,6 +35,25 @@ PROTECTED_V2_PATHS = {
     "/api/v2/termo/train",
     "/api/v2/termo/guess",
     "/api/v2/termo/hint",
+    "/api/v2/messages/state",
+    "/api/v2/messages/settings",
+    "/api/v2/messages/block",
+    "/api/v2/messages/report",
+    "/api/v2/contrib/state",
+    "/api/v2/contrib/image",
+    "/api/v2/contrib/work",
+    "/api/v2/contrib/admin/pending",
+    "/api/v2/contrib/admin/review",
+    "/api/v2/ecosystem/state",
+    "/api/v2/search",
+    "/api/v2/library/save",
+    "/api/v2/library/remove",
+    "/api/v2/missions/claim",
+    "/api/v2/titles/equip",
+    "/api/v2/notifications/preferences",
+    "/api/v2/notifications/read",
+    "/api/v2/friends/request",
+    "/api/v2/friends/respond",
 }
 
 
@@ -44,3 +66,6 @@ def register_v2_routes(app) -> None:
     register_xcards_routes(app)
     register_memory_routes(app)
     register_termo_routes(app)
+    register_message_routes(app)
+    register_contribution_routes(app)
+    register_hub_routes(app)
