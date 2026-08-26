@@ -17,18 +17,25 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install httpx
-      - name: Read live curator state once
+      - name: Read live curator state and visible replacements
         run: |
           python - <<'PY'
           import httpx
           base='https://bot-production-1980.up.railway.app'
-          headers={'User-Agent':'SourceBaltigo-Live-Wallhaven-Check/1.2'}
+          headers={'User-Agent':'SourceBaltigo-Live-Wallhaven-Check/1.3'}
+          visible=[]
           with httpx.Client(timeout=20,follow_redirects=True,headers=headers) as client:
               status=client.get(base + '/api/system/wallhaven-curator-status')
               print('STATUS_HTTP',status.status_code)
               print('STATUS_BODY',status.text[:5000])
-              for q in ('a','e','i','Frieren'):
-                  r=client.get(base + '/api/cards/search',params={'q':q,'limit':1000})
+              if status.status_code != 200:
+                  raise SystemExit('status endpoint not healthy')
+              payload=status.json()
+              if int(payload.get('wallhaven_urls') or 0) <= 0:
+                  raise SystemExit('curator has not applied any Wallhaven URL')
+
+              for q in ('a','e','i','o','u','Frieren'):
+                  r=client.get(base + '/api/cards/search',params={'q':q,'limit':500})
                   print('CATALOG_HTTP',q,r.status_code)
                   if r.status_code != 200:
                       print(r.text[:500])
@@ -37,7 +44,11 @@ jobs:
                   items=(data or {}).get('items') or []
                   found=[(x.get('id'),x.get('name'),x.get('anime'),x.get('image')) for x in items if 'w.wallhaven.cc/' in str(x.get('image') or '')]
                   print('WALLHAVEN_VISIBLE',q,len(found))
-                  for row in found[:5]: print(row)
-              if status.status_code != 200:
-                  raise SystemExit('status endpoint not healthy')
+                  for row in found[:10]: print(row)
+                  visible.extend(found)
+
+          unique={str(row[0]): row for row in visible}
+          print('LIVE_UNIQUE_WALLHAVEN_REPLACEMENTS',len(unique))
+          if not unique:
+              raise SystemExit('DB has Wallhaven URLs, but public card catalog is not exposing them yet')
           PY
