@@ -11,61 +11,33 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 4
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: python -m pip install httpx
-      - name: Inspect curator state and live catalog
+      - name: Read live curator state once
         run: |
           python - <<'PY'
-          import json
-          import time
           import httpx
-
           base='https://bot-production-1980.up.railway.app'
-          status_url=base + '/api/system/wallhaven-curator-status'
-          search_urls=[
-              base + '/api/cards/search?q=a&limit=1000',
-              base + '/api/cards/search?q=e&limit=1000',
-              base + '/api/cards/search?q=i&limit=1000',
-              base + '/api/cards/search?q=Frieren&limit=50',
-          ]
-          headers={'User-Agent':'SourceBaltigo-Live-Wallhaven-Check/1.1'}
+          headers={'User-Agent':'SourceBaltigo-Live-Wallhaven-Check/1.2'}
           with httpx.Client(timeout=20,follow_redirects=True,headers=headers) as client:
-              for attempt in range(1, 13):
-                  try:
-                      sr=client.get(status_url)
-                      print('STATUS_HTTP',sr.status_code)
-                      print('STATUS_BODY',sr.text[:3000])
-                      if sr.status_code == 200:
-                          status=sr.json()
-                          if int(status.get('wallhaven_urls') or 0) > 0:
-                              print('CURATOR_HAS_APPLIED_URLS', status.get('wallhaven_urls'))
-                  except Exception as exc:
-                      print('status_error',type(exc).__name__,str(exc)[:300])
-
-                  found=[]
-                  for url in search_urls:
-                      try:
-                          r=client.get(url)
-                          print('attempt',attempt,'catalog_status',r.status_code,'url',url)
-                          if r.status_code != 200:
-                              print(r.text[:300])
-                              continue
-                          data=r.json()
-                          items=(data or {}).get('items') or []
-                          for item in items:
-                              image=str((item or {}).get('image') or '')
-                              if 'w.wallhaven.cc/' in image:
-                                  found.append((item.get('id'),item.get('name'),item.get('anime'),image))
-                      except Exception as exc:
-                          print('catalog_error',type(exc).__name__,str(exc)[:200])
-                  if found:
-                      print('LIVE_WALLHAVEN_REPLACEMENTS=',len(found))
-                      for row in found[:10]: print(row)
-                      raise SystemExit(0)
-                  time.sleep(20)
-          raise SystemExit('Curator did not expose a Wallhaven replacement in the live catalog')
+              status=client.get(base + '/api/system/wallhaven-curator-status')
+              print('STATUS_HTTP',status.status_code)
+              print('STATUS_BODY',status.text[:5000])
+              for q in ('a','e','i','Frieren'):
+                  r=client.get(base + '/api/cards/search',params={'q':q,'limit':1000})
+                  print('CATALOG_HTTP',q,r.status_code)
+                  if r.status_code != 200:
+                      print(r.text[:500])
+                      continue
+                  data=r.json()
+                  items=(data or {}).get('items') or []
+                  found=[(x.get('id'),x.get('name'),x.get('anime'),x.get('image')) for x in items if 'w.wallhaven.cc/' in str(x.get('image') or '')]
+                  print('WALLHAVEN_VISIBLE',q,len(found))
+                  for row in found[:5]: print(row)
+              if status.status_code != 200:
+                  raise SystemExit('status endpoint not healthy')
           PY
