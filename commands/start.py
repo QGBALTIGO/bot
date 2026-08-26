@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from database import create_or_get_user, get_user_status, mark_welcome_sent, reset_welcome_sent
 from identity_repository import sync_telegram_identity
 from utils.gatekeeper import TERMS_VERSION
+from utils.public_url import require_public_base_url
 
 BANNER_URL = os.getenv(
     "TERMS_BANNER_URL",
@@ -16,9 +17,7 @@ WELCOME_BANNER_URL = os.getenv(
     "WELCOME_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg",
 ).strip()
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
-if not BASE_URL:
-    raise RuntimeError("BASE_URL não configurado.")
+BASE_URL = require_public_base_url()
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
