@@ -4,6 +4,7 @@ from agenda_webapp import register_agenda_routes
 from collection_webapp import register_collection_routes
 from contrib_webapp import register_contribution_routes
 from game_webapp import register_game_routes
+from health_webapp import register_health_routes
 from hub_webapp import register_hub_routes
 from memory_webapp_v2 import register_memory_routes
 from messages_webapp import register_message_routes
@@ -30,6 +31,7 @@ PROTECTED_V2_PATHS = {
 
 
 def register_v2_routes(app) -> None:
+    register_health_routes(app)
     register_game_routes(app)
     register_collection_routes(app)
     register_profile_routes(app)
