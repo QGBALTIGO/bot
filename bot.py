@@ -103,6 +103,7 @@ if not 1 <= PORT <= 65535:
 
 ENABLE_MESSAGES = os.getenv("ENABLE_MESSAGES", "true").strip().lower() in {"1", "true", "yes", "on"}
 _WEB_THREAD: threading.Thread | None = None
+_WATCHDOG_TASK: asyncio.Task | None = None
 
 
 def run_webapp() -> None:
@@ -133,9 +134,13 @@ async def on_error(update, context) -> None:
 
 
 async def on_post_init(application: Application) -> None:
+    global _WATCHDOG_TASK
     await restore_capture_runtime(application)
     start_news_worker()
-    application.create_task(_watch_webapp_thread(), name="webapp-watchdog")
+    # post_init executa antes de Application.running=True. Usar o loop atual evita
+    # o warning do PTB sem perder o watchdog; guardamos a task para não ser coletada.
+    if _WATCHDOG_TASK is None or _WATCHDOG_TASK.done():
+        _WATCHDOG_TASK = asyncio.create_task(_watch_webapp_thread(), name="webapp-watchdog")
 
 
 def _register_message_handlers(tg_app: Application) -> None:
