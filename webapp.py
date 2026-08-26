@@ -16,6 +16,7 @@ from fastapi import FastAPI, Query, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from utils.image_proxy import ImageProxyError, fetch_public_image
+from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 
 from premium_webapp_ui import (
     build_baltigoflix_page as build_baltigoflix_page_html,
@@ -145,11 +146,17 @@ def _web_image_url(url: Any) -> str:
     if host in DIRECT_IMAGE_HOSTS:
         return value
 
-    return f"/api/image-proxy?url={quote(value, safe='')}"
+    encoded = quote(value, safe="")
+    if host == "w.wallhaven.cc":
+        return f"/api/image-proxy?crop=portrait&url={encoded}"
+    return f"/api/image-proxy?url={encoded}"
 
 
 @app.get("/api/image-proxy")
-async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000)):
+async def api_image_proxy(
+    url: str = Query(..., min_length=8, max_length=2000),
+    crop: str = Query("", max_length=20),
+):
     target = str(url or "").strip()
     parsed = urlparse(target)
     hostname = (parsed.hostname or "").strip().lower()
@@ -180,12 +187,30 @@ async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000)):
         )
         raise HTTPException(status_code=502, detail="image_fetch_failed") from exc
 
+    crop_mode = str(crop or "").strip().lower()
+    if crop_mode not in {"", "portrait"}:
+        raise HTTPException(status_code=400, detail="invalid_crop_mode")
+
+    applied_crop = False
+    if crop_mode == "portrait":
+        try:
+            content, crop_meta = crop_portrait_bytes(content)
+            media_type = "image/jpeg"
+            applied_crop = True
+        except PortraitCropError as exc:
+            print(
+                f"[image-proxy] portrait-crop-failed host={hostname or '-'} code={exc}",
+                flush=True,
+            )
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     return Response(
         content=content,
         media_type=media_type,
         headers={
-            "Cache-Control": "public, max-age=21600",
+            "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
             "Access-Control-Allow-Origin": "*",
+            "X-Image-Crop": "2:3" if applied_crop else "original",
         },
     )
 

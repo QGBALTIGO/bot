@@ -22,7 +22,9 @@ API_SEARCH = "https://wallhaven.cc/api/v1/search"
 API_WALLPAPER = "https://wallhaven.cc/api/v1/w/{wallpaper_id}"
 
 TARGET_RATIO = 2.0 / 3.0
-RATIO_TOLERANCE = 0.045
+MIN_SOURCE_RATIO = 0.55
+MAX_SOURCE_RATIO = 0.80
+MIN_CROP_RETENTION = 0.82
 MIN_WIDTH = 1000
 MIN_HEIGHT = 1500
 MIN_SCORE = 82.0
@@ -109,6 +111,15 @@ def tokens(value: Any) -> set[str]:
     return {x for x in norm(value).split() if len(x) >= 2 and x not in STOP_TOKENS}
 
 
+def crop_retention_for_ratio(ratio: float) -> float:
+    value = float(ratio or 0.0)
+    if value <= 0:
+        return 0.0
+    if value >= TARGET_RATIO:
+        return TARGET_RATIO / value
+    return value / TARGET_RATIO
+
+
 def variants(name: Any, alias: Any = "") -> list[str]:
     raw = [str(name or "")]
     raw.extend(re.split(r"[,;/|]", str(alias or "")))
@@ -165,8 +176,10 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
         return None
 
     ratio = width / height if height else 0.0
-    ratio_distance = abs(ratio - TARGET_RATIO)
-    if ratio_distance > RATIO_TOLERANCE:
+    crop_retention = crop_retention_for_ratio(ratio)
+    if not (MIN_SOURCE_RATIO <= ratio <= MAX_SOURCE_RATIO):
+        return None
+    if crop_retention < MIN_CROP_RETENTION:
         return None
 
     tags = [x for x in (detail.get("tags") or []) if isinstance(x, dict)]
@@ -192,7 +205,7 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
     if other_specific:
         return None
 
-    ratio_score = max(0.0, 1.0 - ratio_distance / RATIO_TOLERANCE) * 32.0
+    ratio_score = crop_retention * 32.0
     identity_score = char_match * 31.0 + series_match * 17.0
     pixels = width * height
     resolution_score = min(11.0, math.log1p(max(1.0, pixels / 1_000_000.0)) * 6.0)
@@ -216,6 +229,8 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
         "width": width,
         "height": height,
         "ratio": round(ratio, 5),
+        "crop_2x3": True,
+        "crop_retention": round(crop_retention, 5),
         "score": score,
         "favorites": favorites,
         "views": views,
@@ -323,7 +338,10 @@ def _search_shape_ok(item: dict[str, Any]) -> bool:
     if width < MIN_WIDTH or height < MIN_HEIGHT or width >= height:
         return False
     ratio = width / height if height else 0.0
-    return abs(ratio - TARGET_RATIO) <= RATIO_TOLERANCE
+    return (
+        MIN_SOURCE_RATIO <= ratio <= MAX_SOURCE_RATIO
+        and crop_retention_for_ratio(ratio) >= MIN_CROP_RETENTION
+    )
 
 
 def search_candidates(client: httpx.Client, query: str, api_key: str) -> list[dict[str, Any]]:
@@ -392,8 +410,10 @@ def write_state(output: dict[str, Any], state: dict[str, Any]) -> None:
     output["filters"] = {
         "purity": "sfw",
         "category": "anime",
-        "ratio": "2:3",
-        "ratio_tolerance": RATIO_TOLERANCE,
+        "output_ratio": "2:3 exact via image proxy crop",
+        "source_ratio_min": MIN_SOURCE_RATIO,
+        "source_ratio_max": MAX_SOURCE_RATIO,
+        "min_crop_retention": MIN_CROP_RETENTION,
         "min_width": MIN_WIDTH,
         "min_height": MIN_HEIGHT,
         "min_score": MIN_SCORE,
