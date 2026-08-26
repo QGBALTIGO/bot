@@ -144,6 +144,11 @@ PORT = int(os.getenv("PORT", "8000"))
 def run_webapp():
     try:
         from webapp import app as web_app
+        from utils.terms_membership import install_terms_membership_route
+
+        # Mantém todo o WebApp original da main e substitui somente a rota
+        # usada pelo botão "Verificar inscrição" dos Termos.
+        install_terms_membership_route(web_app)
 
         uvicorn.run(
             web_app,
