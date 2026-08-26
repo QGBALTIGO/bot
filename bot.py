@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import threading
@@ -80,6 +81,7 @@ from news_sync import start_news_worker
 from shop_repository import create_shop_tables
 from termo_repository import create_termo_v2_tables
 from trade_repository import create_trade_tables
+from utils.public_url import get_public_base_url
 from xcards_repository import create_xcard_tables
 
 logging.basicConfig(
@@ -100,15 +102,26 @@ if not 1 <= PORT <= 65535:
     raise RuntimeError("PORT precisa estar entre 1 e 65535.")
 
 ENABLE_MESSAGES = os.getenv("ENABLE_MESSAGES", "true").strip().lower() in {"1", "true", "yes", "on"}
+_WEB_THREAD: threading.Thread | None = None
 
 
 def run_webapp() -> None:
     try:
         from secure_webapp import app as web_app
+        logger.info("WebApp V2 iniciando em 0.0.0.0:%s base=%s", PORT, get_public_base_url() or "<sem-url>")
         uvicorn.run(web_app, host="0.0.0.0", port=PORT, log_level="info")
     except Exception:
         logger.exception("Falha fatal ao iniciar a WebApp")
         raise
+
+
+async def _watch_webapp_thread() -> None:
+    while True:
+        await asyncio.sleep(5)
+        thread = _WEB_THREAD
+        if thread is not None and not thread.is_alive():
+            logger.critical("Thread da WebApp morreu; encerrando processo para o Railway reiniciar o serviço.")
+            os._exit(1)
 
 
 async def on_error(update, context) -> None:
@@ -122,6 +135,7 @@ async def on_error(update, context) -> None:
 async def on_post_init(application: Application) -> None:
     await restore_capture_runtime(application)
     start_news_worker()
+    application.create_task(_watch_webapp_thread(), name="webapp-watchdog")
 
 
 def _register_message_handlers(tg_app: Application) -> None:
@@ -141,7 +155,6 @@ def _register_message_handlers(tg_app: Application) -> None:
 def build_application() -> Application:
     tg_app = Application.builder().token(BOT_TOKEN).post_init(on_post_init).build()
 
-    # Entrada / navegação unificada
     for name, handler in (
         ("start", start), ("hub", hub), ("menu", menu), ("ajuda", ajuda),
         ("configuracoes", configuracoes), ("notificacoes", notificacoes), ("atividade", atividade),
@@ -150,7 +163,6 @@ def build_application() -> Application:
     ):
         tg_app.add_handler(CommandHandler(name, handler))
 
-    # Descoberta / catálogo
     for name, handler in (
         ("anime", anime), ("manga", manga), ("cards", cards), ("pedido", pedido),
         ("baltigoflix", baltigoflix), ("contribuir", contribuir), ("sugerircard", sugerircard),
@@ -159,19 +171,15 @@ def build_application() -> Application:
     tg_app.add_handler(CommandHandler("card", card))
     tg_app.add_handler(CallbackQueryHandler(card_stats_callback, pattern=r"^cardstats:"))
 
-    # Conta / progressão
     for name, handler in (("nivel", nivel), ("colecao", colecao), ("perfil", perfil), ("ranking", ranking), ("loja", loja)):
         tg_app.add_handler(CommandHandler(name, handler))
 
-    # Game Center / minigames
     for name, handler in (("jogar", jogar), ("daily", daily), ("dado", dado), ("giro", giro), ("memoria", memoria), ("termo", termo)):
         tg_app.add_handler(CommandHandler(name, handler))
 
-    # XCards / Union Arena
     tg_app.add_handler(CommandHandler("xcard", xcard))
     tg_app.add_handler(CommandHandler("xcolecao", xcolecao))
 
-    # Social em grupo
     tg_app.add_handler(CommandHandler("trocar", trocar))
     tg_app.add_handler(CallbackQueryHandler(trade_callback, pattern=r"^tradev2:"))
     tg_app.add_handler(CommandHandler("duelo", duelo))
@@ -182,7 +190,6 @@ def build_application() -> Application:
 
     _register_message_handlers(tg_app)
 
-    # Administração do catálogo herdada durante migração para painel central V2.
     for name, handler in (
         ("card_reload", card_reload), ("card_delchar", card_delchar), ("card_addchar", card_addchar),
         ("card_setcharimg", card_setcharimg), ("card_setcharname", card_setcharname),
@@ -198,6 +205,7 @@ def build_application() -> Application:
 
 
 def main() -> None:
+    global _WEB_THREAD
     logger.info("Inicializando banco de dados")
     create_tables()
     create_game_tables()
@@ -214,11 +222,11 @@ def main() -> None:
     create_message_tables_v2()
     create_ecosystem_tables()
 
-    web_thread = threading.Thread(target=run_webapp, name="source-baltigo-webapp", daemon=True)
-    web_thread.start()
+    _WEB_THREAD = threading.Thread(target=run_webapp, name="source-baltigo-webapp", daemon=True)
+    _WEB_THREAD.start()
 
     tg_app = build_application()
-    logger.info("Bot + WebApp V2 iniciados")
+    logger.info("Bot + WebApp V2 iniciados base=%s", get_public_base_url() or "<sem-url>")
     tg_app.run_polling(drop_pending_updates=True, allowed_updates=["message", "callback_query"])
 
 
