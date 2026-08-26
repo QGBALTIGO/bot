@@ -29,6 +29,28 @@ MIN_SCORE = 82.0
 MAX_CANDIDATES = 3
 REQUEST_DELAY = max(0.8, float(os.getenv("WALLHAVEN_CURATOR_DELAY", "1.45")))
 
+PRIORITY_CHARACTERS = (
+    "luffy monkey", "zoro roronoa", "nami", "robin nico", "sanji vinsmoke", "ace portgas",
+    "hancock boa", "shanks", "law trafalgar", "naruto uzumaki", "sasuke uchiha", "sakura haruno",
+    "kakashi hatake", "hinata hyuuga", "itachi uchiha", "gaara", "ichigo kurosaki", "rukia kuchiki",
+    "orihime inoue", "byakuya kuchiki", "aizen sousuke", "goku son", "vegeta", "bulma",
+    "gojo satoru", "itadori yuji", "fushiguro megumi", "kugisaki nobara", "sukuna ryomen",
+    "maki zenin", "tanjiro kamado", "nezuko kamado", "zenitsu agatsuma", "inosuke hashibira",
+    "shinobu kochou", "mitsuri kanroji", "rengoku kyoujurou", "giyuu tomioka", "frieren", "fern",
+    "stark", "denji", "makima", "power", "aki hayakawa", "reze", "eren yeager", "mikasa ackerman",
+    "levi", "armin arlert", "annie leonhart", "izuku midoriya", "katsuki bakugou", "shouto todoroki",
+    "ochako uraraka", "gon freecss", "killua zoldyck", "kurapika", "hisoka morow", "edward elric",
+    "alphonse elric", "roy mustang", "riza hawkeye", "light yagami", "lawliet", "misa amane",
+    "anya forger", "yor forger", "loid forger", "ai hoshino", "aqua hoshino", "ruby hoshino",
+    "kana arima", "sung jinwoo", "yoichi isagi", "meguru bachira", "seishirou nagi", "rin itoshi",
+    "shouyou hinata", "tobio kageyama", "jotaro kujo", "dio brando", "giorno giovanna", "saitama",
+    "genos", "ken kaneki", "touka kirishima", "lucy heartfilia", "erza scarlet", "natsu dragneel",
+    "asta", "yuno", "noelle silva", "thorfinn", "askeladd", "kurisu makise", "rintarou okabe",
+    "lelouch lamperouge", "cc", "rei ayanami", "asuka langley", "misato katsuragi", "spike spiegel",
+    "faye valentine", "rem", "emilia", "ram", "megumin", "aqua", "darkness", "albedo",
+    "ainz ooal gown", "kaguya shinomiya", "chika fujiwara", "hitori gotou", "momo ayase",
+    "okarun", "kafka hibino", "mina ashiro", "pikachu", "ash ketchum", "saber",
+)
 PRIORITY_SERIES = (
     "one piece", "naruto", "bleach", "dragon ball", "jujutsu kaisen", "kimetsu no yaiba",
     "demon slayer", "sousou no frieren", "frieren", "chainsaw man", "shingeki no kyojin",
@@ -179,6 +201,13 @@ def evaluate_candidate(detail: dict[str, Any], character_name: str, anime_title:
     }
 
 
+def character_priority(name: str) -> int:
+    for index, target in enumerate(PRIORITY_CHARACTERS):
+        if similarity(name, target) >= 0.76:
+            return index
+    return len(PRIORITY_CHARACTERS) + 1
+
+
 def series_priority(title: str) -> int:
     n = norm(title)
     for index, pattern in enumerate(PRIORITY_SERIES):
@@ -212,7 +241,15 @@ def load_characters() -> list[dict[str, Any]]:
                 "anime_id": anime_id,
                 "anilist_url": str(character.get("image") or "").strip(),
             })
-    out.sort(key=lambda x: (series_priority(x["anime"]), norm(x["anime"]), norm(x["name"]), x["id"]))
+    out.sort(
+        key=lambda x: (
+            character_priority(x["name"]),
+            series_priority(x["anime"]),
+            norm(x["anime"]),
+            norm(x["name"]),
+            x["id"],
+        )
+    )
     return out
 
 
@@ -283,9 +320,9 @@ def fetch_detail(client: httpx.Client, wallpaper_id: str, api_key: str) -> dict[
 
 
 def curate_one(client: httpx.Client, character: dict[str, Any], api_key: str) -> tuple[dict[str, Any] | None, str]:
-    # One precise request instead of three broad searches. This preserves the
-    # anonymous API budget and reduces false positives.
-    query = f'{character["name"]} {character["anime"]}'
+    # Search by character only. Series identity is enforced later using the
+    # Wallhaven Series tags, which is more reliable for AniList name ordering.
+    query = character["name"]
     candidates = search_candidates(client, query, api_key)
     time.sleep(REQUEST_DELAY)
     if not candidates:
@@ -350,7 +387,7 @@ def main() -> int:
     start = max(0, args.offset)
     batch = characters[start: start + max(1, args.limit)]
     api_key = os.getenv("WALLHAVEN_API_KEY", "").strip()
-    headers = {"User-Agent": "SourceBaltigo-Wallhaven-Curator/2.0"}
+    headers = {"User-Agent": "SourceBaltigo-Wallhaven-Curator/2.1"}
     stats = {
         "approved": 0,
         "no_search_result": 0,
@@ -384,7 +421,7 @@ def main() -> int:
                     stats["rate_waits"] += 1
                     print(f"RATE_WAIT index={index} seconds={exc.retry_after:.1f}", flush=True)
                     time.sleep(exc.retry_after)
-                except httpx.HTTPError as exc:
+                except httpx.HTTPError:
                     if attempt >= 2:
                         raise
                     time.sleep(3.0 * (attempt + 1))
@@ -423,8 +460,6 @@ def main() -> int:
                 print(f"MISS index={index} id={cid_key} {character['name']} / {character['anime']} status={status}", flush=True)
 
             if args.apply:
-                # Persist locally after every character. If the runner is later
-                # interrupted, the working tree still contains all completed work.
                 write_state(output, state)
 
     if args.apply:
