@@ -25,6 +25,7 @@ from commands.cards_admin import (
     card_subremove,
 )
 from commands.collection import colecao
+from commands.duel_v2 import duel_callback, duelo
 from commands.game import dado, daily, giro, jogar
 from commands.manga import manga
 from commands.nivel import nivel
@@ -37,6 +38,7 @@ from commands.trade_v2 import trade_callback, trocar
 from commands.xcards_v2 import xcard, xcolecao
 from capture_repository import create_capture_tables
 from database import create_tables
+from duel_repository_v2 import create_duel_v2_tables
 from game_repository import create_game_tables
 from handlers.capture_v2 import (
     capturar,
@@ -165,6 +167,8 @@ def build_application() -> Application:
     # interação social V2
     tg_app.add_handler(CommandHandler("trocar", trocar))
     tg_app.add_handler(CallbackQueryHandler(trade_callback, pattern=r"^tradev2:"))
+    tg_app.add_handler(CommandHandler("duelo", duelo))
+    tg_app.add_handler(CallbackQueryHandler(duel_callback, pattern=r"^duelv2:"))
 
     # captura V2: comandos/callbacks ficam no grupo padrão; atividade passiva
     # observa apenas texto não-comando em um grupo de handlers separado.
@@ -205,6 +209,7 @@ def main() -> None:
     create_capture_tables()
     create_trade_tables()
     create_xcard_tables()
+    create_duel_v2_tables()
 
     web_thread = threading.Thread(
         target=run_webapp,
