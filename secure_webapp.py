@@ -146,6 +146,15 @@ class TelegramWebAppAuthMiddleware:
 
         path = scope.get("path") or ""
         headers = _headers_dict(scope.get("headers") or [])
+        method = str(scope.get("method") or "GET")
+        if path != "/healthz":
+            logger.info(
+                "MiniApp HTTP method=%s path=%s init_data=%s ua=%s",
+                method,
+                path,
+                bool(headers.get("x-telegram-init-data")),
+                headers.get("user-agent", "")[:120],
+            )
 
         if path in ADMIN_PROTECTED_PATHS:
             supplied = headers.get("x-admin-token", "")
@@ -321,8 +330,13 @@ class TelegramWebAppAuthMiddleware:
 legacy_webapp.HTMLResponse = SecureHTMLResponse
 app = legacy_webapp.app
 
+# First clean duplicates that already exist inside the historical monolith.
 dedupe_http_routes_keep_last(app)
+# Then register V2. A second dedupe is essential: when a V2 page intentionally
+# replaces a legacy page with the same method/path, keep the newly registered V2
+# handler instead of silently serving the historical implementation.
 register_v2_routes(app)
+dedupe_http_routes_keep_last(app)
 
 app.add_middleware(
     TelegramWebAppAuthMiddleware,
