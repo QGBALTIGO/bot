@@ -2,22 +2,22 @@
   "version": 1,
   "processed": {
     "40": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Luffy Monkey",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:39.626531+00:00"
+      "checked_at": "2026-08-26T20:59:42.380344+00:00"
     },
     "62": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Zoro Roronoa",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:41.167468+00:00"
+      "checked_at": "2026-08-26T20:59:50.096356+00:00"
     },
     "723": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Nami",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:42.709986+00:00"
+      "checked_at": "2026-08-26T20:59:57.863525+00:00"
     },
     "240244": {
       "status": "no_search_result",
@@ -26,10 +26,10 @@
       "checked_at": "2026-08-26T20:47:43.205865+00:00"
     },
     "61": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Robin Nico",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:44.243510+00:00"
+      "checked_at": "2026-08-26T21:00:05.628056+00:00"
     },
     "88419": {
       "status": "no_strict_match",
@@ -53,7 +53,7 @@
       "status": "no_search_result",
       "character_name": "Ace Portgas",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:45.783239+00:00"
+      "checked_at": "2026-08-26T21:00:07.188411+00:00"
     },
     "138150": {
       "status": "no_strict_match",
@@ -62,22 +62,22 @@
       "checked_at": "2026-08-26T20:48:03.632235+00:00"
     },
     "16342": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Hancock Boa",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:47.323765+00:00"
+      "checked_at": "2026-08-26T21:00:13.445144+00:00"
     },
     "727": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Shanks",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:48.857418+00:00"
+      "checked_at": "2026-08-26T21:00:18.172068+00:00"
     },
     "13767": {
       "status": "no_strict_match",
       "character_name": "Law Trafalgar",
       "anime": "ONE PIECE",
-      "checked_at": "2026-08-26T20:53:51.930831+00:00"
+      "checked_at": "2026-08-26T21:00:24.351249+00:00"
     },
     "145716": {
       "status": "no_strict_match",
@@ -131,7 +131,7 @@
       "status": "no_strict_match",
       "character_name": "Ichigo Kurosaki",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:53:55.013439+00:00"
+      "checked_at": "2026-08-26T21:00:29.042999+00:00"
     },
     "124382": {
       "status": "no_strict_match",
@@ -146,40 +146,40 @@
       "checked_at": "2026-08-26T20:49:06.021646+00:00"
     },
     "7": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Orihime Inoue",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:53:56.551387+00:00"
+      "checked_at": "2026-08-26T21:00:32.141817+00:00"
     },
     "907": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Byakuya Kuchiki",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:53:58.090601+00:00"
+      "checked_at": "2026-08-26T21:00:35.240598+00:00"
     },
     "1086": {
       "status": "no_search_result",
       "character_name": "Sousuke Aizen",
       "anime": "BLEACH",
-      "checked_at": "2026-08-26T20:53:59.631057+00:00"
+      "checked_at": "2026-08-26T21:00:36.776629+00:00"
     },
     "913": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Vegeta",
       "anime": "Dragon Ball",
-      "checked_at": "2026-08-26T20:54:01.170556+00:00"
+      "checked_at": "2026-08-26T21:00:39.920046+00:00"
     },
     "678": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Bulma",
       "anime": "Dragon Ball",
-      "checked_at": "2026-08-26T20:54:02.731926+00:00"
+      "checked_at": "2026-08-26T21:00:43.009528+00:00"
     },
     "126635": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Megumi Fushiguro",
       "anime": "Jujutsu Kaisen",
-      "checked_at": "2026-08-26T20:54:04.276455+00:00"
+      "checked_at": "2026-08-26T21:00:46.141744+00:00"
     },
     "133700": {
       "status": "approved",
@@ -188,10 +188,10 @@
       "checked_at": "2026-08-26T20:54:08.894575+00:00"
     },
     "134167": {
-      "status": "no_search_result",
+      "status": "no_strict_match",
       "character_name": "Maki Zenin",
       "anime": "Jujutsu Kaisen",
-      "checked_at": "2026-08-26T20:54:10.432029+00:00"
+      "checked_at": "2026-08-26T21:00:49.236867+00:00"
     },
     "127518": {
       "status": "approved",
@@ -203,13 +203,13 @@
       "status": "no_strict_match",
       "character_name": "Zenitsu Agatsuma",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T20:54:21.200471+00:00"
+      "checked_at": "2026-08-26T21:00:55.454314+00:00"
     },
     "129130": {
       "status": "no_strict_match",
       "character_name": "Inosuke Hashibira",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T20:54:25.811799+00:00"
+      "checked_at": "2026-08-26T21:01:01.608768+00:00"
     },
     "136070": {
       "status": "approved",
@@ -218,16 +218,16 @@
       "checked_at": "2026-08-26T20:54:33.538312+00:00"
     },
     "136072": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Mitsuri Kanroji",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T20:54:35.072207+00:00"
+      "checked_at": "2026-08-26T21:01:04.747833+00:00"
     },
     "129133": {
-      "status": "no_search_result",
+      "status": "approved",
       "character_name": "Kyoujurou Rengoku",
       "anime": "Kimetsu no Yaiba",
-      "checked_at": "2026-08-26T20:54:36.612604+00:00"
+      "checked_at": "2026-08-26T21:01:11.054268+00:00"
     },
     "130050": {
       "status": "no_search_result",
@@ -260,5 +260,5 @@
       "checked_at": "2026-08-26T20:54:55.118097+00:00"
     }
   },
-  "updated_at": "2026-08-26T20:54:55.119214+00:00"
+  "updated_at": "2026-08-26T21:01:11.056129+00:00"
 }

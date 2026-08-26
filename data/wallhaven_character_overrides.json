@@ -164,14 +164,257 @@
       "source_page": "https://wallhaven.cc/w/21ozzg",
       "query": "Frieren",
       "approved_at": "2026-08-26T20:54:44.312690+00:00"
+    },
+    "40": {
+      "character_id": 40,
+      "character_name": "Luffy Monkey",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://photo.chelpbot.me/AgACAgQAAxkBZp0khGme89UBVZTvtPI86i3iYjMAAaMwHQACBrExG7bDlVEMAAHWTl9YlQ8BAAMCAAN3AAM6BA/photo.jpg",
+      "url": "https://w.wallhaven.cc/full/2e/wallhaven-2ep9mg.jpg",
+      "wallhaven_id": "2ep9mg",
+      "width": 2479,
+      "height": 3801,
+      "ratio": 0.6522,
+      "score": 97.715,
+      "favorites": 72,
+      "views": 15385,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Monkey D. Luffy"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/2ep9mg",
+      "query": "Monkey D. Luffy",
+      "approved_at": "2026-08-26T20:59:42.380368+00:00"
+    },
+    "62": {
+      "character_id": 62,
+      "character_name": "Zoro Roronoa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b62-S7oAeA9WInjV.png",
+      "url": "https://w.wallhaven.cc/full/rd/wallhaven-rdy77m.jpg",
+      "wallhaven_id": "rdy77m",
+      "width": 1488,
+      "height": 2256,
+      "ratio": 0.65957,
+      "score": 99.251,
+      "favorites": 22,
+      "views": 4225,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Roronoa Zoro"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/rdy77m",
+      "query": "Roronoa Zoro",
+      "approved_at": "2026-08-26T20:59:50.096373+00:00"
+    },
+    "723": {
+      "character_id": 723,
+      "character_name": "Nami",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b723-vp5hPptgnNEC.png",
+      "url": "https://w.wallhaven.cc/full/x8/wallhaven-x87113.jpg",
+      "wallhaven_id": "x87113",
+      "width": 1472,
+      "height": 2256,
+      "ratio": 0.65248,
+      "score": 92.563,
+      "favorites": 17,
+      "views": 3118,
+      "character_match": 0.96,
+      "series_match": 1.0,
+      "character_tags": [
+        "Nami (One Piece)"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/x87113",
+      "query": "Nami",
+      "approved_at": "2026-08-26T20:59:57.863546+00:00"
+    },
+    "61": {
+      "character_id": 61,
+      "character_name": "Robin Nico",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b61-ywXUyyocEEqt.png",
+      "url": "https://w.wallhaven.cc/full/e7/wallhaven-e79oor.jpg",
+      "wallhaven_id": "e79oor",
+      "width": 1488,
+      "height": 2256,
+      "ratio": 0.65957,
+      "score": 99.067,
+      "favorites": 19,
+      "views": 3756,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Nico Robin"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/e79oor",
+      "query": "Nico Robin",
+      "approved_at": "2026-08-26T21:00:05.628079+00:00"
+    },
+    "16342": {
+      "character_id": 16342,
+      "character_name": "Hancock Boa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b16342-kVOF6V5Q94go.png",
+      "url": "https://w.wallhaven.cc/full/w5/wallhaven-w5d89r.png",
+      "wallhaven_id": "w5d89r",
+      "width": 2094,
+      "height": 3222,
+      "ratio": 0.64991,
+      "score": 95.644,
+      "favorites": 54,
+      "views": 7486,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Boa Hancock"
+      ],
+      "series_tags": [
+        "One Piece"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/w5d89r",
+      "query": "Boa Hancock",
+      "approved_at": "2026-08-26T21:00:13.445163+00:00"
+    },
+    "907": {
+      "character_id": 907,
+      "character_name": "Byakuya Kuchiki",
+      "anime_id": 269,
+      "anime": "BLEACH",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b907-kgnDKeMtEN5y.png",
+      "url": "https://w.wallhaven.cc/full/y8/wallhaven-y88m1l.jpg",
+      "wallhaven_id": "y88m1l",
+      "width": 3500,
+      "height": 5309,
+      "ratio": 0.65926,
+      "score": 101.32,
+      "favorites": 23,
+      "views": 5415,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Kuchiki Byakuya"
+      ],
+      "series_tags": [
+        "Bleach"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/y88m1l",
+      "query": "Byakuya Kuchiki",
+      "approved_at": "2026-08-26T21:00:35.240619+00:00"
+    },
+    "913": {
+      "character_id": 913,
+      "character_name": "Vegeta",
+      "anime_id": 223,
+      "anime": "Dragon Ball",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b913-NIFkKazWM8VO.png",
+      "url": "https://w.wallhaven.cc/full/w8/wallhaven-w89gmq.png",
+      "wallhaven_id": "w89gmq",
+      "width": 2804,
+      "height": 4320,
+      "ratio": 0.64907,
+      "score": 95.99,
+      "favorites": 138,
+      "views": 30742,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Vegeta"
+      ],
+      "series_tags": [
+        "Dragon Ball"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/w89gmq",
+      "query": "Vegeta",
+      "approved_at": "2026-08-26T21:00:39.920064+00:00"
+    },
+    "136072": {
+      "character_id": 136072,
+      "character_name": "Mitsuri Kanroji",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b136072-xVwyRUKdpybi.png",
+      "url": "https://w.wallhaven.cc/full/j3/wallhaven-j3gggp.jpg",
+      "wallhaven_id": "j3gggp",
+      "width": 1181,
+      "height": 1748,
+      "ratio": 0.67563,
+      "score": 96.853,
+      "favorites": 56,
+      "views": 5613,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Mitsuri Kanroji"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/j3gggp",
+      "query": "Mitsuri Kanroji",
+      "approved_at": "2026-08-26T21:01:04.747905+00:00"
+    },
+    "129133": {
+      "character_id": 129133,
+      "character_name": "Kyoujurou Rengoku",
+      "anime_id": 101922,
+      "anime": "Kimetsu no Yaiba",
+      "anilist_fallback": "https://s4.anilist.co/file/anilistcdn/character/large/b129133-VlTPowwt68rJ.png",
+      "url": "https://w.wallhaven.cc/full/dp/wallhaven-dprrro.jpg",
+      "wallhaven_id": "dprrro",
+      "width": 1181,
+      "height": 1748,
+      "ratio": 0.67563,
+      "score": 95.992,
+      "favorites": 28,
+      "views": 3491,
+      "character_match": 1.0,
+      "series_match": 1.0,
+      "character_tags": [
+        "Rengoku Kyoujurou"
+      ],
+      "series_tags": [
+        "Kimetsu no Yaiba"
+      ],
+      "other_characters": [],
+      "source_page": "https://wallhaven.cc/w/dprrro",
+      "query": "Kyoujurou Rengoku",
+      "approved_at": "2026-08-26T21:01:11.054287+00:00"
     }
   },
-  "generated_at": "2026-08-26T20:54:55.119206+00:00",
+  "generated_at": "2026-08-26T21:01:11.056118+00:00",
   "filters": {
     "purity": "sfw",
     "category": "anime",
     "ratio": "2:3",
-    "ratio_tolerance": 0.035,
+    "ratio_tolerance": 0.045,
     "min_width": 1000,
     "min_height": 1500,
     "min_score": 82.0,
