@@ -2,6 +2,8 @@ import html
 import json
 from typing import Any
 
+from utils.aninexus_client import ANINEXUS_WEB_BASE_URL
+
 
 def _h(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
@@ -15,8 +17,9 @@ def _font_links() -> str:
     return """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Nunito+Sans:opsz,wght@6..12,400;6..12,500;6..12,600;6..12,700;6..12,800;6..12,900&display=swap" rel="stylesheet">
 """
+
 
 
 def _base_css() -> str:
@@ -866,6 +869,218 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
     )
 
 
+
+def _aninexus_css() -> str:
+    return r"""
+:root{
+  --bg:#08060c;
+  --bg-2:#0d0912;
+  --surface:rgba(17,12,22,.94);
+  --surface-2:rgba(23,16,30,.94);
+  --surface-soft:rgba(255,255,255,.045);
+  --border:rgba(57,42,70,.78);
+  --border-strong:rgba(225,29,72,.46);
+  --text:#f8f5fb;
+  --muted:rgba(190,177,201,.70);
+  --muted-strong:rgba(228,219,235,.86);
+  --accent:#e11d48;
+  --accent-cool:#ff315f;
+  --ok:#39c784;
+  --danger:#ff5470;
+  --shadow-lg:0 22px 64px rgba(0,0,0,.48);
+  --shadow-md:0 14px 36px rgba(0,0,0,.34);
+  --radius-xl:22px;
+  --radius-lg:18px;
+  --radius-md:14px;
+  --nx-header:64px;
+  --nx-nav:70px;
+}
+html{ background:#08060c; color-scheme:dark; }
+body{
+  font-family:"Nunito Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(860px 320px at 72% -90px,rgba(225,29,72,.22),transparent 68%),
+    radial-gradient(620px 380px at -10% 38%,rgba(139,16,45,.12),transparent 62%),
+    linear-gradient(180deg,#08060c 0%,#0d0912 48%,#08060c 100%);
+  padding-bottom:calc(var(--nx-nav) + var(--safe-bottom));
+}
+body::before{
+  background:
+    radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+    linear-gradient(180deg,rgba(225,29,72,.035),transparent 25%);
+  background-size:32px 32px,auto;
+  opacity:.34;
+}
+body::after{ background:linear-gradient(180deg,rgba(8,6,12,.02),rgba(8,6,12,.44)); }
+.app-shell{
+  width:min(1240px,100%);
+  padding:18px 14px calc(26px + var(--safe-bottom));
+}
+.nx-topbar{
+  position:sticky;
+  top:0;
+  z-index:100;
+  height:calc(var(--nx-header) + var(--safe-top));
+  padding-top:var(--safe-top);
+  border-bottom:1px solid rgba(57,42,70,.78);
+  background:color-mix(in srgb,#08060c 88%,transparent);
+  backdrop-filter:blur(20px) saturate(150%);
+}
+.nx-topbar__inner{
+  width:min(1240px,100%);
+  height:var(--nx-header);
+  margin:auto;
+  padding:0 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.nx-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.nx-brand__mark{
+  width:38px;height:38px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  color:#fff;font-size:17px;font-weight:1000;letter-spacing:-.06em;
+  background:radial-gradient(circle at 34% 28%,#ff6a85 0%,#e11d48 38%,#8b102d 100%);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 10px 28px rgba(225,29,72,.28),inset 0 1px 0 rgba(255,255,255,.22);overflow:hidden;
+}
+.nx-brand__mark img{width:100%;height:100%;object-fit:cover}
+.nx-brand__copy{display:grid;line-height:1.02;min-width:0}
+.nx-brand__name{font-size:19px;font-weight:1000;letter-spacing:-.04em;white-space:nowrap}
+.nx-brand__sub{font-size:9px;color:var(--muted);font-weight:900;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+.nx-topbar__actions{display:flex;align-items:center;gap:8px}
+.nx-status{
+  min-height:34px;padding:0 10px;border-radius:999px;display:flex;align-items:center;gap:7px;
+  border:1px solid var(--border);background:rgba(255,255,255,.035);color:var(--muted-strong);
+  font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+}
+.nx-status__dot{width:7px;height:7px;border-radius:50%;background:#f4b942;box-shadow:0 0 0 4px rgba(244,185,66,.10)}
+.nx-status[data-state="online"] .nx-status__dot{background:var(--ok);box-shadow:0 0 0 4px rgba(57,199,132,.12)}
+.nx-status[data-state="offline"] .nx-status__dot{background:var(--danger);box-shadow:0 0 0 4px rgba(255,84,112,.12)}
+.nx-site-btn{
+  min-height:36px;padding:0 12px;border:0;border-radius:10px;cursor:pointer;
+  color:#fff;background:linear-gradient(135deg,var(--accent),#8b102d);font-weight:900;font-size:11px;
+  box-shadow:0 8px 22px rgba(225,29,72,.23);
+}
+.nx-bottom-nav{
+  position:fixed;left:50%;bottom:calc(8px + var(--safe-bottom));transform:translateX(-50%);z-index:110;
+  width:min(620px,calc(100% - 18px));min-height:62px;padding:6px;
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;
+  border:1px solid rgba(57,42,70,.9);border-radius:18px;
+  background:color-mix(in srgb,#110c16 91%,transparent);backdrop-filter:blur(22px) saturate(150%);
+  box-shadow:0 18px 46px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.045);
+}
+.nx-nav-item{
+  min-width:0;min-height:50px;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
+  transition:.18s ease;
+}
+.nx-nav-item__icon{font-size:17px;line-height:1;filter:grayscale(.2)}
+.nx-nav-item.is-active{color:#fff;background:linear-gradient(180deg,rgba(225,29,72,.24),rgba(139,16,45,.12));box-shadow:inset 0 0 0 1px rgba(225,29,72,.28)}
+.hero-card{
+  border-radius:22px;border-color:rgba(57,42,70,.88);
+  background:linear-gradient(180deg,rgba(23,16,30,.88),rgba(13,9,18,.96));
+}
+.hero-overlay{
+  background:
+    linear-gradient(180deg,rgba(8,6,12,.10),rgba(8,6,12,.88)),
+    linear-gradient(110deg,rgba(8,6,12,.34),rgba(8,6,12,.02) 42%,rgba(225,29,72,.24));
+}
+.hero-title,.section-title,.card-title,.profile-name,.sheet-title,.hub-title,.hero-value{font-family:"Manrope","Nunito Sans",system-ui,sans-serif;font-weight:800}
+.eyebrow-chip,.chip,.soft-pill,.section-kicker,.metric-label{letter-spacing:.11em}
+.eyebrow-chip{border-color:rgba(225,29,72,.26);background:rgba(13,9,18,.64);color:#ffd8e1}
+.panel,.panel.panel--soft{
+  border-radius:18px;border-color:rgba(57,42,70,.76);
+  background:linear-gradient(180deg,rgba(17,12,22,.94),rgba(13,9,18,.96));
+}
+.panel.panel--soft{background:linear-gradient(180deg,rgba(23,16,30,.72),rgba(13,9,18,.88))}
+.action-btn,.control-btn,.loadmore-btn{border-radius:11px}
+.action-btn--primary,.control-btn--accent{
+  border-color:transparent!important;color:#fff!important;
+  background:linear-gradient(135deg,var(--accent),#8b102d)!important;
+  box-shadow:0 10px 26px rgba(225,29,72,.22)!important;
+}
+.action-btn--cool,.chip.active,.chip:hover,.soft-pill--cool{
+  border-color:rgba(225,29,72,.32)!important;
+  background:rgba(225,29,72,.11)!important;
+  color:#ffd5df!important;
+}
+.soft-pill--accent,.chip--accent{border-color:rgba(255,49,95,.30);background:rgba(225,29,72,.12);color:#ffd5df}
+.searchbar,.field input,.field select,.field textarea{border-color:rgba(57,42,70,.88);background:#17101e}
+.searchbar:focus-within,.field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(225,29,72,.58);box-shadow:0 0 0 3px rgba(225,29,72,.09)}
+.media-card,.hub-tile,.setting-row,.stat-tile,.dice-mini-card{
+  border-color:rgba(57,42,70,.76)!important;
+  background:linear-gradient(180deg,rgba(23,16,30,.94),rgba(13,9,18,.98))!important;
+}
+.media-card:hover,.hub-tile:hover{border-color:rgba(225,29,72,.42)!important}
+.media-cover{background:linear-gradient(180deg,#1d1426,#110c16)}
+.media-fallback{background:linear-gradient(180deg,#1d1426,#110c16)!important}
+.floating-note{bottom:calc(var(--nx-nav) + var(--safe-bottom) + 20px)}
+.nx-live-rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,40%);gap:12px;overflow:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;scrollbar-width:none}
+.nx-live-rail::-webkit-scrollbar{display:none}.nx-live-rail .media-card{scroll-snap-align:start}
+.nx-inline-link{color:#ff6a85;font-weight:900}
+.nx-empty{padding:28px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);text-align:center}
+@media(min-width:760px){
+  .app-shell{padding-left:20px;padding-right:20px}
+  .nx-topbar__inner{padding-left:20px;padding-right:20px}
+  .nx-live-rail{grid-auto-columns:minmax(180px,23%)}
+}
+@media(min-width:980px){
+  body{padding-bottom:26px}
+  .nx-bottom-nav{position:sticky;bottom:auto;top:calc(var(--nx-header) + var(--safe-top) + 8px);margin:8px auto 0;transform:none;left:auto;width:min(620px,calc(100% - 40px))}
+  .floating-note{bottom:22px}
+}
+@media(max-width:430px){
+  .nx-status__label{display:none}.nx-site-btn{padding:0 10px}.nx-brand__sub{display:none}
+}
+"""
+
+
+def _aninexus_header() -> str:
+    logo_url = f"{ANINEXUS_WEB_BASE_URL}/assets/logo.png"
+    return f"""
+<header class="nx-topbar">
+  <div class="nx-topbar__inner">
+    <a class="nx-brand" href="/" aria-label="AniNexus MiniApp">
+      <span class="nx-brand__mark"><img src="{_h(logo_url)}" alt="" onerror="this.remove();this.parentElement.textContent='N'"></span>
+      <span class="nx-brand__copy">
+        <span class="nx-brand__name">AniNexus</span>
+        <span class="nx-brand__sub">MiniApp oficial</span>
+      </span>
+    </a>
+    <div class="nx-topbar__actions">
+      <span class="nx-status" id="nxStatus" data-state="checking">
+        <span class="nx-status__dot"></span>
+        <span class="nx-status__label" id="nxStatusLabel">Conectando</span>
+      </span>
+      <button class="nx-site-btn" type="button" id="nxOpenSite">Abrir site</button>
+    </div>
+  </div>
+</header>
+"""
+
+
+def _aninexus_nav() -> str:
+    return """
+<nav class="nx-bottom-nav" aria-label="Navegacao principal">
+  <a class="nx-nav-item" href="/" data-nx-route="/">
+    <span class="nx-nav-item__icon">⌂</span><span>Inicio</span>
+  </a>
+  <a class="nx-nav-item" href="/catalogo" data-nx-route="/catalogo">
+    <span class="nx-nav-item__icon">▦</span><span>Catalogo</span>
+  </a>
+  <a class="nx-nav-item" href="/dado" data-nx-route="/dado" data-preserve-uid>
+    <span class="nx-nav-item__icon">◆</span><span>Gacha</span>
+  </a>
+  <a class="nx-nav-item" href="/shop" data-nx-route="/shop" data-preserve-uid>
+    <span class="nx-nav-item__icon">◈</span><span>Loja</span>
+  </a>
+  <a class="nx-nav-item" href="/menu" data-nx-route="/menu" data-preserve-uid>
+    <span class="nx-nav-item__icon">●</span><span>Perfil</span>
+  </a>
+</nav>
+"""
+
 def _page_template(
     title: str,
     body: str,
@@ -880,18 +1095,25 @@ def _page_template(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{_h(title)}</title>
+  <meta name="theme-color" content="#08060c">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="AniNexus MiniApp — catálogo, gacha, jogos, loja e coleção integrados ao Telegram.">
+  <link rel="icon" href="{_h(ANINEXUS_WEB_BASE_URL)}/assets/favicon.png">
+  <title>{_h(title)} | AniNexus</title>
   {_font_links()}
   {tg_script}
-  <style>{_base_css()}{extra_css}</style>
+  <style>{_base_css()}{_aninexus_css()}{extra_css}</style>
 </head>
-<body>
+<body data-aninexus-miniapp="true">
+  {_aninexus_header()}
   <main class="app-shell">
     {body}
   </main>
-  <script>{_shared_js()}{extra_js}</script>
+  {_aninexus_nav()}
+  <script>window.ANINEXUS_WEB_BASE_URL={_j(ANINEXUS_WEB_BASE_URL)};{_shared_js()}{extra_js}</script>
 </body>
 </html>"""
+
 
 
 def _shared_js() -> str:
@@ -1056,6 +1278,86 @@ function openExternalLink(url){
   }catch(err){}
   window.open(url, "_blank", "noopener,noreferrer");
 }
+
+function aninexusUrl(path){
+  const base = String(window.ANINEXUS_WEB_BASE_URL || "https://aninexus.com.br").replace(/\/$/, "");
+  const suffix = String(path || "");
+  if (!suffix) return base;
+  return base + (suffix.startsWith("/") ? suffix : ("/" + suffix));
+}
+
+function openAniNexus(path){
+  openExternalLink(aninexusUrl(path));
+}
+
+function aninexusMediaPath(item, type){
+  const media = item || {};
+  const slug = String(media.slug || "").replace(/^\/+/, "");
+  const fallback = String(type || "anime") + "-" + String(media.id || 0);
+  return "/" + String(type || "anime") + "/" + (slug || fallback);
+}
+
+function preserveUidOnNavigation(){
+  const uid = resolveWebappUid(0);
+  if (!(uid > 0)) return;
+  document.querySelectorAll("[data-preserve-uid]").forEach(function(link){
+    try{
+      const target = new URL(link.getAttribute("href") || "/", window.location.origin);
+      target.searchParams.set("uid", String(uid));
+      link.setAttribute("href", target.pathname + target.search);
+    }catch(err){}
+  });
+}
+
+function markActiveAniNexusRoute(){
+  const current = window.location.pathname || "/";
+  let best = null;
+  document.querySelectorAll("[data-nx-route]").forEach(function(link){
+    const route = link.getAttribute("data-nx-route") || "/";
+    const matches = route === "/" ? current === "/" : current.startsWith(route);
+    if (matches && (!best || route.length > best.route.length)) best = { link: link, route: route };
+  });
+  if (best) best.link.classList.add("is-active");
+}
+
+async function refreshAniNexusStatus(){
+  const root = document.getElementById("nxStatus");
+  const label = document.getElementById("nxStatusLabel");
+  if (!root || !label) return;
+  try{
+    const response = await fetch("/api/aninexus/status", { headers: { "Accept": "application/json" } });
+    const data = await response.json();
+    const online = response.ok && data && data.ok;
+    root.dataset.state = online ? "online" : "offline";
+    label.textContent = online ? "AniNexus online" : "Modo local";
+  }catch(err){
+    root.dataset.state = "offline";
+    label.textContent = "Modo local";
+  }
+}
+
+function initializeAniNexusShell(){
+  preserveUidOnNavigation();
+  markActiveAniNexusRoute();
+  const siteButton = document.getElementById("nxOpenSite");
+  if (siteButton) siteButton.onclick = function(){ openAniNexus("/"); };
+  const tg = getTelegramWebApp();
+  if (tg){
+    try{
+      tg.ready();
+      tg.expand();
+      if (tg.setHeaderColor) tg.setHeaderColor("#08060c");
+      if (tg.setBackgroundColor) tg.setBackgroundColor("#08060c");
+    }catch(err){}
+  }
+  refreshAniNexusStatus();
+}
+
+if (document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", initializeAniNexusShell, { once: true });
+}else{
+  initializeAniNexusShell();
+}
 """
 
 
@@ -1068,108 +1370,152 @@ def build_home_page(
     shop_banner_url: str,
 ) -> str:
     body = f"""
-<section class="hero-card">
-  <div class="hero-media"><img src="{_h(top_banner_url)}" alt="Source Baltigo"></div>
+<section class="hero-card nx-home-hero">
+  <div class="hero-media"><img src="{_h(top_banner_url)}" alt="AniNexus"></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="eyebrow-chip">Source Baltigo MiniApp</div>
-    <h1 class="hero-title">Anime, manga e cards com cara de produto premium.</h1>
-    <p class="hero-subtitle">Um hub mobile-first para descoberta, colecao e navegacao rapida dentro do ecossistema Baltigo no Telegram.</p>
+    <div class="eyebrow-chip">AniNexus × Source Baltigo</div>
+    <h1 class="hero-title">Seu universo anime agora fala a mesma língua.</h1>
+    <p class="hero-subtitle">Catálogo, gacha, coleção, jogos e loja em uma MiniApp única, sincronizada com o AniNexus e preparada para substituir integrações externas sem refazer o produto outra vez.</p>
+    <div class="hero-actions">
+      <a class="action-btn action-btn--primary" href="/catalogo">Explorar catálogo</a>
+      <button class="action-btn" type="button" onclick="openAniNexus('/')">Abrir AniNexus</button>
+    </div>
     <div class="hero-metrics">
-      <div class="metric-card"><span class="metric-label">Experiencia</span><span class="metric-value hero-value">Mobile first</span></div>
-      <div class="metric-card"><span class="metric-label">Visual</span><span class="metric-value hero-value">Cinematografico</span></div>
-      <div class="metric-card"><span class="metric-label">Fluxo</span><span class="metric-value hero-value">Rapido e vivo</span></div>
-      <div class="metric-card"><span class="metric-label">MiniApp</span><span class="metric-value hero-value">Telegram native</span></div>
+      <div class="metric-card"><span class="metric-label">Integração</span><span class="metric-value hero-value" id="nxHomeStatus">Conectando</span></div>
+      <div class="metric-card"><span class="metric-label">Em alta</span><span class="metric-value hero-value" id="nxHomePopularCount">--</span></div>
+      <div class="metric-card"><span class="metric-label">Agenda</span><span class="metric-value hero-value" id="nxHomeScheduleCount">--</span></div>
+      <div class="metric-card"><span class="metric-label">Experiência</span><span class="metric-value hero-value">Telegram + Web</span></div>
     </div>
   </div>
 </section>
 
 <section class="panel">
   <div class="section-head">
-    <div>
-      <div class="section-kicker">Entrada principal</div>
-      <h2 class="section-title">Explore o ecossistema</h2>
-    </div>
-    <div class="section-meta">Tudo organizado para abrir rapido, parecer produto de verdade e dar contexto imediato logo nos primeiros segundos.</div>
+    <div><div class="section-kicker">Navegação</div><h2 class="section-title">Tudo no mesmo ecossistema</h2></div>
+    <div class="section-meta">Um padrão visual, uma identidade e uma base de dados preparada para o AniNexus.</div>
   </div>
-  <div class="grid-tiles" style="margin-top:14px;">
+  <div class="grid-tiles nx-hub-grid" style="margin-top:14px;">
     <a class="hub-tile" href="/catalogo">
-      <div class="hub-tile-media"><img src="{_h(catalog_banner_url)}" alt="Catalogo"></div>
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill soft-pill--cool">Anime catalog</div>
-        <h3 class="hub-title">Catalogo</h3>
-        <p class="hub-copy">Biblioteca com busca, navegacao por letra e cards de conteudo com cara de streaming.</p>
-      </div>
+      <div class="hub-tile-media"><img src="{_h(catalog_banner_url)}" alt="Catálogo AniNexus"></div><div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content"><div class="soft-pill soft-pill--accent">AniNexus API</div><h3 class="hub-title">Catálogo</h3><p class="hub-copy">Busca, filtros, agenda e detalhes usando o contrato do AniNexus.</p></div>
     </a>
     <a class="hub-tile" href="/mangas">
-      <div class="hub-tile-media"><img src="{_h(manga_banner_url)}" alt="Mangas"></div>
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill soft-pill--accent">Manga library</div>
-        <h3 class="hub-title">Mangas</h3>
-        <p class="hub-copy">Uma vitrine mais limpa, mais legivel e mais marcante para descobrir colecoes do canal.</p>
-      </div>
+      <div class="hub-tile-media"><img src="{_h(manga_banner_url)}" alt="Mangás"></div><div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content"><div class="soft-pill">Leitura</div><h3 class="hub-title">Mangás</h3><p class="hub-copy">Descoberta e biblioteca com o mesmo padrão visual do catálogo.</p></div>
     </a>
-    <a class="hub-tile" href="/cards">
-      <div class="hub-tile-media"><img src="{_h(cards_banner_url)}" alt="Cards"></div>
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill">Cards live</div>
-        <h3 class="hub-title">Cards</h3>
-        <p class="hub-copy">Colecao de personagens com atualizacao silenciosa para refletir fotos trocadas e exclusoes.</p>
-      </div>
+    <a class="hub-tile" href="/dado" data-preserve-uid>
+      <div class="hub-tile-overlay"></div><div class="hub-tile-content"><div class="soft-pill soft-pill--accent">Gacha 3D</div><h3 class="hub-title">Nexus Roll</h3><p class="hub-copy">Dado 3D, efeitos de raridade e revelação cinematográfica.</p></div>
     </a>
-    <a class="hub-tile" href="/shop">
-      <div class="hub-tile-media"><img src="{_h(shop_banner_url)}" alt="Shop"></div>
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill soft-pill--accent">Economy</div>
-        <h3 class="hub-title">Shop</h3>
-        <p class="hub-copy">Venda personagens, compre recursos e acompanhe seu saldo em uma interface mais forte e consistente.</p>
-      </div>
+    <a class="hub-tile" href="/cccolecao" data-preserve-uid>
+      <div class="hub-tile-media"><img src="{_h(cards_banner_url)}" alt="Coleção"></div><div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content"><div class="soft-pill">Inventário</div><h3 class="hub-title">Coleção</h3><p class="hub-copy">Personagens, cards e progresso em uma única vitrine.</p></div>
     </a>
-    <a class="hub-tile" href="/pedido">
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill soft-pill--cool">Requests</div>
-        <h3 class="hub-title">Pedidos</h3>
-        <p class="hub-copy">Fluxo para solicitar novos titulos com a mesma linguagem visual do resto do produto.</p>
-      </div>
+    <a class="hub-tile" href="/shop" data-preserve-uid>
+      <div class="hub-tile-media"><img src="{_h(shop_banner_url)}" alt="Loja"></div><div class="hub-tile-overlay"></div>
+      <div class="hub-tile-content"><div class="soft-pill soft-pill--accent">Economia</div><h3 class="hub-title">Loja</h3><p class="hub-copy">Saldo, pacotes, recursos e compras com feedback imediato.</p></div>
     </a>
-    <a class="hub-tile" href="/dado">
-      <div class="hub-tile-overlay"></div>
-      <div class="hub-tile-content">
-        <div class="soft-pill">Dice system</div>
-        <h3 class="hub-title">Dado</h3>
-        <p class="hub-copy">Area do sistema com contraste melhor, mais profundidade visual e toque mais premium.</p>
-      </div>
+    <a class="hub-tile" href="/memoria" data-preserve-uid>
+      <div class="hub-tile-overlay"></div><div class="hub-tile-content"><div class="soft-pill">Jogos</div><h3 class="hub-title">Arcade</h3><p class="hub-copy">Memória e próximos jogos conectados a rankings e recompensas.</p></div>
     </a>
   </div>
 </section>
 
 <section class="panel panel--soft">
   <div class="section-head">
-    <div>
-      <div class="section-kicker">Direcao visual</div>
-      <h2 class="section-title">Dark theme mais cinematografico</h2>
-    </div>
-    <div class="section-meta">Paleta mais rica, hierarquia tipografica mais clara, superficies com profundidade e movimentos discretos para aumentar a percepcao de qualidade.</div>
+    <div><div class="section-kicker">AniNexus ao vivo</div><h2 class="section-title">Em alta agora</h2></div>
+    <button class="control-btn" type="button" onclick="openAniNexus('/animes/catalogo')">Ver no site</button>
   </div>
-  <div class="chip-row scroll-x" style="margin-top:14px;">
-    <div class="chip chip--accent">Contraste premium</div>
-    <div class="chip">Animacao leve</div>
-    <div class="chip">Touch friendly</div>
-    <div class="chip">Cards mais fortes</div>
-    <div class="chip">Busca melhor</div>
-    <div class="chip">Layout mais respirado</div>
-    <div class="chip">Cara de produto real</div>
-  </div>
+  <div class="nx-live-rail" id="nxHomePopular" style="margin-top:14px;"></div>
 </section>
 
-<div class="footer-note">Source Baltigo . Premium web experience</div>
+<section class="panel panel--soft">
+  <div class="section-head">
+    <div><div class="section-kicker">Programação</div><h2 class="section-title">Próximos lançamentos</h2></div>
+    <div class="section-meta" id="nxHomeUpdated">Buscando a agenda do AniNexus...</div>
+  </div>
+  <div class="list-stack" id="nxHomeSchedule" style="margin-top:14px;"></div>
+</section>
+
+<div class="footer-note">AniNexus × Source Baltigo · Uma experiência, em qualquer tela</div>
 """
-    return _page_template("Source Baltigo", body)
+    extra_css = r"""
+.nx-home-hero{min-height:390px}.nx-home-hero .hero-title{max-width:17ch}
+.nx-hub-grid .hub-tile{min-height:230px}.nx-hub-grid .hub-title{font-size:26px}
+.nx-schedule-row{display:flex;align-items:center;gap:13px;padding:13px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.025);cursor:pointer}
+.nx-schedule-cover{width:58px;height:76px;object-fit:cover;border-radius:9px;background:var(--surface-2)}
+.nx-schedule-copy{min-width:0;flex:1}.nx-schedule-title{margin:0;font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nx-schedule-meta{margin-top:5px;color:var(--muted);font-size:12px}.nx-schedule-time{font-size:13px;font-weight:1000;color:#ff7894}
+@media(min-width:760px){.nx-home-hero{min-height:470px}.nx-hub-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+"""
+    js = r"""
+function nxHomeCard(item){
+  const media = item || {};
+  const cover = media.cover ? '<img src="' + esc(media.cover) + '" alt="' + esc(media.title || 'Anime') + '" loading="lazy" onerror="setImageFallback(this,\'ANIME\')">' : '';
+  const score = media.score ? '<span class="soft-pill soft-pill--accent">★ ' + esc(Number(media.score).toFixed(1)) + '</span>' : '';
+  return '<article class="media-card" data-nx-anime="' + esc(media.id || 0) + '">' +
+    '<div class="media-cover">' + cover + '<span class="media-badge media-badge--accent">' + esc(media.format || 'Anime') + '</span></div>' +
+    '<div class="media-body"><h3 class="card-title">' + esc(media.title || 'Anime') + '</h3><div class="pill-row">' + score + '<span class="soft-pill">AniNexus</span></div></div></article>';
+}
+function bindNxHomeCards(root){
+  if (!root) return;
+  root.querySelectorAll('[data-nx-anime]').forEach(function(card){
+    card.onclick = function(){
+      const item = card.__media || null;
+      if (item) openAniNexus(aninexusMediaPath(item, 'anime'));
+    };
+  });
+}
+function nxScheduleRow(item){
+  const media = item.media || item.anime || item || {};
+  const airing = Number(item.airingAt || item.airing_at || (media.nextAiringEpisode || {}).airingAt || 0);
+  const episode = Number(item.episode || (media.nextAiringEpisode || {}).episode || 0);
+  let clock = '--:--';
+  if (airing > 0){
+    try{ clock = new Date(airing * 1000).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}); }catch(err){}
+  }
+  const cover = media.cover ? '<img class="nx-schedule-cover" src="' + esc(media.cover) + '" alt="" loading="lazy">' : '<div class="nx-schedule-cover"></div>';
+  return '<article class="nx-schedule-row" data-nx-path="' + esc(aninexusMediaPath(media, 'anime')) + '">' + cover +
+    '<div class="nx-schedule-copy"><h3 class="nx-schedule-title">' + esc(media.title || item.title || 'Anime') + '</h3><div class="nx-schedule-meta">' + (episode > 0 ? ('Episódio ' + episode) : 'Programação AniNexus') + '</div></div>' +
+    '<span class="nx-schedule-time">' + esc(clock) + '</span></article>';
+}
+async function loadNxHome(){
+  const popularRoot = document.getElementById('nxHomePopular');
+  const scheduleRoot = document.getElementById('nxHomeSchedule');
+  if (popularRoot) setSkeleton(popularRoot, 5);
+  try{
+    const response = await fetch('/api/aninexus/home', {headers:{'Accept':'application/json'}});
+    if (!response.ok) throw new Error('AniNexus indisponível');
+    const data = await response.json();
+    const popular = Array.isArray(data.popular) ? data.popular.slice(0, 12) : [];
+    const schedule = Array.isArray(data.schedule) ? data.schedule.slice(0, 8) : [];
+    document.getElementById('nxHomeStatus').textContent = 'Online';
+    document.getElementById('nxHomePopularCount').textContent = String(popular.length);
+    document.getElementById('nxHomeScheduleCount').textContent = String(schedule.length);
+    document.getElementById('nxHomeUpdated').textContent = 'Sincronizado às ' + humanClock();
+    if (popularRoot){
+      popularRoot.innerHTML = popular.length ? popular.map(nxHomeCard).join('') : '<div class="nx-empty">Nenhum título disponível agora.</div>';
+      popularRoot.querySelectorAll('[data-nx-anime]').forEach(function(card, index){ card.__media = popular[index]; });
+      bindNxHomeCards(popularRoot);
+    }
+    if (scheduleRoot){
+      scheduleRoot.innerHTML = schedule.length ? schedule.map(nxScheduleRow).join('') : '<div class="nx-empty">A agenda será exibida assim que houver lançamentos.</div>';
+      scheduleRoot.querySelectorAll('[data-nx-path]').forEach(function(row){ row.onclick = function(){ openAniNexus(row.getAttribute('data-nx-path')); }; });
+    }
+  }catch(err){
+    document.getElementById('nxHomeStatus').textContent = 'Modo local';
+    document.getElementById('nxHomePopularCount').textContent = '--';
+    document.getElementById('nxHomeScheduleCount').textContent = '--';
+    document.getElementById('nxHomeUpdated').textContent = 'O conteúdo local continua disponível.';
+    if (popularRoot) popularRoot.innerHTML = '<div class="nx-empty">Não foi possível consultar o AniNexus agora. O restante da MiniApp continua funcionando.</div>';
+    if (scheduleRoot) scheduleRoot.innerHTML = '<div class="nx-empty">Agenda temporariamente indisponível.</div>';
+  }
+}
+loadNxHome();
+createLiveRefresh(loadNxHome, 60000);
+"""
+    return _page_template("Início", body, extra_css=extra_css, extra_js=js, include_tg=True)
+
 
 
 def build_media_catalog_page(
@@ -1185,193 +1531,233 @@ def build_media_catalog_page(
     footer_label: str,
     default_badge: str,
 ) -> str:
+    media_type = "manga" if "manga" in default_badge.lower() else "anime"
     config = {
-        "apiLetters": api_letters,
-        "apiCatalog": api_catalog,
+        "localApiLetters": api_letters,
+        "localApiCatalog": api_catalog,
         "searchPlaceholder": search_placeholder,
         "footerLabel": footer_label,
         "defaultBadge": default_badge,
+        "mediaType": media_type,
+        "aninexusApi": "/api/aninexus/reading" if media_type == "manga" else "/api/aninexus/catalog",
     }
     body = f"""
-<section class="hero-card">
+<section class="hero-card nx-catalog-hero">
   <div class="hero-media"><img src="{_h(banner_url)}" alt="{_h(hero_title)}"></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="eyebrow-chip">{_h(hero_tag)}</div>
+    <div class="eyebrow-chip">{_h(hero_tag)} · AniNexus</div>
     <h1 class="hero-title">{_h(hero_title)}</h1>
     <p class="hero-subtitle">{_h(hero_copy)}</p>
     <div class="hero-metrics">
-      <div class="metric-card"><span class="metric-label">Total</span><span class="metric-value" id="heroTotal">...</span></div>
-      <div class="metric-card"><span class="metric-label">Busca</span><span class="metric-value">Instantanea</span></div>
-      <div class="metric-card"><span class="metric-label">Filtro</span><span class="metric-value">Por letra</span></div>
-      <div class="metric-card"><span class="metric-label">Estilo</span><span class="metric-value">Streaming feel</span></div>
+      <div class="metric-card"><span class="metric-label">Resultados</span><span class="metric-value" id="heroTotal">...</span></div>
+      <div class="metric-card"><span class="metric-label">Fonte</span><span class="metric-value" id="catalogSource">AniNexus</span></div>
+      <div class="metric-card"><span class="metric-label">Página</span><span class="metric-value" id="catalogPageMetric">1</span></div>
+      <div class="metric-card"><span class="metric-label">Sync</span><span class="metric-value" id="catalogSyncMetric">Agora</span></div>
     </div>
   </div>
 </section>
 
 <section class="panel">
-  <div class="stack">
-    <div class="section-head">
-      <div>
-        <div class="section-kicker">Descoberta</div>
-        <h2 class="section-title">Busque e explore</h2>
-      </div>
-      <div class="section-meta" id="metaTxt">Carregando catalogo...</div>
-    </div>
-    <label class="searchbar">
-      <span class="input-icon">Busca</span>
-      <input id="searchInput" type="text" placeholder="{_h(search_placeholder)}">
-    </label>
-    <div class="scroll-x">
-      <div class="chip-row" id="lettersRail"></div>
+  <div class="section-head">
+    <div><div class="section-kicker">Descoberta</div><h2 class="section-title">Encontre sua próxima obra</h2></div>
+    <div class="section-meta" id="metaTxt">Conectando ao AniNexus...</div>
+  </div>
+  <label class="searchbar" style="margin-top:14px;">
+    <span class="input-icon">Busca</span>
+    <input id="searchInput" type="search" autocomplete="off" placeholder="{_h(search_placeholder)}">
+  </label>
+  <div class="scroll-x" style="margin-top:12px;">
+    <div class="chip-row" id="catalogSortRail">
+      <button class="chip active" type="button" data-catalog-sort="POPULAR">Em alta</button>
+      <button class="chip" type="button" data-catalog-sort="SCORE">Melhor nota</button>
+      <button class="chip" type="button" data-catalog-sort="TRENDING">Tendências</button>
+      <button class="chip" type="button" data-catalog-sort="NEW">Novidades</button>
+      <button class="chip" type="button" data-catalog-sort="TITLE">A–Z</button>
     </div>
   </div>
 </section>
 
 <section class="panel panel--soft">
   <div class="section-head">
-    <div>
-      <div class="section-kicker">Resultado</div>
-      <h2 class="section-title">Selecao disponivel</h2>
-    </div>
+    <div><div class="section-kicker">Catálogo unificado</div><h2 class="section-title">Seleção disponível</h2></div>
     <div class="section-meta" id="resultTxt">Preparando vitrine...</div>
   </div>
-  <div class="media-grid" id="cards" style="margin-top:14px;"></div>
-  <div id="emptyBox" class="empty-state" style="display:none; margin-top:14px;">
-    <strong>Nada encontrado</strong>
-    Ajuste a busca ou troque a letra para ver mais opcoes.
+  <div class="media-grid nx-catalog-grid" id="cards" style="margin-top:14px;"></div>
+  <div id="emptyBox" class="empty-state" style="display:none;margin-top:14px;">
+    <strong>Nada encontrado</strong>Altere a busca ou escolha outro tipo de ordenação.
   </div>
   <button id="btnMore" class="loadmore-btn" style="margin-top:14px;">Carregar mais</button>
 </section>
 
-<div class="footer-note">{_h(footer_label)}</div>
+<div class="footer-note">{_h(footer_label)} · Powered by AniNexus</div>
+"""
+    extra_css = r"""
+.nx-catalog-hero{min-height:330px}.nx-catalog-hero .hero-title{max-width:18ch}
+.nx-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.nx-catalog-grid .media-card{cursor:pointer}.nx-catalog-grid .media-cover{aspect-ratio:2/3}
+.nx-catalog-grid .card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.25em}
+.nx-source-local{color:#f4b942!important}
+@media(min-width:680px){.nx-catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:1040px){.nx-catalog-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 """
     js = f"""
 const CATALOG_CONFIG = {_j(config)};
-const catalogState = {{ letter: "ALL", q: "", limit: 60, offset: 0, total: 0, loading: false, letters: null }};
+const catalogState = {{ page: 1, perPage: 24, total: 0, hasNext: false, search: "", sort: "POPULAR", loading: false, source: "aninexus", items: [] }};
 
-function catalogBadge(item){{
-  const raw = String(item.badge || item.format || CATALOG_CONFIG.defaultBadge || "").trim();
-  return raw ? raw.toUpperCase() : "MEDIA";
+function catalogTitle(item){{ return String(item.title || item.titulo || item.name || "Obra"); }}
+function catalogCover(item){{ return String(item.cover || item.cover_url || item.image || ""); }}
+function catalogFormat(item){{ return String(item.format || item.badge || CATALOG_CONFIG.defaultBadge || "Media").replace(/_/g, " "); }}
+function catalogYear(item){{ return item.seasonYear || item.year || ((item.startDate || {{}}).year) || ""; }}
+function catalogScore(item){{ const value = Number(item.score || 0); return Number.isFinite(value) && value > 0 ? value.toFixed(1) : ""; }}
+function catalogGenres(item){{ return Array.isArray(item.genres) ? item.genres.slice(0, 2).join(" · ") : ""; }}
+
+function catalogCard(item, index){{
+  const cover = catalogCover(item);
+  const image = cover ? '<img src="' + esc(cover) + '" alt="' + esc(catalogTitle(item)) + '" loading="lazy" onerror="setImageFallback(this,\\'MEDIA\\')">' : '';
+  const score = catalogScore(item);
+  const year = catalogYear(item);
+  const genres = catalogGenres(item);
+  return '<article class="media-card" tabindex="0" role="button" data-catalog-index="' + index + '">' +
+    '<div class="media-cover">' + image + '<span class="media-badge media-badge--accent">' + esc(catalogFormat(item)) + '</span>' +
+    (score ? '<span class="media-count">★ ' + esc(score) + '</span>' : '') + '</div>' +
+    '<div class="media-body"><h3 class="card-title">' + esc(catalogTitle(item)) + '</h3><div class="pill-row">' +
+    (year ? '<span class="soft-pill">' + esc(year) + '</span>' : '') +
+    (genres ? '<span class="soft-pill soft-pill--accent">' + esc(genres) + '</span>' : '') +
+    '</div></div></article>';
 }}
 
-function catalogMetaParts(item){{
-  const parts = [];
-  if (item.year) parts.push(String(item.year));
-  if (item.score) parts.push("Score " + String(item.score));
-  if (item.format) parts.push(String(item.format).toUpperCase().replace(/_/g, " "));
-  return parts;
-}}
-
-function makeLetterChip(key, count){{
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "chip" + (catalogState.letter === key ? " active" : "");
-  const label = key === "ALL" ? "Todos" : key;
-  button.innerHTML = '<span>' + esc(label) + '</span><span class="soft-pill">' + esc(count) + '</span>';
-  button.onclick = function(){{
-    if (catalogState.letter === key) return;
-    catalogState.letter = key;
-    loadCatalog({{ reset: true }});
-    renderLetters();
-  }};
-  return button;
-}}
-
-async function renderLetters(){{
-  const root = document.getElementById("lettersRail");
-  if (!catalogState.letters){{
-    const res = await fetch(CATALOG_CONFIG.apiLetters + "?_ts=" + Date.now());
-    catalogState.letters = await res.json();
-  }}
-  const data = catalogState.letters || {{}};
-  document.getElementById("heroTotal").textContent = String(data.total || 0);
-  root.innerHTML = "";
-  root.appendChild(makeLetterChip("ALL", data.all_count || data.total || 0));
-  root.appendChild(makeLetterChip("#", (data.counts && data.counts["#"]) || 0));
-  for (let code = 65; code <= 90; code += 1){{
-    const key = String.fromCharCode(code);
-    root.appendChild(makeLetterChip(key, (data.counts && data.counts[key]) || 0));
-  }}
-}}
-
-function buildCatalogCard(item){{
-  const cover = item.cover_url ? '<img src="' + esc(item.cover_url) + '" alt="' + esc(item.titulo) + '" loading="lazy">' : '';
-  const pills = catalogMetaParts(item).map(function(part){{ return '<span class="soft-pill">' + esc(part) + '</span>'; }}).join("");
-  return ''
-    + '<article class="media-card" onclick="tgOpenLink(' + JSON.stringify(String(item.link_post || "")) + ')">'
-    + '<div class="media-cover">' + cover + '<div class="media-badge media-badge--cool">' + esc(catalogBadge(item)) + '</div></div>'
-    + '<div class="media-body"><h3 class="card-title">' + esc(item.titulo) + '</h3><div class="pill-row"><span class="soft-pill soft-pill--accent">Canal</span>' + pills + '</div></div>'
-    + '</article>';
-}}
-
-function renderCatalog(items){{
-  const root = document.getElementById("cards");
-  const empty = document.getElementById("emptyBox");
-  document.getElementById("metaTxt").textContent = "Total carregado: " + String(catalogState.total || 0) + " . Atualizado " + humanClock();
-  document.getElementById("resultTxt").textContent = "Mostrando " + String(items.length) + " de " + String(catalogState.total || 0);
-  if (!items.length){{
-    root.innerHTML = "";
-    empty.style.display = "";
+function openCatalogItem(item){{
+  if (catalogState.source === "aninexus" && Number(item.id || 0) > 0){{
+    openAniNexus(aninexusMediaPath(item, CATALOG_CONFIG.mediaType));
     return;
   }}
-  empty.style.display = "none";
-  root.innerHTML = items.map(buildCatalogCard).join("");
+  const link = String(item.link_post || item.link || "");
+  if (link) tgOpenLink(link);
+}}
+
+function bindCatalogCards(){{
+  document.querySelectorAll('[data-catalog-index]').forEach(function(card){{
+    const activate = function(){{
+      const item = catalogState.items[Number(card.getAttribute('data-catalog-index') || -1)];
+      if (item) openCatalogItem(item);
+    }};
+    card.onclick = activate;
+    card.onkeydown = function(event){{ if (event.key === 'Enter' || event.key === ' '){{ event.preventDefault(); activate(); }} }};
+  }});
+}}
+
+function renderCatalog(reset){{
+  const root = document.getElementById("cards");
+  const empty = document.getElementById("emptyBox");
+  const html = catalogState.items.map(catalogCard).join("");
+  root.innerHTML = html;
+  bindCatalogCards();
+  empty.style.display = catalogState.items.length ? "none" : "";
+  document.getElementById("heroTotal").textContent = String(catalogState.total || catalogState.items.length || 0);
+  document.getElementById("catalogPageMetric").textContent = String(catalogState.page || 1);
+  document.getElementById("catalogSyncMetric").textContent = humanClock();
+  const source = document.getElementById("catalogSource");
+  source.textContent = catalogState.source === "aninexus" ? "AniNexus" : "Catálogo local";
+  source.classList.toggle("nx-source-local", catalogState.source !== "aninexus");
+  document.getElementById("metaTxt").textContent = catalogState.source === "aninexus"
+    ? "Dados sincronizados diretamente com o AniNexus."
+    : "AniNexus indisponível; exibindo o catálogo local sem interromper a experiência.";
+  document.getElementById("resultTxt").textContent = "Mostrando " + String(catalogState.items.length) + " de " + String(catalogState.total || catalogState.items.length);
+  const btn = document.getElementById("btnMore");
+  btn.disabled = !catalogState.hasNext;
+  btn.textContent = catalogState.hasNext ? "Carregar mais" : "Fim da lista";
+}}
+
+async function fetchAniNexus(reset){{
+  const params = new URLSearchParams();
+  params.set("page", String(reset ? 1 : catalogState.page));
+  params.set("per_page", String(catalogState.perPage));
+  params.set("sort", catalogState.sort);
+  if (catalogState.search) params.set("search", catalogState.search);
+  const response = await fetch(CATALOG_CONFIG.aninexusApi + "?" + params.toString(), {{ headers: {{ "Accept": "application/json" }} }});
+  if (!response.ok) throw new Error("AniNexus indisponível");
+  const data = await response.json();
+  const items = Array.isArray(data.items) ? data.items : [];
+  const pageInfo = data.pageInfo || data.page_info || {{}};
+  catalogState.source = "aninexus";
+  catalogState.page = Number(pageInfo.currentPage || pageInfo.current_page || (reset ? 1 : catalogState.page) || 1);
+  catalogState.total = Number(pageInfo.total || data.total || items.length || 0);
+  catalogState.hasNext = Boolean(pageInfo.hasNextPage ?? pageInfo.has_next_page ?? (items.length >= catalogState.perPage));
+  catalogState.items = reset ? items : catalogState.items.concat(items);
+}}
+
+async function fetchLocal(reset){{
+  const params = new URLSearchParams();
+  params.set("letter", "ALL");
+  params.set("q", catalogState.search);
+  params.set("limit", String(catalogState.perPage));
+  params.set("offset", String(reset ? 0 : catalogState.items.length));
+  const response = await fetch(CATALOG_CONFIG.localApiCatalog + "?" + params.toString());
+  if (!response.ok) throw new Error("Catálogo local indisponível");
+  const data = await response.json();
+  const items = Array.isArray(data.items) ? data.items : [];
+  catalogState.source = "local";
+  catalogState.total = Number(data.total || items.length || 0);
+  catalogState.hasNext = (reset ? items.length : catalogState.items.length + items.length) < catalogState.total;
+  catalogState.items = reset ? items : catalogState.items.concat(items);
 }}
 
 async function loadCatalog(options){{
   const opts = options || {{}};
+  const reset = opts.reset !== false;
   if (catalogState.loading) return;
   catalogState.loading = true;
-  const root = document.getElementById("cards");
   const btn = document.getElementById("btnMore");
-  if (opts.reset) {{
-    catalogState.offset = 0;
-    setSkeleton(root, 6);
-  }}
   btn.disabled = true;
-  btn.textContent = "Carregando";
-  const params = new URLSearchParams();
-  params.set("letter", catalogState.letter);
-  params.set("q", catalogState.q);
-  params.set("limit", String(catalogState.limit));
-  params.set("offset", String(catalogState.offset));
-  params.set("_ts", String(Date.now()));
-  const res = await fetch(CATALOG_CONFIG.apiCatalog + "?" + params.toString());
-  const data = await res.json();
-  const items = Array.isArray(data.items) ? data.items : [];
-  catalogState.total = Number(data.total || 0);
-  if (opts.reset) {{
-    renderCatalog(items);
-  }} else {{
-    root.innerHTML += items.map(buildCatalogCard).join("");
+  btn.textContent = "Carregando...";
+  if (reset){{
+    catalogState.page = 1;
+    catalogState.items = [];
+    setSkeleton("cards", 8);
+  }}else{{
+    catalogState.page += 1;
   }}
-  catalogState.offset += items.length;
-  if (catalogState.offset >= catalogState.total) {{
-    btn.disabled = true;
-    btn.textContent = "Fim da lista";
-  }} else {{
-    btn.disabled = false;
-    btn.textContent = "Carregar mais";
+  try{{
+    try{{
+      await fetchAniNexus(reset);
+    }}catch(primaryError){{
+      if (!reset) catalogState.page = Math.max(1, catalogState.page - 1);
+      await fetchLocal(reset);
+    }}
+    renderCatalog(reset);
+  }}catch(err){{
+    if (!reset) catalogState.page = Math.max(1, catalogState.page - 1);
+    catalogState.items = reset ? [] : catalogState.items;
+    catalogState.total = catalogState.items.length;
+    catalogState.hasNext = false;
+    renderCatalog(reset);
+    document.getElementById("metaTxt").textContent = "Não foi possível carregar o catálogo agora.";
+  }}finally{{
+    catalogState.loading = false;
   }}
-  catalogState.loading = false;
 }}
 
 document.getElementById("searchInput").addEventListener("input", debounce(function(event){{
-  catalogState.q = String(event.target.value || "").trim();
+  catalogState.search = String(event.target.value || "").trim();
+  catalogState.sort = catalogState.search ? "MATCH" : catalogState.sort;
+  document.querySelectorAll('[data-catalog-sort]').forEach(function(button){{ button.classList.toggle('active', button.getAttribute('data-catalog-sort') === catalogState.sort); }});
   loadCatalog({{ reset: true }});
-}}, 220));
+}}, 320));
 
-document.getElementById("btnMore").addEventListener("click", function(){{
-  loadCatalog({{ reset: false }});
+document.querySelectorAll('[data-catalog-sort]').forEach(function(button){{
+  button.onclick = function(){{
+    catalogState.sort = button.getAttribute('data-catalog-sort') || 'POPULAR';
+    document.querySelectorAll('[data-catalog-sort]').forEach(function(item){{ item.classList.toggle('active', item === button); }});
+    loadCatalog({{ reset: true }});
+  }};
 }});
 
-(async function(){{
-  await renderLetters();
-  await loadCatalog({{ reset: true }});
-}})();
+document.getElementById("btnMore").onclick = function(){{ loadCatalog({{ reset: false }}); }};
+loadCatalog({{ reset: true }});
 """
-    return _page_template(page_title, body, extra_js=js)
+    return _page_template(page_title, body, extra_css=extra_css, extra_js=js, include_tg=True)
+
 
 
 def build_cards_home_page(*, top_banner_url: str) -> str:
@@ -1798,135 +2184,186 @@ document.getElementById("searchQueryInput").addEventListener("keydown", function
 
 def build_menu_page(*, uid: int, menu_banner_url: str) -> str:
     body = f"""
-<section class="hero-card hero-card--compact">
-  <div class="hero-media"><img src="{_h(menu_banner_url)}" alt="Menu"></div>
+<section class="hero-card hero-card--compact nx-profile-hero">
+  <div class="hero-media"><img src="{_h(menu_banner_url)}" alt="Perfil AniNexus"></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="eyebrow-chip">User center</div>
-    <h1 class="hero-title">Perfil Baltigo</h1>
-    <p class="hero-subtitle">Configuracoes, favorito, colecao e status em uma interface mais organizada, mais elegante e com refresh automatico quando houver mudanca nos cards.</p>
+    <div class="eyebrow-chip">Nexus ID</div>
+    <h1 class="hero-title" id="profileName">Carregando perfil...</h1>
+    <p class="hero-subtitle" id="profileSub">Sincronizando sua identidade com o ecossistema.</p>
+    <div class="hero-actions">
+      <a class="action-btn action-btn--primary" href="/dado" data-preserve-uid>Jogar gacha</a>
+      <a class="action-btn" href="/cccolecao" data-preserve-uid>Ver coleção</a>
+    </div>
   </div>
 </section>
 
-<section class="panel profile-card">
-  <div class="profile-avatar" id="profileAvatar">SB</div>
+<section class="panel profile-card nx-profile-card">
+  <div class="profile-avatar" id="profileAvatar">NX</div>
   <div class="profile-copy">
-    <h2 class="profile-name" id="profileName">Carregando...</h2>
-    <p class="profile-sub" id="profileSub">Atualizando dados do usuario...</p>
+    <div class="section-kicker">Conta conectada</div>
+    <h2 class="profile-name" id="profileCardName">Jogador</h2>
+    <p class="profile-sub" id="profileCardSub">Atualizando dados...</p>
     <div class="pill-row">
-      <span class="soft-pill soft-pill--cool" id="favoritePill">Favorito: --</span>
-      <span class="soft-pill"><span class="pulse-dot"></span> Sync automatico</span>
+      <span class="soft-pill soft-pill--accent" id="favoritePill">Favorito: --</span>
+      <span class="soft-pill"><span class="pulse-dot"></span> Telegram verificado</span>
     </div>
   </div>
 </section>
 
 <section class="panel panel--soft">
   <div class="section-head">
-    <div>
-      <div class="section-kicker">Status</div>
-      <h2 class="section-title">Resumo da conta</h2>
-    </div>
+    <div><div class="section-kicker">Painel</div><h2 class="section-title">Sua conta em um olhar</h2></div>
     <div class="section-meta" id="menuMeta">Carregando perfil...</div>
   </div>
   <div class="stat-grid" style="margin-top:14px;">
-    <div class="stat-tile"><div class="stat-label">Colecao</div><div class="stat-value" id="menuCollection">0</div></div>
+    <div class="stat-tile"><div class="stat-label">Coleção</div><div class="stat-value" id="menuCollection">0</div></div>
     <div class="stat-tile"><div class="stat-label">Coins</div><div class="stat-value" id="menuCoins">0</div></div>
-    <div class="stat-tile"><div class="stat-label">Nivel</div><div class="stat-value" id="menuLevel">1</div></div>
+    <div class="stat-tile"><div class="stat-label">Nível</div><div class="stat-value" id="menuLevel">1</div></div>
     <div class="stat-tile"><div class="stat-label">Idioma</div><div class="stat-value" id="menuLanguage">PT</div></div>
   </div>
 </section>
 
+<section class="panel">
+  <div class="section-head">
+    <div><div class="section-kicker">Atalhos</div><h2 class="section-title">Continue de onde parou</h2></div>
+  </div>
+  <div class="nx-action-grid" style="margin-top:14px;">
+    <a class="nx-action-card" href="/catalogo"><span class="nx-action-icon">▦</span><strong>Catálogo</strong><small>Descobrir anime</small></a>
+    <a class="nx-action-card" href="/mangas"><span class="nx-action-icon">▤</span><strong>Mangás</strong><small>Explorar leitura</small></a>
+    <a class="nx-action-card" href="/dado" data-preserve-uid><span class="nx-action-icon">◆</span><strong>Nexus Roll</strong><small>Gacha em 3D</small></a>
+    <a class="nx-action-card" href="/shop" data-preserve-uid><span class="nx-action-icon">◈</span><strong>Loja</strong><small>Itens e saldo</small></a>
+    <a class="nx-action-card" href="/cccolecao" data-preserve-uid><span class="nx-action-icon">✦</span><strong>Coleção</strong><small>Seu inventário</small></a>
+    <a class="nx-action-card" href="/memoria" data-preserve-uid><span class="nx-action-icon">◎</span><strong>Arcade</strong><small>Jogos e ranking</small></a>
+  </div>
+</section>
+
 <section class="panel panel--soft">
   <div class="section-head">
-    <div><div class="section-kicker">Perfil</div><h2 class="section-title">Identidade do usuario</h2></div>
-    <div class="section-meta">Sem alterar regras de negocio. So uma camada visual melhor e mais consistente.</div>
+    <div><div class="section-kicker">AniNexus ao vivo</div><h2 class="section-title">Recomendados para explorar</h2></div>
+    <button class="control-btn" type="button" onclick="openAniNexus('/animes/catalogo')">Abrir site</button>
   </div>
-  <div class="setting-group" style="margin-top:14px;">
+  <div class="nx-live-rail" id="nxMenuPopular" style="margin-top:14px;"></div>
+</section>
+
+<details class="panel nx-disclosure" open>
+  <summary><span><span class="section-kicker">Identidade</span><strong>Perfil e personagem favorito</strong></span><span class="nx-chevron">⌄</span></summary>
+  <div class="setting-group nx-disclosure__body">
     <div class="setting-row">
-      <div class="setting-copy"><h3 class="setting-title">Nickname</h3><p class="setting-sub">Unico, comecando em maiuscula, e travado depois do primeiro salvamento.</p></div>
-      <div class="form-stack" style="width:min(100%, 360px);">
-        <label class="field"><input id="nicknameInput" maxlength="17" placeholder="Ex: Zoro"></label>
-        <button class="control-btn control-btn--accent" id="saveNicknameBtn">Salvar nickname</button>
-      </div>
+      <div class="setting-copy"><h3 class="setting-title">Nickname</h3><p class="setting-sub">Único, começando em maiúscula e bloqueado após o primeiro salvamento.</p></div>
+      <div class="form-stack" style="width:min(100%,360px);"><label class="field"><input id="nicknameInput" maxlength="17" placeholder="Ex: Zoro"></label><button class="control-btn control-btn--accent" id="saveNicknameBtn">Salvar nickname</button></div>
     </div>
     <div class="setting-row">
-      <div class="setting-copy"><h3 class="setting-title">Favoritar personagem</h3><p class="setting-sub">Somente personagens da sua colecao. A lista atualiza sozinha se algum card mudar ou sumir.</p></div>
+      <div class="setting-copy"><h3 class="setting-title">Personagem favorito</h3><p class="setting-sub">Escolha um personagem existente na sua coleção.</p></div>
       <div class="inline-controls"><button class="control-btn" id="favoriteBtn">Escolher favorito</button></div>
     </div>
   </div>
-</section>
+</details>
 
-<section class="panel panel--soft">
-  <div class="section-head">
-    <div><div class="section-kicker">Preferencias</div><h2 class="section-title">Seu jeito de usar</h2></div>
+<details class="panel nx-disclosure">
+  <summary><span><span class="section-kicker">Preferências</span><strong>Idioma, país e privacidade</strong></span><span class="nx-chevron">⌄</span></summary>
+  <div class="setting-group nx-disclosure__body">
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">País</h3><p class="setting-sub">Bandeira exibida no perfil.</p></div><label class="field" style="width:min(100%,240px);"><select id="countrySelect"></select></label></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Idioma</h3><p class="setting-sub">Idioma principal da conta.</p></div><label class="field" style="width:min(100%,240px);"><select id="languageSelect"></select></label></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Perfil privado</h3><p class="setting-sub">Controla a visibilidade para outros usuários.</p></div><button class="control-btn" id="privacyBtn">Desativado</button></div>
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Notificações</h3><p class="setting-sub">Avisos quando seus dados acumularem.</p></div><button class="control-btn" id="notificationsBtn">Ativado</button></div>
   </div>
-  <div class="setting-group" style="margin-top:14px;">
-    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Pais</h3><p class="setting-sub">Escolha a bandeira exibida no seu perfil.</p></div><label class="field" style="width:min(100%, 240px);"><select id="countrySelect"></select></label></div>
-    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Idioma</h3><p class="setting-sub">Idioma principal da sua conta.</p></div><label class="field" style="width:min(100%, 240px);"><select id="languageSelect"></select></label></div>
-    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Perfil privado</h3><p class="setting-sub">Controla a visibilidade do seu perfil para outros usuarios.</p></div><button class="control-btn" id="privacyBtn">Desativado</button></div>
-    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Notificacoes</h3><p class="setting-sub">Aviso quando os dados acumularem totalmente.</p></div><button class="control-btn" id="notificationsBtn">Ativado</button></div>
-  </div>
-</section>
+</details>
 
-<section class="panel panel--soft">
-  <div class="section-head">
-    <div><div class="section-kicker">Conta</div><h2 class="section-title">Acoes sensiveis</h2></div>
+<details class="panel nx-disclosure nx-disclosure--danger">
+  <summary><span><span class="section-kicker">Segurança</span><strong>Ações sensíveis da conta</strong></span><span class="nx-chevron">⌄</span></summary>
+  <div class="setting-group nx-disclosure__body">
+    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Excluir conta</h3><p class="setting-sub">Remove nickname, coleção, nível, coins e preferências. Essa ação é irreversível.</p></div><button class="control-btn control-btn--danger" id="deleteBtn">Excluir conta</button></div>
   </div>
-  <div class="setting-group" style="margin-top:14px;">
-    <div class="setting-row"><div class="setting-copy"><h3 class="setting-title">Excluir conta</h3><p class="setting-sub">Remove nickname, colecao, nivel, coins e preferencias.</p></div><button class="control-btn control-btn--danger" id="deleteBtn">Excluir conta</button></div>
-  </div>
-</section>
+</details>
 
 <div id="menuNote" class="floating-note">Perfil sendo carregado...</div>
-<div class="footer-note">Source Baltigo . User menu</div>
+<div class="footer-note">AniNexus × Source Baltigo · Nexus ID</div>
 
 <div class="sheet-backdrop" id="favoriteSheetBackdrop">
   <div class="sheet">
-    <div class="sheet-head">
-      <h3 class="sheet-title">Escolher favorito</h3>
-      <button class="control-btn" id="closeFavoriteSheetBtn">Fechar</button>
-    </div>
+    <div class="sheet-head"><h3 class="sheet-title">Escolher favorito</h3><button class="control-btn" id="closeFavoriteSheetBtn">Fechar</button></div>
     <div class="sheet-body">
-      <label class="searchbar">
-        <span class="input-icon">Busca</span>
-        <input id="favoriteSearchInput" type="text" placeholder="Filtrar sua colecao...">
-      </label>
+      <label class="searchbar"><span class="input-icon">Busca</span><input id="favoriteSearchInput" type="text" placeholder="Filtrar sua coleção..."></label>
       <div class="list-stack" id="favoriteList" style="margin-top:14px;"></div>
     </div>
   </div>
 </div>
 """
+    extra_css = r"""
+.nx-profile-hero{min-height:310px}.nx-profile-hero .hero-title{max-width:18ch}
+.nx-profile-card{margin-top:-32px;position:relative;z-index:2;width:calc(100% - 20px);margin-left:auto;margin-right:auto}
+.nx-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.nx-action-card{min-height:112px;padding:15px;border:1px solid var(--border);border-radius:15px;background:linear-gradient(180deg,rgba(29,20,38,.92),rgba(17,12,22,.98));display:flex;flex-direction:column;justify-content:flex-end;gap:3px;transition:.18s ease}
+.nx-action-card:active{transform:scale(.98)}.nx-action-card:hover{border-color:rgba(225,29,72,.42);transform:translateY(-2px)}
+.nx-action-icon{font-size:23px;color:#ff5470;margin-bottom:auto}.nx-action-card strong{font-size:14px;font-weight:1000}.nx-action-card small{color:var(--muted);font-size:11px}
+.nx-disclosure{padding:0;overflow:hidden}.nx-disclosure summary{list-style:none;cursor:pointer;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}.nx-disclosure summary::-webkit-details-marker{display:none}
+.nx-disclosure summary>span:first-child{display:grid;gap:4px}.nx-disclosure summary strong{font-size:16px}.nx-chevron{font-size:21px;color:var(--muted);transition:.18s ease}.nx-disclosure[open] .nx-chevron{transform:rotate(180deg)}
+.nx-disclosure__body{padding:0 14px 14px}.nx-disclosure--danger{border-color:rgba(255,84,112,.22)}
+@media(min-width:760px){.nx-action-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.nx-profile-card{width:calc(100% - 48px)}}
+"""
     js = f"""
-const MENU_UID = {int(uid)};
+const MENU_UID = resolveWebappUid({int(uid)});
 const menuNote = document.getElementById("menuNote");
 const menuState = {{ profile: null, favoriteItems: [] }};
-const tgMenu = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
-if (tgMenu) {{ try {{ tgMenu.ready(); tgMenu.expand(); }} catch(err) {{}} }}
+const tgMenu = getTelegramWebApp();
 function setMenuNote(message, tone){{ menuNote.textContent = message || ""; menuNote.dataset.tone = tone || ""; }}
 async function menuGet(url){{ const response = await authJson(url, {{ uid: MENU_UID }}); if (!response.ok || !response.data.ok) throw new Error((response.data && (response.data.message || response.data.detail)) || "Erro"); return response.data; }}
 async function menuPost(url, payload){{ const response = await authJson(url, {{ uid: MENU_UID, method: "POST", json: payload }}); if (!response.ok || !response.data.ok) throw new Error((response.data && (response.data.message || response.data.detail)) || "Erro"); return response.data; }}
-function renderMenuAvatar(profile){{ const avatar = document.getElementById("profileAvatar"); if (profile.favorite && profile.favorite.image) {{ avatar.innerHTML = '<img src="' + esc(profile.favorite.image) + '" alt="avatar">'; return; }} avatar.textContent = (String(profile.display_name || "SB").trim().slice(0, 2).toUpperCase() || "SB"); }}
-function renderMenuProfile(data){{ const p = data.profile || {{}}; menuState.profile = p; document.getElementById("profileName").textContent = p.display_name || "User"; document.getElementById("profileSub").textContent = p.nickname ? ("@" + p.nickname) : "Sem nickname"; document.getElementById("favoritePill").textContent = "Favorito: " + (p.favorite ? p.favorite.name : "--"); document.getElementById("menuCollection").textContent = String(p.collection_total || 0); document.getElementById("menuCoins").textContent = String(p.coins || 0); document.getElementById("menuLevel").textContent = String(p.level || 1); document.getElementById("menuLanguage").textContent = String((p.language || "pt")).toUpperCase(); document.getElementById("menuMeta").textContent = "Atualizado " + humanClock() + " . UID " + String(p.user_id || MENU_UID); renderMenuAvatar(p); document.getElementById("nicknameInput").value = p.nickname || ""; document.getElementById("nicknameInput").disabled = !!p.nickname; document.getElementById("saveNicknameBtn").disabled = !!p.nickname; const country = document.getElementById("countrySelect"); country.innerHTML = ""; (data.countries || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = String(item.flag || "") + " " + String(item.name || ""); if (item.code === p.country_code) opt.selected = true; country.appendChild(opt); }}); const language = document.getElementById("languageSelect"); language.innerHTML = ""; (data.languages || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = item.name; if (item.code === p.language) opt.selected = true; language.appendChild(opt); }}); document.getElementById("privacyBtn").textContent = p.private_profile ? "Ativado" : "Desativado"; document.getElementById("notificationsBtn").textContent = p.notifications_enabled ? "Ativado" : "Desativado"; }}
-async function loadMenuProfile(options){{ const opts = options || {{}}; const data = await menuGet("/api/menu/profile?uid=" + MENU_UID); renderMenuProfile(data); if (!opts.silent) setMenuNote("Perfil carregado com sucesso.", "success"); }}
+function renderMenuAvatar(profile){{ const avatar = document.getElementById("profileAvatar"); if (profile.favorite && profile.favorite.image) {{ avatar.innerHTML = '<img src="' + esc(profile.favorite.image) + '" alt="avatar" onerror="setImageFallback(this,\\'NX\\')">'; return; }} avatar.textContent = (String(profile.display_name || "NX").trim().slice(0, 2).toUpperCase() || "NX"); }}
+function renderMenuProfile(data){{
+  const p = data.profile || {{}}; menuState.profile = p;
+  const display = p.display_name || p.nickname || "Jogador";
+  const sub = p.nickname ? ("@" + p.nickname) : ("UID " + String(p.user_id || MENU_UID));
+  document.getElementById("profileName").textContent = display;
+  document.getElementById("profileSub").textContent = "Seu Nexus ID · " + sub;
+  document.getElementById("profileCardName").textContent = display;
+  document.getElementById("profileCardSub").textContent = sub;
+  document.getElementById("favoritePill").textContent = "Favorito: " + (p.favorite ? p.favorite.name : "--");
+  document.getElementById("menuCollection").textContent = String(p.collection_total || 0);
+  document.getElementById("menuCoins").textContent = String(p.coins || 0);
+  document.getElementById("menuLevel").textContent = String(p.level || 1);
+  document.getElementById("menuLanguage").textContent = String((p.language || "pt")).toUpperCase();
+  document.getElementById("menuMeta").textContent = "Atualizado " + humanClock() + " · UID " + String(p.user_id || MENU_UID);
+  renderMenuAvatar(p);
+  document.getElementById("nicknameInput").value = p.nickname || "";
+  document.getElementById("nicknameInput").disabled = !!p.nickname;
+  document.getElementById("saveNicknameBtn").disabled = !!p.nickname;
+  const country = document.getElementById("countrySelect"); country.innerHTML = "";
+  (data.countries || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = String(item.flag || "") + " " + String(item.name || ""); if (item.code === p.country_code) opt.selected = true; country.appendChild(opt); }});
+  const language = document.getElementById("languageSelect"); language.innerHTML = "";
+  (data.languages || []).forEach(function(item){{ const opt = document.createElement("option"); opt.value = item.code; opt.textContent = item.name; if (item.code === p.language) opt.selected = true; language.appendChild(opt); }});
+  document.getElementById("privacyBtn").textContent = p.private_profile ? "Ativado" : "Desativado";
+  document.getElementById("notificationsBtn").textContent = p.notifications_enabled ? "Ativado" : "Desativado";
+}}
+async function loadMenuProfile(options){{ const opts = options || {{}}; const data = await menuGet("/api/menu/profile?uid=" + MENU_UID); renderMenuProfile(data); if (!opts.silent) setMenuNote("Perfil sincronizado.", "success"); }}
 function favoriteSheetOpen(){{ document.getElementById("favoriteSheetBackdrop").style.display = "flex"; }}
 function favoriteSheetClose(){{ document.getElementById("favoriteSheetBackdrop").style.display = "none"; }}
 function favoriteSheetIsOpen(){{ return document.getElementById("favoriteSheetBackdrop").style.display === "flex"; }}
-function renderFavoriteItems(items){{ const root = document.getElementById("favoriteList"); if (!items.length){{ root.innerHTML = '<div class="empty-state"><strong>Sua colecao esta vazia</strong>Voce so pode favoritar personagens da sua colecao.</div>'; return; }} root.innerHTML = items.map(function(item){{ return '<div class="setting-row"><div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;"><div class="profile-avatar" style="width:64px;height:64px;border-radius:18px;font-size:18px;">' + (item.image ? '<img src="' + esc(item.image) + '" alt="">' : esc(String(item.name || "").slice(0, 2).toUpperCase())) + '</div><div class="setting-copy"><h3 class="setting-title">' + esc(item.name) + '</h3><p class="setting-sub">' + esc(item.anime || "") + ' . Quantidade ' + esc(item.quantity || 0) + '</p></div></div><button class="control-btn control-btn--accent" data-favorite="' + esc(item.id) + '">Favoritar</button></div>'; }}).join(""); root.querySelectorAll("[data-favorite]").forEach(function(button){{ button.onclick = async function(){{ try{{ setMenuNote("Salvando favorito...", ""); await menuPost("/api/menu/favorite", {{ uid: MENU_UID, character_id: Number(button.getAttribute("data-favorite") || 0) }}); await loadMenuProfile({{ silent: true }}); if (favoriteSheetIsOpen()) await loadFavoriteCharacters({{ silent: true }}); favoriteSheetClose(); setMenuNote("Favorito atualizado com sucesso.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar favorito: " + err.message, "error"); }} }}; }}); }}
-function applyFavoriteFilter(){{ const q = String(document.getElementById("favoriteSearchInput").value || "").trim().toLowerCase(); const filtered = menuState.favoriteItems.filter(function(item){{ const hay = (String(item.name || "") + " " + String(item.anime || "")).toLowerCase(); return hay.includes(q); }}); renderFavoriteItems(filtered); }}
-async function loadFavoriteCharacters(options){{ const data = await menuGet("/api/menu/collection-characters?uid=" + MENU_UID); menuState.favoriteItems = Array.isArray(data.items) ? data.items : []; applyFavoriteFilter(); if (!(options && options.silent)) setMenuNote("Colecao carregada para escolha do favorito.", "success"); }}
-document.getElementById("favoriteBtn").onclick = async function(){{ try{{ await loadFavoriteCharacters({{ silent: false }}); favoriteSheetOpen(); }}catch(err){{ setMenuNote("Erro ao carregar colecao: " + err.message, "error"); }} }};
+function renderFavoriteItems(items){{
+  const root = document.getElementById("favoriteList");
+  if (!items.length){{ root.innerHTML = '<div class="empty-state"><strong>Sua coleção está vazia</strong>Você só pode favoritar personagens que possui.</div>'; return; }}
+  root.innerHTML = items.map(function(item){{ return '<div class="setting-row"><div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1"><div class="profile-avatar" style="width:64px;height:64px;border-radius:14px;font-size:18px">' + (item.image ? '<img src="' + esc(item.image) + '" alt="">' : esc(String(item.name || "").slice(0,2).toUpperCase())) + '</div><div class="setting-copy"><h3 class="setting-title">' + esc(item.name) + '</h3><p class="setting-sub">' + esc(item.anime || "") + ' · Quantidade ' + esc(item.quantity || 0) + '</p></div></div><button class="control-btn control-btn--accent" data-favorite="' + esc(item.id) + '">Favoritar</button></div>'; }}).join("");
+  root.querySelectorAll("[data-favorite]").forEach(function(button){{ button.onclick = async function(){{ try{{ setMenuNote("Salvando favorito...", ""); await menuPost("/api/menu/favorite", {{ uid: MENU_UID, character_id: Number(button.getAttribute("data-favorite") || 0) }}); await loadMenuProfile({{ silent: true }}); favoriteSheetClose(); setMenuNote("Favorito atualizado.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar favorito: " + err.message, "error"); }} }}; }});
+}}
+function applyFavoriteFilter(){{ const q = String(document.getElementById("favoriteSearchInput").value || "").trim().toLowerCase(); renderFavoriteItems(menuState.favoriteItems.filter(function(item){{ return (String(item.name || "") + " " + String(item.anime || "")).toLowerCase().includes(q); }})); }}
+async function loadFavoriteCharacters(){{ const data = await menuGet("/api/menu/collection-characters?uid=" + MENU_UID); menuState.favoriteItems = Array.isArray(data.items) ? data.items : []; applyFavoriteFilter(); }}
+function nxMenuCard(item, index){{ const img = item.cover ? '<img src="' + esc(item.cover) + '" alt="' + esc(item.title || 'Anime') + '" loading="lazy">' : ''; return '<article class="media-card" data-nx-menu-index="' + index + '"><div class="media-cover">' + img + '<span class="media-badge media-badge--accent">AniNexus</span></div><div class="media-body"><h3 class="card-title">' + esc(item.title || 'Anime') + '</h3><div class="pill-row"><span class="soft-pill">' + esc(item.format || 'Anime') + '</span></div></div></article>'; }}
+async function loadAniNexusMenu(){{ const root = document.getElementById('nxMenuPopular'); setSkeleton(root, 5); try{{ const response = await fetch('/api/aninexus/home'); const data = await response.json(); if (!response.ok) throw new Error('offline'); const items = Array.isArray(data.popular) ? data.popular.slice(0,10) : []; root.innerHTML = items.length ? items.map(nxMenuCard).join('') : '<div class="nx-empty">Nenhuma recomendação disponível.</div>'; root.querySelectorAll('[data-nx-menu-index]').forEach(function(card){{ card.onclick = function(){{ const item = items[Number(card.getAttribute('data-nx-menu-index'))]; if (item) openAniNexus(aninexusMediaPath(item,'anime')); }}; }}); }}catch(err){{ root.innerHTML = '<div class="nx-empty">O AniNexus está temporariamente indisponível. Seus dados locais continuam seguros.</div>'; }} }}
+document.getElementById("favoriteBtn").onclick = async function(){{ try{{ await loadFavoriteCharacters(); favoriteSheetOpen(); }}catch(err){{ setMenuNote("Erro ao carregar coleção: " + err.message, "error"); }} }};
 document.getElementById("favoriteSearchInput").addEventListener("input", debounce(applyFavoriteFilter, 120));
 document.getElementById("closeFavoriteSheetBtn").onclick = favoriteSheetClose;
 document.getElementById("favoriteSheetBackdrop").onclick = function(event){{ if (event.target.id === "favoriteSheetBackdrop") favoriteSheetClose(); }};
-document.getElementById("saveNicknameBtn").onclick = async function(){{ try{{ setMenuNote("Salvando nickname...", ""); await menuPost("/api/menu/nickname", {{ uid: MENU_UID, nickname: document.getElementById("nicknameInput").value.trim() }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Nickname salvo com sucesso.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar nickname: " + err.message, "error"); }} }};
-document.getElementById("countrySelect").onchange = async function(event){{ try{{ await menuPost("/api/menu/country", {{ uid: MENU_UID, country_code: event.target.value }}); setMenuNote("Pais atualizado.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar pais: " + err.message, "error"); }} }};
+document.getElementById("saveNicknameBtn").onclick = async function(){{ try{{ setMenuNote("Salvando nickname...", ""); await menuPost("/api/menu/nickname", {{ uid: MENU_UID, nickname: document.getElementById("nicknameInput").value.trim() }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Nickname salvo.", "success"); }}catch(err){{ setMenuNote("Erro ao salvar nickname: " + err.message, "error"); }} }};
+document.getElementById("countrySelect").onchange = async function(event){{ try{{ await menuPost("/api/menu/country", {{ uid: MENU_UID, country_code: event.target.value }}); setMenuNote("País atualizado.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar país: " + err.message, "error"); }} }};
 document.getElementById("languageSelect").onchange = async function(event){{ try{{ await menuPost("/api/menu/language", {{ uid: MENU_UID, language: event.target.value }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Idioma atualizado.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar idioma: " + err.message, "error"); }} }};
 document.getElementById("privacyBtn").onclick = async function(){{ try{{ const current = document.getElementById("privacyBtn").textContent === "Ativado"; await menuPost("/api/menu/privacy", {{ uid: MENU_UID, value: !current }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Privacidade atualizada.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar privacidade: " + err.message, "error"); }} }};
-document.getElementById("notificationsBtn").onclick = async function(){{ try{{ const current = document.getElementById("notificationsBtn").textContent === "Ativado"; await menuPost("/api/menu/notifications", {{ uid: MENU_UID, value: !current }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Notificacoes atualizadas.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar notificacoes: " + err.message, "error"); }} }};
-document.getElementById("deleteBtn").onclick = async function(){{ if (!window.confirm("Tem certeza que deseja excluir sua conta? Essa acao e irreversivel.")) return; try{{ setMenuNote("Excluindo conta...", ""); await menuPost("/api/menu/delete-account", {{ uid: MENU_UID }}); setMenuNote("Conta excluida com sucesso.", "success"); if (tgMenu) {{ try {{ tgMenu.close(); }} catch(err) {{}} }} }}catch(err){{ setMenuNote("Erro ao excluir conta: " + err.message, "error"); }} }};
-(async function(){{ try{{ await loadMenuProfile({{ silent: false }}); createLiveRefresh(async function(){{ await loadMenuProfile({{ silent: true }}); if (favoriteSheetIsOpen()) await loadFavoriteCharacters({{ silent: true }}); }}, 6000); }}catch(err){{ setMenuNote("Erro ao carregar perfil: " + err.message, "error"); }} }})();
+document.getElementById("notificationsBtn").onclick = async function(){{ try{{ const current = document.getElementById("notificationsBtn").textContent === "Ativado"; await menuPost("/api/menu/notifications", {{ uid: MENU_UID, value: !current }}); await loadMenuProfile({{ silent: true }}); setMenuNote("Notificações atualizadas.", "success"); }}catch(err){{ setMenuNote("Erro ao atualizar notificações: " + err.message, "error"); }} }};
+document.getElementById("deleteBtn").onclick = async function(){{ if (!window.confirm("Tem certeza que deseja excluir sua conta? Essa ação é irreversível.")) return; try{{ setMenuNote("Excluindo conta...", ""); await menuPost("/api/menu/delete-account", {{ uid: MENU_UID }}); setMenuNote("Conta excluída.", "success"); if (tgMenu) {{ try {{ tgMenu.close(); }} catch(err) {{}} }} }}catch(err){{ setMenuNote("Não foi possível excluir a conta.", "error"); }} }};
+(async function(){{ try{{ await Promise.all([loadMenuProfile({{ silent: false }}), loadAniNexusMenu()]); createLiveRefresh(async function(){{ await loadMenuProfile({{ silent: true }}); if (favoriteSheetIsOpen()) await loadFavoriteCharacters(); }}, 12000); }}catch(err){{ setMenuNote("Erro ao carregar perfil: " + err.message, "error"); }} }})();
 """
-    return _page_template("Menu", body, extra_js=js, include_tg=True)
+    return _page_template("Perfil", body, extra_css=extra_css, extra_js=js, include_tg=True)
+
 
 
 def build_shop_page(*, uid: int, shop_banner_url: str) -> str:
@@ -4135,14 +4572,14 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   <div class="hero-media"><img src="__DADO_BANNER__" alt="Dado"></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="eyebrow-chip">Dice system 3D</div>
-    <h1 class="hero-title">Sistema de dados com impacto real.</h1>
-    <p class="hero-subtitle">O coracao da experiencia volta a ser o dado 3D: uma rolagem com peso, pouso forte no resultado e revelacao mais premium para cada personagem obtido.</p>
+    <div class="eyebrow-chip">Nexus Roll · Gacha 3D</div>
+    <h1 class="hero-title">Abra o Nexus Core. Deixe a sorte escolher.</h1>
+    <p class="hero-subtitle">Um gacha criado para o AniNexus: cubo 3D personalizado, runas anime, impacto, partículas, vibração e uma revelação diferente para cada raridade.</p>
     <div class="hero-metrics">
       <div class="metric-card"><span class="metric-label">Jogador</span><span class="metric-value" id="dadoPlayerHero">...</span></div>
       <div class="metric-card"><span class="metric-label">Saldo</span><span class="metric-value" id="dadoBalanceHero">0</span></div>
       <div class="metric-card"><span class="metric-label">Proximo</span><span class="metric-value" id="dadoNextHero">--:--</span></div>
-      <div class="metric-card"><span class="metric-label">Stage</span><span class="metric-value"><span class="pulse-dot"></span> 3D live</span></div>
+      <div class="metric-card"><span class="metric-label">Core</span><span class="metric-value"><span class="pulse-dot"></span> Nexus ativo</span></div>
     </div>
   </div>
 </section>
@@ -4150,7 +4587,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 <section class="dice-experience">
   <article class="panel dice-stage-card" id="dadoStageCard" data-state="idle">
     <div class="section-head">
-      <div><div class="section-kicker">Rolagem</div><h2 class="section-title">Mesa de sorte</h2></div>
+      <div><div class="section-kicker">Invocação</div><h2 class="section-title">Nexus Core</h2></div>
       <div class="section-meta" id="dadoMeta">Carregando estado...</div>
     </div>
     <div class="dice-stage-grid">
@@ -4158,22 +4595,25 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
         <div class="dice-stage-ring"></div>
         <div class="dice-stage-glow"></div>
         <div class="dice-stage-flash" id="dadoStageFlash"></div>
+        <div class="nx-gacha-orbit nx-gacha-orbit--one"></div>
+        <div class="nx-gacha-orbit nx-gacha-orbit--two"></div>
+        <div class="nx-gacha-burst" id="nxGachaBurst" aria-hidden="true"></div>
         <div id="sceneWrap" class="dice-scene"></div>
         <div class="dice-viewport-top">
           <span class="soft-pill soft-pill--cool" id="dadoHud">Pronto para rolar</span>
           <span class="soft-pill" id="dadoIdentityPill">Conta: ...</span>
         </div>
         <div class="dice-signal-card">
-          <span class="dice-signal-kicker">Face</span>
+          <span class="dice-signal-kicker">Selo revelado</span>
           <strong id="dadoSignalValue">?</strong>
           <span id="dadoSignalLabel">Aguardando a proxima rolagem</span>
         </div>
       </div>
       <div class="dice-console">
         <div class="dice-console-copy">
-          <div class="section-kicker">Controle</div>
-          <h3 class="section-title">Rolar, pousar e revelar.</h3>
-          <p class="hero-subtitle">Mantivemos a mesma logica do sistema, mas com uma apresentacao mais forte, mais clara e com melhor leitura em mobile e desktop.</p>
+          <div class="section-kicker">Ritual de invocação</div>
+          <h3 class="section-title">Gire o núcleo. Escolha um universo.</h3>
+          <p class="hero-subtitle">Cada rolagem gera uma seleção de obras. Depois da escolha, o sistema revela o personagem, aplica a raridade e sincroniza sua coleção.</p>
         </div>
         <div class="dice-console-stats">
           <div class="dice-mini-card">
@@ -4190,12 +4630,19 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
           </div>
         </div>
         <div class="hero-actions">
-          <button type="button" class="action-btn action-btn--primary dado-action" id="rollDiceBtn">Rolar dado</button>
+          <button type="button" class="action-btn action-btn--primary dado-action nx-roll-button" id="rollDiceBtn"><span>Invocar agora</span></button>
           <button type="button" class="action-btn action-btn--ghost dado-action" id="resetDiceBtn">Limpar tela</button>
         </div>
         <div class="pill-row">
           <span class="soft-pill soft-pill--cool" id="dadoEnergyPill">Saldo 0</span>
           <span class="soft-pill" id="dadoNextPill">Proximo --:--</span>
+        </div>
+        <div class="nx-rarity-legend" aria-label="Raridades">
+          <span class="nx-rarity-chip" data-tier="common">Comum</span>
+          <span class="nx-rarity-chip" data-tier="rare">Raro</span>
+          <span class="nx-rarity-chip" data-tier="epic">Épico</span>
+          <span class="nx-rarity-chip" data-tier="legendary">Lendário</span>
+          <span class="nx-rarity-chip" data-tier="mythic">Mítico</span>
         </div>
       </div>
     </div>
@@ -4203,7 +4650,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 
   <article class="panel panel--soft">
     <div class="section-head">
-      <div><div class="section-kicker">Escolha</div><h2 class="section-title">Animes da rodada</h2></div>
+      <div><div class="section-kicker">Portais abertos</div><h2 class="section-title">Escolha um universo</h2></div>
       <div class="section-meta" id="dadoOptionsMeta">Role o dado para gerar as opcoes.</div>
     </div>
     <div class="dado-option-grid" id="dadoOptionsGrid"></div>
@@ -4212,7 +4659,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 
   <article class="panel panel--soft">
     <div class="section-head">
-      <div><div class="section-kicker">Revelacao</div><h2 class="section-title">Personagem obtido</h2></div>
+      <div><div class="section-kicker">Drop</div><h2 class="section-title">Revelação do personagem</h2></div>
       <div class="section-meta" id="dadoRewardMeta">Nenhum personagem revelado ainda.</div>
     </div>
     <div id="dadoRewardRoot" class="empty-state dado-reward-shell" style="margin-top:14px;"><strong>Sem premio ainda</strong>Escolha um anime da rodada para revelar o personagem.</div>
@@ -4220,7 +4667,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 </section>
 
 <div id="dadoNote" class="floating-note">Sistema de dados sendo carregado...</div>
-<div class="footer-note">Source Baltigo . Dice</div>
+<div class="footer-note">AniNexus × Source Baltigo · Nexus Roll</div>
 """
     )
     css_parts.append(
@@ -4233,9 +4680,9 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 .dice-stage-card{
   overflow:hidden;
   background:
-    radial-gradient(720px 360px at 12% 0%, rgba(122,213,255,.15), transparent 52%),
-    radial-gradient(520px 280px at 100% 100%, rgba(255,111,148,.14), transparent 54%),
-    linear-gradient(180deg, rgba(10,18,37,.94), rgba(6,11,22,.98));
+    radial-gradient(720px 360px at 12% 0%, rgba(225,29,72,.15), transparent 52%),
+    radial-gradient(520px 280px at 100% 100%, rgba(255,84,112,.14), transparent 54%),
+    linear-gradient(180deg, rgba(23,16,30,.94), rgba(8,6,12,.98));
 }
 .dice-stage-card::before{
   content:"";
@@ -4244,14 +4691,14 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   pointer-events:none;
   background:
     linear-gradient(135deg, rgba(255,255,255,.04), transparent 34%),
-    radial-gradient(circle at 50% 44%, rgba(122,213,255,.08), transparent 38%);
+    radial-gradient(circle at 50% 44%, rgba(225,29,72,.08), transparent 38%);
 }
 .dice-stage-card[data-state="rolling"]{
-  border-color:rgba(122,213,255,.42);
-  box-shadow:0 28px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(122,213,255,.08) inset;
+  border-color:rgba(225,29,72,.42);
+  box-shadow:0 28px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(225,29,72,.08) inset;
 }
 .dice-stage-card[data-state="landed"]{
-  border-color:rgba(255,111,148,.32);
+  border-color:rgba(255,84,112,.32);
 }
 .dice-stage-grid{
   position:relative;
@@ -4267,7 +4714,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   border:1px solid rgba(255,255,255,.1);
   background:
     radial-gradient(circle at 50% 28%, rgba(255,255,255,.08), transparent 34%),
-    linear-gradient(180deg, rgba(7,13,26,.6), rgba(3,8,18,.9));
+    linear-gradient(180deg, rgba(17,12,22,.6), rgba(8,6,12,.9));
   overflow:hidden;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
 }
@@ -4288,20 +4735,20 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
 .dice-stage-ring{
   width:72%;
   aspect-ratio:1 / 1;
-  border:1px solid rgba(122,213,255,.14);
-  box-shadow:0 0 0 18px rgba(122,213,255,.02), 0 0 40px rgba(122,213,255,.08);
+  border:1px solid rgba(225,29,72,.14);
+  box-shadow:0 0 0 18px rgba(225,29,72,.02), 0 0 40px rgba(225,29,72,.08);
 }
 .dice-stage-glow{
   width:68%;
   aspect-ratio:1 / 1;
-  background:radial-gradient(circle, rgba(122,213,255,.16) 0%, rgba(122,213,255,.08) 24%, rgba(122,213,255,0) 68%);
+  background:radial-gradient(circle, rgba(225,29,72,.16) 0%, rgba(225,29,72,.08) 24%, rgba(225,29,72,0) 68%);
   filter:blur(12px);
   opacity:.92;
 }
 .dice-stage-flash{
   width:74%;
   aspect-ratio:1 / 1;
-  background:radial-gradient(circle, rgba(255,255,255,.30) 0%, rgba(122,213,255,.16) 22%, rgba(255,111,148,.12) 46%, rgba(255,255,255,0) 72%);
+  background:radial-gradient(circle, rgba(255,255,255,.30) 0%, rgba(225,29,72,.16) 22%, rgba(255,84,112,.12) 46%, rgba(255,255,255,0) 72%);
   opacity:0;
 }
 .dice-stage-flash.is-live{
@@ -4410,7 +4857,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   text-align:left;
   border-radius:24px;
   border:1px solid rgba(255,255,255,.1);
-  background:linear-gradient(180deg, rgba(13,21,42,.94), rgba(8,13,25,.98));
+  background:linear-gradient(180deg, rgba(23,16,30,.94), rgba(13,9,18,.98));
   box-shadow:var(--shadow-md);
   transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
@@ -4424,7 +4871,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   position:relative;
   aspect-ratio:16 / 9;
   overflow:hidden;
-  background:linear-gradient(180deg, rgba(122,213,255,.14), rgba(255,111,148,.16));
+  background:linear-gradient(180deg, rgba(225,29,72,.14), rgba(255,84,112,.16));
 }
 .dado-anime-option-cover img{
   width:100%;
@@ -4436,7 +4883,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   content:"";
   position:absolute;
   inset:0;
-  background:linear-gradient(180deg, rgba(7,11,22,.08), rgba(7,11,22,.84));
+  background:linear-gradient(180deg, rgba(8,6,12,.08), rgba(8,6,12,.84));
 }
 .dado-anime-option-index{
   position:absolute;
@@ -4477,8 +4924,8 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   border-radius:24px;
   border:1px solid rgba(255,255,255,.1);
   background:
-    radial-gradient(520px 220px at 100% 0%, rgba(255,111,148,.16), transparent 52%),
-    linear-gradient(180deg, rgba(14,23,45,.96), rgba(8,13,25,.98));
+    radial-gradient(520px 220px at 100% 0%, rgba(255,84,112,.16), transparent 52%),
+    linear-gradient(180deg, rgba(23,16,30,.96), rgba(13,9,18,.98));
   box-shadow:var(--shadow-md);
   animation:dadoRewardReveal .48s cubic-bezier(.2,.8,.2,1);
 }
@@ -4487,7 +4934,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   border-radius:22px;
   overflow:hidden;
   min-height:220px;
-  background:linear-gradient(180deg, rgba(122,213,255,.14), rgba(255,111,148,.14));
+  background:linear-gradient(180deg, rgba(225,29,72,.14), rgba(255,84,112,.14));
 }
 .dado-reward-media img{
   width:100%;
@@ -4499,7 +4946,7 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
   content:"";
   position:absolute;
   inset:0;
-  background:linear-gradient(180deg, rgba(7,11,22,.04), rgba(7,11,22,.82));
+  background:linear-gradient(180deg, rgba(8,6,12,.04), rgba(8,6,12,.82));
 }
 .dado-reward-copy{
   display:grid;
@@ -4569,6 +5016,38 @@ def build_dado_page(*, uid: int, banner_url: str) -> str:
     font-size:38px;
   }
 }
+"""
+    )
+    css_parts.append(
+        r"""
+.nx-gacha-orbit{
+  position:absolute;left:50%;top:46%;z-index:1;border-radius:50%;pointer-events:none;
+  transform:translate(-50%,-50%) rotateX(66deg);
+  border:1px solid rgba(225,29,72,.30);
+  box-shadow:0 0 34px rgba(225,29,72,.12),inset 0 0 30px rgba(225,29,72,.08);
+}
+.nx-gacha-orbit--one{width:64%;aspect-ratio:1;animation:nxOrbitOne 11s linear infinite}
+.nx-gacha-orbit--two{width:46%;aspect-ratio:1;border-style:dashed;border-color:rgba(255,197,91,.28);animation:nxOrbitTwo 8s linear infinite reverse}
+.nx-gacha-burst{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+.nx-gacha-spark{position:absolute;left:50%;top:50%;width:7px;height:18px;border-radius:99px;background:var(--spark,#ff315f);box-shadow:0 0 18px var(--spark,#ff315f);animation:nxSparkFly .92s cubic-bezier(.12,.72,.2,1) forwards}
+.nx-rarity-legend{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:12px}
+.nx-rarity-chip{padding:9px 7px;border:1px solid var(--border);border-radius:10px;text-align:center;background:rgba(255,255,255,.025);font-size:9px;font-weight:1000;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.nx-rarity-chip[data-tier="rare"]{color:#9dccff;border-color:rgba(83,157,255,.25)}
+.nx-rarity-chip[data-tier="epic"]{color:#cf9dff;border-color:rgba(169,85,255,.28)}
+.nx-rarity-chip[data-tier="legendary"]{color:#ffd878;border-color:rgba(255,196,72,.32)}
+.nx-rarity-chip[data-tier="mythic"]{color:#ff8da5;border-color:rgba(255,49,95,.38);box-shadow:inset 0 0 18px rgba(225,29,72,.08)}
+.dice-stage-card[data-rarity="rare"]{--rarity-glow:#539dff}
+.dice-stage-card[data-rarity="epic"]{--rarity-glow:#a955ff}
+.dice-stage-card[data-rarity="legendary"]{--rarity-glow:#ffc448}
+.dice-stage-card[data-rarity="mythic"]{--rarity-glow:#ff315f}
+.dice-stage-card[data-rarity]:not([data-rarity=""]){box-shadow:0 28px 78px rgba(0,0,0,.52),0 0 42px color-mix(in srgb,var(--rarity-glow) 22%,transparent)}
+.dado-reward-card[data-tier="legendary"],.dado-reward-card[data-tier="mythic"]{border-color:color-mix(in srgb,var(--rarity-glow,#ff315f) 52%,transparent);box-shadow:0 24px 70px rgba(0,0,0,.48),0 0 42px color-mix(in srgb,var(--rarity-glow,#ff315f) 18%,transparent)}
+.nx-roll-button{position:relative;overflow:hidden}.nx-roll-button::after{content:"";position:absolute;inset:-2px;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.26) 46%,transparent 72%);transform:translateX(-120%);animation:nxButtonShine 3.2s ease-in-out infinite}
+@keyframes nxOrbitOne{to{transform:translate(-50%,-50%) rotateX(66deg) rotateZ(360deg)}}
+@keyframes nxOrbitTwo{to{transform:translate(-50%,-50%) rotateX(66deg) rotateZ(360deg)}}
+@keyframes nxSparkFly{0%{opacity:0;transform:translate(-50%,-50%) rotate(var(--angle)) translateY(0) scale(.2)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(var(--angle)) translateY(var(--distance)) scale(1)}}
+@keyframes nxButtonShine{0%,55%{transform:translateX(-120%)}80%,100%{transform:translateX(120%)}}
+@media(max-width:520px){.nx-rarity-legend{grid-template-columns:repeat(3,minmax(0,1fr))}}
 """
     )
     js_parts.append(
@@ -4667,7 +5146,7 @@ function renderReward(character){
     : "";
   dadoRewardRoot.className = "dado-reward-shell";
   dadoRewardRoot.innerHTML = ""
-    + '<article class="dado-reward-card">'
+    + '<article class="dado-reward-card" data-tier="' + esc(normalizeTier(safeCharacter.tier)) + '">'
     +   '<div class="dado-reward-media">' + img + '<div class="media-badge media-badge--accent">' + esc((safeCharacter.tier || "COMMON").toUpperCase()) + '</div></div>'
     +   '<div class="dado-reward-copy">'
     +     '<div class="section-kicker">Drop confirmado</div>'
@@ -4681,8 +5160,11 @@ function renderReward(character){
     +     '<p class="hero-subtitle">Resultado revelado com sincronia imediata e pronto para refletir no restante do ecossistema.</p>'
     +   '</div>'
     + '</article>';
-  dadoRewardMeta.textContent = "Premio revelado com sucesso.";
+  const rewardTier = setRarityAtmosphere(safeCharacter.tier);
+  dadoRewardMeta.textContent = "Drop " + String(safeCharacter.tier || "COMMON").toUpperCase() + " revelado.";
   pulseStage();
+  emitNexusBurst(rewardTier, rewardTier === "mythic" ? 68 : (rewardTier === "legendary" ? 54 : 38));
+  nexusHaptic("success");
 }
 
 function renderDadoOptions(){
@@ -4751,6 +5233,51 @@ function renderDadoOptions(){
     )
     js_parts.append(
         """
+function nexusHaptic(kind){
+  try{
+    if (!tgDado || !tgDado.HapticFeedback) return;
+    if (kind === "success") tgDado.HapticFeedback.notificationOccurred("success");
+    else tgDado.HapticFeedback.impactOccurred(kind === "heavy" ? "heavy" : "medium");
+  }catch(err){}
+}
+
+function normalizeTier(value){
+  const tier = String(value || "common").toLowerCase();
+  if (tier.includes("myth") || tier.includes("secret")) return "mythic";
+  if (tier.includes("legend")) return "legendary";
+  if (tier.includes("epic")) return "epic";
+  if (tier.includes("rare")) return "rare";
+  return "common";
+}
+
+function setRarityAtmosphere(tier){
+  const normalized = normalizeTier(tier);
+  dadoStageCard.dataset.rarity = normalized;
+  const colors = {common:"#f5e8ee",rare:"#539dff",epic:"#a955ff",legendary:"#ffc448",mythic:"#ff315f"};
+  dadoStageCard.style.setProperty("--rarity-glow", colors[normalized] || colors.common);
+  return normalized;
+}
+
+function emitNexusBurst(tier, count){
+  const root = document.getElementById("nxGachaBurst");
+  if (!root) return;
+  const normalized = normalizeTier(tier);
+  const colors = {common:["#fff0f4","#ff7894"],rare:["#539dff","#b8d8ff"],epic:["#a955ff","#e0b9ff"],legendary:["#ffc448","#fff0a8"],mythic:["#ff315f","#ffffff","#ffc448"]};
+  const palette = colors[normalized] || colors.common;
+  root.innerHTML = "";
+  const total = Math.max(18, Math.min(72, Number(count || 34)));
+  for (let i = 0; i < total; i += 1){
+    const spark = document.createElement("i");
+    spark.className = "nx-gacha-spark";
+    spark.style.setProperty("--angle", String((360 / total) * i + Math.random() * 12) + "deg");
+    spark.style.setProperty("--distance", String(-110 - Math.random() * 180) + "px");
+    spark.style.setProperty("--spark", palette[i % palette.length]);
+    spark.style.animationDelay = String(Math.random() * .12) + "s";
+    root.appendChild(spark);
+  }
+  window.setTimeout(function(){ root.innerHTML = ""; }, 1200);
+}
+
 function createRoundedRect(ctx, x, y, width, height, radius){
   const safe = Math.min(radius, width / 2, height / 2);
   ctx.beginPath();
@@ -4768,44 +5295,60 @@ function createRoundedRect(ctx, x, y, width, height, radius){
 
 function createFaceTexture(value, accent){
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
+  canvas.width = 640;
+  canvas.height = 640;
   const ctx = canvas.getContext("2d");
+  const glyphs = {1:"炎",2:"水",3:"風",4:"雷",5:"星",6:"神"};
 
-  const gradient = ctx.createLinearGradient(0, 0, 512, 512);
-  gradient.addColorStop(0, "#182445");
-  gradient.addColorStop(1, "#070c18");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 512, 512);
+  const bg = ctx.createRadialGradient(210, 150, 30, 320, 320, 520);
+  bg.addColorStop(0, "#2b1724");
+  bg.addColorStop(.48, "#170e1a");
+  bg.addColorStop(1, "#08060c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 640, 640);
 
-  ctx.fillStyle = "rgba(255,255,255,.03)";
-  for (let y = 0; y < 512; y += 16){
-    ctx.fillRect(0, y, 512, 1);
+  ctx.save();
+  ctx.globalAlpha = .18;
+  ctx.strokeStyle = accent || "#e11d48";
+  ctx.lineWidth = 2;
+  for (let i = -640; i < 1280; i += 42){
+    ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i-640,640);ctx.stroke();
   }
+  ctx.restore();
 
-  ctx.strokeStyle = "rgba(255,255,255,.14)";
-  ctx.lineWidth = 12;
-  ctx.strokeRect(18, 18, 476, 476);
-
-  ctx.strokeStyle = accent || "#7ad5ff";
+  ctx.strokeStyle = "rgba(255,255,255,.10)";
   ctx.lineWidth = 10;
-  createRoundedRect(ctx, 44, 44, 424, 424, 42);
+  createRoundedRect(ctx, 20, 20, 600, 600, 54);
   ctx.stroke();
 
-  ctx.shadowColor = accent || "#7ad5ff";
-  ctx.shadowBlur = 32;
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 240px 'Segoe UI', sans-serif";
+  ctx.shadowColor = accent || "#e11d48";
+  ctx.shadowBlur = 42;
+  ctx.strokeStyle = accent || "#e11d48";
+  ctx.lineWidth = 13;
+  createRoundedRect(ctx, 48, 48, 544, 544, 46);
+  ctx.stroke();
+
+  ctx.shadowBlur = 28;
+  ctx.fillStyle = "rgba(255,255,255,.95)";
+  ctx.font = "900 230px 'Nunito Sans', sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(String(value), 256, 278);
+  ctx.fillText(String(value), 320, 344);
+
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = accent || "#ff315f";
+  ctx.font = "900 82px 'Nunito Sans', sans-serif";
+  ctx.fillText(glyphs[value] || "N", 320, 142);
 
   ctx.shadowBlur = 0;
   ctx.fillStyle = "rgba(255,255,255,.52)";
-  ctx.font = "700 34px 'Segoe UI', sans-serif";
-  ctx.fillText("DICE", 256, 94);
+  ctx.font = "900 28px 'Nunito Sans', sans-serif";
+  ctx.letterSpacing = "8px";
+  ctx.fillText("NEXUS CORE", 320, 545);
 
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 1;
   texture.needsUpdate = true;
   return texture;
 }
@@ -4827,6 +5370,8 @@ function ensureScene(){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.18;
   sceneWrap.innerHTML = "";
   sceneWrap.appendChild(renderer.domElement);
 
@@ -4834,20 +5379,20 @@ function ensureScene(){
   camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
   camera.position.set(0, 0.8, 6.8);
 
-  const ambient = new THREE.AmbientLight(0xffffff, 1.5);
+  const ambient = new THREE.AmbientLight(0xffdce5, 1.25);
   scene.add(ambient);
 
-  const point = new THREE.PointLight(0xffffff, 2.4, 32);
+  const point = new THREE.PointLight(0xffffff, 2.8, 34);
   point.position.set(2.8, 3.6, 5.4);
   scene.add(point);
 
-  const rim = new THREE.PointLight(0xff6f94, 1.2, 20);
+  const rim = new THREE.PointLight(0xe11d48, 2.1, 24);
   rim.position.set(-3.2, -0.6, 2.8);
   scene.add(rim);
 
   const floorGeo = new THREE.CircleGeometry(3.1, 72);
   const floorMat = new THREE.MeshBasicMaterial({
-    color: 0x12233a,
+    color: 0x2a0d18,
     transparent: true,
     opacity: 0.34
   });
@@ -4856,14 +5401,25 @@ function ensureScene(){
   stageFloor.position.y = -1.58;
   scene.add(stageFloor);
 
-  const faceColors = ["#7ad5ff", "#ff7ea6", "#8ef0ff", "#ff9f7d", "#9b8bff", "#ffe07d"];
+  const faceColors = ["#ff315f", "#e11d48", "#9f4cff", "#ff8c42", "#ffca5c", "#fff0b0"];
+  const makeMaterial = function(face, accent){
+    return new THREE.MeshPhysicalMaterial({
+      map: createFaceTexture(face, accent),
+      roughness: 0.24,
+      metalness: 0.58,
+      clearcoat: 1,
+      clearcoatRoughness: 0.16,
+      emissive: new THREE.Color(accent).multiplyScalar(0.075),
+      emissiveIntensity: 1.1
+    });
+  };
   const materials = [
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(2, faceColors[1]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(5, faceColors[4]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(3, faceColors[2]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(4, faceColors[3]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(1, faceColors[0]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f }),
-    new THREE.MeshStandardMaterial({ map: createFaceTexture(6, faceColors[5]), roughness: 0.36, metalness: 0.42, emissive: 0x09111f })
+    makeMaterial(2, faceColors[1]),
+    makeMaterial(5, faceColors[4]),
+    makeMaterial(3, faceColors[2]),
+    makeMaterial(4, faceColors[3]),
+    makeMaterial(1, faceColors[0]),
+    makeMaterial(6, faceColors[5])
   ];
 
   const geometry = new THREE.BoxGeometry(2.08, 2.08, 2.08, 1, 1, 1);
@@ -4871,14 +5427,14 @@ function ensureScene(){
   scene.add(diceMesh);
 
   const edgeGeo = new THREE.EdgesGeometry(geometry);
-  const edgeMat = new THREE.LineBasicMaterial({ color: 0x9de8ff, transparent: true, opacity: 0.46 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xff5a7b, transparent: true, opacity: 0.70 });
   const edges = new THREE.LineSegments(edgeGeo, edgeMat);
   diceMesh.add(edges);
 
   particles = [];
   for (let i = 0; i < 42; i += 1){
-    const pGeo = new THREE.SphereGeometry(0.03, 8, 8);
-    const pMat = new THREE.MeshBasicMaterial({ color: i % 2 ? 0x7ad5ff : 0xff6f94 });
+    const pGeo = new THREE.IcosahedronGeometry(i % 5 === 0 ? 0.055 : 0.032, 0);
+    const pMat = new THREE.MeshBasicMaterial({ color: i % 4 === 0 ? 0xffc448 : (i % 2 ? 0xe11d48 : 0xff5470), transparent: true, opacity: 0.86 });
     const p = new THREE.Mesh(pGeo, pMat);
     p.position.set((Math.random() - 0.5) * 4.6, (Math.random() - 0.5) * 3.4, (Math.random() - 0.5) * 3.2);
     p.userData = {
@@ -4943,7 +5499,7 @@ async function animateDiceResult(value, options){
   };
   const target = targets[value] || targets[1];
   const restore = !!opts.restore;
-  const duration = restore ? 1100 : 1850;
+  const duration = restore ? 1250 : 2350;
   const baseX = diceMesh.rotation.x;
   const baseY = diceMesh.rotation.y;
   const baseZ = diceMesh.rotation.z;
@@ -4968,8 +5524,12 @@ async function animateDiceResult(value, options){
       diceMesh.rotation.x = baseX + (endX - baseX) * ease + wobble * 0.4;
       diceMesh.rotation.y = baseY + (endY - baseY) * ease + wobble;
       diceMesh.rotation.z = baseZ + (endZ - baseZ) * ease;
-      camera.position.x = Math.sin(progress * Math.PI * 2) * 0.26;
-      camera.position.y = 0.8 + Math.sin(progress * Math.PI * 5) * 0.09;
+      const lift = Math.sin(Math.min(1, progress * 1.18) * Math.PI) * (restore ? 0.42 : 1.05);
+      diceMesh.position.y = lift;
+      const squash = progress > .86 ? Math.sin((progress - .86) / .14 * Math.PI) * .09 : 0;
+      diceMesh.scale.set(1 + squash, 1 - squash, 1 + squash);
+      camera.position.x = Math.sin(progress * Math.PI * 3) * (1 - progress) * 0.38;
+      camera.position.y = 0.8 + Math.sin(progress * Math.PI * 5) * 0.12;
       camera.lookAt(0, 0, 0);
 
       if (progress < 1){
@@ -4984,6 +5544,8 @@ async function animateDiceResult(value, options){
   diceMesh.rotation.x = target.x;
   diceMesh.rotation.y = target.y;
   diceMesh.rotation.z = 0;
+  diceMesh.position.y = 0;
+  diceMesh.scale.set(1, 1, 1);
   camera.position.set(0, 0.8, 6.8);
   camera.lookAt(0, 0, 0);
 
@@ -4993,6 +5555,8 @@ async function animateDiceResult(value, options){
   setStageSignal(value || "?", restore ? "Rolagem recuperada" : "Resultado confirmado");
   dadoHud.textContent = "Resultado: " + String(value || "?");
   pulseStage();
+  emitNexusBurst("common", 30);
+  nexusHaptic("heavy");
 }
 """
     )
@@ -5053,6 +5617,8 @@ async function rollDice(){
   if (dadoState.rolling || dadoState.picking) return;
   dadoState.rolling = true;
   rollDiceBtn.disabled = true;
+  dadoStageCard.dataset.rarity = "";
+  nexusHaptic("medium");
   clearReward();
   dadoState.options = [];
   renderDadoOptions();
@@ -5116,6 +5682,7 @@ window.addEventListener("resize", resizeScene);
     extra_css = "".join(css_parts)
     js = "".join(js_parts).replace("__DADO_UID__", str(int(uid)))
     return _page_template("Dado", body, extra_css=extra_css, extra_js=js, include_tg=True)
+
 
 
 def build_baltigoflix_page(*, uid: int, banner_url: str) -> str:

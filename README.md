@@ -81,6 +81,33 @@ Variáveis comuns adicionais:
 
 Use sempre IDs numéricos para permissões administrativas. Evite depender exclusivamente de nomes de usuário, pois eles podem ser alterados.
 
+## Integração com o AniNexus
+
+O AniNexus é a camada pública de catálogo e a referência visual da MiniApp. O bot consome apenas os endpoints públicos permitidos por `utils/aninexus_client.py` e os reexpõe em `/api/aninexus/*`, com timeout, cache limitado, validação de resposta e fallback local no catálogo.
+
+| Variável | Finalidade |
+|---|---|
+| `ANINEXUS_ENABLED` | Ativa o provedor AniNexus; padrão `true` |
+| `ANINEXUS_API_BASE_URL` | Origem da API pública, sem caminho ou credenciais |
+| `ANINEXUS_WEB_BASE_URL` | Origem usada para abrir páginas e assets do site |
+| `ANINEXUS_API_TIMEOUT_SECONDS` | Timeout por chamada ao AniNexus |
+| `ANINEXUS_CACHE_MAX_ENTRIES` | Limite do cache e dos locks de consulta em memória |
+| `ANINEXUS_USER_AGENT` | Identificação HTTP do bot perante o AniNexus |
+
+Contratos disponíveis no bot:
+
+```text
+GET /api/aninexus/status
+GET /api/aninexus/home
+GET /api/aninexus/catalog
+GET /api/aninexus/reading
+GET /api/aninexus/schedule
+GET /api/aninexus/anime/{id}
+GET /api/aninexus/manga/{id}
+```
+
+A interface usa o AniNexus primeiro para home e catálogo. Quando a API não responde, o catálogo antigo permanece como fallback, evitando uma tela vazia durante a migração.
+
 ## Executando
 
 ```bash

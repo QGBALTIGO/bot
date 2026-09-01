@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Query, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from aninexus_router import router as aninexus_router
+
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
@@ -69,6 +71,14 @@ from database import (
 )
 
 app = FastAPI()
+app.include_router(aninexus_router)
+
+
+@app.on_event("shutdown")
+async def close_aninexus_http_client() -> None:
+    from utils.aninexus_client import aninexus_client
+
+    await aninexus_client.aclose()
 
 # =========================
 # CONFIG — TERMOS
