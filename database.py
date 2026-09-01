@@ -3344,22 +3344,390 @@ def set_profile_notifications(user_id: int, value: bool):
     )
 
 
-def delete_user_account(user_id: int):
-    user_id = int(user_id)
 
-    _run("DELETE FROM user_card_collection WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM user_xcard_collection WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM user_progress WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM termo_games WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM termo_stats WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM termo_attempt_distribution WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM termo_used_words WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM dice_rolls WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM media_requests WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM webapp_reports WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM user_collection_profile WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM user_profile_settings WHERE user_id = %s", (user_id,))
-    _run("DELETE FROM users WHERE user_id = %s", (user_id,))
+def _optional_table_exists_locked(cur, table_name: str) -> bool:
+    """Return whether an auxiliary table exists without aborting account deletion."""
+
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", str(table_name or "")):
+        raise ValueError("invalid table name")
+    cur.execute("SELECT to_regclass(%s) AS relation_name", (f"public.{table_name}",))
+    row = cur.fetchone() or {}
+    return bool(row.get("relation_name"))
+
+
+def _refund_account_deletion_dependencies_locked(cur, user_id: int) -> Dict[str, int]:
+    """Refund other users affected by deleting this account inside the same transaction."""
+
+    refunded_duels = 0
+    refunded_messages = 0
+    final_duel_states = {"declined", "expired", "cancelled", "completed", "completed_reward_review"}
+
+    cur.execute(
+        """
+        SELECT duel_id, challenger_user_id, challenged_user_id, state, mode,
+               entry_fee, entry_fee_applied, entry_fee_refunded
+        FROM duels
+        WHERE challenger_user_id = %s OR challenged_user_id = %s
+        FOR UPDATE
+        """,
+        (user_id, user_id),
+    )
+    duels = [dict(row) for row in (cur.fetchall() or [])]
+
+    for duel in duels:
+        state = str(duel.get("state") or "").strip().lower()
+        mode = str(duel.get("mode") or "").strip().lower()
+        entry_fee = max(0, int(duel.get("entry_fee") or 0))
+        should_refund = (
+            state not in final_duel_states
+            and mode == "wager"
+            and entry_fee > 0
+            and bool(duel.get("entry_fee_applied"))
+            and not bool(duel.get("entry_fee_refunded"))
+        )
+        if not should_refund:
+            continue
+
+        challenger_id = int(duel.get("challenger_user_id") or 0)
+        challenged_id = int(duel.get("challenged_user_id") or 0)
+        other_user_id = challenged_id if challenger_id == user_id else challenger_id
+        if other_user_id <= 0 or other_user_id == user_id:
+            continue
+
+        cur.execute(
+            """
+            UPDATE users
+            SET coins = COALESCE(coins, 0) + %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING coins
+            """,
+            (entry_fee, other_user_id),
+        )
+        balance_row = cur.fetchone() or {}
+        if not balance_row:
+            continue
+
+        balance_after = int(balance_row.get("coins") or 0)
+        duel_id = int(duel.get("duel_id") or 0)
+        cur.execute(
+            """
+            INSERT INTO shop_transactions
+                (user_id, type, amount, balance_after, reference_id, metadata)
+            VALUES (%s, 'duel_entry_refund_account_deleted', %s, %s, %s, %s::jsonb)
+            """,
+            (
+                other_user_id,
+                entry_fee,
+                balance_after,
+                duel_id,
+                json.dumps({"duel_id": duel_id, "deleted_user_id": user_id}, ensure_ascii=False),
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO duel_stats (user_id, coins_refunded, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (user_id) DO UPDATE
+            SET coins_refunded = duel_stats.coins_refunded + EXCLUDED.coins_refunded,
+                updated_at = NOW()
+            """,
+            (other_user_id, entry_fee),
+        )
+        refunded_duels += 1
+
+    duel_ids = [int(row.get("duel_id") or 0) for row in duels if int(row.get("duel_id") or 0) > 0]
+    if duel_ids:
+        cur.execute(
+            """
+            UPDATE user_xcard_locks
+            SET status = 'released', released_at = NOW()
+            WHERE scope_type = 'duel'
+              AND scope_id = ANY(%s)
+              AND status = 'active'
+            """,
+            (duel_ids,),
+        )
+        cur.execute("DELETE FROM duel_user_presence WHERE duel_id = ANY(%s)", (duel_ids,))
+        cur.execute("DELETE FROM duel_rounds WHERE duel_id = ANY(%s)", (duel_ids,))
+        cur.execute("DELETE FROM duel_events WHERE duel_id = ANY(%s)", (duel_ids,))
+        cur.execute("DELETE FROM duels WHERE duel_id = ANY(%s)", (duel_ids,))
+
+    cur.execute(
+        """
+        SELECT message_id, from_user_id, coin_cost
+        FROM user_messages
+        WHERE to_user_id = %s
+          AND from_user_id <> %s
+          AND status = 'pending'
+          AND is_anonymous = TRUE
+          AND coin_cost > 0
+          AND refund_done = FALSE
+        FOR UPDATE
+        """,
+        (user_id, user_id),
+    )
+    pending_messages = [dict(row) for row in (cur.fetchall() or [])]
+
+    for row in pending_messages:
+        sender_id = int(row.get("from_user_id") or 0)
+        coin_cost = max(0, int(row.get("coin_cost") or 0))
+        message_id = int(row.get("message_id") or 0)
+        if sender_id <= 0 or coin_cost <= 0:
+            continue
+
+        cur.execute(
+            """
+            UPDATE users
+            SET coins = COALESCE(coins, 0) + %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING coins
+            """,
+            (coin_cost, sender_id),
+        )
+        balance_row = cur.fetchone() or {}
+        if not balance_row:
+            continue
+
+        cur.execute(
+            """
+            INSERT INTO shop_transactions
+                (user_id, type, amount, balance_after, reference_id, metadata)
+            VALUES (%s, 'message_refund_account_deleted', %s, %s, %s, %s::jsonb)
+            """,
+            (
+                sender_id,
+                coin_cost,
+                int(balance_row.get("coins") or 0),
+                message_id,
+                json.dumps({"message_id": message_id, "deleted_recipient_id": user_id}, ensure_ascii=False),
+            ),
+        )
+        refunded_messages += 1
+
+    return {
+        "refunded_duels": refunded_duels,
+        "refunded_messages": refunded_messages,
+    }
+
+
+def delete_user_account(user_id: int) -> Dict[str, Any]:
+    """Delete one account comprehensively and atomically.
+
+    Gameplay/profile content is deleted. Payment and contribution records that may
+    need retention are detached from the Telegram identity and stripped of direct
+    profile data. Refunds owed to other users are applied in the same transaction.
+    """
+
+    user_id = int(user_id)
+    if user_id <= 0:
+        raise ValueError("user_id must be positive")
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (user_id,))
+                cur.execute(
+                    "SELECT user_id FROM users WHERE user_id = %s FOR UPDATE",
+                    (user_id,),
+                )
+                account_existed = bool(cur.fetchone())
+
+                refunds = _refund_account_deletion_dependencies_locked(cur, user_id)
+
+                # Remove reports before their messages, and delete both message sides.
+                cur.execute(
+                    """
+                    DELETE FROM user_message_reports
+                    WHERE reporter_user_id = %s
+                       OR message_id IN (
+                           SELECT message_id
+                           FROM user_messages
+                           WHERE from_user_id = %s OR to_user_id = %s
+                       )
+                    """,
+                    (user_id, user_id, user_id),
+                )
+                cur.execute(
+                    "DELETE FROM user_messages WHERE from_user_id = %s OR to_user_id = %s",
+                    (user_id, user_id),
+                )
+                cur.execute(
+                    "DELETE FROM user_message_blocks WHERE user_id = %s OR blocked_user_id = %s",
+                    (user_id, user_id),
+                )
+                cur.execute("DELETE FROM user_message_settings WHERE user_id = %s", (user_id,))
+
+                # Remove remaining duel/trade state, including defensive orphan cleanup.
+                cur.execute("UPDATE duel_events SET actor_user_id = NULL WHERE actor_user_id = %s", (user_id,))
+                cur.execute("DELETE FROM duel_user_presence WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM user_xcard_locks WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM duel_stats WHERE user_id = %s", (user_id,))
+                cur.execute(
+                    "DELETE FROM card_trades WHERE from_user = %s OR to_user = %s",
+                    (user_id, user_id),
+                )
+
+                # Collections, games, economy and profile state owned by the account.
+                cur.execute("DELETE FROM user_card_collection WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM user_xcard_collection WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM user_progress WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM termo_games WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM termo_stats WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM termo_attempt_distribution WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM termo_used_words WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM dice_rolls WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM media_requests WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM webapp_reports WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM user_collection_profile WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM user_profile_settings WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM shop_transactions WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM shop_card_sales WHERE user_id = %s", (user_id,))
+                cur.execute(
+                    "DELETE FROM user_shop_xcard_daily_purchases WHERE user_id = %s",
+                    (user_id,),
+                )
+                cur.execute("DELETE FROM daily_rewards WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM memory_level_bests WHERE user_id = %s", (user_id,))
+
+                # Detach public/history records that should survive without identity.
+                cur.execute(
+                    """
+                    UPDATE capture_spawns
+                    SET winner_user_id = NULL, winner_name = NULL
+                    WHERE winner_user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cur.execute(
+                    "UPDATE global_character_images SET updated_by = 0 WHERE updated_by = %s",
+                    (user_id,),
+                )
+                cur.execute(
+                    """
+                    UPDATE card_image_suggestions
+                    SET user_id = 0, username = NULL, full_name = NULL, note = NULL
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cur.execute(
+                    "UPDATE card_image_suggestions SET reviewed_by = NULL WHERE reviewed_by = %s",
+                    (user_id,),
+                )
+                cur.execute(
+                    """
+                    UPDATE card_work_requests
+                    SET user_id = 0, username = NULL, full_name = NULL
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cur.execute(
+                    "UPDATE card_work_requests SET reviewed_by = NULL WHERE reviewed_by = %s",
+                    (user_id,),
+                )
+
+                # Preserve financial amounts/statuses, but detach profile identity.
+                cur.execute(
+                    """
+                    SELECT cakto_order_id, cakto_subscription_id
+                    FROM purchase_intents
+                    WHERE telegram_user_id = %s
+                    FOR UPDATE
+                    """,
+                    (user_id,),
+                )
+                purchase_rows = [dict(row) for row in (cur.fetchall() or [])]
+                order_ids = [str(row.get("cakto_order_id") or "").strip() for row in purchase_rows]
+                order_ids = [value for value in order_ids if value]
+                subscription_ids = [str(row.get("cakto_subscription_id") or "").strip() for row in purchase_rows]
+                subscription_ids = [value for value in subscription_ids if value]
+
+                if order_ids:
+                    cur.execute(
+                        """
+                        UPDATE cakto_webhook_events
+                        SET payload_json = jsonb_build_object('redacted', TRUE, 'reason', 'account_deleted')
+                        WHERE order_id = ANY(%s)
+                        """,
+                        (order_ids,),
+                    )
+                if subscription_ids:
+                    cur.execute(
+                        """
+                        UPDATE cakto_webhook_events
+                        SET payload_json = jsonb_build_object('redacted', TRUE, 'reason', 'account_deleted')
+                        WHERE subscription_id = ANY(%s)
+                        """,
+                        (subscription_ids,),
+                    )
+
+                cur.execute(
+                    """
+                    UPDATE affiliate_commissions
+                    SET buyer_user_id = CASE WHEN buyer_user_id = %s THEN 0 ELSE buyer_user_id END,
+                        referrer_user_id = CASE WHEN referrer_user_id = %s THEN 0 ELSE referrer_user_id END,
+                        metadata = '{}'::jsonb,
+                        updated_at = NOW()
+                    WHERE buyer_user_id = %s OR referrer_user_id = %s
+                    """,
+                    (user_id, user_id, user_id, user_id),
+                )
+                cur.execute(
+                    """
+                    UPDATE purchase_intents
+                    SET telegram_user_id = 0,
+                        telegram_username = NULL,
+                        telegram_full_name = NULL,
+                        referrer_user_id = NULL,
+                        ref_code = NULL,
+                        checkout_url = NULL,
+                        metadata = '{}'::jsonb,
+                        raw_checkout_response = NULL,
+                        updated_at = NOW()
+                    WHERE telegram_user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cur.execute(
+                    """
+                    UPDATE purchase_intents
+                    SET referrer_user_id = NULL,
+                        ref_code = NULL,
+                        updated_at = NOW()
+                    WHERE referrer_user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cur.execute(
+                    "DELETE FROM user_referrals WHERE referred_user_id = %s OR referrer_user_id = %s",
+                    (user_id, user_id),
+                )
+
+                # Auxiliary worker tables are created lazily and may not exist yet.
+                if _optional_table_exists_locked(cur, "telegram_outbox"):
+                    cur.execute("DELETE FROM telegram_outbox WHERE chat_id = %s", (user_id,))
+                if _optional_table_exists_locked(cur, "webapp_auth_requests"):
+                    cur.execute("DELETE FROM webapp_auth_requests WHERE user_id = %s", (user_id,))
+                if _optional_table_exists_locked(cur, "channel_verification_requests"):
+                    cur.execute("DELETE FROM channel_verification_requests WHERE user_id = %s", (user_id,))
+
+                cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
+                conn.commit()
+                return {
+                    "ok": True,
+                    "user_id": user_id,
+                    "account_existed": account_existed,
+                    **refunds,
+                }
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
 
 # =========================================================
@@ -5071,26 +5439,72 @@ def swap_characters_atomic(trade_id: int) -> bool:
 # ADMIN RESET SYSTEM
 # =========================================================
 
-def delete_all_users():
+def delete_all_users() -> Dict[str, Any]:
+    """Reset all user-owned state atomically while retaining anonymized financial history."""
 
     with pool.connection() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (0,))
 
-            cur.execute("TRUNCATE TABLE user_card_collection CASCADE")
-            cur.execute("TRUNCATE TABLE user_xcard_collection CASCADE")
-            cur.execute("TRUNCATE TABLE user_progress CASCADE")
-            cur.execute("TRUNCATE TABLE termo_games CASCADE")
-            cur.execute("TRUNCATE TABLE termo_stats CASCADE")
-            cur.execute("TRUNCATE TABLE termo_attempt_distribution CASCADE")
-            cur.execute("TRUNCATE TABLE termo_used_words CASCADE")
-            cur.execute("TRUNCATE TABLE dice_rolls CASCADE")
-            cur.execute("TRUNCATE TABLE media_requests CASCADE")
-            cur.execute("TRUNCATE TABLE webapp_reports CASCADE")
-            cur.execute("TRUNCATE TABLE user_collection_profile CASCADE")
-            cur.execute("TRUNCATE TABLE user_profile_settings CASCADE")
-            cur.execute("TRUNCATE TABLE users CASCADE")
+                if _optional_table_exists_locked(cur, "telegram_outbox"):
+                    cur.execute(
+                        "DELETE FROM telegram_outbox WHERE chat_id IN (SELECT user_id FROM users)"
+                    )
+                if _optional_table_exists_locked(cur, "webapp_auth_requests"):
+                    cur.execute("TRUNCATE TABLE webapp_auth_requests")
+                if _optional_table_exists_locked(cur, "channel_verification_requests"):
+                    cur.execute("TRUNCATE TABLE channel_verification_requests")
 
-        conn.commit()
+                cur.execute("UPDATE global_character_images SET updated_by = 0")
+                cur.execute(
+                    """
+                    TRUNCATE TABLE
+                        duel_rounds,
+                        duel_events,
+                        duel_user_presence,
+                        user_xcard_locks,
+                        duels,
+                        duel_stats,
+                        card_trades,
+                        user_message_reports,
+                        user_messages,
+                        user_message_blocks,
+                        user_message_settings,
+                        user_card_collection,
+                        user_xcard_collection,
+                        user_progress,
+                        termo_games,
+                        termo_stats,
+                        termo_attempt_distribution,
+                        termo_used_words,
+                        dice_rolls,
+                        media_requests,
+                        webapp_reports,
+                        user_collection_profile,
+                        user_profile_settings,
+                        shop_transactions,
+                        shop_card_sales,
+                        user_shop_xcard_daily_purchases,
+                        daily_rewards,
+                        memory_level_bests,
+                        user_referrals,
+                        active_group_spawns,
+                        capture_group_state,
+                        capture_spawns,
+                        users
+                    RESTART IDENTITY
+                    """
+                )
+
+                conn.commit()
+                return {"ok": True}
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
 # =========================================================
 # ADMIN BROADCAST
