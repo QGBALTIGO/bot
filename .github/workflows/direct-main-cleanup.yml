@@ -1,0 +1,91 @@
+name: Direct main cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/direct-main-cleanup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: direct-main-cleanup
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Remove shadowed dado implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("premium_webapp_ui.py")
+          text = path.read_text(encoding="utf-8")
+          tree = ast.parse(text, filename=str(path))
+          matches = [
+              node
+              for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and node.name == "build_dado_page"
+          ]
+
+          if len(matches) == 1:
+              print("build_dado_page já está consolidada")
+              raise SystemExit(0)
+          if len(matches) != 2:
+              raise SystemExit(
+                  f"Quantidade inesperada de build_dado_page: {len(matches)}"
+              )
+
+          lines = text.splitlines(keepends=True)
+          old = matches[0]
+          start = old.lineno - 1
+          end = int(old.end_lineno or old.lineno)
+
+          while start > 0 and not lines[start - 1].strip():
+              start -= 1
+          while end < len(lines) and not lines[end].strip():
+              end += 1
+
+          del lines[start:end]
+          path.write_text("".join(lines), encoding="utf-8")
+          print("Implementação antiga de build_dado_page removida")
+          PY
+
+      - name: Validate source
+        run: |
+          python -m py_compile premium_webapp_ui.py
+          python -m compileall -q .
+          git diff --check
+
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma alteração necessária."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add premium_webapp_ui.py
+          git commit -m "fix: remove shadowed dado page implementation"
+          git push origin HEAD:main
