@@ -49,10 +49,11 @@ RISKY_SUFFIXES = {
     ".pfx",
 }
 BOT_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])\d{6,12}:[A-Za-z0-9_-]{30,}(?![A-Za-z0-9_])")
-PRIVATE_KEY_MARKERS = (
-    "-----BEGIN PRIVATE KEY-----",
-    "-----BEGIN RSA PRIVATE KEY-----",
-    "-----BEGIN OPENSSH PRIVATE KEY-----",
+_PRIVATE_KEY_PREFIX = "-" * 5 + "BEGIN "
+_PRIVATE_KEY_SUFFIX = "-" * 5
+PRIVATE_KEY_MARKERS = tuple(
+    _PRIVATE_KEY_PREFIX + kind + _PRIVATE_KEY_SUFFIX
+    for kind in ("PRIVATE KEY", "RSA PRIVATE KEY", "OPENSSH PRIVATE KEY")
 )
 JSON_LIKE_TEXT_FILES = {
     "personagens_anilist.txt",
