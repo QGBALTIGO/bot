@@ -33,12 +33,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Apply deterministic cleanup
+      - name: Apply deterministic cleanup and remove temporary automation
+        env:
+          FINALIZE_HARDENING_TRANSFORM: "1"
         run: python scripts/apply_main_hardening.py
 
       - name: Validate transformed Python
         run: |
-          python -m py_compile premium_webapp_ui.py
+          python -m py_compile premium_webapp_ui.py scripts/system_audit.py
           git diff --check
 
       - name: Commit cleanup
@@ -50,6 +52,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add premium_webapp_ui.py
-          git commit -m "fix: remove shadowed dado page implementation"
+          git add -A
+          git commit -m "chore: finalize one-time source cleanup"
           git push origin HEAD:audit/main-production-hardening-2026-09-01
