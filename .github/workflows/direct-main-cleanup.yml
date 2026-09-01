@@ -17,7 +17,7 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - name: Checkout main
@@ -38,27 +38,30 @@ jobs:
           pip install -r requirements.txt pytest
           pip check
 
-      - name: Remove unreachable legacy implementations
+      - name: Apply reliability and endpoint hardening
         run: python scripts/apply_direct_security_hardening.py
 
       - name: Validate source
         run: |
           python -m compileall -q .
-          python -m py_compile webapp.py
+          python -m py_compile bot.py database.py webapp.py premium_webapp_ui.py utils/runtime_guard.py
           git diff --check
 
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Run structural audit
+        run: python scripts/system_audit.py --report system-audit-batch.json
+
       - name: Commit directly to main
         shell: bash
         run: |
-          if git diff --quiet; then
+          if git diff --quiet -- bot.py database.py webapp.py premium_webapp_ui.py utils/runtime_guard.py; then
             echo "Nenhuma alteração necessária."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add webapp.py
-          git commit -m "refactor: remove unreachable legacy WebApp code"
+          git add bot.py database.py webapp.py premium_webapp_ui.py utils/runtime_guard.py
+          git commit -m "fix: harden WebApp endpoints and dado reliability"
           git push origin HEAD:main
