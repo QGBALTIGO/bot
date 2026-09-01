@@ -217,6 +217,56 @@ def _record_coin_tx_locked(
     )
 
 
+def _refund_duel_entry_fees_locked(cur, duel: Dict[str, Any]) -> int:
+    """Refund wager entry fees exactly once when a duel is cancelled."""
+
+    if str(duel.get("mode") or "").strip().lower() != "wager":
+        return 0
+    if not bool(duel.get("entry_fee_applied")) or bool(duel.get("entry_fee_refunded")):
+        return 0
+
+    duel_id = int(duel.get("duel_id") or 0)
+    entry_fee = max(0, int(duel.get("entry_fee") or 0))
+    if duel_id <= 0 or entry_fee <= 0:
+        return 0
+
+    refunded = 0
+    user_ids = {
+        int(duel.get("challenger_user_id") or 0),
+        int(duel.get("challenged_user_id") or 0),
+    }
+    for user_id in sorted(uid for uid in user_ids if uid > 0):
+        cur.execute(
+            """
+            UPDATE users
+            SET coins = coins + %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING coins
+            """,
+            (entry_fee, user_id),
+        )
+        row = cur.fetchone() or {}
+        if not row:
+            continue
+
+        balance_after = int(row.get("coins") or 0)
+        _record_coin_tx_locked(
+            cur,
+            user_id,
+            "duel_entry_refund",
+            entry_fee,
+            balance_after=balance_after,
+            reference_id=duel_id,
+            metadata={"duel_id": duel_id, "mode": "wager", "reason": "duel_cancelled"},
+        )
+        _adjust_duel_stats_locked(cur, user_id, coins_refunded=entry_fee)
+        refunded += 1
+
+    _update_duel_row(cur, duel_id, entry_fee_refunded=True)
+    return refunded
+
+
 def _adjust_duel_stats_locked(
     cur,
     user_id: int,
@@ -456,6 +506,7 @@ def _finalize_duel_locked(
     entry_fee = int(duel.get("entry_fee") or 0)
     reward_result = {"status": "none", "card_id": 0}
     final_state = "cancelled" if cancelled else "completed"
+    refunded_entry_fees = _refund_duel_entry_fees_locked(cur, duel) if cancelled else 0
 
     if winner_user_id and loser_user_id and mode == "wager":
         reward_result = _transfer_reward_card_locked(
@@ -515,6 +566,7 @@ def _finalize_duel_locked(
             "loser_user_id": int(loser_user_id) if loser_user_id else None,
             "resolution_reason": str(resolution_reason or "").strip(),
             "cancelled": bool(cancelled),
+            "refunded_entry_fees": refunded_entry_fees,
             "reward": reward_result,
         },
     )
@@ -1627,6 +1679,7 @@ def cancel_duel(duel_id: int, reason: str, actor_user_id: Optional[int] = None) 
 
                 players_state = _safe_json_dict(duel.get("players_state"))
                 teams_state = _safe_json_dict(duel.get("teams_state"))
+                refunded_entry_fees = _refund_duel_entry_fees_locked(cur, duel)
                 _release_duel_locks(cur, int(duel_id))
                 _release_presence(cur, int(duel_id))
                 _update_duel_row(
@@ -1643,7 +1696,10 @@ def cancel_duel(duel_id: int, reason: str, actor_user_id: Optional[int] = None) 
                     int(duel_id),
                     "duel_cancelled",
                     actor_user_id=int(actor_user_id) if actor_user_id is not None else None,
-                    payload={"reason": str(reason or "cancelled").strip()},
+                    payload={
+                        "reason": str(reason or "cancelled").strip(),
+                        "refunded_entry_fees": refunded_entry_fees,
+                    },
                 )
                 conn.commit()
                 return {"ok": True, "duel": get_duel_bundle(int(duel_id))}
