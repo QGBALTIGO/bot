@@ -1,0 +1,28 @@
+name: Export current main for repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/export-main-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-main-repair-source
+          path: .
+          include-hidden-files: true
+          retention-days: 1
