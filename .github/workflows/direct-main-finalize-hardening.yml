@@ -1,0 +1,157 @@
+name: Finalize direct main hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/direct-main-finalize-hardening.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: direct-main-finalize-hardening
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest ruff
+
+      - name: Remove administrative exception leaks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import re
+          from pathlib import Path
+
+          path = Path("commands/cards_admin.py")
+          text = path.read_text(encoding="utf-8")
+
+          if "import logging\n" not in text:
+              if "import os\n" not in text:
+                  raise SystemExit("cards_admin.py import anchor not found")
+              text = text.replace("import os\n", "import logging\nimport os\n", 1)
+
+          if "logger = logging.getLogger(__name__)" not in text:
+              anchor = "CARD_ADMIN_IDS = {"
+              if anchor not in text:
+                  raise SystemExit("cards_admin.py config anchor not found")
+              text = text.replace(
+                  anchor,
+                  "logger = logging.getLogger(__name__)\n\n" + anchor,
+                  1,
+              )
+
+          tree = ast.parse(text, filename=str(path))
+          parents = {}
+          for parent in ast.walk(tree):
+              for child in ast.iter_child_nodes(parent):
+                  parents[child] = parent
+
+          lines = text.splitlines(keepends=True)
+          replacements = []
+
+          def enclosing_function(node):
+              current = node
+              while current in parents:
+                  current = parents[current]
+                  if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      return current.name
+              return "unknown"
+
+          for handler in (node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)):
+              variable = str(handler.name or "")
+              if not variable or not handler.body:
+                  continue
+
+              first = handler.body[0]
+              last = handler.body[-1]
+              start = first.lineno - 1
+              end = int(last.end_lineno or last.lineno)
+              source = "".join(lines[start:end])
+              if not any(marker in source for marker in ("_reply(", "reply_text(", "reply_html(")):
+                  continue
+
+              escaped = re.escape(variable)
+              leaks = (
+                  re.search(rf"\{{\s*{escaped}(?:\s*[!:][^}}]*)?\s*\}}", source)
+                  or re.search(rf"\bstr\s*\(\s*{escaped}\s*\)", source)
+              )
+              if not leaks:
+                  continue
+
+              function_name = enclosing_function(handler)
+              indent = " " * int(first.col_offset)
+              replacement = (
+                  f'{indent}logger.exception("Falha no comando administrativo {function_name}")\n'
+                  f'{indent}await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")\n'
+              )
+              replacements.append((start, end, replacement))
+
+          for start, end, replacement in sorted(replacements, reverse=True):
+              lines[start:end] = [replacement]
+
+          updated = "".join(lines)
+          ast.parse(updated, filename=str(path))
+          path.write_text(updated, encoding="utf-8")
+          print(f"handlers_hardened={len(replacements)}")
+          PY
+
+      - name: Validate source and tests
+        env:
+          BOT_TOKEN: "123456789:test-token-for-imports-only"
+          BOT_OWNER_ID: "1"
+        run: |
+          python -m compileall -q .
+          ruff check . --select E9,F63,F7,F82 --exclude data
+          pytest -q
+          git diff --check
+
+      - name: Remove one-time maintenance files
+        shell: bash
+        run: |
+          git rm -f --ignore-unmatch \
+            .github/workflows/direct-main-finalize-hardening.yml \
+            .github/workflows/direct-main-cleanup.yml \
+            scripts/apply_admin_error_hardening.py \
+            scripts/apply_direct_security_hardening.py \
+            scripts/remove_unreachable_legacy.py \
+            scripts/apply_main_hardening.py
+
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Nenhuma alteração necessária."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "security: finalize direct production hardening"
+          git push origin HEAD:main
