@@ -1,0 +1,63 @@
+name: Direct duel refund fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/direct-duel-refund-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: direct-duel-refund-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+          pip check
+
+      - name: Apply duel refund fix
+        run: python scripts/apply_duel_refund_fix.py
+
+      - name: Remove temporary files
+        run: |
+          rm -f scripts/apply_duel_refund_fix.py
+          rm -f .github/workflows/direct-duel-refund-fix.yml
+
+      - name: Validate and test
+        run: |
+          python -m compileall -q .
+          git diff --check
+          python -m pytest -q
+
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add duel_repository.py tests/test_duel_refunds.py
+          git add -u scripts/apply_duel_refund_fix.py .github/workflows/direct-duel-refund-fix.yml
+          git commit -m "fix: refund cancelled wager duels exactly once"
+          git push origin HEAD:main
