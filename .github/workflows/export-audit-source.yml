@@ -20,19 +20,20 @@ jobs:
       - name: Checkout audit branch
         uses: actions/checkout@v4
 
-      - name: Build source snapshot
-        shell: bash
-        run: |
-          tar \
-            --exclude=.git \
-            --exclude='data/*.json' \
-            --exclude='data/*.txt' \
-            --exclude='artifacts' \
-            -czf source-audit-snapshot.tar.gz .
-
-      - name: Upload snapshot
+      - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
           name: source-audit-snapshot
-          path: source-audit-snapshot.tar.gz
+          path: |
+            **/*.py
+            **/*.yml
+            **/*.yaml
+            **/*.toml
+            **/*.ini
+            **/*.cfg
+            requirements.txt
+            README.md
+            .gitignore
+          if-no-files-found: error
+          include-hidden-files: true
           retention-days: 2
