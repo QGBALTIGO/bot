@@ -4,6 +4,7 @@ import re
 import traceback
 import asyncio
 import time
+import threading
 import httpx
 import random
 import hashlib
@@ -95,6 +96,38 @@ IMAGE_PROXY_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+
+INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "").strip()
+_WEBAPP_RATE_LOCK = threading.Lock()
+_WEBAPP_RATE: Dict[Tuple[int, str], float] = {}
+_WEBAPP_RATE_PRUNE_THRESHOLD = 4096
+
+
+def _require_internal_api_secret(provided: str) -> None:
+    if not INTERNAL_API_SECRET:
+        raise HTTPException(status_code=503, detail="internal_api_secret_not_configured")
+    value = str(provided or "").strip()
+    if not value or not hmac.compare_digest(value, INTERNAL_API_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+def _webapp_rate_limit(user_id: int, key: str, window_seconds: float) -> bool:
+    now = time.monotonic()
+    reset_at = now + max(0.05, float(window_seconds))
+    rate_key = (int(user_id), str(key))
+
+    with _WEBAPP_RATE_LOCK:
+        current_reset = float(_WEBAPP_RATE.get(rate_key, 0.0) or 0.0)
+        if now < current_reset:
+            return False
+        _WEBAPP_RATE[rate_key] = reset_at
+
+        if len(_WEBAPP_RATE) >= _WEBAPP_RATE_PRUNE_THRESHOLD:
+            expired = [item for item, expiry in _WEBAPP_RATE.items() if expiry <= now]
+            for item in expired:
+                _WEBAPP_RATE.pop(item, None)
+
+    return True
 
 
 def _is_blocked_image_host(hostname: str) -> bool:
@@ -879,7 +912,10 @@ from utils.channel_verification_bridge import wait_for_verification, worker_heal
 
 
 @app.get("/api/channel/selftest")
-def api_channel_selftest():
+def api_channel_selftest(
+    x_internal_api_secret: str = Header(default=""),
+):
+    _require_internal_api_secret(x_internal_api_secret)
     health = worker_health()
     return JSONResponse(health, status_code=200 if health.get("ok") else 503)
 
@@ -1636,43 +1672,16 @@ def _registrar_pedido(uid:int):
     _PEDIDOS_CACHE.setdefault(uid, []).append(int(time.time()))
 
 @app.post("/api/pedido")
-async def api_pedido(payload: dict = Body(...)):
-    try:
-        uid = int(payload.get("uid") or 0)
-        nome = str(payload.get("nome") or "").strip()
-        tipo = str(payload.get("tipo") or "anime")
-
-        if uid <= 0 or not nome:
-            return {"ok": False, "msg": "Dados inválidos."}
-
-        if not _pode_pedir(uid):
-            return {"ok": False, "msg": "Limite de 3 pedidos a cada 24h."}
-
-        _registrar_pedido(uid)
-
-        canal = os.getenv("CANAL_PEDIDOS")
-        if canal and BOT_TOKEN:
-            texto = f"""📥 NOVO PEDIDO
-
-Usuário: {uid}
-Tipo: {tipo}
-
-Pedido:
-{nome}
-"""
-
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(url, json={
-                    "chat_id": canal,
-                    "text": texto
-                })
-
-        return {"ok": True}
-
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)}, status_code=500)
+async def api_pedido(payload: dict = Body(default={})):
+    del payload
+    return JSONResponse(
+        {
+            "ok": False,
+            "msg": "Endpoint antigo desativado. Use /api/pedido/send.",
+            "error": "endpoint_deprecated",
+        },
+        status_code=410,
+    )
 
 
 # =========================================================
@@ -1696,7 +1705,10 @@ CARDS_TOP_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZ0sajmmrHXRy1AZxkf
 
 
 @app.get("/api/cards/reload")
-def api_cards_reload():
+def api_cards_reload(
+    x_internal_api_secret: str = Header(default=""),
+):
+    _require_internal_api_secret(x_internal_api_secret)
     reload_cards_cache()
     data = build_cards_final_data(force_reload=True)
     return JSONResponse({
@@ -2234,11 +2246,25 @@ def api_pedido_limit(
 
 @app.get("/api/pedido/search")
 async def api_pedido_search(
-    q: str = Query(..., min_length=1, max_length=80),
-    media_type: str = Query(...)
+    q: str = Query(..., min_length=2, max_length=80),
+    media_type: str = Query(..., max_length=10),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
 ):
-    media_type = (media_type or "").strip().lower()
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    if not _webapp_rate_limit(user_id, "pedido-search", 0.35):
+        return JSONResponse(
+            {"ok": False, "message": "Aguarde um instante antes de buscar novamente."},
+            status_code=429,
+        )
 
+    media_type = (media_type or "").strip().lower()
     if media_type not in ("anime", "manga"):
         return JSONResponse({"ok": False, "message": "media_type inválido"}, status_code=400)
 
@@ -2246,43 +2272,38 @@ async def api_pedido_search(
         results = await _pedido_anilist_search(q.strip(), media_type)
         items = []
 
-        for x in results:
+        for item in results:
             title = (
-                ((x.get("title") or {}).get("romaji"))
-                or ((x.get("title") or {}).get("english"))
-                or ((x.get("title") or {}).get("native"))
+                ((item.get("title") or {}).get("romaji"))
+                or ((item.get("title") or {}).get("english"))
+                or ((item.get("title") or {}).get("native"))
                 or ""
             ).strip()
-
             if not title:
                 continue
 
-            aid = x.get("id")
-            exists_catalog = _pedido_catalog_contains(media_type, title, aid)
-            exists_request = media_request_exists(media_type, title, aid)
-
+            anilist_id = item.get("id")
             items.append({
-                "id": aid,
+                "id": anilist_id,
                 "title": title,
-                "cover": ((x.get("coverImage") or {}).get("large") or ""),
-                "score": x.get("averageScore"),
-                "format": x.get("format"),
-                "status": x.get("status"),
-                "year": x.get("seasonYear"),
-                "episodes": x.get("episodes"),
-                "chapters": x.get("chapters"),
-                "already_exists": bool(exists_catalog),
-                "already_requested": bool(exists_request),
+                "cover": ((item.get("coverImage") or {}).get("large") or ""),
+                "score": item.get("averageScore"),
+                "format": item.get("format"),
+                "status": item.get("status"),
+                "year": item.get("seasonYear"),
+                "episodes": item.get("episodes"),
+                "chapters": item.get("chapters"),
+                "already_exists": bool(_pedido_catalog_contains(media_type, title, anilist_id)),
+                "already_requested": bool(media_request_exists(media_type, title, anilist_id)),
             })
 
         return JSONResponse({"ok": True, "items": items})
-
-    except Exception as e:
-        print("[pedido] busca AniList falhou:", repr(e), flush=True)
+    except Exception as exc:
+        print(f"[pedido] busca AniList falhou: {type(exc).__name__}", flush=True)
         traceback.print_exc()
         return JSONResponse(
             {"ok": False, "message": "Não foi possível buscar agora."},
-            status_code=502
+            status_code=502,
         )
 
 
@@ -2552,7 +2573,6 @@ CARDS_LOCAL_PATH = os.getenv(
 
 DADO_WEB_RATE_SECONDS = float(os.getenv("DADO_WEB_RATE_SECONDS", "0.8"))
 
-_DADO_RATE: Dict[Tuple[int, str], float] = {}
 _DADO_LOCAL_CACHE: Dict[str, Any] = {
     "mtime": 0.0,
     "loaded": False,
@@ -2564,13 +2584,7 @@ _DADO_LOCAL_CACHE: Dict[str, Any] = {
 
 
 def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECONDS) -> bool:
-    now = time.time()
-    k = (int(user_id), str(key))
-    last = _DADO_RATE.get(k, 0.0)
-    if now - last < window:
-        return False
-    _DADO_RATE[k] = now
-    return True
+    return _webapp_rate_limit(user_id, f"dado:{key}", window)
 
 
 # =========================================================
@@ -3009,6 +3023,51 @@ def _pick_random_local_character(anime_id: int) -> Optional[dict]:
     }
 
 
+def _find_local_dado_character(anime_id: int, character_id: int) -> Optional[dict]:
+    data = _load_local_dado_pool()
+    characters = list(data["characters_by_anime"].get(int(anime_id)) or [])
+    for character in characters:
+        if int(character.get("id") or 0) != int(character_id):
+            continue
+        return {
+            "id": int(character["id"]),
+            "name": str(character.get("name") or "Personagem"),
+            "image": str(character.get("image") or DADO_BANNER_URL),
+            "anime_title": str(character.get("anime") or "Anime"),
+            "anime_cover": _build_cover_from_anilist(int(anime_id)),
+        }
+    return None
+
+
+def _hydrate_dado_character(anime_id: int, character_id: int) -> Optional[dict]:
+    character = _find_local_dado_character(anime_id, character_id)
+
+    try:
+        from cards_service import get_character_by_id
+
+        global_character = get_character_by_id(int(character_id))
+    except Exception as exc:
+        print(f"[dado] falha ao consultar personagem global: {type(exc).__name__}", flush=True)
+        global_character = None
+
+    if character is None and global_character:
+        character = {
+            "id": int(global_character.get("id") or character_id),
+            "name": str(global_character.get("name") or "Personagem"),
+            "image": str(global_character.get("image") or DADO_BANNER_URL),
+            "anime_title": str(global_character.get("anime") or "Anime"),
+            "anime_cover": _build_cover_from_anilist(
+                int(global_character.get("anime_id") or anime_id)
+            ),
+        }
+    elif character is not None and global_character:
+        global_image = str(global_character.get("image") or "").strip()
+        if global_image:
+            character["image"] = global_image
+
+    return character
+
+
 def _rarity_from_roll(dice_value: int, character_id: int) -> dict:
     seed = ((int(character_id) * 1103515245) + (int(dice_value) * 12345)) & 0xFFFFFFFF
     r = seed % 1000
@@ -3203,44 +3262,82 @@ async def api_dado_pick(
     user_id = int(tg["user_id"])
 
     if not _dado_rate_limit(user_id, "pick", 1.0):
-        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=429)
 
-    roll_id = int(payload_body.get("roll_id") or 0)
-    anime_id = int(payload_body.get("anime_id") or 0)
+    try:
+        roll_id = int(payload_body.get("roll_id") or 0)
+        anime_id = int(payload_body.get("anime_id") or 0)
+    except (TypeError, ValueError):
+        roll_id = 0
+        anime_id = 0
 
     if roll_id <= 0 or anime_id <= 0:
         raise HTTPException(status_code=400, detail="roll_id/anime_id inválidos")
 
-    picked = pick_dice_roll_anime(user_id, roll_id, anime_id)
+    picked = await asyncio.to_thread(pick_dice_roll_anime, user_id, roll_id, anime_id)
     if not picked.get("ok"):
-        return JSONResponse(picked, status_code=200)
+        return JSONResponse(picked, status_code=409)
 
-    roll = picked["roll"]
-    char = _pick_random_local_character(anime_id)
-    if not char:
-        return JSONResponse({"ok": False, "error": "character_not_found"}, status_code=200)
+    roll = dict(picked.get("roll") or {})
+    already_done = bool(picked.get("already_done"))
 
-    resolved = resolve_dice_roll(user_id, roll_id, int(char["id"]))
-    if not resolved.get("ok"):
-        return JSONResponse(resolved, status_code=200)
+    if already_done:
+        rewarded_character_id = int(roll.get("rewarded_character_id") or 0)
+        selected_anime_id = int(roll.get("selected_anime_id") or anime_id)
+        character = await asyncio.to_thread(
+            _hydrate_dado_character,
+            selected_anime_id,
+            rewarded_character_id,
+        )
+        if rewarded_character_id <= 0 or not character:
+            return JSONResponse(
+                {"ok": False, "error": "resolved_reward_unavailable"},
+                status_code=409,
+            )
+    else:
+        character = await asyncio.to_thread(_pick_random_local_character, anime_id)
+        if not character:
+            await asyncio.to_thread(cancel_dice_roll, user_id, roll_id, True)
+            return JSONResponse(
+                {"ok": False, "error": "character_not_found", "refunded": True},
+                status_code=409,
+            )
 
-    rarity = _rarity_from_roll(int(roll["dice_value"]), int(char["id"]))
-    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
+        try:
+            resolved = await asyncio.to_thread(
+                resolve_dice_roll,
+                user_id,
+                roll_id,
+                int(character["id"]),
+            )
+        except Exception as exc:
+            print(f"[dado] falha ao resolver rolagem: {type(exc).__name__}", flush=True)
+            await asyncio.to_thread(cancel_dice_roll, user_id, roll_id, True)
+            return JSONResponse(
+                {"ok": False, "error": "resolve_failed", "refunded": True},
+                status_code=500,
+            )
 
-    char_id = int(char["id"])
-    name = str(char["name"])
-    image = str(char["image"] or char["anime_cover"] or DADO_BANNER_URL)
-    anime_title = str(char["anime_title"] or "Anime")
+        if not resolved.get("ok"):
+            await asyncio.to_thread(cancel_dice_roll, user_id, roll_id, True)
+            return JSONResponse(
+                {**resolved, "refunded": True},
+                status_code=409,
+            )
 
-    try:
-        from cards_service import get_character_by_id
+        character = await asyncio.to_thread(
+            _hydrate_dado_character,
+            anime_id,
+            int(character["id"]),
+        ) or character
+        roll = dict(resolved.get("roll") or roll)
 
-        global_character = get_character_by_id(char_id)
-        global_image = str((global_character or {}).get("image") or "").strip()
-        if global_image:
-            image = global_image
-    except Exception as exc:
-        print(f"[dado] falha ao aplicar imagem global: {type(exc).__name__}", flush=True)
+    char_id = int(character["id"])
+    name = str(character.get("name") or "Personagem")
+    image = str(character.get("image") or DADO_BANNER_URL)
+    anime_title = str(character.get("anime_title") or "Anime")
+    rarity = _rarity_from_roll(int(roll.get("dice_value") or 1), char_id)
+    balance = int((await asyncio.to_thread(get_dado_state, user_id) or {}).get("balance") or 0)
 
     reward_caption = (
         "🎁 <b>VOCÊ GANHOU!</b>\n\n"
@@ -3263,24 +3360,21 @@ async def api_dado_pick(
     except Exception as exc:
         print(f"[dado] falha ao enfileirar entrega no chat: {type(exc).__name__}", flush=True)
         try:
-            await _tg_send_photo(
-                chat_id=user_id,
-                photo=image,
-                caption=reward_caption,
-            )
-        except Exception:
-            pass
+            await _tg_send_photo(chat_id=user_id, photo=image, caption=reward_caption)
+        except Exception as send_exc:
+            print(f"[dado] falha no fallback de entrega: {type(send_exc).__name__}", flush=True)
 
     return JSONResponse({
         "ok": True,
-        "roll_id": int(roll_id),
+        "already_done": already_done,
+        "roll_id": roll_id,
         "balance": balance,
         "character": {
             "id": char_id,
             "name": name,
             "image": image,
             "anime_title": anime_title,
-            "anime_cover": char["anime_cover"],
+            "anime_cover": character.get("anime_cover") or _build_cover_from_anilist(anime_id),
             "tier": rarity["tier"],
             "stars": rarity["stars"],
         },
@@ -4366,17 +4460,7 @@ SHOP_PREVIEW_IMAGE = "https://photo.chelpbot.me/AgACAgQAAxkBZqZjcmmff-LPn4H7y3Es
 
 
 def _shop_rate_limit(user_id: int, key: str, window: float = 1.0) -> bool:
-    if not hasattr(_shop_rate_limit, "_mem"):
-        _shop_rate_limit._mem = {}
-    mem = _shop_rate_limit._mem
-
-    now = time.time()
-    k = f"{user_id}:{key}"
-    last = float(mem.get(k, 0.0) or 0.0)
-    if now - last < float(window):
-        return False
-    mem[k] = now
-    return True
+    return _webapp_rate_limit(user_id, f"shop:{key}", window)
 
 
 def _shop_collection_items(user_id: int, q: str = "") -> List[Dict[str, Any]]:
@@ -5576,11 +5660,26 @@ def collection_webapp_page(uid: int = Query(default=0)):
 
 @app.get("/api/cards/contrib/work/search")
 async def api_cards_contrib_work_search(
-    q: str = Query(..., min_length=1, max_length=80),
-    media_type: str = Query(...),
+    q: str = Query(..., min_length=2, max_length=80),
+    media_type: str = Query(..., max_length=10),
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
 ):
     from cards_service import build_cards_final_data
     from database import card_work_request_exists, normalize_media_title
+
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    user_id = int(ctx["user_id"])
+    if not _webapp_rate_limit(user_id, "card-work-search", 0.35):
+        return JSONResponse(
+            {"ok": False, "message": "Aguarde um instante antes de buscar novamente."},
+            status_code=429,
+        )
 
     media_type = str(media_type or "").strip().lower()
     if media_type not in ("anime", "manga"):
@@ -5597,40 +5696,44 @@ async def api_cards_contrib_work_search(
         }
         items = []
 
-        for x in results:
+        for item in results:
             title = (
-                ((x.get("title") or {}).get("romaji"))
-                or ((x.get("title") or {}).get("english"))
-                or ((x.get("title") or {}).get("native"))
+                ((item.get("title") or {}).get("romaji"))
+                or ((item.get("title") or {}).get("english"))
+                or ((item.get("title") or {}).get("native"))
                 or ""
             ).strip()
             if not title:
                 continue
 
-            aid = int(x.get("id") or 0)
+            anilist_id = int(item.get("id") or 0)
             title_norm = normalize_media_title(title)
-            exists_catalog = bool((aid > 0 and animes_by_id.get(aid)) or (title_norm and title_norm in existing_titles))
-            exists_request = card_work_request_exists(media_type, title, aid)
-
+            exists_catalog = bool(
+                (anilist_id > 0 and animes_by_id.get(anilist_id))
+                or (title_norm and title_norm in existing_titles)
+            )
             items.append({
-                "id": aid,
+                "id": anilist_id,
                 "title": title,
-                "cover": ((x.get("coverImage") or {}).get("large") or ""),
-                "score": x.get("averageScore"),
-                "format": x.get("format"),
-                "status": x.get("status"),
-                "year": x.get("seasonYear"),
-                "episodes": x.get("episodes"),
-                "chapters": x.get("chapters"),
-                "already_exists": bool(exists_catalog),
-                "already_requested": bool(exists_request),
+                "cover": ((item.get("coverImage") or {}).get("large") or ""),
+                "score": item.get("averageScore"),
+                "format": item.get("format"),
+                "status": item.get("status"),
+                "year": item.get("seasonYear"),
+                "episodes": item.get("episodes"),
+                "chapters": item.get("chapters"),
+                "already_exists": exists_catalog,
+                "already_requested": bool(card_work_request_exists(media_type, title, anilist_id)),
             })
 
         return JSONResponse({"ok": True, "items": items})
-    except Exception as e:
-        print("[cards-contrib] busca de obra falhou:", repr(e), flush=True)
+    except Exception as exc:
+        print(f"[cards-contrib] busca de obra falhou: {type(exc).__name__}", flush=True)
         traceback.print_exc()
-        return JSONResponse({"ok": False, "message": "Nao foi possivel buscar agora."}, status_code=502)
+        return JSONResponse(
+            {"ok": False, "message": "Nao foi possivel buscar agora."},
+            status_code=502,
+        )
 
 
 @app.post("/api/cards/contrib/image")

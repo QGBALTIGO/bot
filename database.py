@@ -2169,7 +2169,7 @@ def expire_stale_dice_rolls(refund_pending: bool = True) -> int:
                         (roll_id,)
                     )
 
-                    if refund_pending and status == "pending":
+                    if refund_pending and status in {"pending", "picked"}:
                         state = _refresh_dado_locked(cur, user_id)
                         new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                         cur.execute(
@@ -2238,7 +2238,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                             (int(active["roll_id"]),)
                         )
 
-                        if old_status == "pending":
+                        if old_status in {"pending", "picked"}:
                             state = _refresh_dado_locked(cur, user_id)
                             new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                             cur.execute(
@@ -2278,7 +2278,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                             (int(active["roll_id"]),)
                         )
 
-                        if str(active.get("status") or "") == "pending":
+                        if str(active.get("status") or "") in {"pending", "picked"}:
                             state = _refresh_dado_locked(cur, user_id)
                             new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                             cur.execute(
@@ -2623,7 +2623,7 @@ def cancel_dice_roll(user_id: int, roll_id: int, refund: bool = False) -> bool:
                     (roll_id, user_id)
                 )
 
-                if refund and status == "pending":
+                if refund and status in {"pending", "picked"}:
                     state = _refresh_dado_locked(cur, user_id)
                     new_balance = min(DADO_MAX_BALANCE, int(state["balance"]) + 1)
                     cur.execute(

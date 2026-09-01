@@ -1,5 +1,6 @@
 import asyncio
 import time
+import weakref
 from dataclasses import dataclass
 from typing import Dict
 
@@ -51,7 +52,7 @@ class KeyedLockManager:
     """Provides per-key locks to serialize critical sections by resource."""
 
     def __init__(self):
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._guard = asyncio.Lock()
 
     async def acquire(self, key: str):

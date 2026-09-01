@@ -140,6 +140,12 @@ if not BOT_TOKEN:
 
 PORT = int(os.getenv("PORT", "8000"))
 
+try:
+    CONCURRENT_UPDATES = int(os.getenv("CONCURRENT_UPDATES", "16"))
+except ValueError:
+    CONCURRENT_UPDATES = 16
+CONCURRENT_UPDATES = max(1, min(64, CONCURRENT_UPDATES))
+
 
 # =========================================================
 # WEBAPP
@@ -165,8 +171,10 @@ def run_webapp():
 # =========================================================
 
 async def on_error(update, context):
-    print("[telegram-error]", repr(context.error))
-    traceback.print_exc()
+    error = context.error
+    print("[telegram-error]", repr(error), flush=True)
+    if error is not None:
+        traceback.print_exception(type(error), error, error.__traceback__)
 
 
 # =========================================================
@@ -350,7 +358,7 @@ def build_application():
     app = (
         Application.builder()
         .token(BOT_TOKEN)
-        .concurrent_updates(True)
+        .concurrent_updates(CONCURRENT_UPDATES)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()

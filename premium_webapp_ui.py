@@ -4065,10 +4065,10 @@ async function searchRequestTitles(query){{
   }}
   requestState.loading = true;
   setSkeleton("requestResultsGrid", 4);
-  const res = await fetch("/api/pedido/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(requestState.tab));
-  const data = await res.json();
+  const response = await authJson("/api/pedido/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(requestState.tab), {{ uid: REQUEST_UID }});
+  const data = response.data || {{}};
   requestState.loading = false;
-  if (!res.ok || !data.ok) throw new Error((data && data.message) || "Nao foi possivel buscar agora.");
+  if (!response.ok || !data.ok) throw new Error(data.message || data.detail || "Nao foi possivel buscar agora.");
   requestState.items = Array.isArray(data.items) ? data.items : [];
   renderRequestResults();
 }}
@@ -5490,8 +5490,9 @@ async function searchContribWork(query){{
     return;
   }}
   setSkeleton("contribWorkResults", 4);
-  const res = await fetch("/api/cards/contrib/work/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(contribWorkState.mediaType));
-  const data = await res.json();
+  const response = await authJson("/api/cards/contrib/work/search?q=" + encodeURIComponent(q) + "&media_type=" + encodeURIComponent(contribWorkState.mediaType), {{ uid: CONTRIB_WORK_UID }});
+  const data = response.data || {{}};
+  if (!response.ok || !data.ok) throw new Error(data.message || data.detail || "Nao foi possivel buscar agora.");
   contribWorkState.items = Array.isArray(data.items) ? data.items : [];
   renderContribWorkResults();
 }}
