@@ -60,7 +60,7 @@ jobs:
         run: |
           python -m compileall -q .
           ruff check . --select E9,F63,F7,F82 --exclude data
-          pytest -q
+          python -m pytest -q
 
       - name: Commit directly to main
         shell: bash
