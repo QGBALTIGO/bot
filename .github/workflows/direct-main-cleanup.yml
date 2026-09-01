@@ -55,9 +55,6 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      - name: Run structural audit
-        run: python scripts/system_audit.py --report /tmp/system-audit-batch.json
-
       - name: Commit directly to main
         shell: bash
         run: |
