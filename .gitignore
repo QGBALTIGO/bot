@@ -1,9 +1,35 @@
 __pycache__/
 *.py[cod]
+
+# Environments and secrets
 .env
 .env.*
 !.env.example
+.venv/
+venv/
+env/
+
+# Telegram sessions
 *.session
 *.session-journal
+
+# Tests, linters and coverage
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local databases and logs
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.log
+
+# Build and audit artifacts
+artifacts/
+dist/
+build/
+*.egg-info/
