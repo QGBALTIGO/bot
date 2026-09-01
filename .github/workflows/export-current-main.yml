@@ -1,0 +1,27 @@
+name: Export current main source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/export-current-main.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-main-source
+          path: .
+          include-hidden-files: true
+          retention-days: 1
