@@ -1,0 +1,109 @@
+name: Apply AniNexus Mini App repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/.repair/**
+      - scripts/apply_aninexus_repair_bootstrap.py
+      - .github/workflows/apply-aninexus-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aninexus-miniapp-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Apply deterministic repair
+        run: python scripts/apply_aninexus_repair_bootstrap.py
+
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Validate Python and tests
+        run: |
+          python -m compileall -q .
+          pytest -q
+          git diff --check
+
+      - name: Validate generated Mini App JavaScript
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import subprocess
+          import tempfile
+          from pathlib import Path
+          import aninexus_webapp_ui as ui
+
+          pages = {
+              "home": ui.build_home_page(
+                  top_banner_url="https://example.com/top.jpg",
+                  catalog_banner_url="https://example.com/catalog.jpg",
+                  manga_banner_url="https://example.com/manga.jpg",
+                  cards_banner_url="https://example.com/cards.jpg",
+                  shop_banner_url="https://example.com/shop.jpg",
+              ),
+              "catalog": ui.build_media_catalog_page(
+                  page_title="Catálogo",
+                  hero_tag="Catálogo",
+                  hero_title="Catálogo",
+                  hero_copy="Teste",
+                  banner_url="https://example.com/banner.jpg",
+                  api_letters="/api/letters",
+                  api_catalog="/api/catalogo",
+                  search_placeholder="Buscar",
+                  footer_label="AniNexus",
+                  default_badge="Anime",
+              ),
+              "gacha": ui.build_dado_page(uid=123, banner_url="https://example.com/dado.jpg"),
+              "menu": ui.build_menu_page(uid=123, menu_banner_url="https://example.com/menu.jpg"),
+              "shop": ui.build_shop_page(uid=123, shop_banner_url="https://example.com/shop.jpg"),
+              "collection": ui.build_collection_page(uid=123, banner_url="https://example.com/collection.jpg"),
+              "memory": ui.build_memory_page(uid=123, banner_url="https://example.com/memory.jpg", default_level="medium"),
+          }
+
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              for name, html in pages.items():
+                  scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, flags=re.I | re.S)
+                  inline = "\n".join(script for script in scripts if script.strip())
+                  target = root / f"{name}.js"
+                  target.write_text(inline, encoding="utf-8")
+                  subprocess.run(["node", "--check", str(target)], check=True)
+          PY
+
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Nenhuma alteração necessária."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: rebuild Mini Apps on AniNexus core"
+          git push origin HEAD:main
