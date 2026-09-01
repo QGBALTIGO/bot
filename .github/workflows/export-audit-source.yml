@@ -1,0 +1,38 @@
+name: Export audit source snapshot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/main-production-hardening-2026-09-01
+    paths:
+      - .github/workflows/export-audit-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+
+      - name: Build source snapshot
+        shell: bash
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude='data/*.json' \
+            --exclude='data/*.txt' \
+            --exclude='artifacts' \
+            -czf source-audit-snapshot.tar.gz .
+
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-audit-snapshot
+          path: source-audit-snapshot.tar.gz
+          retention-days: 2
