@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
+from utils.telegram_webapp_auth import TelegramWebAppAuthError, validate_telegram_init_data
 
 from premium_webapp_ui import (
     build_baltigoflix_page as build_baltigoflix_page_html,
@@ -670,11 +671,15 @@ TERMS_HTML = """<!doctype html>
 
   async function postJson(url, payload) {
     const u = new URL(url, window.location.origin);
-    u.searchParams.set("_ts", String(Date.now())); // cache-buster forte
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const headers = { "Content-Type": "application/json" };
+    if (tg && tg.initData) headers["X-Telegram-Init-Data"] = tg.initData;
+    if (uid > 0) headers["X-WebApp-Uid"] = String(uid);
 
     const res = await fetch(u.toString(), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload)
     });
 
@@ -812,45 +817,61 @@ def terms_page(uid: int = Query(...), lang: str = Query("en")):
 
 
 @app.post("/api/terms/accept")
-def api_accept(payload: dict = Body(...)):
+def api_accept(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     try:
-        uid = int(payload.get("uid") or 0)
+        ctx = _resolve_webapp_user(
+            x_telegram_init_data=x_telegram_init_data,
+            x_webapp_uid=x_webapp_uid,
+            body_uid=payload.get("uid"),
+        )
+        user_id = int(ctx["user_id"])
         lang = pick_lang(payload.get("lang"))
-        if uid <= 0:
-            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
-        create_or_get_user(uid)
-        set_language(uid, lang)
-        accept_terms(uid, TERMS_VERSION)
+        create_or_get_user(user_id)
+        set_language(user_id, lang)
+        accept_terms(user_id, TERMS_VERSION)
         return {"ok": True, "message": TEXTS[lang]["done"]}
-
-    except Exception as e:
-        print("❌ ERROR /api/terms/accept:", repr(e), flush=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[terms] accept failed type={type(exc).__name__}", flush=True)
         traceback.print_exc()
         return JSONResponse(
-            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
-            status_code=500
+            {"ok": False, "message": TEXTS[pick_lang(payload.get("lang"))]["error"]},
+            status_code=500,
         )
 
 
 @app.post("/api/terms/decline")
-def api_decline(payload: dict = Body(...)):
+def api_decline(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
     try:
-        uid = int(payload.get("uid") or 0)
+        ctx = _resolve_webapp_user(
+            x_telegram_init_data=x_telegram_init_data,
+            x_webapp_uid=x_webapp_uid,
+            body_uid=payload.get("uid"),
+        )
+        user_id = int(ctx["user_id"])
         lang = pick_lang(payload.get("lang"))
-        if uid <= 0:
-            return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
-        create_or_get_user(uid)
-        set_language(uid, lang)
+        create_or_get_user(user_id)
+        set_language(user_id, lang)
         return {"ok": True, "message": TEXTS[lang]["no"]}
-
-    except Exception as e:
-        print("❌ ERROR /api/terms/decline:", repr(e), flush=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[terms] decline failed type={type(exc).__name__}", flush=True)
         traceback.print_exc()
         return JSONResponse(
-            {"ok": False, "message": f"Erro interno: {type(e).__name__}: {e}"},
-            status_code=500
+            {"ok": False, "message": TEXTS[pick_lang(payload.get("lang"))]["error"]},
+            status_code=500,
         )
 
 
@@ -864,23 +885,26 @@ def api_channel_selftest():
 
 
 @app.post("/api/channel/check")
-def api_channel_check(payload: dict = Body(...)):
-    try:
-        uid = int((payload or {}).get("uid") or 0)
-    except (TypeError, ValueError):
-        uid = 0
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
+def api_channel_check(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=(payload or {}).get("uid"),
+    )
+    user_id = int(ctx["user_id"])
 
     if not REQUIRED_CHANNEL:
         return {"ok": True}
 
     try:
-        result = wait_for_verification(uid, timeout_seconds=8.0)
+        result = wait_for_verification(user_id, timeout_seconds=8.0)
     except Exception as exc:
         print(
-            f"❌ ERROR /api/channel/check bridge uid={uid}: {type(exc).__name__}: {exc}",
+            f"[terms-membership] bridge failed user_id={user_id} type={type(exc).__name__}",
             flush=True,
         )
         return JSONResponse(
@@ -888,19 +912,19 @@ def api_channel_check(payload: dict = Body(...)):
             status_code=502,
         )
 
-    status = str(result.get("status") or "")
-    if status == "ok":
+    if result.get("ok"):
         return {"ok": True}
+
+    status = str(result.get("status") or "")
     if status == "not_member":
-        return {"ok": False}
-    if status == "timeout":
         return JSONResponse(
-            {"ok": False, "message": str(result.get("message") or "A verificação demorou. Tente novamente.")},
-            status_code=503,
+            {"ok": False, "message": "Você ainda não está no canal obrigatório."},
+            status_code=403,
         )
+
     return JSONResponse(
-        {"ok": False, "message": str(result.get("message") or "O Telegram não conseguiu verificar sua inscrição agora.")},
-        status_code=502,
+        {"ok": False, "message": str(result.get("message") or "Falha na verificação.")},
+        status_code=503 if status == "timeout" else 502,
     )
 
 
@@ -5823,27 +5847,17 @@ def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECON
 # =========================================================
 
 def verify_telegram_init_data(init_data: str) -> dict:
-    if not init_data:
-        raise HTTPException(status_code=401, detail="initData ausente")
+    try:
+        validated = validate_telegram_init_data(init_data, BOT_TOKEN)
+    except TelegramWebAppAuthError as exc:
+        code = str(exc) or "init_data_invalid"
+        status_code = 503 if code == "bot_token_missing" else 401
+        raise HTTPException(status_code=status_code, detail=code) from exc
 
-    data = dict(parse_qsl(init_data, keep_blank_values=True))
-    received_hash = data.pop("hash", None)
-    if not received_hash:
-        raise HTTPException(status_code=401, detail="hash ausente")
-
-    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
-    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-    calculated_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(calculated_hash, received_hash):
-        raise HTTPException(status_code=401, detail="initData inválido")
-
-    user_json = data.get("user")
-    user = json.loads(user_json) if user_json else None
-    if not user or "id" not in user:
-        raise HTTPException(status_code=401, detail="user inválido")
-
-    return {"user": user, "raw": data}
+    return {
+        "user": dict(validated.get("user") or {}),
+        "raw": dict(validated.get("raw") or {}),
+    }
 
 
 def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
@@ -5906,19 +5920,21 @@ def _resolve_webapp_user(
     fallback_uid = _coerce_positive_uid(body_uid, uid, x_webapp_uid)
 
     if x_telegram_init_data:
-        try:
-            data = _get_tg_user(x_telegram_init_data)
-            data["auth_mode"] = "telegram_init_data"
-            return data
-        except HTTPException:
-            if fallback_uid > 0:
-                return _build_fallback_webapp_user(fallback_uid)
-            raise
+        data = _get_tg_user(x_telegram_init_data)
+        signed_user_id = int(data["user_id"])
+        if fallback_uid > 0 and fallback_uid != signed_user_id:
+            raise HTTPException(status_code=403, detail="uid_divergente")
+        data["auth_mode"] = "telegram_init_data"
+        return data
 
-    if fallback_uid > 0:
+    allow_insecure_fallback = os.getenv(
+        "ALLOW_INSECURE_WEBAPP_UID_FALLBACK",
+        "",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if allow_insecure_fallback and fallback_uid > 0:
         return _build_fallback_webapp_user(fallback_uid)
 
-    raise HTTPException(status_code=401, detail="usuario nao autenticado")
+    raise HTTPException(status_code=401, detail="telegram_init_data_required")
 
 
 @app.get("/api/webapp/context")
@@ -8317,137 +8333,190 @@ def menu_page(uid: int = Query(...)):
 
 
 @app.get("/api/menu/profile")
-def api_menu_profile(uid: int = Query(...)):
-    uid = int(uid or 0)
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    return JSONResponse(_menu_user_payload(uid))
+def api_menu_profile(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
+    return JSONResponse(_menu_user_payload(int(ctx["user_id"])))
 
 
 @app.get("/api/menu/collection-characters")
-def api_menu_collection_characters(uid: int = Query(...)):
-    uid = int(uid or 0)
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
+def api_menu_collection_characters(
+    uid: int = Query(default=0),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        uid=uid,
+        x_webapp_uid=x_webapp_uid,
+    )
     return JSONResponse({
         "ok": True,
-        "items": _menu_collection_characters(uid),
+        "items": _menu_collection_characters(int(ctx["user_id"])),
     })
 
 
 @app.post("/api/menu/nickname")
-def api_menu_nickname(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
+def api_menu_nickname(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    user_id = int(ctx["user_id"])
     nickname = str(payload.get("nickname") or "").strip()
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
 
     if not _valid_menu_nickname(nickname):
         return JSONResponse({
             "ok": False,
-            "message": "Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula."
+            "message": "Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula.",
         }, status_code=400)
 
-    result = set_profile_nickname(uid, nickname)
-
+    result = set_profile_nickname(user_id, nickname)
     if not result.get("ok"):
-        err = result.get("error")
-        if err == "nickname_locked":
+        error = result.get("error")
+        if error == "nickname_locked":
             return JSONResponse({"ok": False, "message": "Você já definiu seu nickname."}, status_code=400)
-        if err == "nickname_taken":
-            return JSONResponse({"ok": False, "message": "Esse nickname já está em uso."}, status_code=400)
+        if error == "nickname_taken":
+            return JSONResponse({"ok": False, "message": "Esse nickname já está em uso."}, status_code=409)
         return JSONResponse({"ok": False, "message": "Não foi possível salvar o nickname."}, status_code=400)
 
     return {"ok": True}
 
 
 @app.post("/api/menu/favorite")
-def api_menu_favorite(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    character_id = int(payload.get("character_id") or 0)
+def api_menu_favorite(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    user_id = int(ctx["user_id"])
+    try:
+        character_id = int(payload.get("character_id") or 0)
+    except (TypeError, ValueError):
+        character_id = 0
+    if character_id <= 0:
+        return JSONResponse({"ok": False, "message": "Personagem inválido."}, status_code=400)
 
-    if uid <= 0 or character_id <= 0:
-        return JSONResponse({"ok": False, "message": "Dados inválidos."}, status_code=400)
-
-    items = _menu_collection_characters(uid)
-    owned_ids = {int(item["id"]) for item in items}
-
+    owned_ids = {int(item["id"]) for item in _menu_collection_characters(user_id)}
     if character_id not in owned_ids:
         return JSONResponse({
             "ok": False,
-            "message": "Você só pode favoritar personagens da sua coleção."
-        }, status_code=400)
+            "message": "Você só pode favoritar personagens da sua coleção.",
+        }, status_code=403)
 
-    set_profile_favorite(uid, character_id)
+    set_profile_favorite(user_id, character_id)
     return {"ok": True}
 
 
 @app.post("/api/menu/country")
-def api_menu_country(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
+def api_menu_country(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    user_id = int(ctx["user_id"])
     country_code = str(payload.get("country_code") or "BR").strip().upper()
 
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    valid = {c["code"] for c in COUNTRY_OPTIONS}
-    if country_code not in valid:
+    if country_code not in {country["code"] for country in COUNTRY_OPTIONS}:
         return JSONResponse({"ok": False, "message": "País inválido."}, status_code=400)
 
-    set_profile_country(uid, country_code)
+    set_profile_country(user_id, country_code)
     return {"ok": True}
 
 
 @app.post("/api/menu/language")
-def api_menu_language(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
+def api_menu_language(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    user_id = int(ctx["user_id"])
     language = str(payload.get("language") or "pt").strip().lower()
 
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    if language not in ("pt", "en", "es"):
+    if language not in {"pt", "en", "es"}:
         return JSONResponse({"ok": False, "message": "Idioma inválido."}, status_code=400)
 
-    set_profile_language(uid, language)
+    set_profile_language(user_id, language)
     return {"ok": True}
 
 
 @app.post("/api/menu/privacy")
-def api_menu_privacy(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    value = bool(payload.get("value"))
+def api_menu_privacy(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    value = payload.get("value")
+    if not isinstance(value, bool):
+        return JSONResponse({"ok": False, "message": "Valor de privacidade inválido."}, status_code=400)
 
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    set_profile_private(uid, value)
+    set_profile_private(int(ctx["user_id"]), value)
     return {"ok": True}
 
 
 @app.post("/api/menu/notifications")
-def api_menu_notifications(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-    value = bool(payload.get("value"))
+def api_menu_notifications(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    value = payload.get("value")
+    if not isinstance(value, bool):
+        return JSONResponse({"ok": False, "message": "Valor de notificação inválido."}, status_code=400)
 
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    set_profile_notifications(uid, value)
+    set_profile_notifications(int(ctx["user_id"]), value)
     return {"ok": True}
 
 
 @app.post("/api/menu/delete-account")
-def api_menu_delete_account(payload: dict = Body(...)):
-    uid = int(payload.get("uid") or 0)
-
-    if uid <= 0:
-        return JSONResponse({"ok": False, "message": "UID inválido."}, status_code=400)
-
-    delete_user_account(uid)
+def api_menu_delete_account(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    delete_user_account(int(ctx["user_id"]))
     return {"ok": True}
 
 # =========================================================
@@ -10419,14 +10488,20 @@ async def cakto_webhook(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "json_invalido"}, status_code=400)
 
-    received_secret = (
+    received_secret = str(
         request.headers.get("x-webhook-secret")
         or request.headers.get("x-cakto-secret")
-        or str(payload.get("secret") or "").strip()
-    )
+        or payload.get("secret")
+        or ""
+    ).strip()
 
-    if WEBHOOK_SECRET and received_secret != WEBHOOK_SECRET:
+    if not WEBHOOK_SECRET:
+        return JSONResponse({"ok": False, "error": "webhook_not_configured"}, status_code=503)
+    if not received_secret or not hmac.compare_digest(received_secret, WEBHOOK_SECRET):
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    payload = dict(payload)
+    payload.pop("secret", None)
 
     event_type = str(
         payload.get("event")
