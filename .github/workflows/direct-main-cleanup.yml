@@ -31,14 +31,17 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Apply WebApp security hardening
+      - name: Remove unreachable legacy implementations
         run: python scripts/apply_direct_security_hardening.py
 
       - name: Validate source
         run: |
           python -m compileall -q .
-          python -m py_compile webapp.py premium_webapp_ui.py
+          python -m py_compile webapp.py
           git diff --check
+
+      - name: Run tests
+        run: python -m pytest -q
 
       - name: Commit directly to main
         shell: bash
@@ -49,6 +52,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add webapp.py premium_webapp_ui.py
-          git commit -m "security: require signed Telegram WebApp identity"
+          git add webapp.py
+          git commit -m "refactor: remove unreachable legacy WebApp code"
           git push origin HEAD:main
