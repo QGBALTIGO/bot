@@ -1,0 +1,55 @@
+name: Apply main hardening cleanup
+
+on:
+  push:
+    branches:
+      - audit/main-production-hardening-2026-09-01
+    paths:
+      - scripts/apply_main_hardening.py
+      - .github/workflows/apply-main-hardening.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-main-hardening-cleanup
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/main-production-hardening-2026-09-01
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Apply deterministic cleanup
+        run: python scripts/apply_main_hardening.py
+
+      - name: Validate transformed Python
+        run: |
+          python -m py_compile premium_webapp_ui.py
+          git diff --check
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No cleanup changes were necessary."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add premium_webapp_ui.py
+          git commit -m "fix: remove shadowed dado page implementation"
+          git push origin HEAD:audit/main-production-hardening-2026-09-01
