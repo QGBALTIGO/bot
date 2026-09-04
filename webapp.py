@@ -4112,65 +4112,6 @@ def api_menu_country(
     return {"ok": True}
 
 
-@app.post("/api/menu/language")
-def api_menu_language(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    user_id = int(ctx["user_id"])
-    language = str(payload.get("language") or "pt").strip().lower()
-
-    if language not in {"pt", "en", "es"}:
-        return JSONResponse({"ok": False, "message": "Idioma inválido."}, status_code=400)
-
-    set_profile_language(user_id, language)
-    return {"ok": True}
-
-
-@app.post("/api/menu/privacy")
-def api_menu_privacy(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    value = payload.get("value")
-    if not isinstance(value, bool):
-        return JSONResponse({"ok": False, "message": "Valor de privacidade inválido."}, status_code=400)
-
-    set_profile_private(int(ctx["user_id"]), value)
-    return {"ok": True}
-
-
-@app.post("/api/menu/notifications")
-def api_menu_notifications(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    value = payload.get("value")
-    if not isinstance(value, bool):
-        return JSONResponse({"ok": False, "message": "Valor de notificação inválido."}, status_code=400)
-
-    set_profile_notifications(int(ctx["user_id"]), value)
-    return {"ok": True}
-
-
 @app.post("/api/menu/delete-account")
 def api_menu_delete_account(
     payload: dict = Body(...),
