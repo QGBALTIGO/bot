@@ -78,6 +78,7 @@ def test_simple_profile_setting_routes_live_outside_monolith() -> None:
 
     for path in (
         "/api/menu/nickname",
+        "/api/menu/country",
         "/api/menu/language",
         "/api/menu/privacy",
         "/api/menu/notifications",
@@ -93,7 +94,7 @@ def test_simple_profile_setting_contract_is_preserved() -> None:
     module = (ROOT / "webapp_routes" / "profile_settings.py").read_text(encoding="utf-8")
 
     assert "resolve_webapp_user as _resolve_webapp_user" in module
-    assert 'language not in {"pt", "en", "es"}' in module
+    assert "language not in LANGUAGE_CODES" in module
     assert '"Idioma inválido."' in module
     assert '"Valor de privacidade inválido."' in module
     assert '"Valor de notificação inválido."' in module
@@ -115,3 +116,22 @@ def test_profile_nickname_contract_is_preserved() -> None:
     assert '"Esse nickname já está em uso."' in module
     assert "status_code=409" in module
     assert "set_profile_nickname(user_id, nickname)" in module
+
+
+def test_profile_country_contract_is_preserved() -> None:
+    module = (ROOT / "webapp_routes" / "profile_settings.py").read_text(encoding="utf-8")
+    options = (ROOT / "utils" / "profile_options.py").read_text(encoding="utf-8")
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+
+    assert "country_code not in COUNTRY_CODES" in module
+    assert '"País inválido."' in module
+    assert "set_profile_country(user_id, country_code)" in module
+    assert '{"code": "BR", "flag": "🇧🇷", "name": "Brasil"}' in options
+    assert '{"code": "US", "flag": "🇺🇸", "name": "United States"}' in options
+    assert '{"code": "ES", "flag": "🇪🇸", "name": "España"}' in options
+    assert '{"code": "JP", "flag": "🇯🇵", "name": "日本"}' in options
+    assert "COUNTRY_CODES = frozenset" in options
+    assert "LANGUAGE_CODES = frozenset" in options
+    assert "COUNTRY_OPTIONS = [" not in legacy
+    assert "LANGUAGE_OPTIONS = [" not in legacy
+    assert "from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS" in legacy
