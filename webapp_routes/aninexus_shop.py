@@ -18,7 +18,7 @@ from database import (
 )
 from database_core import pool
 from utils.web_image_url import web_image_url
-from webapp_routes.seal_compat import API_PREFIX, _require_user, _unauthorized
+from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 from xcards_service import get_xcard_by_id
 
 DADO_PRICE = 2

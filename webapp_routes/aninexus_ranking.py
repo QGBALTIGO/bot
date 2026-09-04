@@ -12,7 +12,7 @@ from database import (
     get_termo_global_ranking,
     get_top_level_users,
 )
-from webapp_routes.seal_compat import API_PREFIX, _require_user, _unauthorized
+from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 
 
 def _auth(authorization: str) -> JSONResponse | None:

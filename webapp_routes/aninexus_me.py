@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from database import get_dado_state, get_user_level_rank
 from level_system import get_rank_tag
-from webapp_routes.seal_compat import (
+from webapp_routes.aninexus_compat import (
     API_PREFIX,
     _require_user,
     _unauthorized,

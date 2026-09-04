@@ -19,7 +19,7 @@ from database import (
     resolve_dice_roll,
 )
 from utils.web_image_url import web_image_url
-from webapp_routes.seal_compat import API_PREFIX, _require_user, _unauthorized
+from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 
 
 def _auth(authorization: str) -> tuple[dict[str, Any] | None, JSONResponse | None]:

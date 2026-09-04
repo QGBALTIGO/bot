@@ -18,6 +18,7 @@ from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.aninexus_me import build_aninexus_me_router
 from webapp_routes.aninexus_ranking import build_aninexus_ranking_router
+from webapp_routes.aninexus_shop import build_aninexus_shop_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
@@ -27,9 +28,9 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
-from webapp_routes.seal_compat import build_seal_compat_router
-from webapp_routes.seal_progression import build_seal_progression_router
-from webapp_routes.seal_runtime import install_seal_runtime
+from webapp_routes.aninexus_compat import build_aninexus_compat_router
+from webapp_routes.aninexus_progression import build_aninexus_progression_router
+from webapp_routes.aninexus_runtime import install_aninexus_runtime
 from webapp_routes.source_v2 import build_source_v2_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
@@ -64,12 +65,13 @@ aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
 aninexus_me_router = build_aninexus_me_router()
 aninexus_ranking_router = build_aninexus_ranking_router()
-seal_progression_router = build_seal_progression_router()
-seal_compat_router = build_seal_compat_router()
+aninexus_shop_router = build_aninexus_shop_router()
+aninexus_progression_router = build_aninexus_progression_router()
+aninexus_compat_router = build_aninexus_compat_router()
 
 
 def _install_runtime_routes() -> None:
-    install_seal_runtime(app)
+    install_aninexus_runtime(app)
     registered_paths = {getattr(route, "path", "") for route in app.routes}
 
     if "/health" not in registered_paths or "/api/health" not in registered_paths:
@@ -114,7 +116,16 @@ def _install_runtime_routes() -> None:
         app.include_router(aninexus_ranking_router)
         registered_paths.add("/api/v1_7b82/leaderboard")
 
-    seal_progression_paths = {
+    aninexus_shop_paths = {
+        "/api/v1_7b82/source-shop",
+        "/api/v1_7b82/source-shop/buy-dado",
+        "/api/v1_7b82/source-shop/buy-xcard/{slot_code}",
+    }
+    if not aninexus_shop_paths.issubset(registered_paths):
+        app.include_router(aninexus_shop_router)
+        registered_paths.update(aninexus_shop_paths)
+
+    aninexus_progression_paths = {
         "/api/v1_7b82/achievements/list",
         "/api/v1_7b82/quests",
         "/api/v1_7b82/quests/claim/{quest_id}",
@@ -123,20 +134,20 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/buy_level",
         "/api/v1_7b82/claim_bank",
     }
-    if not seal_progression_paths.issubset(registered_paths):
-        app.include_router(seal_progression_router)
-        registered_paths.update(seal_progression_paths)
+    if not aninexus_progression_paths.issubset(registered_paths):
+        app.include_router(aninexus_progression_router)
+        registered_paths.update(aninexus_progression_paths)
 
-    seal_compat_paths = {
+    aninexus_compat_paths = {
         "/api/v1_7b82/secure_init",
         "/api/v1_7b82/harem",
         "/api/v1_7b82/rarities",
         "/api/v1_7b82/social/marriage",
         "/api/v1_7b82/battle/stats",
     }
-    if not seal_compat_paths.issubset(registered_paths):
-        app.include_router(seal_compat_router)
-        registered_paths.update(seal_compat_paths)
+    if not aninexus_compat_paths.issubset(registered_paths):
+        app.include_router(aninexus_compat_router)
+        registered_paths.update(aninexus_compat_paths)
 
     terms_paths = {"/terms", "/api/terms/accept", "/api/terms/decline"}
     if not terms_paths.issubset(registered_paths):

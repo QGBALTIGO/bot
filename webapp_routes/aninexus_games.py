@@ -10,7 +10,7 @@ from database_aninexus_games import (
     start_game_session,
     submit_game_session,
 )
-from webapp_routes.seal_compat import API_PREFIX, _require_user, _unauthorized
+from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 
 
 def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
