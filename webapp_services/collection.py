@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.web_image_url import web_image_url
 from webapp_services.profile_overview import build_menu_user_payload
+
+CollectionLoader = Callable[[int], List[Dict[str, Any]]]
+CardsDataLoader = Callable[[], Dict[str, Any]]
 
 
 def collection_character_subcategory_map(data: Dict[str, Any]) -> Dict[int, str]:
@@ -22,12 +26,23 @@ def collection_character_subcategory_map(data: Dict[str, Any]) -> Dict[int, str]
     return out
 
 
-def collection_snapshot(user_id: int) -> Tuple[Dict[str, Any], Dict[int, int], Dict[int, str]]:
-    from database import get_user_card_collection
-    from cards_service import build_cards_final_data
+def collection_snapshot(
+    user_id: int,
+    *,
+    load_collection: CollectionLoader | None = None,
+    load_cards_data: CardsDataLoader | None = None,
+) -> Tuple[Dict[str, Any], Dict[int, int], Dict[int, str]]:
+    if load_collection is None:
+        from database import get_user_card_collection
 
-    data = build_cards_final_data()
-    raw_rows = get_user_card_collection(int(user_id)) or []
+        load_collection = get_user_card_collection
+    if load_cards_data is None:
+        from cards_service import build_cards_final_data
+
+        load_cards_data = build_cards_final_data
+
+    data = load_cards_data()
+    raw_rows = load_collection(int(user_id)) or []
     qty_by_char: Dict[int, int] = {}
 
     for row in raw_rows:
