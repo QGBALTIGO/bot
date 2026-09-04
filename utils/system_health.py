@@ -87,9 +87,30 @@ def worker_snapshot(application: Any) -> dict[str, dict[str, Any]]:
         "telegram_outbox": "telegram_outbox_worker",
         "aninexus_news": "aninexus_news_worker",
     }
+    supervisor_state = bot_data.get("worker_supervisor_state")
+    if not isinstance(supervisor_state, dict):
+        supervisor_state = {}
+
     result: dict[str, dict[str, Any]] = {}
 
     for label, key in configured.items():
+        supervised = supervisor_state.get(label)
+        if isinstance(supervised, dict):
+            status = str(supervised.get("status") or "unknown")
+            state = {
+                "ok": bool(supervised.get("ok")),
+                "status": status,
+                "restart_count": int(supervised.get("restart_count") or 0),
+            }
+            last_error = str(supervised.get("last_error") or "")
+            if last_error:
+                state["error"] = last_error
+            next_restart = int(supervised.get("next_restart_seconds") or 0)
+            if next_restart > 0:
+                state["next_restart_seconds"] = next_restart
+            result[label] = state
+            continue
+
         task = bot_data.get(key)
         if task is None:
             result[label] = {"ok": False, "status": "missing"}
