@@ -11,6 +11,15 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 MIGRATION_NAME_RE = re.compile(r"^(?P<version>\d{3,})_(?P<name>[a-z0-9][a-z0-9_-]*)\.sql$")
 # Constant application-level lock id. PostgreSQL advisory locks are session scoped.
 _MIGRATION_LOCK_ID = 2026090401
+FOUNDATION_TABLES = (
+    "character_art_assets",
+    "gacha_rarities",
+    "gacha_sets",
+    "character_gacha_meta",
+    "user_gacha_pity",
+    "user_character_fragments",
+    "gacha_roll_history",
+)
 
 
 @dataclass(frozen=True)
@@ -123,3 +132,46 @@ def apply_migrations(directory: Path = MIGRATIONS_DIR) -> list[str]:
                     conn.rollback()
 
     return applied_now
+
+
+def migration_status() -> dict:
+    """Return non-sensitive schema readiness details for health/staging checks."""
+
+    from database_core import pool
+
+    migrations = discover_migrations()
+    expected = [migration.version for migration in migrations]
+    status = {
+        "expected_versions": expected,
+        "applied_versions": [],
+        "pending_versions": expected,
+        "tables": {name: False for name in FOUNDATION_TABLES},
+        "rarity_count": 0,
+        "ready": False,
+    }
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.schema_migrations')")
+            schema_table = cur.fetchone()
+            if schema_table and schema_table[0]:
+                cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+                applied = [str(row[0]) for row in (cur.fetchall() or [])]
+                status["applied_versions"] = applied
+                status["pending_versions"] = [version for version in expected if version not in applied]
+
+            for table_name in FOUNDATION_TABLES:
+                cur.execute("SELECT to_regclass(%s)", (f"public.{table_name}",))
+                row = cur.fetchone()
+                status["tables"][table_name] = bool(row and row[0])
+
+            if status["tables"].get("gacha_rarities"):
+                cur.execute("SELECT COUNT(*) FROM gacha_rarities")
+                row = cur.fetchone()
+                status["rarity_count"] = int(row[0] if row else 0)
+
+    status["ready"] = (
+        not status["pending_versions"]
+        and all(status["tables"].values())
+    )
+    return status
