@@ -125,7 +125,11 @@ def build_source_me(user_id: int, identity: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     user_id = int(user_id)
-    profile_payload = build_menu_user_payload(user_id)
+    profile_payload = build_menu_user_payload(
+        user_id,
+        collection_snapshot=collection_snapshot,
+        collection_cards_from_snapshot=collection_cards_from_snapshot,
+    )
     profile = dict(profile_payload.get("profile") or {})
     data, qty_by_char, characters = build_source_collection(user_id)
 
