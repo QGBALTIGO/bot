@@ -72,7 +72,9 @@ def test_v2_router_uses_shared_secure_resolver() -> None:
     assert "validate_session_token" in text
 
 
-def test_v2_frontend_sends_telegram_init_data_header() -> None:
+def test_exact_seal_frontend_uses_secure_init_and_bearer_session() -> None:
     text = Path("frontend/src/api/client.ts").read_text(encoding="utf-8")
-    assert "headers['X-Telegram-Init-Data'] = tg.initData" in text
-    assert "headers['X-WebApp-Uid'] = String(telegramUserId)" in text
+    assert "const initData = tg?.initData;" in text
+    assert "body: JSON.stringify(payload)" in text
+    assert "`${API_BASE}/secure_init`" in text
+    assert "headers.Authorization = `Bearer ${sessionToken}`" in text
