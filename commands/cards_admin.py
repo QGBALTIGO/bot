@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from typing import List, Tuple
@@ -22,6 +23,8 @@ from cards_service import (
     reload_cards_cache,
 )
 from utils.runtime_guard import lock_manager, rate_limiter
+
+logger = logging.getLogger(__name__)
 
 CARD_ADMIN_IDS = {
     int(x.strip())
@@ -109,8 +112,9 @@ async def card_reload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, "✅ Cache de cards recarregado.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro no reload: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_reload")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_delchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,8 +168,9 @@ async def card_delchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += "..."
 
         await _reply(update, msg)
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao apagar personagem: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_delchar")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_addchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,8 +202,9 @@ async def card_addchar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Personagem {name} ({cid}) adicionado.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao adicionar personagem: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_addchar")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_setcharimg(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,8 +224,9 @@ async def card_setcharimg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Imagem do personagem {cid} atualizada.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao trocar imagem: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_setcharimg")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_setcharname(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,8 +246,9 @@ async def card_setcharname(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Nome do personagem {cid} atualizado para {name}.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao trocar nome: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_setcharname")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_delanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,8 +266,9 @@ async def card_delanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Obra {aid} apagada dos cards.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao apagar obra: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_delanime")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_addanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -290,8 +299,9 @@ async def card_addanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Obra {anime_name} ({aid}) adicionada.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao adicionar obra: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_addanime")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_setanimebanner(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -311,8 +321,9 @@ async def card_setanimebanner(update: Update, context: ContextTypes.DEFAULT_TYPE
         finally:
             lock.release()
         await _reply(update, f"✅ Banner da obra {aid} atualizado.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao trocar banner: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_setanimebanner")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_setanimecover(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -332,8 +343,9 @@ async def card_setanimecover(update: Update, context: ContextTypes.DEFAULT_TYPE)
         finally:
             lock.release()
         await _reply(update, f"✅ Cover da obra {aid} atualizada.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao trocar cover: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_setanimecover")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_addsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,8 +363,9 @@ async def card_addsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Subcategoria {name} criada.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao criar subcategoria: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_addsubcat")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_delsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -370,8 +383,9 @@ async def card_delsubcat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Subcategoria {name} apagada.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao apagar subcategoria: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_delsubcat")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_subadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -391,8 +405,9 @@ async def card_subadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Personagem {cid} adicionado em {name}.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao adicionar na subcategoria: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_subadd")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 async def card_subremove(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -412,8 +427,9 @@ async def card_subremove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             lock.release()
         await _reply(update, f"✅ Personagem {cid} removido de {name}.")
-    except Exception as e:
-        await _reply(update, f"❌ Erro ao remover da subcategoria: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo card_subremove")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
 
 
 # =========================================================
@@ -582,5 +598,6 @@ async def setfoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/setfoto"
         )
 
-    except Exception as e:
-        await _reply(update, f"❌ Erro no /setfoto: {e}")
+    except Exception:
+        logger.exception("Falha no comando administrativo setfoto")
+        await _reply(update, "❌ Não foi possível concluir a operação administrativa. O erro foi registrado.")
