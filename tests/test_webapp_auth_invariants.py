@@ -5,29 +5,46 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WEBAPP_PATH = ROOT / "webapp.py"
+WEBAPP_ROUTES_PATH = ROOT / "webapp_routes"
 WEBAPP_IDENTITY_PATH = ROOT / "utils" / "webapp_identity.py"
 PREMIUM_UI_PATH = ROOT / "premium_webapp_ui.py"
 
 
+def _route_source_paths() -> list[Path]:
+    return [WEBAPP_PATH, *sorted(WEBAPP_ROUTES_PATH.glob("*.py"))]
+
+
 def _route_functions() -> dict[tuple[str, str], ast.FunctionDef | ast.AsyncFunctionDef]:
-    tree = ast.parse(WEBAPP_PATH.read_text(encoding="utf-8"), filename=str(WEBAPP_PATH))
     routes: dict[tuple[str, str], ast.FunctionDef | ast.AsyncFunctionDef] = {}
-    for node in tree.body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for decorator in node.decorator_list:
-            if not isinstance(decorator, ast.Call):
+    duplicates: list[tuple[str, str]] = []
+
+    for source_path in _route_source_paths():
+        tree = ast.parse(
+            source_path.read_text(encoding="utf-8"),
+            filename=str(source_path),
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            if not isinstance(decorator.func, ast.Attribute):
-                continue
-            method = decorator.func.attr.upper()
-            if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
-                continue
-            if not decorator.args or not isinstance(decorator.args[0], ast.Constant):
-                continue
-            path = decorator.args[0].value
-            if isinstance(path, str):
-                routes[(method, path)] = node
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                if not isinstance(decorator.func, ast.Attribute):
+                    continue
+                method = decorator.func.attr.upper()
+                if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+                    continue
+                if not decorator.args or not isinstance(decorator.args[0], ast.Constant):
+                    continue
+                path = decorator.args[0].value
+                if not isinstance(path, str):
+                    continue
+                route = (method, path)
+                if route in routes:
+                    duplicates.append(route)
+                routes[route] = node
+
+    assert not duplicates, f"Rotas duplicadas entre módulos: {sorted(set(duplicates))}"
     return routes
 
 
