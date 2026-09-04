@@ -15,15 +15,16 @@ Bot e WebApp do ecossistema **Source Baltigo**, construídos em Python para Tele
 ## Estrutura principal
 
 ```text
-bot.py                  Inicialização do Telegram e da WebApp
+bot.py                  Inicialização do Telegram e do runtime completo
 webapp.py               Rotas FastAPI e APIs da MiniApp
+webapp_entrypoint.py    Entrypoint de produção da WebApp + health routes
 database.py             Persistência, migrações e operações PostgreSQL
 commands/               Comandos e callbacks do Telegram
 handlers/               Handlers de eventos e captura
-utils/                  Autenticação, locks, rate limit e utilitários
+utils/                  Autenticação, health, workers, locks e utilitários
 premium_webapp_ui.py    Interface HTML/CSS/JS da MiniApp
 tests/                  Testes automatizados e invariantes estruturais
-.github/workflows/      Auditoria automática da branch main
+.github/workflows/      CI e smoke automático da produção
 ```
 
 ## Configuração local
@@ -78,10 +79,14 @@ Variáveis comuns adicionais:
 | `WEBAPP_INITDATA_MAX_AGE_SECONDS` | Validade máxima da identidade assinada da MiniApp |
 | `RATE_LIMITER_MAX_KEYS` | Limite de chaves mantidas pelo rate limiter em memória |
 | `LOCK_MANAGER_MAX_KEYS` | Limite de locks nomeados mantidos em memória |
+| `SOURCE_HEALTH_ALERTS_ENABLED` | Ativa o monitor de saúde do runtime do bot |
+| `SOURCE_ALERT_CHAT_ID` | Destino opcional dos alertas; usa `BOT_OWNER_ID` se vazio |
 
 Use sempre IDs numéricos para permissões administrativas. Evite depender exclusivamente de nomes de usuário, pois eles podem ser alterados.
 
-## Executando
+## Executando o runtime completo
+
+Para iniciar o bot Telegram e a WebApp no mesmo processo:
 
 ```bash
 python bot.py
@@ -93,23 +98,42 @@ O processo inicia:
 2. servidor FastAPI/Uvicorn;
 3. polling do Telegram;
 4. restauração dos estados persistentes;
-5. workers supervisionados de verificação e outbox.
+5. workers de verificação, outbox, notícias e health.
+
+## Executando apenas a WebApp
+
+Em serviços dedicados à WebApp, como o serviço HTTP do Railway, use:
+
+```bash
+uvicorn webapp_entrypoint:app --host 0.0.0.0 --port $PORT
+```
+
+O `webapp_entrypoint.py` preserva todas as rotas existentes e adiciona os endpoints operacionais:
+
+```text
+GET /health
+GET /api/health
+```
+
+Isso evita depender do bootstrap do bot Telegram para instalar rotas necessárias ao serviço HTTP.
 
 ## Validação antes de publicar
 
 ```bash
 python -m compileall -q .
 ruff check . --select E9,F63,F7,F82 --exclude data
-pytest -q
+python -m pytest -q
 bandit -r . -x ./data,./tests -lll
 pip-audit -r requirements.txt
 ```
 
-A branch `main` também executa essas verificações automaticamente pelo GitHub Actions. Sintaxe inválida, símbolos duplicados e testes quebrados bloqueiam o audit.
+A branch `main` também executa essas verificações automaticamente pelo GitHub Actions. Pull requests destinados à `main` são auditados antes do merge. Sintaxe inválida, símbolos duplicados e testes quebrados bloqueiam o audit.
+
+Depois de pushes na `main`, o workflow de smoke aguarda a produção e valida o endpoint `/health` e a página raiz.
 
 ## Segurança da MiniApp
 
-Endpoints privados não devem confiar em `uid` enviado pelo navegador. A identidade é obtida do `Telegram.WebApp.initData`, validada com HMAC e comparada com qualquer ID informado pela página.
+Endpoints privados não devem confiar em `uid` enviado pelo navegador. A identidade é obtida do `Telegram.WebApp.initData`, validada com HMAC/assinatura oficial do Telegram e comparada com qualquer ID informado pela página.
 
 Boas práticas obrigatórias:
 
@@ -123,13 +147,19 @@ Boas práticas obrigatórias:
 
 ## Deploy
 
-O comando de inicialização recomendado é:
+Para um serviço que executa **somente a WebApp**, use:
+
+```bash
+uvicorn webapp_entrypoint:app --host 0.0.0.0 --port $PORT
+```
+
+Para um host que executa o **bot Telegram completo**, use:
 
 ```bash
 python bot.py
 ```
 
-Configure `BOT_TOKEN`, `DATABASE_URL`, `PORT` e as permissões administrativas no painel do provedor. Depois do deploy, confira os logs de inicialização, o endpoint da WebApp e os comandos `/start`, `/menu`, `/perfil`, `/ranking` e `/dado`.
+Configure as variáveis necessárias no provedor e confira `/health`, os logs de inicialização e os comandos `/start`, `/menu`, `/perfil`, `/ranking`, `/dado` e `/health`.
 
 ## Política de alterações
 
