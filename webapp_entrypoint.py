@@ -23,6 +23,8 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_routes.seal_compat import build_seal_compat_router
+from webapp_routes.seal_runtime import install_seal_runtime
 from webapp_routes.source_v2 import build_source_v2_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
@@ -61,9 +63,13 @@ terms_router = build_terms_router(
 source_v2_router = build_source_v2_router(
     banner_url=TOP_BANNER_URL,
 )
+seal_compat_router = build_seal_compat_router()
 
 
 def _install_runtime_routes() -> None:
+    # O build do Seal é instalado primeiro para assumir /menu e /assets.
+    # O frontend vendorizado em seal_frontend/ permanece intocado.
+    install_seal_runtime(app)
     registered_paths = {getattr(route, "path", "") for route in app.routes}
 
     if "/health" not in registered_paths or "/api/health" not in registered_paths:
@@ -82,6 +88,18 @@ def _install_runtime_routes() -> None:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
 
+    seal_compat_paths = {
+        "/api/v1_7b82/secure_init",
+        "/api/v1_7b82/me",
+        "/api/v1_7b82/harem",
+        "/api/v1_7b82/rarities",
+        "/api/v1_7b82/social/marriage",
+        "/api/v1_7b82/battle/stats",
+    }
+    if not seal_compat_paths.issubset(registered_paths):
+        app.include_router(seal_compat_router)
+        registered_paths.update(seal_compat_paths)
+
     terms_paths = {
         "/terms",
         "/api/terms/accept",
@@ -96,6 +114,8 @@ def _install_runtime_routes() -> None:
         app.include_router(source_v2_router)
         registered_paths.update(source_v2_paths)
 
+    # /menu já é ocupado pelo runtime exato do Seal. Mantém o router legado
+    # como fallback apenas em instalações sem esse runtime.
     if "/menu" not in registered_paths:
         app.include_router(profile_page_router)
         registered_paths.add("/menu")
