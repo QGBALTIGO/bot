@@ -35,7 +35,10 @@ from webapp_routes.aninexus_progression import build_aninexus_progression_router
 from webapp_routes.aninexus_runtime import install_aninexus_runtime
 from webapp_routes.source_v2 import build_source_v2_router
 from webapp_routes.terms import build_terms_router
-from webapp_services.collection import collection_cards_from_snapshot, collection_snapshot
+from webapp_services.collection import (
+    collection_cards_from_snapshot,
+    collection_snapshot,
+)
 
 channel_router = build_channel_router(
     resolve_webapp_user=resolve_webapp_user,
