@@ -2,9 +2,11 @@ export interface MinigameState {
   energy: number;
   max_energy: number;
   last_energy_recharge: string | null;
+  recharge_minutes?: number;
 }
 
 export interface SessionData {
+  session_id?: string;
   start_time: number;
   cards?: {
     id: string;
