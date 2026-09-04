@@ -6,11 +6,13 @@ from fastapi import APIRouter, Body, Header
 from fastapi.responses import JSONResponse
 
 from database_profile import (
+    set_profile_country,
     set_profile_language,
     set_profile_nickname,
     set_profile_notifications,
     set_profile_private,
 )
+from utils.profile_options import COUNTRY_CODES, LANGUAGE_CODES
 from utils.webapp_identity import resolve_webapp_user as _resolve_webapp_user
 
 router = APIRouter(tags=["profile"])
@@ -65,6 +67,30 @@ def api_menu_nickname(
     return {"ok": True}
 
 
+@router.post("/api/menu/country")
+def api_menu_country(
+    payload: dict = Body(...),
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+):
+    ctx = _resolve_webapp_user(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        body_uid=payload.get("uid"),
+    )
+    user_id = int(ctx["user_id"])
+    country_code = str(payload.get("country_code") or "BR").strip().upper()
+
+    if country_code not in COUNTRY_CODES:
+        return JSONResponse(
+            {"ok": False, "message": "País inválido."},
+            status_code=400,
+        )
+
+    set_profile_country(user_id, country_code)
+    return {"ok": True}
+
+
 @router.post("/api/menu/language")
 def api_menu_language(
     payload: dict = Body(...),
@@ -79,7 +105,7 @@ def api_menu_language(
     user_id = int(ctx["user_id"])
     language = str(payload.get("language") or "pt").strip().lower()
 
-    if language not in {"pt", "en", "es"}:
+    if language not in LANGUAGE_CODES:
         return JSONResponse(
             {"ok": False, "message": "Idioma inválido."},
             status_code=400,
