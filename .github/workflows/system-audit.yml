@@ -132,7 +132,8 @@ jobs:
         env:
           BOT_TOKEN: "123456789:test-token-for-imports-only"
           BOT_OWNER_ID: "1"
-        run: pytest -q
+          PYTHONPATH: "."
+        run: python -m pytest -q
 
       - name: High-severity source security scan
         continue-on-error: true
