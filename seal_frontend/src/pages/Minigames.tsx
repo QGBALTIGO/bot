@@ -12,8 +12,6 @@ import { useToast } from '../components/ui/Toast';
 import { useUser } from '../context/UserContext';
 import { cn } from '../utils';
 
-// --- Main Page ---
-
 export const Minigames = () => {
   const { refreshUser } = useUser();
   const { addToast } = useToast();
@@ -41,10 +39,9 @@ export const Minigames = () => {
   }, [fetchState]);
 
   const handleStartGame = async (game: 'cipher_match' | 'nexus_wheel') => {
-    // Guard against double-taps creating two sessions (double energy deduct).
     if (starting) return;
     if (!state || state.energy <= 0) {
-      addToast('Insufficient energy reserve', 'error');
+      addToast('Você está sem energia. Aguarde a próxima recarga.', 'error');
       return;
     }
 
@@ -54,8 +51,9 @@ export const Minigames = () => {
       const data = await apiFetch(`/minigames/start/${game}`, { method: 'POST' });
       setSession(data.session);
       setActiveGame(game);
-      // Optimization: update local energy state immediately
-      setState((prev) => (prev ? { ...prev, energy: prev.energy - 1 } : null));
+      if (!data.reused) {
+        setState((prev) => (prev ? { ...prev, energy: Math.max(0, prev.energy - 1) } : null));
+      }
     } catch (err) {
       addToast(getErrorMessage(err), 'error');
     } finally {
@@ -65,20 +63,25 @@ export const Minigames = () => {
   };
 
   const handleSubmit = async (score: number) => {
-    if (!activeGame) return;
+    if (!activeGame || !session?.session_id) return;
     setSubmitting(true);
     try {
       const data = await apiFetch('/minigames/submit', {
         method: 'POST',
-        body: JSON.stringify({ game_type: activeGame, score }),
+        body: JSON.stringify({
+          game_type: activeGame,
+          session_id: session.session_id,
+          score,
+        }),
       });
       setRewards(data.rewards);
       setActiveGame(null);
-      refreshUser();
-      fetchState();
+      setSession(null);
+      await Promise.allSettled([refreshUser(), fetchState()]);
     } catch (err) {
       addToast(getErrorMessage(err), 'error');
       setActiveGame(null);
+      setSession(null);
       fetchState();
     } finally {
       setSubmitting(false);
@@ -94,16 +97,16 @@ export const Minigames = () => {
   }
 
   return (
-    <div className="adaptive-px pt-6">
+    <div className="adaptive-px pt-6 max-w-2xl mx-auto">
       <header className="mb-8 space-y-1">
         <div className="flex items-center gap-2.5">
           <Gamepad2 className="text-brand-accent" size={20} />
           <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">
-            Nexus Games
+            Jogos AniNexus
           </h1>
         </div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-          Operational training & testing
+          Duas partidas rápidas com energia própria e recompensas do Source
         </p>
       </header>
 
@@ -112,6 +115,7 @@ export const Minigames = () => {
           energy={state.energy}
           maxEnergy={state.max_energy}
           lastRecharge={state.last_energy_recharge}
+          rechargeMinutes={state.recharge_minutes || 120}
           onRecharge={fetchState}
         />
       )}
@@ -141,10 +145,10 @@ export const Minigames = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-zinc-200 uppercase tracking-wider mb-0.5">
-                      Cipher Match
+                      Memória Cifrada
                     </h3>
                     <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">
-                      Memory sequence training
+                      Encontre os pares usando personagens do catálogo
                     </p>
                   </div>
                 </div>
@@ -172,10 +176,10 @@ export const Minigames = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-zinc-200 uppercase tracking-wider mb-0.5">
-                      Nexus Wheel
+                      Roleta AniNexus
                     </h3>
                     <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">
-                      Random resource allocation
+                      Gire e descubra sua recompensa
                     </p>
                   </div>
                 </div>
@@ -197,14 +201,20 @@ export const Minigames = () => {
               <CipherMatch
                 session={session}
                 onComplete={handleSubmit}
-                onCancel={() => setActiveGame(null)}
+                onCancel={() => {
+                  setActiveGame(null);
+                  setSession(null);
+                }}
               />
             )}
             {activeGame === 'nexus_wheel' && session && (
               <NexusWheel
                 session={session}
                 onComplete={() => handleSubmit(0)}
-                _onCancel={() => setActiveGame(null)}
+                _onCancel={() => {
+                  setActiveGame(null);
+                  setSession(null);
+                }}
               />
             )}
           </m.div>
@@ -216,7 +226,7 @@ export const Minigames = () => {
           <div className="flex flex-col items-center gap-4">
             <Loader2 size={32} className="text-brand-accent animate-spin" />
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.3em]">
-              Processing Rewards
+              Validando recompensa
             </span>
           </div>
         </div>
