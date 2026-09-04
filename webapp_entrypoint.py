@@ -19,6 +19,7 @@ from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.aninexus_me import build_aninexus_me_router
 from webapp_routes.aninexus_ranking import build_aninexus_ranking_router
 from webapp_routes.aninexus_shop import build_aninexus_shop_router
+from webapp_routes.aninexus_social import build_aninexus_social_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
@@ -66,6 +67,7 @@ aninexus_games_router = build_aninexus_games_router()
 aninexus_me_router = build_aninexus_me_router()
 aninexus_ranking_router = build_aninexus_ranking_router()
 aninexus_shop_router = build_aninexus_shop_router()
+aninexus_social_router = build_aninexus_social_router()
 aninexus_progression_router = build_aninexus_progression_router()
 aninexus_compat_router = build_aninexus_compat_router()
 
@@ -124,6 +126,20 @@ def _install_runtime_routes() -> None:
     if not aninexus_shop_paths.issubset(registered_paths):
         app.include_router(aninexus_shop_router)
         registered_paths.update(aninexus_shop_paths)
+
+    aninexus_social_paths = {
+        "/api/v1_7b82/social/referrals",
+        "/api/v1_7b82/social/referrals/stats",
+        "/api/v1_7b82/social/referrals/claim",
+        "/api/v1_7b82/trade/user/{target_user_id}/collection",
+        "/api/v1_7b82/trade/offers",
+        "/api/v1_7b82/trade/offer",
+        "/api/v1_7b82/trade/respond/{trade_id}",
+        "/api/v1_7b82/economy",
+    }
+    if not aninexus_social_paths.issubset(registered_paths):
+        app.include_router(aninexus_social_router)
+        registered_paths.update(aninexus_social_paths)
 
     aninexus_progression_paths = {
         "/api/v1_7b82/achievements/list",
