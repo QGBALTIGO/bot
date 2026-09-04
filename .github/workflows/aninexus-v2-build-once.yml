@@ -1,0 +1,131 @@
+name: AniNexus V2 build once
+
+on:
+  push:
+    branches:
+      - v2/seal-progression
+
+permissions:
+  contents: write
+
+jobs:
+  adapt-build-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/seal-progression
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Apply AniNexus adaptation
+        run: python scripts/adapt_aninexus_v2.py
+
+      - name: Wire Source systems
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          entry = Path('webapp_entrypoint.py')
+          text = entry.read_text(encoding='utf-8')
+
+          import_line = 'from webapp_routes.aninexus_shop import build_aninexus_shop_router\n'
+          if import_line not in text:
+              text = text.replace(
+                  'from webapp_routes.aninexus_ranking import build_aninexus_ranking_router\n',
+                  'from webapp_routes.aninexus_ranking import build_aninexus_ranking_router\n' + import_line,
+                  1,
+              )
+
+          if 'aninexus_shop_router = build_aninexus_shop_router()' not in text:
+              text = text.replace(
+                  'aninexus_ranking_router = build_aninexus_ranking_router()\n',
+                  'aninexus_ranking_router = build_aninexus_ranking_router()\naninexus_shop_router = build_aninexus_shop_router()\n',
+                  1,
+              )
+
+          shop_block = '''    aninexus_shop_paths = {
+        "/api/v1_7b82/source-shop",
+        "/api/v1_7b82/source-shop/buy-dado",
+        "/api/v1_7b82/source-shop/buy-xcard/{slot_code}",
+    }
+    if not aninexus_shop_paths.issubset(registered_paths):
+        app.include_router(aninexus_shop_router)
+        registered_paths.update(aninexus_shop_paths)
+
+'''
+          if 'aninexus_shop_paths = {' not in text:
+              marker = '    if "/api/v1_7b82/leaderboard" not in registered_paths:\n        app.include_router(aninexus_ranking_router)\n        registered_paths.add("/api/v1_7b82/leaderboard")\n\n'
+              text = text.replace(marker, marker + shop_block, 1)
+
+          entry.write_text(text, encoding='utf-8')
+
+          dado = Path('commands/dado.py')
+          dado_text = dado.read_text(encoding='utf-8')
+          dado_text = dado_text.replace(
+              'url = f"{BASE_URL}/dado?uid={user.id}"',
+              'url = f"{BASE_URL}/menu?tab=dado&uid={user.id}"',
+          )
+          dado.write_text(dado_text, encoding='utf-8')
+          PY
+
+      - name: Remove obsolete Seal progression modules
+        run: |
+          rm -f aninexus_progression.py
+          rm -f database_aninexus_progression.py
+
+      - name: Verify no product branding still says Seal
+        shell: bash
+        run: |
+          if grep -RInE 'SEAL YOUR WAIFU|Seal Your Waifu|>SEAL<|\bSEAL\b' aninexus_frontend/src aninexus_frontend/index.html --exclude='README.md'; then
+            echo 'Visible Seal branding remains in AniNexus frontend.'
+            exit 1
+          fi
+
+      - name: Install frontend dependencies
+        working-directory: aninexus_frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck and build frontend
+        working-directory: aninexus_frontend
+        run: bun run build
+
+      - name: Publish built runtime
+        run: |
+          rm -rf aninexus_runtime
+          cp -R aninexus_frontend/dist aninexus_runtime
+          test -f aninexus_runtime/index.html
+          test -d aninexus_runtime/assets
+
+      - name: Compile Python
+        run: python -m compileall -q .
+
+      - name: Remove one-time migration files
+        run: |
+          rm -f scripts/adapt_aninexus_v2.py
+          rm -f .github/workflows/aninexus-v2-build-once.yml
+
+      - name: Commit generated AniNexus runtime
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Nothing to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: ativar MiniApp AniNexus integrada ao Source'
+          git push origin HEAD:v2/seal-progression
