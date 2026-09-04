@@ -11,6 +11,8 @@ PRIVATE_ROUTES = {
     "/social/marriage",
     "/battle/stats",
     "/achievements/list",
+    "/quests",
+    "/quests/claim/{quest_id}",
 }
 
 
@@ -40,13 +42,14 @@ def test_private_v2_routes_resolve_signed_identity() -> None:
         if route not in PRIVATE_ROUTES:
             continue
         found.add(route)
-        calls_identity = any(
-            isinstance(child, ast.Call)
-            and isinstance(child.func, ast.Name)
-            and child.func.id == "_identity"
+        identity_calls = {
+            child.func.id
             for child in ast.walk(node)
+            if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+        }
+        assert "_private_identity" in identity_calls or "_identity" in identity_calls, (
+            f"{route} must call the signed/session identity resolver"
         )
-        assert calls_identity, f"{route} must call the signed identity resolver"
 
     assert found == PRIVATE_ROUTES
 
@@ -66,6 +69,7 @@ def test_v2_router_uses_shared_secure_resolver() -> None:
     assert "get_tg_user" in imports_from_identity
     assert "ALLOW_INSECURE_WEBAPP_UID_FALLBACK" not in text
     assert "x_telegram_init_data" in text
+    assert "validate_session_token" in text
 
 
 def test_v2_frontend_sends_telegram_init_data_header() -> None:
