@@ -13,6 +13,7 @@ from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.channel import build_channel_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
+from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_settings import router as profile_settings_router
 
 channel_router = build_channel_router(
@@ -45,13 +46,23 @@ def _install_runtime_routes() -> None:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
 
-    profile_paths = {
+    profile_setting_paths = {
+        "/api/menu/nickname",
+        "/api/menu/country",
         "/api/menu/language",
         "/api/menu/privacy",
         "/api/menu/notifications",
     }
-    if not profile_paths.issubset(registered_paths):
+    if not profile_setting_paths.issubset(registered_paths):
         app.include_router(profile_settings_router)
+        registered_paths.update(profile_setting_paths)
+
+    profile_collection_paths = {
+        "/api/menu/collection-characters",
+        "/api/menu/favorite",
+    }
+    if not profile_collection_paths.issubset(registered_paths):
+        app.include_router(profile_collection_router)
 
 
 def _install_runtime_middleware() -> None:
