@@ -1,0 +1,82 @@
+name: Inspect WebApp profile routes
+
+on:
+  push:
+    branches:
+      - v2/p1-webapp-profile-routes
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/p1-webapp-profile-routes
+          fetch-depth: 0
+
+      - name: Inspect menu/profile routes
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('webapp.py')
+          text = path.read_text(encoding='utf-8')
+          lines = text.splitlines()
+          tree = ast.parse(text, filename=str(path))
+
+          wanted_paths = {
+              '/api/menu/profile',
+              '/api/menu/collection-characters',
+              '/api/menu/nickname',
+              '/api/menu/favorite',
+              '/api/menu/country',
+              '/api/menu/language',
+              '/api/menu/privacy',
+              '/api/menu/notifications',
+              '/api/menu/delete-account',
+          }
+
+          for node in tree.body:
+              if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  continue
+              matched = None
+              method = None
+              for decorator in node.decorator_list:
+                  if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                      continue
+                  if not decorator.args or not isinstance(decorator.args[0], ast.Constant):
+                      continue
+                  value = decorator.args[0].value
+                  if value in wanted_paths:
+                      matched = value
+                      method = decorator.func.attr.upper()
+                      break
+              if not matched:
+                  continue
+
+              calls = sorted({
+                  child.func.id
+                  for child in ast.walk(node)
+                  if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+              })
+              start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+              end = node.end_lineno or node.lineno
+              print(f'=== {method} {matched} -> {node.name} {start}-{end}; calls={calls} ===')
+              for i in range(start, end + 1):
+                  print(f'{i:05d}: {lines[i-1]}')
+              print()
+          PY
+
+      - name: Remove diagnostic workflow
+        run: |
+          rm .github/workflows/inspect-webapp-profile-routes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remover inspeção temporária de rotas de perfil [profile-route-inspection-done]"
+          git push origin HEAD:v2/p1-webapp-profile-routes
