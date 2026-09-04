@@ -1,56 +1,97 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
-from database_seal_progression import (
-    buy_pass_levels,
-    claim_pass_level,
-    claim_quest,
-    get_daily_selection,
-    get_eggs,
-    get_pass_state,
-    get_titles,
-    get_unlocked_achievement_ids,
-    get_wallet,
-    is_quest_claimed,
-    quest_progress,
-    sync_achievements,
-)
-from seal_progression import (
-    ACHIEVEMENTS,
-    CURRENT_PASS_SEASON,
-    LEVEL_BUY_SHARD_COST,
+from database_aninexus_progression_source import (
     MAX_PASS_LEVEL,
-    PASS_BENEFITS,
     PASS_MILESTONES,
-    PASS_MISSIONS,
-    PASS_SEASON_NAME,
-    PASS_STAR_PRICES,
-    PASS_TIER_META,
-    PASS_TRACKS,
-    QUEST_POOL,
-    WEEKLY_POOL,
-    calculate_pass_upgrade_price,
-    get_progress_values,
-    normalize_pass_tier,
+    SEASON_ID,
+    SEASON_NAME,
+    claim_pass_reward,
+    claim_quest,
+    claimed_pass_levels,
+    get_source_profile,
+    is_quest_claimed,
+    metric_value,
+    pass_tracks,
+    source_level_progress,
 )
-from webapp_routes.seal_compat import (
-    API_PREFIX,
-    _require_user,
-    _unauthorized,
-    _user_payload as _source_user_payload,
-)
+from webapp_routes.seal_compat import API_PREFIX, _require_user, _unauthorized
 
 
-def _error(message: str, code: str, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        {"error": {"code": code, "message": message}},
-        status_code=status_code,
-    )
+QUESTS: dict[str, dict[str, Any]] = {
+    "daily_game_1": {
+        "period": "daily",
+        "name": "Primeira partida",
+        "description": "Conclua 1 partida nos Jogos AniNexus.",
+        "metric": "games_completed",
+        "target": 1,
+        "reward_coins": 1,
+        "reward_xp": 3,
+    },
+    "daily_dado_1": {
+        "period": "daily",
+        "name": "Tente a sorte",
+        "description": "Use o Dado AniNexus 1 vez.",
+        "metric": "dado_rolls",
+        "target": 1,
+        "reward_coins": 1,
+        "reward_xp": 3,
+    },
+    "daily_game_2": {
+        "period": "daily",
+        "name": "Treino completo",
+        "description": "Conclua 2 partidas nos Jogos AniNexus.",
+        "metric": "games_completed",
+        "target": 2,
+        "reward_coins": 0,
+        "reward_xp": 5,
+    },
+    "weekly_games_5": {
+        "period": "weekly",
+        "name": "Jogador da semana",
+        "description": "Conclua 5 partidas nos Jogos AniNexus nesta semana.",
+        "metric": "games_completed",
+        "target": 5,
+        "reward_coins": 2,
+        "reward_xp": 10,
+    },
+    "weekly_dado_5": {
+        "period": "weekly",
+        "name": "Cinco rolagens",
+        "description": "Use o Dado AniNexus 5 vezes nesta semana.",
+        "metric": "dado_rolls",
+        "target": 5,
+        "reward_coins": 2,
+        "reward_xp": 10,
+    },
+    "weekly_games_10": {
+        "period": "weekly",
+        "name": "Especialista em jogos",
+        "description": "Conclua 10 partidas nos Jogos AniNexus nesta semana.",
+        "metric": "games_completed",
+        "target": 10,
+        "reward_coins": 2,
+        "reward_xp": 15,
+    },
+}
+
+ACHIEVEMENTS = [
+    ("first_character", "Primeiro personagem", "Adicione seu primeiro personagem à coleção.", "unique_collection", 1),
+    ("collector_10", "Colecionador I", "Tenha 10 personagens diferentes.", "unique_collection", 10),
+    ("collector_50", "Colecionador II", "Tenha 50 personagens diferentes.", "unique_collection", 50),
+    ("collector_100", "Colecionador III", "Tenha 100 personagens diferentes.", "unique_collection", 100),
+    ("level_10", "Explorador", "Alcance o nível 10.", "level", 10),
+    ("level_25", "Veterano", "Alcance o nível 25.", "level", 25),
+    ("level_50", "Mestre", "Alcance o nível 50.", "level", 50),
+]
+
+
+def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
+    return JSONResponse({"error": {"code": code, "message": message}}, status_code=status_code)
 
 
 def _auth(authorization: str) -> tuple[dict[str, Any] | None, JSONResponse | None]:
@@ -60,78 +101,29 @@ def _auth(authorization: str) -> tuple[dict[str, Any] | None, JSONResponse | Non
         return None, _unauthorized(str(exc))
 
 
-def _quest_item(
-    user_id: int,
-    quest_id: str,
-    definition: dict[str, Any],
-    *,
-    locked: bool = False,
-) -> dict[str, Any]:
-    progress = min(
-        int(definition["target"]),
-        max(0, int(quest_progress(user_id, quest_id))),
+def _quest_item(user_id: int, quest_id: str, definition: dict[str, Any]) -> dict[str, Any]:
+    progress = metric_value(
+        user_id,
+        str(definition["metric"]),
+        str(definition["period"]),
     )
+    target = int(definition["target"])
     return {
         "id": quest_id,
         "name": str(definition["name"]),
         "description": str(definition["description"]),
-        "icon": str(definition.get("icon") or "◉"),
+        "icon": "◉",
         "reward_xp": int(definition["reward_xp"]),
-        "reward_shards": int(definition["reward_shards"]),
-        "progress": progress,
-        "target": int(definition["target"]),
-        "claimed": is_quest_claimed(user_id, quest_id),
-        "locked": bool(locked),
+        "reward_shards": int(definition["reward_coins"]),
+        "progress": min(target, max(0, progress)),
+        "target": target,
+        "claimed": is_quest_claimed(user_id, quest_id, str(definition["period"])),
+        "locked": False,
     }
 
 
 def build_seal_progression_router() -> APIRouter:
-    router = APIRouter(prefix=API_PREFIX, tags=["seal-progression"])
-
-    def me(authorization: str = Header(default="")):
-        session_user, error = _auth(authorization)
-        if error:
-            return error
-        assert session_user is not None
-        user_id = int(session_user.get("id") or 0)
-
-        sync_achievements(user_id)
-        wallet = get_wallet(user_id)
-        pass_state = get_pass_state(user_id)
-        eggs = get_eggs(user_id)
-        unlocked_ids = sorted(get_unlocked_achievement_ids(user_id))
-        titles = get_titles(user_id)
-        progress = get_progress_values(int(wallet.get("xp") or 0))
-        pass_type = normalize_pass_tier(pass_state.get("pass_type"))
-
-        payload = _source_user_payload(session_user)
-        payload["balance"] = int(wallet.get("shards") or 0)
-        payload["zenith"] = int(wallet.get("zenith") or 0)
-        payload["achievements"] = unlocked_ids
-        payload["titles"] = {
-            "current": titles[-1] if titles else "OPERATOR",
-            "all": titles or ["OPERATOR"],
-        }
-        payload["eggs"] = eggs
-
-        stats = dict(payload.get("stats") or {})
-        stats.update(
-            {
-                "level": int(progress["level"]),
-                "xp": int(progress["xp"]),
-                "xp_current": int(progress["xp_current"]),
-                "xp_needed": int(progress["xp_needed"]),
-                "points": int(wallet.get("shards") or 0),
-                "zenith": int(wallet.get("zenith") or 0),
-                "pass_type": pass_type,
-                "incubation_slots": int(PASS_BENEFITS[pass_type]["incubation_slots"]),
-                "active_incubations": sum(
-                    1 for egg in eggs if str(egg.get("status") or "") == "incubating"
-                ),
-            }
-        )
-        payload["stats"] = stats
-        return JSONResponse(payload)
+    router = APIRouter(prefix=API_PREFIX, tags=["aninexus-progression"])
 
     def achievements(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
@@ -139,21 +131,20 @@ def build_seal_progression_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        sync_achievements(user_id)
-        unlocked = get_unlocked_achievement_ids(user_id)
-        return JSONResponse(
-            [
+        out = []
+        for achievement_id, name, description, metric, target in ACHIEVEMENTS:
+            value = metric_value(user_id, metric, "weekly")
+            out.append(
                 {
                     "id": achievement_id,
-                    "name": str(definition["name"]),
-                    "description": str(definition["description"]),
-                    "icon": str(definition.get("icon") or "🏆"),
-                    "reward_xp": int(definition["reward_xp"]),
-                    "unlocked": achievement_id in unlocked,
+                    "name": name,
+                    "description": description,
+                    "icon": "🏆",
+                    "reward_xp": 0,
+                    "unlocked": value >= int(target),
                 }
-                for achievement_id, definition in ACHIEVEMENTS.items()
-            ]
-        )
+            )
+        return JSONResponse(out)
 
     def quests(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
@@ -161,58 +152,50 @@ def build_seal_progression_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        pass_type = normalize_pass_tier(get_pass_state(user_id).get("pass_type"))
-        daily_ids = get_daily_selection(user_id)
-        return JSONResponse(
-            {
-                "daily": [
-                    _quest_item(user_id, quest_id, QUEST_POOL[quest_id])
-                    for quest_id in daily_ids
-                    if quest_id in QUEST_POOL
-                ],
-                "weekly": [
-                    _quest_item(user_id, quest_id, definition)
-                    for quest_id, definition in WEEKLY_POOL.items()
-                ],
-                "pass": [
-                    _quest_item(
-                        user_id,
-                        quest_id,
-                        definition,
-                        locked=pass_type == "free",
-                    )
-                    for quest_id, definition in PASS_MISSIONS.items()
-                ],
-                "pass_type": pass_type,
-            }
-        )
+        daily = [
+            _quest_item(user_id, quest_id, definition)
+            for quest_id, definition in QUESTS.items()
+            if definition["period"] == "daily"
+        ]
+        weekly = [
+            _quest_item(user_id, quest_id, definition)
+            for quest_id, definition in QUESTS.items()
+            if definition["period"] == "weekly"
+        ]
+        return JSONResponse({"daily": daily, "weekly": weekly, "pass": [], "pass_type": "free"})
 
-    def claim_quest_endpoint(
-        quest_id: str,
-        authorization: str = Header(default=""),
-    ):
+    def claim_quest_endpoint(quest_id: str, authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
             return error
         assert session_user is not None
-        result = claim_quest(int(session_user.get("id") or 0), quest_id)
+        definition = QUESTS.get(str(quest_id))
+        if not definition:
+            return _error("quest_not_found", "Missão não encontrada.", 404)
+
+        result = claim_quest(
+            int(session_user.get("id") or 0),
+            str(quest_id),
+            str(definition["period"]),
+            metric=str(definition["metric"]),
+            target=int(definition["target"]),
+            reward_coins=int(definition["reward_coins"]),
+            reward_xp=int(definition["reward_xp"]),
+        )
         if result.get("ok"):
             return JSONResponse(
                 {
                     "success": True,
                     "reward_xp": int(result.get("reward_xp") or 0),
-                    "reward_shards": int(result.get("reward_shards") or 0),
+                    "reward_shards": int(result.get("reward_coins") or 0),
                 }
             )
-        error_code = str(result.get("error") or "quest_error")
+        code = str(result.get("error") or "quest_error")
         messages = {
-            "quest_not_active": "Quest not active today.",
-            "quest_not_found": "Quest not found.",
-            "quest_incomplete": "Quest not completed.",
-            "already_claimed": "Already claimed.",
-            "pass_required": "This mission requires Premium or Elite Pass.",
+            "quest_incomplete": "Você ainda não concluiu esta missão.",
+            "already_claimed": "Esta recompensa já foi resgatada.",
         }
-        return _error(messages.get(error_code, "Could not claim quest."), error_code)
+        return _error(code, messages.get(code, "Não foi possível resgatar esta missão."))
 
     def pass_data(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
@@ -220,37 +203,32 @@ def build_seal_progression_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        wallet = get_wallet(user_id)
-        state = get_pass_state(user_id)
-        progress = get_progress_values(int(wallet.get("xp") or 0))
-        pass_type = normalize_pass_tier(state.get("pass_type"))
-        pass_bank = dict(state.get("pass_bank") or {})
+        progress = source_level_progress(user_id)
         return JSONResponse(
             {
                 **progress,
-                "season_id": CURRENT_PASS_SEASON,
-                "season_name": PASS_SEASON_NAME,
-                "pass_type": pass_type,
-                "pass_bank": pass_bank,
-                "pass_bank_total": int(pass_bank.get("shards") or 0)
-                + sum(
-                    int(value or 0)
-                    for key, value in pass_bank.items()
-                    if str(key).startswith("eggs_t")
-                ),
-                "claimed_levels": [int(x) for x in (state.get("claimed_levels") or [])],
-                "tracks": PASS_TRACKS,
+                "season_id": SEASON_ID,
+                "season_name": SEASON_NAME,
+                "pass_type": "free",
+                "pass_bank": {},
+                "pass_bank_total": 0,
+                "claimed_levels": claimed_pass_levels(user_id),
+                "tracks": pass_tracks(),
                 "milestones": PASS_MILESTONES,
                 "max_level": MAX_PASS_LEVEL,
-                "prices": PASS_STAR_PRICES,
-                "currency": "XTR",
-                "upgrade_prices": {
-                    tier: calculate_pass_upgrade_price(pass_type, tier)
-                    for tier in ("premium", "elite")
+                "prices": {"free": 0},
+                "currency": "COINS",
+                "upgrade_prices": {},
+                "level_buy_cost": 0,
+                "benefits": {
+                    "free": {
+                        "hunt_multiplier": 1.0,
+                        "egg_drop_multiplier": 1.0,
+                        "incubation_multiplier": 1.0,
+                        "incubation_slots": 1,
+                    }
                 },
-                "level_buy_cost": LEVEL_BUY_SHARD_COST,
-                "benefits": PASS_BENEFITS,
-                "tiers": PASS_TIER_META,
+                "tiers": {"free": {"name": "Grátis", "summary": "Trilha padrão da temporada AniNexus."}},
             }
         )
 
@@ -259,94 +237,35 @@ def build_seal_progression_router() -> APIRouter:
         if error:
             return error
         assert session_user is not None
-        result = claim_pass_level(int(session_user.get("id") or 0), level)
+        result = claim_pass_reward(int(session_user.get("id") or 0), int(level))
         if result.get("ok"):
             return JSONResponse(
                 {
                     "status": str(result.get("status") or "success"),
-                    "shards": int(result.get("shards") or 0),
-                    "eggs": int(result.get("eggs") or 0),
+                    "shards": int(result.get("coins") or 0),
+                    "eggs": int(result.get("dados") or 0),
+                    "xp": int(result.get("xp") or 0),
                 }
             )
         code = str(result.get("error") or "pass_claim_error")
         messages = {
-            "invalid_level": "Invalid level.",
-            "level_not_reached": f"Level {level} not reached yet.",
+            "invalid_level": "Este nível não possui recompensa.",
+            "level_not_reached": f"Você ainda não alcançou o nível {level}.",
         }
-        return _error(messages.get(code, "Could not claim this level."), code)
+        return _error(code, messages.get(code, "Não foi possível resgatar esta recompensa."))
 
-    def buy_level(
-        levels: int = Query(default=1, ge=1, le=50),
-        authorization: str = Header(default=""),
-    ):
+    def buy_level(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
             return error
-        assert session_user is not None
-        result = buy_pass_levels(int(session_user.get("id") or 0), levels)
-        if not result.get("ok"):
-            return _error(
-                f"Insufficient Coins (Need {int(result.get('cost') or 0):,})",
-                str(result.get("error") or "buy_level_failed"),
-            )
-        return JSONResponse(
-            {
-                "status": "success",
-                "message": f"Bought {int(result['levels'])} levels for {int(result['cost']):,} Coins!",
-            }
-        )
+        return _error("level_purchase_disabled", "Os níveis da temporada são conquistados pelo XP real do Source.")
 
     def claim_bank(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
             return error
-        assert session_user is not None
-        state = get_pass_state(int(session_user.get("id") or 0))
-        if normalize_pass_tier(state.get("pass_type")) == "free":
-            return _error("Must upgrade pass to claim bank.", "pass_required")
-        return _error("Bank is empty.", "bank_empty")
+        return _error("no_pass_bank", "A temporada AniNexus não usa cofre separado.")
 
-    def shop_hub(authorization: str = Header(default="")):
-        session_user, error = _auth(authorization)
-        if error:
-            return error
-        assert session_user is not None
-        user_id = int(session_user.get("id") or 0)
-        wallet = get_wallet(user_id)
-        state = get_pass_state(user_id)
-        now = datetime.now(timezone.utc)
-        reset_at = (now + timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        return JSONResponse(
-            {
-                "balance": int(wallet.get("shards") or 0),
-                "zenith": int(wallet.get("zenith") or 0),
-                "pass_type": normalize_pass_tier(state.get("pass_type")),
-                "characters_rarity": "Various",
-                "rotation_date": now.date().isoformat(),
-                "reset_at": reset_at.isoformat(),
-                "exchange_rate": 10_000,
-            }
-        )
-
-    def exchange_data(authorization: str = Header(default="")):
-        session_user, error = _auth(authorization)
-        if error:
-            return error
-        assert session_user is not None
-        wallet = get_wallet(int(session_user.get("id") or 0))
-        return JSONResponse(
-            {
-                "balance": int(wallet.get("shards") or 0),
-                "zenith": int(wallet.get("zenith") or 0),
-                "rate": 10_000,
-                "minimum_shards": 10_000,
-                "minimum_zenith": 1,
-            }
-        )
-
-    router.add_api_route("/me", me, methods=["GET"])
     router.add_api_route("/achievements/list", achievements, methods=["GET"])
     router.add_api_route("/quests", quests, methods=["GET"])
     router.add_api_route("/quests/claim/{quest_id}", claim_quest_endpoint, methods=["POST"])
@@ -354,6 +273,4 @@ def build_seal_progression_router() -> APIRouter:
     router.add_api_route("/claim_level/{level}", claim_level, methods=["POST"])
     router.add_api_route("/buy_level", buy_level, methods=["POST"])
     router.add_api_route("/claim_bank", claim_bank, methods=["POST"])
-    router.add_api_route("/shop/hub", shop_hub, methods=["GET"])
-    router.add_api_route("/shop/exchange", exchange_data, methods=["GET"])
     return router
