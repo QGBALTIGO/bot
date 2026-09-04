@@ -41,6 +41,24 @@ def test_real_aninexus_routers_are_registered_before_compatibility_fallback():
         assert source.index(marker) < compat_position
 
 
+def test_compat_layer_does_not_shadow_real_aninexus_routes():
+    compat = _read("webapp_routes/aninexus_compat.py")
+    for route in (
+        "/achievements/list",
+        "/quests",
+        "/pass_data",
+        "/shop/hub",
+        "/shop/exchange",
+        "/shop/pets",
+        "/social/referrals",
+        "/social/referrals/stats",
+        "/minigames/state",
+        "/trade/offers",
+        "/leaderboard",
+    ):
+        assert f'@router.get("{route}")' not in compat
+
+
 def test_games_use_server_side_pet_modifiers_and_source_rewards():
     source = _read("database_aninexus_games.py")
     assert "active_pet_modifiers" in source
