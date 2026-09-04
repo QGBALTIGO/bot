@@ -14,6 +14,7 @@ from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
+from webapp_routes.catalog import router as catalog_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
@@ -86,6 +87,18 @@ def _install_runtime_routes() -> None:
     if not terms_paths.issubset(registered_paths):
         app.include_router(terms_router)
         registered_paths.update(terms_paths)
+
+    catalog_paths = {
+        "/api/letters",
+        "/api/catalogo",
+        "/catalogo",
+        "/api/mangas/letters",
+        "/api/mangas/catalogo",
+        "/mangas",
+    }
+    if not catalog_paths.issubset(registered_paths):
+        app.include_router(catalog_router)
+        registered_paths.update(catalog_paths)
 
     if "/menu" not in registered_paths:
         app.include_router(profile_page_router)
