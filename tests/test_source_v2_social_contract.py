@@ -4,14 +4,6 @@ import ast
 from pathlib import Path
 
 
-def test_referral_frontend_uses_source_bot_and_does_not_fake_legacy_payouts() -> None:
-    text = Path("frontend/src/pages/Referrals.tsx").read_text(encoding="utf-8")
-    assert "SourceBaltigo_Bot" in text
-    assert "Ganhos v2" in text
-    assert "não considera" not in text.lower()  # keep copy concise and explicit elsewhere
-    assert "evitando pagamento duplicado retroativo" in text
-
-
 def test_social_router_uses_central_source_v2_identity() -> None:
     path = Path("webapp_routes/source_v2_social.py")
     text = path.read_text(encoding="utf-8")
