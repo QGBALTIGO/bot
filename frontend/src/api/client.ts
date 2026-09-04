@@ -278,17 +278,6 @@ export async function apiFetch(
   const url = `${API_BASE}${endpoint}`;
   const method = options.method || 'GET';
   const headers = mergeHeaders(options.headers);
-  // Source Baltigo keeps Telegram initData as the canonical request identity.
-  // The imported frontend may still use its local session token for compatibility,
-  // but private Source endpoints never trust a browser-supplied uid by itself.
-  const tg = getTg();
-  if (tg?.initData) {
-    headers['X-Telegram-Init-Data'] = tg.initData;
-  }
-  const telegramUserId = tg?.initDataUnsafe?.user?.id;
-  if (telegramUserId) {
-    headers['X-WebApp-Uid'] = String(telegramUserId);
-  }
   const { timeoutMs, ...fetchOptions } = options as ApiRequestInit;
 
   if (sessionToken) {

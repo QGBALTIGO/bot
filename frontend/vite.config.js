@@ -8,8 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Keep the new MiniApp isolated from the legacy WebApp while both coexist.
-  base: process.env.VITE_BASE_PATH || '/v2/',
   plugins: [react(), tailwindcss()],
   build: {
     outDir: 'dist',

@@ -36,28 +36,29 @@ export const Referrals = () => {
     error,
   } = useApi<Referral[]>('/social/referrals', { initialData: [] });
   const { data: stats } = useApi<ReferralStats>('/social/referrals/stats');
-  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot').replace(/^@/, '');
+  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'SealYourWaifuBot').replace(/^@/, '');
   const referralLink = user?.id ? `https://t.me/${botUsername}?start=ref_${user.id}` : '';
   const referralCount = stats?.invited_count ?? referrals?.length ?? 0;
-  const earnedCoins = stats?.earned_shards ?? 0;
-  const referrerRewardCoins = stats?.referrer_reward_shards ?? 500;
+  const earnedShards = stats?.earned_shards ?? referralCount * 500;
+  const referrerRewardShards = stats?.referrer_reward_shards ?? 500;
   const referrerRewardXp = stats?.referrer_reward_xp ?? 50;
-  const referredRewardCoins = stats?.referred_reward_shards ?? 1500;
+  const referredRewardShards = stats?.referred_reward_shards ?? 1500;
+  const referredRewardPet = stats?.referred_reward_pet ?? 'blaze_fang';
 
   const copyToClipboard = async () => {
     if (!referralLink) return;
     try {
       await navigator.clipboard.writeText(referralLink);
       window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-      addToast('Link de indicação copiado.', 'success');
+      addToast('Referral link copied.', 'success');
     } catch {
-      addToast('Copie o link manualmente.', 'error');
+      addToast('Manual copy required.', 'error');
     }
   };
 
   const shareReferral = () => {
     if (!referralLink) return;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Vem para o Source Baltigo — colecione personagens, jogue e evolua sua coleção.')}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Join me on SEAL — hatch and collect anime waifus. Starter perks for new collectors.')}`;
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     if (window.Telegram?.WebApp?.openTelegramLink) {
       window.Telegram.WebApp.openTelegramLink(shareUrl);
@@ -83,10 +84,10 @@ export const Referrals = () => {
       <header className="space-y-1">
         <div className="flex items-center gap-2.5">
           <UserPlus className="text-brand-accent" size={20} />
-          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Indicações</h1>
+          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Recruitment</h1>
         </div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-          Convide amigos e evolua a rede Source
+          Invite friends, earn Coins
         </p>
       </header>
 
@@ -94,10 +95,10 @@ export const Referrals = () => {
         <Card variant="surface" className="p-6 space-y-6">
           <div className="space-y-2 text-center sm:text-left">
             <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-              Seu link de indicação
+              Your Referral Link
             </p>
             <div className="px-4 py-3 bg-zinc-950 border border-white/5 rounded-md font-mono text-[11px] text-brand-accent break-all select-all">
-              {referralLink || 'INICIALIZANDO...'}
+              {referralLink || 'INITIALIZING...'}
             </div>
           </div>
 
@@ -109,7 +110,7 @@ export const Referrals = () => {
               className="h-12"
               leftIcon={<Send size={16} />}
             >
-              Compartilhar
+              Share Link
             </Button>
             <Button
               variant="secondary"
@@ -118,7 +119,7 @@ export const Referrals = () => {
               className="h-12"
               leftIcon={<Copy size={16} />}
             >
-              Copiar link
+              Copy Link
             </Button>
           </div>
         </Card>
@@ -127,7 +128,7 @@ export const Referrals = () => {
           <Card variant="default" className="p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Amigos
+                Friends joined
               </span>
               <UserPlus size={14} className="text-zinc-500" />
             </div>
@@ -139,13 +140,13 @@ export const Referrals = () => {
           <Card variant="default" className="p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Ganhos v2
+                Credits
               </span>
               <Gem size={14} className="text-zinc-500" />
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-mono font-bold text-zinc-100">
-                {formatNumber(earnedCoins)}
+                {formatNumber(earnedShards)}
               </span>
               <span className="text-[9px] font-bold text-zinc-600 uppercase">Coins</span>
             </div>
@@ -155,7 +156,7 @@ export const Referrals = () => {
 
       <section className="space-y-4">
         <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-1">
-          Recompensas futuras da v2
+          Rewards
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Card variant="default" className="p-4 flex items-center gap-4">
@@ -164,10 +165,10 @@ export const Referrals = () => {
             </div>
             <div>
               <p className="text-[8px] font-bold text-brand-accent uppercase tracking-widest mb-0.5">
-                VOCÊ RECEBE
+                YOU GET
               </p>
               <p className="text-xs font-bold text-zinc-100 uppercase">
-                {formatNumber(referrerRewardCoins)} Coins + {formatNumber(referrerRewardXp)} XP
+                {formatNumber(referrerRewardShards)} Coins + {formatNumber(referrerRewardXp)} XP
               </p>
             </div>
           </Card>
@@ -177,26 +178,23 @@ export const Referrals = () => {
             </div>
             <div>
               <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mb-0.5">
-                O CONVIDADO RECEBE
+                THEY GET
               </p>
               <p className="text-xs font-bold text-zinc-100 uppercase">
-                {formatNumber(referredRewardCoins)} Coins + bônus inicial
+                {formatNumber(referredRewardShards)} Coins + {referredRewardPet.replace(/_/g, ' ')} pet
               </p>
             </div>
           </Card>
         </div>
-        <p className="text-[9px] text-zinc-600 leading-relaxed">
-          Indicações antigas continuam registradas. O contador de ganhos acima só considera o novo ledger da v2 quando ele for ativado, evitando pagamento duplicado retroativo.
-        </p>
       </section>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
-            Amigos indicados
+            Invited friends
           </h2>
           <Badge variant="secondary" size="xs">
-            {referrals?.length || 0} registrados
+            {referrals?.length || 0} joined
           </Badge>
         </div>
 
@@ -204,7 +202,7 @@ export const Referrals = () => {
           {error ? (
             <div className="py-12">
               <ErrorState
-                message="Não foi possível carregar seu histórico de indicações."
+                message="Could not load your invite history."
                 onAction={() => window.location.reload()}
               />
             </div>
@@ -228,9 +226,11 @@ export const Referrals = () => {
                       {referral.referred_name}
                     </span>
                   </div>
-                  <Badge variant={referral.rewarded ? 'success' : 'secondary'} size="xs">
-                    {referral.rewarded ? 'RECOMPENSADO' : 'REGISTRADO'}
-                  </Badge>
+                  {referral.rewarded && (
+                    <Badge variant="success" size="xs">
+                      VERIFIED
+                    </Badge>
+                  )}
                 </Card>
               ))}
             </m.div>
@@ -240,7 +240,7 @@ export const Referrals = () => {
                 <Share2 size={24} />
               </div>
               <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">
-                Nenhuma indicação ainda
+                Network Empty
               </p>
             </div>
           )}

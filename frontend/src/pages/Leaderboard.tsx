@@ -83,7 +83,7 @@ export const Leaderboard = () => {
 
     const connect = () => {
       try {
-        ws = new WebSocket(wsUrl, [`source-token.${token}`]);
+        ws = new WebSocket(wsUrl, [`seal-token.${token}`]);
       } catch {
         return;
       }

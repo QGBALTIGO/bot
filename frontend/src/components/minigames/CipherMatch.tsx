@@ -33,6 +33,8 @@ export const CipherMatch = ({
   const matchesRef = useRef(0);
   const timeoutsRef = useRef<number[]>([]);
 
+  // Cancel pending flip timeouts on unmount (e.g. user aborts mid-game) so
+  // they can't fire setState/onComplete after the game is gone.
   useEffect(() => {
     return () => {
       for (const t of timeoutsRef.current) window.clearTimeout(t);
@@ -42,6 +44,7 @@ export const CipherMatch = ({
   useEffect(() => {
     if (!session.cards) return;
     const doubled = [...session.cards, ...session.cards];
+    // Fisher-Yates: sort(() => random) is not a uniform shuffle.
     for (let i = doubled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       const a = doubled[i];
@@ -99,6 +102,8 @@ export const CipherMatch = ({
             });
             setMatches(nextMatches);
             setFlippedIndices([]);
+            // Fire outside the state updater: React may invoke updaters more
+            // than once, which would double-submit the reward.
             if (nextMatches === session.cards!.length) {
               onComplete(nextMatches);
             }
@@ -173,7 +178,7 @@ export const CipherMatch = ({
 
       <div className="grid grid-cols-4 gap-2">
         {cards.map((card, idx) => (
-          <div key={card.key} className="aspect-[2/3] perspective-1000">
+          <div key={card.key} className="aspect-[3/4] perspective-1000">
             <m.div
               initial={false}
               animate={{ rotateY: card.isFlipped || card.isMatched ? 180 : 0 }}
@@ -181,6 +186,7 @@ export const CipherMatch = ({
               className="relative w-full h-full preserve-3d"
               onClick={() => handleCardClick(idx)}
             >
+              {/* Front (Hidden) */}
               <div className="absolute inset-0 backface-hidden rounded-lg bg-zinc-900 border border-white/5 flex items-center justify-center cursor-pointer overflow-hidden group">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.05)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity" />
                 <Scan
@@ -192,6 +198,7 @@ export const CipherMatch = ({
                 </div>
               </div>
 
+              {/* Back (Visible) */}
               <div className="absolute inset-0 backface-hidden rounded-lg bg-zinc-100 border border-white overflow-hidden rotateY-180">
                 <img
                   src={card.img_url}

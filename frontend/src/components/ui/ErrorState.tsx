@@ -11,7 +11,7 @@ interface ErrorStateProps {
 
 export const ErrorState = ({
   title = 'Connection failed',
-  message = 'Não foi possível acessar o servidor do Source. Verifique sua conexão e tente novamente.',
+  message = 'Could not reach the SEAL server. Check your connection and retry.',
   actionLabel = 'Try again',
   onAction,
 }: ErrorStateProps) => (

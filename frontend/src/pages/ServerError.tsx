@@ -28,7 +28,7 @@ export const ServerError = ({ onRetry }: { onRetry: () => void }) => {
             Something broke on our end
           </p>
           <p className="text-xs font-medium text-zinc-500 leading-relaxed max-w-[260px] mx-auto uppercase tracking-widest pt-4">
-            O servidor do Source encontrou um erro. Tente novamente em instantes.
+            The SEAL server hit an error. Try again in a moment.
           </p>
         </div>
 

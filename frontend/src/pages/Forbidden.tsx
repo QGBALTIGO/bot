@@ -28,7 +28,7 @@ export const Forbidden = ({ onReset }: { onReset: () => void }) => {
             Staff only
           </p>
           <p className="text-xs font-medium text-zinc-500 leading-relaxed max-w-[260px] mx-auto uppercase tracking-widest pt-4">
-            Esta área é restrita à equipe Source.
+            This area is limited to the SEAL team.
           </p>
         </div>
 
