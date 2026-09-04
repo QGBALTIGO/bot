@@ -135,3 +135,54 @@ def test_profile_country_contract_is_preserved() -> None:
     assert "COUNTRY_OPTIONS = [" not in legacy
     assert "LANGUAGE_OPTIONS = [" not in legacy
     assert "from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS" in legacy
+
+
+def test_profile_collection_and_favorite_routes_live_outside_monolith() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    module = (ROOT / "webapp_routes" / "profile_collection.py").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "webapp_entrypoint.py").read_text(encoding="utf-8")
+
+    assert '@app.get("/api/menu/collection-characters")' not in legacy
+    assert '@app.post("/api/menu/favorite")' not in legacy
+    assert '@router.get("/api/menu/collection-characters")' in module
+    assert '@router.post("/api/menu/favorite")' in module
+    assert "profile_collection_router" in entrypoint
+    assert "app.include_router(profile_collection_router)" in entrypoint
+
+
+def test_profile_favorite_ownership_contract_is_preserved() -> None:
+    module = (ROOT / "webapp_routes" / "profile_collection.py").read_text(encoding="utf-8")
+
+    assert "resolve_webapp_user as _resolve_webapp_user" in module
+    assert '"Personagem inválido."' in module
+    assert "status_code=400" in module
+    assert "owned_ids = {" in module
+    assert '"Você só pode favoritar personagens da sua coleção."' in module
+    assert "status_code=403" in module
+    assert "set_profile_favorite(user_id, character_id)" in module
+
+
+def test_profile_collection_service_replaces_legacy_helper() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    service = (ROOT / "webapp_services" / "profile_collection.py").read_text(encoding="utf-8")
+
+    assert "def _menu_collection_characters(" not in legacy
+    assert "menu_collection_characters as _menu_collection_characters" in legacy
+    assert "def menu_collection_characters(" in service
+    assert '(item["anime"] or "").lower()' in service
+    assert '(item["name"] or "").lower()' in service
+    assert '"quantity": qty' in service
+
+
+def test_web_image_url_replaces_legacy_helper() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    utility = (ROOT / "utils" / "web_image_url.py").read_text(encoding="utf-8")
+
+    assert "def _web_image_url(" not in legacy
+    assert "web_image_url as _web_image_url" in legacy
+    assert "DIRECT_IMAGE_HOSTS = {" not in legacy
+    assert "def web_image_url(" in utility
+    assert '"s4.anilist.co"' in utility
+    assert '"img.anili.st"' in utility
+    assert 'host == "w.wallhaven.cc"' in utility
+    assert '"/api/image-proxy?crop=portrait&url=' in utility

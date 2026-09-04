@@ -19,7 +19,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
+from utils.web_image_url import web_image_url as _web_image_url
 from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS
+from webapp_services.profile_collection import menu_collection_characters as _menu_collection_characters
 from utils.webapp_identity import (
     build_fallback_webapp_user as _build_fallback_webapp_user,
     coerce_positive_uid as _coerce_positive_uid,
@@ -94,10 +96,6 @@ TOP_BANNER_URL = os.getenv(
 BACKGROUND_URL = os.getenv("BACKGROUND_URL", "").strip()  # URL pública (pode ficar vazio)
 EMPTY_BG_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
 
-DIRECT_IMAGE_HOSTS = {
-    "s4.anilist.co",
-    "img.anili.st",
-}
 
 
 INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "").strip()
@@ -168,28 +166,6 @@ def _guess_image_media_type(url: str) -> str:
     return "image/jpeg"
 
 
-def _web_image_url(url: Any) -> str:
-    value = str(url or "").strip()
-    if not value:
-        return ""
-
-    if value.startswith(("data:", "/api/image-proxy?")):
-        return value
-    if is_own_image_proxy_url(value):
-        return value
-
-    parsed = urlparse(value)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        return value
-
-    host = (parsed.hostname or "").strip().lower()
-    if host in DIRECT_IMAGE_HOSTS:
-        return value
-
-    encoded = quote(value, safe="")
-    if host == "w.wallhaven.cc":
-        return f"/api/image-proxy?crop=portrait&url={encoded}"
-    return f"/api/image-proxy?url={encoded}"
 
 
 
@@ -3212,34 +3188,6 @@ def _menu_user_payload(uid: int) -> Dict[str, Any]:
     }
 
 
-def _menu_collection_characters(uid: int) -> List[Dict[str, Any]]:
-    rows = get_user_card_collection(uid) or []
-    out: List[Dict[str, Any]] = []
-
-    for row in rows:
-        cid = int(row.get("character_id") or 0)
-        qty = int(row.get("quantity") or 0)
-        if cid <= 0 or qty <= 0:
-            continue
-
-        try:
-            ch = get_character_by_id(cid)
-        except Exception:
-            ch = None
-
-        if not ch:
-            continue
-
-        out.append({
-            "id": cid,
-            "name": str(ch.get("name") or "").strip(),
-            "anime": str(ch.get("anime") or "").strip(),
-            "image": _web_image_url(ch.get("image")),
-            "quantity": qty,
-        })
-
-    out.sort(key=lambda x: ((x["anime"] or "").lower(), (x["name"] or "").lower(), int(x["id"])))
-    return out
 
 
 MENU_HTML = """<!doctype html>
@@ -3994,51 +3942,8 @@ def api_menu_profile(
     return JSONResponse(_menu_user_payload(int(ctx["user_id"])))
 
 
-@app.get("/api/menu/collection-characters")
-def api_menu_collection_characters(
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    return JSONResponse({
-        "ok": True,
-        "items": _menu_collection_characters(int(ctx["user_id"])),
-    })
 
 
-@app.post("/api/menu/favorite")
-def api_menu_favorite(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    user_id = int(ctx["user_id"])
-    try:
-        character_id = int(payload.get("character_id") or 0)
-    except (TypeError, ValueError):
-        character_id = 0
-    if character_id <= 0:
-        return JSONResponse({"ok": False, "message": "Personagem inválido."}, status_code=400)
-
-    owned_ids = {int(item["id"]) for item in _menu_collection_characters(user_id)}
-    if character_id not in owned_ids:
-        return JSONResponse({
-            "ok": False,
-            "message": "Você só pode favoritar personagens da sua coleção.",
-        }, status_code=403)
-
-    set_profile_favorite(user_id, character_id)
-    return {"ok": True}
 
 
 @app.post("/api/menu/delete-account")
