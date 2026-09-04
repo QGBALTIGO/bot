@@ -188,8 +188,9 @@ export const MediaAdmin = () => {
   };
 
   useEffect(() => {
-    if (!selected && results.length === 1) void loadAssets(results[0]);
-  }, [results]);
+    const onlyResult = results[0];
+    if (!selected && results.length === 1 && onlyResult) void loadAssets(onlyResult);
+  }, [results, selected]);
 
   return (
     <div className="pt-6 max-w-4xl mx-auto adaptive-px space-y-8">

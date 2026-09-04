@@ -3480,6 +3480,12 @@ def delete_user_account(user_id: int) -> Dict[str, Any]:
                         (user_id, user_id),
                     )
 
+                if _optional_table_exists_locked(cur, "aninexus_character_assets"):
+                    cur.execute(
+                        "UPDATE aninexus_character_assets SET uploaded_by = 0 WHERE uploaded_by = %s",
+                        (user_id,),
+                    )
+
                 cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
                 conn.commit()
                 return {

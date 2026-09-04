@@ -511,13 +511,6 @@ def build_aninexus_compat_router() -> APIRouter:
             return _unauthorized(str(exc))
         return JSONResponse(None)
 
-    @router.get("/battle/stats")
-    def battle_stats(authorization: str = Header(default="")):
-        try:
-            _require_user(authorization)
-        except PermissionError as exc:
-            return _unauthorized(str(exc))
-        return JSONResponse(None)
 
     @router.get("/admin/rarities")
     def admin_rarities(authorization: str = Header(default="")):

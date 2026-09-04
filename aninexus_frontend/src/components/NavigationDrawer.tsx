@@ -78,7 +78,7 @@ const SECTIONS: NavSection[] = [
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
-  { id: 'upload', label: 'Cadastro', icon: Satellite },
+  { id: 'upload', label: 'Artes 2:3', icon: Satellite },
   { id: 'staff', label: 'Equipe', icon: Users },
 ];
 
