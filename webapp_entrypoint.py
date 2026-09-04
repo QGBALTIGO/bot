@@ -28,6 +28,7 @@ from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
 from webapp_routes.source_v2_compat import router as source_v2_compat_router
 from webapp_routes.source_v2_minigames import router as source_v2_minigames_router
+from webapp_routes.source_v2_shop import router as source_v2_shop_router
 from webapp_routes.source_v2_social import router as source_v2_social_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
@@ -143,6 +144,17 @@ def _install_runtime_routes() -> None:
     if not v2_minigame_paths.issubset(registered_paths):
         app.include_router(source_v2_minigames_router)
         registered_paths.update(v2_minigame_paths)
+
+    v2_shop_paths = {
+        "/api/v1_7b82/shop/hub",
+        "/api/v1_7b82/shop/exchange",
+        "/api/v1_7b82/shop/exchange/{direction}",
+        "/api/v1_7b82/shop/characters",
+        "/api/v1_7b82/shop/buy/character/{character_id}",
+    }
+    if not v2_shop_paths.issubset(registered_paths):
+        app.include_router(source_v2_shop_router)
+        registered_paths.update(v2_shop_paths)
 
     terms_paths = {
         "/terms",
