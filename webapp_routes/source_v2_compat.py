@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 
 from cards_service import build_cards_final_data
-from utils.webapp_identity import resolve_webapp_user
+from utils.runtime_guard import AsyncRateLimiter
+from utils.webapp_identity import (
+    build_fallback_webapp_user,
+    get_tg_user,
+    resolve_webapp_user,
+)
+from utils.webapp_session import (
+    WebAppSessionError,
+    bearer_token,
+    create_session_token,
+    validate_session_token,
+)
 from webapp_services.source_v2_compat import (
     build_source_collection,
     build_source_gallery,
@@ -14,24 +26,69 @@ from webapp_services.source_v2_compat import (
 )
 
 router = APIRouter(prefix="/api/v1_7b82", tags=["source-v2-compat"])
+_secure_init_limiter = AsyncRateLimiter(max_keys=10_000, cleanup_interval=60.0)
 
 
 def _identity(
     *,
     x_telegram_init_data: str,
     x_webapp_uid: str,
+    authorization: str = "",
 ) -> dict[str, Any]:
-    return resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-    )
+    # Prefer fresh Telegram-signed identity whenever the MiniApp still has it.
+    if str(x_telegram_init_data or "").strip():
+        return resolve_webapp_user(
+            x_telegram_init_data=x_telegram_init_data,
+            x_webapp_uid=x_webapp_uid,
+        )
+
+    token = bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="telegram_init_data_or_session_required")
+    try:
+        session = validate_session_token(token)
+    except WebAppSessionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc) or "session_invalid") from exc
+
+    identity = build_fallback_webapp_user(int(session["user_id"]))
+    identity["auth_mode"] = "source_session"
+    return identity
+
+
+@router.post("/secure_init")
+async def secure_init(request: Request, payload: dict = Body(...)):
+    client_key = request.client.host if request.client else "unknown"
+    if not await _secure_init_limiter.allow(f"secure_init:{client_key}", 10, 60.0):
+        raise HTTPException(status_code=429, detail="too_many_requests")
+
+    init_data = str(payload.get("initData") or "").strip()
+    provided_token = str(payload.get("token") or "").strip()
+
+    if init_data:
+        try:
+            identity = get_tg_user(init_data)
+        except HTTPException:
+            identity = None
+        if identity:
+            return {"token": create_session_token(int(identity["user_id"]))}
+
+    if provided_token:
+        try:
+            session = validate_session_token(provided_token)
+        except WebAppSessionError:
+            session = None
+        if session:
+            # Refresh expiry without changing user identity.
+            return {"token": create_session_token(int(session["user_id"]))}
+
+    raise HTTPException(status_code=403, detail="authentication_failed")
 
 
 @router.get("/bot/info")
 def bot_info():
     return {
         "name": "SOURCE BALTIGO",
-        "username": "",
+        "username": str(os.getenv("BOT_USERNAME", "SourceBaltigo_Bot") or "SourceBaltigo_Bot").lstrip("@"),
         "id": None,
         "avatar": "",
     }
@@ -41,10 +98,12 @@ def bot_info():
 def me(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     identity = _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     return build_source_me(int(identity["user_id"]), identity)
 
@@ -57,10 +116,12 @@ def harem(
     rarity: str = Query(default=""),
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     identity = _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     _, _, items = build_source_collection(int(identity["user_id"]))
     return paginate_items(items, page=page, limit=limit, search=search, rarity=rarity)
@@ -74,10 +135,12 @@ def gallery(
     rarity: str = Query(default=""),
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     identity = _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     items = build_source_gallery(int(identity["user_id"]))
     return paginate_items(items, page=page, limit=limit, search=search, rarity=rarity)
@@ -85,8 +148,8 @@ def gallery(
 
 @router.get("/rarities")
 def rarities():
-    # O sistema de raridades do Seal será portado como domínio próprio.
-    # Até a migration, todos os cards atuais pertencem ao pool estável Standard.
+    # Rarity persistence is already reserved by migration 001; until character
+    # assignments are migrated, legacy Source cards remain in the Standard pool.
     return ["Standard"]
 
 
@@ -94,10 +157,12 @@ def rarities():
 def marriage(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     return None
 
@@ -106,10 +171,12 @@ def marriage(
 def battle_stats(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     return {
         "total_battles": 0,
@@ -123,10 +190,12 @@ def battle_stats(
 def achievements_list(
     x_telegram_init_data: str = Header(default=""),
     x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
 ):
     _identity(
         x_telegram_init_data=x_telegram_init_data,
         x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
     )
     return []
 
@@ -139,6 +208,7 @@ def compat_status():
         "version": "source-v2-seal-fusion",
         "catalog_characters": len(data.get("characters_by_id") or {}),
         "implemented": [
+            "/secure_init",
             "/me",
             "/harem",
             "/gallery",
