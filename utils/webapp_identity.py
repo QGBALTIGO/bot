@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 from fastapi import HTTPException
 
-from database import create_or_get_user
 from utils.telegram_webapp_auth import (
     TelegramWebAppAuthError,
     validate_telegram_init_data,
@@ -30,6 +29,14 @@ def verify_telegram_init_data(init_data: str) -> dict:
     }
 
 
+def _ensure_user(user_id: int) -> None:
+    """Persiste o usuário somente quando uma identidade precisa ser materializada."""
+
+    from database import create_or_get_user
+
+    create_or_get_user(int(user_id))
+
+
 def get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
     payload = verify_telegram_init_data(x_telegram_init_data)
     user = payload["user"]
@@ -45,7 +52,7 @@ def get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
         if p
     ).strip()
 
-    create_or_get_user(user_id)
+    _ensure_user(user_id)
     return {
         "user_id": user_id,
         "username": username,
@@ -71,7 +78,7 @@ def build_fallback_webapp_user(user_id: int) -> Dict[str, Any]:
     if user_id <= 0:
         raise HTTPException(status_code=401, detail="uid ausente")
 
-    create_or_get_user(user_id)
+    _ensure_user(user_id)
     row = get_user_status(user_id) or {}
 
     return {
