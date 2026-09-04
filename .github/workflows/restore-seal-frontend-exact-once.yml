@@ -1,0 +1,48 @@
+name: Restore Seal frontend exact once
+
+on:
+  push:
+    branches:
+      - v2/seal-fusion
+    paths:
+      - .github/workflows/restore-seal-frontend-exact-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/seal-fusion
+          fetch-depth: 0
+
+      - name: Checkout exact Seal upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/seal
+          git clone https://github.com/bisug/seal-your-waifu-bot.git /tmp/seal
+          git -C /tmp/seal checkout d9caac8e146d4b8c2d389e2ae220699b9a819a0d
+
+      - name: Mirror frontend byte-for-byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf frontend
+          cp -a /tmp/seal/frontend ./frontend
+          diff -qr /tmp/seal/frontend ./frontend
+
+      - name: Commit exact mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/restore-seal-frontend-exact-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: restaurar frontend do Seal exatamente como upstream"
+          git push origin HEAD:v2/seal-fusion
