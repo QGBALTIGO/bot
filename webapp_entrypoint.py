@@ -17,6 +17,7 @@ from webapp_routes.account import router as account_router
 from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.aninexus_me import build_aninexus_me_router
+from webapp_routes.aninexus_pets import build_aninexus_pets_router
 from webapp_routes.aninexus_ranking import build_aninexus_ranking_router
 from webapp_routes.aninexus_shop import build_aninexus_shop_router
 from webapp_routes.aninexus_social import build_aninexus_social_router
@@ -34,10 +35,7 @@ from webapp_routes.aninexus_progression import build_aninexus_progression_router
 from webapp_routes.aninexus_runtime import install_aninexus_runtime
 from webapp_routes.source_v2 import build_source_v2_router
 from webapp_routes.terms import build_terms_router
-from webapp_services.collection import (
-    collection_cards_from_snapshot,
-    collection_snapshot,
-)
+from webapp_services.collection import collection_cards_from_snapshot, collection_snapshot
 
 channel_router = build_channel_router(
     resolve_webapp_user=resolve_webapp_user,
@@ -65,6 +63,7 @@ source_v2_router = build_source_v2_router(banner_url=TOP_BANNER_URL)
 aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
 aninexus_me_router = build_aninexus_me_router()
+aninexus_pets_router = build_aninexus_pets_router()
 aninexus_ranking_router = build_aninexus_ranking_router()
 aninexus_shop_router = build_aninexus_shop_router()
 aninexus_social_router = build_aninexus_social_router()
@@ -140,6 +139,22 @@ def _install_runtime_routes() -> None:
     if not aninexus_social_paths.issubset(registered_paths):
         app.include_router(aninexus_social_router)
         registered_paths.update(aninexus_social_paths)
+
+    aninexus_pets_paths = {
+        "/api/v1_7b82/shop/pets",
+        "/api/v1_7b82/shop/buy/pet/{pet_ref}",
+        "/api/v1_7b82/pets/set_active/{pet_ref}",
+        "/api/v1_7b82/pets/feed",
+        "/api/v1_7b82/pets/train",
+        "/api/v1_7b82/eggs/incubate/{egg_id}",
+        "/api/v1_7b82/eggs/hatch/{egg_id}",
+        "/api/v1_7b82/eggs/sell/{egg_id}",
+        "/api/v1_7b82/eggs/purify/{egg_id}",
+        "/api/v1_7b82/eggs/fuse/{tier}",
+    }
+    if not aninexus_pets_paths.issubset(registered_paths):
+        app.include_router(aninexus_pets_router)
+        registered_paths.update(aninexus_pets_paths)
 
     aninexus_progression_paths = {
         "/api/v1_7b82/achievements/list",
