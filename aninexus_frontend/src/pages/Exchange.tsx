@@ -1,384 +1,174 @@
-import { AlertCircle, BadgePercent, Coins, Gem, RefreshCw, Repeat2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { apiFetch, getErrorMessage, invalidateQueries } from '../api/client';
+import { Coins, Dices, History, RefreshCw, Star, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ErrorState } from '../components/ui/ErrorState';
-import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/Skeleton';
-import { useToast } from '../components/ui/Toast';
-import { useUser } from '../context/UserContext';
 import { useApi } from '../hooks/useApi';
 import { cn, formatNumber } from '../utils';
 
-type ExchangeMode = 'shards_to_zenith' | 'zenith_to_shards';
-
-interface ExchangeData {
-  balance: number;
-  zenith: number;
-  rate: number;
-  minimum_shards: number;
-  minimum_zenith: number;
+interface EconomyTransaction {
+  id: number;
+  type: string;
+  amount: number;
+  balance_after?: number | null;
+  reference_id?: number | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
-const getModeCopy = (mode: ExchangeMode) => {
-  if (mode === 'shards_to_zenith') {
-    return {
-      inputLabel: 'COINS',
-      outputLabel: 'PRISMS',
-    };
-  }
+interface EconomyData {
+  coins: number;
+  dados: number;
+  level: number;
+  xp: number;
+  received: number;
+  spent: number;
+  transactions: EconomyTransaction[];
+}
 
-  return {
-    inputLabel: 'PRISMS',
-    outputLabel: 'COINS',
+const txLabel = (type: string) => {
+  const labels: Record<string, string> = {
+    sell_character: 'Venda de personagem',
+    buyback_character: 'Recompra de personagem',
+    buy_dado: 'Compra de Dado',
+    buy_nickname: 'Alteração de nickname',
+    buy_xcard_daily: 'Compra de XCard',
+    aninexus_buy_dado: 'Compra de Dado',
+    aninexus_referral_reward: 'Recompensa de indicação',
+    duel_entry_refund: 'Reembolso de duelo',
+    duel_entry_refund_account_deleted: 'Reembolso de duelo',
+    message_refund_account_deleted: 'Reembolso de mensagem',
   };
+  return labels[type] || type.replace(/_/g, ' ');
 };
 
-const toPositiveNumber = (value: unknown, fallback: number) => {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+const formatDate = (raw: string) => {
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 };
 
 export const Exchange = () => {
-  const { user, refreshUser } = useUser();
-  const { addToast } = useToast();
-  const { data, loading, error, execute: fetchExchange } = useApi<ExchangeData>('/shop/exchange');
-  const [mode, setMode] = useState<ExchangeMode>('shards_to_zenith');
-  const [amount, setAmount] = useState('10000');
-  const [exchanging, setExchanging] = useState(false);
+  const { data, loading, error, execute: refresh } = useApi<EconomyData>('/economy?limit=60');
 
-  const shardBalance = Math.max(0, Math.floor(Number(data?.balance ?? user?.balance ?? 0) || 0));
-  const zenithBalance = Math.max(
-    0,
-    Math.floor(Number(data?.zenith ?? user?.stats?.zenith ?? user?.zenith ?? 0) || 0),
-  );
-  const rate = Math.floor(toPositiveNumber(data?.rate, 10000));
-  const minimumShards = Math.floor(toPositiveNumber(data?.minimum_shards, rate));
-  const minimumZenith = Math.floor(toPositiveNumber(data?.minimum_zenith, 1));
-  const rawAmount = amount.trim();
-  const parsedAmount = Number(rawAmount);
-  const hasValidAmount =
-    rawAmount.length > 0 &&
-    Number.isFinite(parsedAmount) &&
-    parsedAmount > 0 &&
-    Number.isInteger(parsedAmount);
-  const amountNumber = hasValidAmount ? parsedAmount : 0;
-  const copy = getModeCopy(mode);
-  const isShardMode = mode === 'shards_to_zenith';
-  const outputAmount = isShardMode ? Math.floor(amountNumber / rate) : amountNumber * rate;
-  const minimumInputAmount = isShardMode ? minimumShards : minimumZenith;
-  const maxInputAmount = isShardMode ? Math.floor(shardBalance / rate) * rate : zenithBalance;
-  const canUseMax = maxInputAmount >= minimumInputAmount;
-
-  const validationMessage = useMemo(() => {
-    if (!rawAmount) return 'Enter amount';
-    if (!hasValidAmount) return 'Positive integers only';
-
-    if (isShardMode) {
-      if (amountNumber < minimumShards) return `Min: ${formatNumber(minimumShards)} Coins`;
-      if (amountNumber % rate !== 0) return `Use ${formatNumber(rate)} increments`;
-      if (shardBalance < amountNumber) return 'Insufficient Coins';
-      return null;
-    }
-
-    if (amountNumber < minimumZenith) return `Min: ${formatNumber(minimumZenith)} Prisms`;
-    if (zenithBalance < amountNumber) return 'Insufficient Prisms';
-    return null;
-  }, [
-    amountNumber,
-    hasValidAmount,
-    isShardMode,
-    minimumShards,
-    minimumZenith,
-    rate,
-    rawAmount,
-    shardBalance,
-    zenithBalance,
-  ]);
-
-  const canExchange = !validationMessage && outputAmount > 0;
-  const presetOptions = useMemo(() => {
-    const baseOptions = isShardMode
-      ? [
-          { label: '1 Prism', amount: rate },
-          { label: '5 Prisms', amount: rate * 5 },
-          { label: '10 Prisms', amount: rate * 10 },
-        ]
-      : [
-          { label: '1 Prism', amount: 1 },
-          { label: '5 Prisms', amount: 5 },
-          { label: '10 Prisms', amount: 10 },
-        ];
-    const options = [...baseOptions, { label: 'Max', amount: maxInputAmount }];
-    const seen = new Set<number>();
-
-    return options
-      .map((option) => ({ ...option, amount: Math.floor(option.amount) }))
-      .filter((option) => {
-        if (!Number.isFinite(option.amount) || option.amount <= 0 || seen.has(option.amount))
-          return false;
-        seen.add(option.amount);
-        return true;
-      });
-  }, [isShardMode, maxInputAmount, rate]);
-
-  const handleRefresh = async () => {
-    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-    await Promise.allSettled([fetchExchange(), refreshUser()]);
-  };
-
-  const handleSwapMode = () => {
-    const nextMode = isShardMode ? 'zenith_to_shards' : 'shards_to_zenith';
-    setMode(nextMode);
-    setAmount(nextMode === 'shards_to_zenith' ? String(rate) : String(minimumZenith));
-    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-  };
-
-  const handleExchange = async () => {
-    if (!canExchange || exchanging) return;
-
-    setExchanging(true);
-    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-    try {
-      const result = await apiFetch(`/shop/exchange/${mode}?amount=${amountNumber}`, {
-        method: 'POST',
-      });
-      addToast(result.message || 'Exchange successful.', 'success');
-      await Promise.allSettled([fetchExchange(), refreshUser()]);
-      invalidateQueries(['/shop/characters', '/shop/hub']);
-    } catch (err: any) {
-      addToast(getErrorMessage(err), 'error');
-    } finally {
-      setExchanging(false);
-    }
-  };
-
-  if (loading && !data)
+  if (loading && !data) {
     return (
       <div className="pt-6 adaptive-px max-w-2xl mx-auto space-y-8">
-        <div className="flex flex-col gap-1.5">
-          <Skeleton className="h-8 w-40 rounded-md" />
-          <Skeleton className="h-4 w-56 rounded-md opacity-50" />
+        <Skeleton className="h-8 w-40 rounded-md" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-md" />)}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-16 rounded-md" />
-          ))}
-        </div>
-        <Skeleton className="h-80 w-full rounded-md" />
+        <Skeleton className="h-80 rounded-md" />
       </div>
     );
+  }
 
-  if (error && !data)
+  if (error && !data) {
     return (
       <div className="pt-6 max-w-2xl mx-auto adaptive-px">
-        <ErrorState message={error} onAction={handleRefresh} />
+        <ErrorState message={error} onAction={refresh} />
       </div>
     );
+  }
+
+  const transactions = data?.transactions || [];
 
   return (
     <div className="pt-6 max-w-2xl mx-auto adaptive-px space-y-8">
-      <header className="space-y-6">
-        <div className="flex items-start justify-between gap-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <Repeat2 size={20} className="text-brand-accent" />
-              <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Currency</h1>
-            </div>
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-              Currency exchange
-            </p>
+      <header className="flex items-start justify-between gap-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <Coins size={20} className="text-brand-accent" />
+            <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Economia</h1>
           </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefresh}
-            isLoading={loading}
-            className="w-9 h-9 p-0"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </Button>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
+            Saldo e movimentações da sua conta
+          </p>
         </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[
-            { icon: Coins, label: 'Coins', value: formatNumber(shardBalance), variant: 'default' },
-            { icon: Gem, label: 'Prisms', value: formatNumber(zenithBalance), variant: 'primary' },
-            {
-              icon: BadgePercent,
-              label: 'Rate',
-              value: `${formatNumber(rate)}:1`,
-              variant: 'success',
-            },
-          ].map((metric, i) => (
-            <Card key={i} variant="default" className="p-3.5">
-              <div className="flex items-center gap-2 mb-2">
-                <metric.icon
-                  size={11}
-                  className={cn(
-                    metric.variant === 'primary'
-                      ? 'text-brand-accent'
-                      : metric.variant === 'success'
-                        ? 'text-emerald-500'
-                        : 'text-zinc-600',
-                  )}
-                />
-                <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                  {metric.label}
-                </span>
-              </div>
-              <p className="text-sm font-mono font-bold text-zinc-100 tabular-nums">
-                {metric.value}
-              </p>
-            </Card>
-          ))}
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => refresh()}
+          isLoading={loading}
+          className="w-9 h-9 p-0"
+          aria-label="Atualizar economia"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+        </Button>
       </header>
 
-      <section className="space-y-6">
-        <Card variant="surface" className="p-6 sm:p-8 space-y-8">
-          <div className="flex items-center justify-between gap-4 p-1 bg-zinc-950 rounded-md border border-white/5">
-            {[
-              { id: 'shards_to_zenith', label: 'Coins → Prisms' },
-              { id: 'zenith_to_shards', label: 'Prisms → Coins' },
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setMode(m.id as ExchangeMode);
-                  setAmount(m.id === 'shards_to_zenith' ? String(rate) : String(minimumZenith));
-                  window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-                }}
-                className={cn(
-                  'flex-1 h-9 rounded text-[10px] font-bold uppercase tracking-widest transition-all',
-                  mode === m.id ? 'bg-zinc-100 text-zinc-950' : 'text-zinc-500 hover:text-zinc-300',
-                )}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="flex-1 w-full space-y-2">
-              <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                {copy.inputLabel}
-              </p>
-              <div className="h-16 flex items-center px-4 bg-zinc-950 border border-white/5 rounded-md font-mono text-xl font-bold text-zinc-100">
-                {formatNumber(amountNumber)}
-              </div>
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { icon: Coins, label: 'Coins', value: data?.coins || 0, color: 'text-amber-500' },
+          { icon: Dices, label: 'Dados', value: data?.dados || 0, color: 'text-brand-accent' },
+          { icon: Star, label: 'Nível', value: data?.level || 1, color: 'text-purple-400' },
+          { icon: TrendingUp, label: 'XP', value: data?.xp || 0, color: 'text-emerald-500' },
+        ].map((stat) => (
+          <Card key={stat.label} variant="default" className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <stat.icon size={12} className={stat.color} />
+              <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">{stat.label}</span>
             </div>
+            <p className="text-xl font-mono font-bold text-zinc-100 tabular-nums">{formatNumber(stat.value)}</p>
+          </Card>
+        ))}
+      </section>
 
-            <button
-              type="button"
-              aria-label="Swap exchange direction"
-              onClick={handleSwapMode}
-              className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:border-white/20 transition-all active:scale-90"
-            >
-              <Repeat2 size={18} />
-            </button>
-
-            <div className="flex-1 w-full space-y-2">
-              <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                {copy.outputLabel}
-              </p>
-              <div className="h-16 flex items-center px-4 bg-zinc-900 border border-brand-accent/20 rounded-md font-mono text-xl font-bold text-brand-accent">
-                {formatNumber(outputAmount)}
-              </div>
-            </div>
+      <section className="grid grid-cols-2 gap-3">
+        <Card variant="surface" className="p-4 border-emerald-500/10">
+          <div className="flex items-center gap-2 mb-2 text-emerald-500">
+            <TrendingUp size={13} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Entradas registradas</span>
           </div>
-
-          <div className="space-y-4">
-            <div className="flex justify-between items-end px-1">
-              <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Amount
-              </label>
-              <button
-                onClick={() => {
-                  setAmount(String(maxInputAmount));
-                  window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-                }}
-                disabled={!canUseMax}
-                className="text-[9px] font-bold text-brand-accent uppercase tracking-widest disabled:opacity-20"
-              >
-                Use Max
-              </button>
-            </div>
-            <Input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
-              className="h-12 font-mono text-base"
-              inputMode="numeric"
-              placeholder="0"
-            />
+          <p className="text-2xl font-mono font-bold text-zinc-100">+{formatNumber(data?.received || 0)}</p>
+        </Card>
+        <Card variant="surface" className="p-4 border-red-500/10">
+          <div className="flex items-center gap-2 mb-2 text-red-400">
+            <TrendingDown size={13} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Saídas registradas</span>
           </div>
+          <p className="text-2xl font-mono font-bold text-zinc-100">-{formatNumber(data?.spent || 0)}</p>
+        </Card>
+      </section>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {presetOptions.map(({ label, amount: pAmount }) => {
-              const isDisabled =
-                pAmount < minimumInputAmount ||
-                (label === 'Max' ? !canUseMax : pAmount > maxInputAmount);
-              const isActive = pAmount === amountNumber;
+      <section className="space-y-4">
+        <div className="flex items-center gap-2 px-1">
+          <History size={14} className="text-zinc-600" />
+          <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Últimas movimentações</h2>
+        </div>
 
+        {transactions.length ? (
+          <div className="space-y-2">
+            {transactions.map((tx) => {
+              const positive = Number(tx.amount) >= 0;
               return (
-                <button
-                  key={pAmount}
-                  onClick={() => {
-                    setAmount(String(pAmount));
-                    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-                  }}
-                  disabled={isDisabled}
-                  className={cn(
-                    'h-12 px-3 rounded border text-left transition-all disabled:opacity-20',
-                    isActive
-                      ? 'border-brand-accent bg-brand-accent/5'
-                      : 'border-white/5 hover:border-white/20 bg-zinc-950',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'block text-[8px] font-bold uppercase mb-0.5',
-                      isActive ? 'text-brand-accent' : 'text-zinc-600',
+                <Card key={tx.id} variant="default" className="p-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-zinc-100 uppercase tracking-tight truncate">{txLabel(tx.type)}</p>
+                    <p className="text-[9px] font-mono text-zinc-600 mt-1 uppercase">{formatDate(tx.created_at)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={cn('text-sm font-mono font-bold', positive ? 'text-emerald-500' : 'text-red-400')}>
+                      {positive ? '+' : ''}{formatNumber(Number(tx.amount || 0))}
+                    </p>
+                    {tx.balance_after !== null && tx.balance_after !== undefined && (
+                      <p className="text-[8px] font-mono text-zinc-700 mt-1">saldo {formatNumber(tx.balance_after)}</p>
                     )}
-                  >
-                    {label}
-                  </span>
-                  <span className="block truncate text-[11px] font-mono font-bold text-zinc-100">
-                    {formatNumber(pAmount)}
-                  </span>
-                </button>
+                  </div>
+                </Card>
               );
             })}
           </div>
-
-          <div className="pt-4 border-t border-white/5 space-y-4">
-            <Button
-              onClick={handleExchange}
-              disabled={!canExchange || exchanging}
-              variant="accent"
-              className="w-full h-14"
-              isLoading={exchanging}
-              leftIcon={<Repeat2 size={16} />}
-            >
-              Authorize Exchange
-            </Button>
-
-            <div
-              className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-md border text-[10px] font-bold uppercase tracking-widest transition-colors',
-                validationMessage
-                  ? 'border-amber-500/20 bg-amber-500/5 text-amber-500'
-                  : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-500',
-              )}
-            >
-              <AlertCircle size={14} className="shrink-0" />
-              <span>{validationMessage || 'Transaction ready for processing'}</span>
-            </div>
+        ) : (
+          <div className="py-16 border border-dashed border-white/5 rounded-lg bg-zinc-950/50 text-center">
+            <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">Nenhuma movimentação registrada ainda</p>
           </div>
-        </Card>
+        )}
       </section>
     </div>
   );
