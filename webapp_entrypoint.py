@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from webapp import (
     BACKGROUND_URL,
     CARDS_TOP_BANNER_URL,
@@ -12,6 +14,7 @@ from webapp import (
 )
 from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
+from utils.source_v2_frontend import install_source_v2_frontend
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
 from webapp_routes.channel import build_channel_router
@@ -23,6 +26,10 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_routes.source_v2_compat import router as source_v2_compat_router
+from webapp_routes.source_v2_minigames import router as source_v2_minigames_router
+from webapp_routes.source_v2_shop import router as source_v2_shop_router
+from webapp_routes.source_v2_social import router as source_v2_social_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
@@ -59,6 +66,29 @@ terms_router = build_terms_router(
 )
 
 
+def _maybe_apply_v2_migrations() -> None:
+    enabled = str(os.getenv("SOURCE_V2_AUTO_MIGRATE", "") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not enabled:
+        return
+
+    from database_migrations import apply_migrations, migration_status
+
+    applied = apply_migrations()
+    schema = migration_status()
+    print(
+        "[source-v2] migrations ready; "
+        f"applied={applied} versions={schema.get('applied_versions')} "
+        f"pending={schema.get('pending_versions')} ready={schema.get('ready')} "
+        f"rarities={schema.get('rarity_count')}",
+        flush=True,
+    )
+
+
 def _install_runtime_routes() -> None:
     registered_paths = {getattr(route, "path", "") for route in app.routes}
 
@@ -77,6 +107,54 @@ def _install_runtime_routes() -> None:
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
+
+    v2_compat_paths = {
+        "/api/v1_7b82/secure_init",
+        "/api/v1_7b82/bot/info",
+        "/api/v1_7b82/me",
+        "/api/v1_7b82/harem",
+        "/api/v1_7b82/gallery",
+        "/api/v1_7b82/rarities",
+        "/api/v1_7b82/social/marriage",
+        "/api/v1_7b82/battle/stats",
+        "/api/v1_7b82/achievements/list",
+        "/api/v1_7b82/quests",
+        "/api/v1_7b82/quests/claim/{quest_id}",
+        "/api/v1_7b82/compat/status",
+    }
+    if not v2_compat_paths.issubset(registered_paths):
+        app.include_router(source_v2_compat_router)
+        registered_paths.update(v2_compat_paths)
+
+    v2_social_paths = {
+        "/api/v1_7b82/social/referrals",
+        "/api/v1_7b82/social/referrals/stats",
+        "/api/v1_7b82/leaderboard",
+        "/api/v1_7b82/ws/leaderboard",
+    }
+    if not v2_social_paths.issubset(registered_paths):
+        app.include_router(source_v2_social_router)
+        registered_paths.update(v2_social_paths)
+
+    v2_minigame_paths = {
+        "/api/v1_7b82/minigames/state",
+        "/api/v1_7b82/minigames/start/{game_type}",
+        "/api/v1_7b82/minigames/submit",
+    }
+    if not v2_minigame_paths.issubset(registered_paths):
+        app.include_router(source_v2_minigames_router)
+        registered_paths.update(v2_minigame_paths)
+
+    v2_shop_paths = {
+        "/api/v1_7b82/shop/hub",
+        "/api/v1_7b82/shop/exchange",
+        "/api/v1_7b82/shop/exchange/{direction}",
+        "/api/v1_7b82/shop/characters",
+        "/api/v1_7b82/shop/buy/character/{character_id}",
+    }
+    if not v2_shop_paths.issubset(registered_paths):
+        app.include_router(source_v2_shop_router)
+        registered_paths.update(v2_shop_paths)
 
     terms_paths = {
         "/terms",
@@ -148,5 +226,7 @@ def _install_runtime_middleware() -> None:
     app.add_middleware(RequestObservabilityMiddleware)
 
 
+_maybe_apply_v2_migrations()
 _install_runtime_routes()
 _install_runtime_middleware()
+install_source_v2_frontend(app)

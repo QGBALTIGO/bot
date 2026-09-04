@@ -42,21 +42,23 @@ def get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
     user = payload["user"]
 
     user_id = int(user["id"])
-    username = (user.get("username") or "").strip()
-    full_name = " ".join(
-        p
-        for p in [
-            (user.get("first_name") or "").strip(),
-            (user.get("last_name") or "").strip(),
-        ]
-        if p
-    ).strip()
+    username = str(user.get("username") or "").strip()
+    first_name = str(user.get("first_name") or "").strip()
+    last_name = str(user.get("last_name") or "").strip()
+    photo_url = str(user.get("photo_url") or "").strip()
+    language_code = str(user.get("language_code") or "").strip()
+    full_name = " ".join(p for p in [first_name, last_name] if p).strip()
 
     _ensure_user(user_id)
     return {
         "user_id": user_id,
         "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
         "full_name": full_name,
+        "photo_url": photo_url,
+        "language_code": language_code,
+        "is_premium": bool(user.get("is_premium")),
     }
 
 
@@ -80,11 +82,18 @@ def build_fallback_webapp_user(user_id: int) -> Dict[str, Any]:
 
     _ensure_user(user_id)
     row = get_user_status(user_id) or {}
+    full_name = str(row.get("full_name") or "").strip()
+    parts = full_name.split(maxsplit=1)
 
     return {
         "user_id": int(user_id),
         "username": str(row.get("username") or "").strip(),
-        "full_name": str(row.get("full_name") or "").strip(),
+        "first_name": parts[0] if parts else "",
+        "last_name": parts[1] if len(parts) > 1 else "",
+        "full_name": full_name,
+        "photo_url": "",
+        "language_code": "",
+        "is_premium": False,
         "auth_mode": "uid_fallback",
     }
 
