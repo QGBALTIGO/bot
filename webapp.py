@@ -22,7 +22,6 @@ from utils.public_character_image import is_own_image_proxy_url
 from utils.web_image_url import web_image_url as _web_image_url
 from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS
 from webapp_services.profile_collection import menu_collection_characters as _menu_collection_characters
-from webapp_services.profile_overview import build_menu_user_payload
 from utils.webapp_identity import (
     build_fallback_webapp_user as _build_fallback_webapp_user,
     coerce_positive_uid as _coerce_positive_uid,
@@ -41,7 +40,6 @@ from premium_webapp_ui import (
     build_cards_home_page as build_cards_home_page_html,
     build_cards_search_page as build_cards_search_page_html,
     build_cards_subcategory_page as build_cards_subcategory_page_html,
-    build_collection_page as build_collection_page_html,
     build_dado_page as build_dado_page_html,
     build_home_page as build_home_page_html,
     build_memory_page as build_memory_page_html,
@@ -3309,207 +3307,16 @@ def _shop_serialize_xcard_offer(
     }
 
 
-def _collection_character_subcategory_map(data: Dict[str, Any]) -> Dict[int, str]:
-    out: Dict[int, str] = {}
-    for raw_name, chars in (data.get("subcategories") or {}).items():
-        label = str(raw_name or "").strip()
-        if not label:
-            continue
-        for char in chars or []:
-            try:
-                cid = int((char or {}).get("id") or 0)
-            except Exception:
-                cid = 0
-            if cid > 0 and cid not in out:
-                out[cid] = label
-    return out
 
 
-def _collection_snapshot(user_id: int) -> Tuple[Dict[str, Any], Dict[int, int], Dict[int, str]]:
-    from database import get_user_card_collection
-    from cards_service import build_cards_final_data
-
-    data = build_cards_final_data()
-    raw_rows = get_user_card_collection(int(user_id)) or []
-    qty_by_char: Dict[int, int] = {}
-
-    for row in raw_rows:
-        try:
-            cid = int(row.get("character_id") or 0)
-            qty = int(row.get("quantity") or 0)
-        except Exception:
-            continue
-        if cid <= 0 or qty <= 0:
-            continue
-        qty_by_char[cid] = qty_by_char.get(cid, 0) + qty
-
-    return data, qty_by_char, _collection_character_subcategory_map(data)
 
 
-def _collection_profile_payload(user_id: int, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    data = build_menu_user_payload(
-        int(user_id),
-        collection_snapshot=_collection_snapshot,
-        collection_cards_from_snapshot=_collection_cards_from_snapshot,
-    )
-    profile = dict((data or {}).get("profile") or {})
-
-    username = str((ctx or {}).get("username") or profile.get("username") or "").strip()
-    full_name = str((ctx or {}).get("full_name") or "").strip()
-    display_name = str(profile.get("display_name") or "").strip()
-
-    if not display_name:
-        display_name = full_name or (f"@{username}" if username else f"User {user_id}")
-
-    profile["user_id"] = int(user_id)
-    profile["username"] = username
-    profile["full_name"] = full_name
-    profile["display_name"] = display_name
-    return profile
 
 
-def _collection_cards_from_snapshot(
-    data: Dict[str, Any],
-    qty_by_char: Dict[int, int],
-    subcategory_map: Dict[int, str],
-) -> List[Dict[str, Any]]:
-    chars_by_id = data.get("characters_by_id") or {}
-    items: List[Dict[str, Any]] = []
-
-    for cid, qty in qty_by_char.items():
-        meta = chars_by_id.get(int(cid)) or {}
-        if not meta:
-            continue
-
-        items.append({
-            "character_id": int(cid),
-            "quantity": int(qty),
-            "name": str(meta.get("name") or f"Personagem {cid}"),
-            "anime_id": int(meta.get("anime_id") or 0),
-            "anime": str(meta.get("anime") or "Obra desconhecida"),
-            "image": _web_image_url(meta.get("image")),
-            "subcategory": str(subcategory_map.get(int(cid)) or "").strip(),
-        })
-
-    items.sort(key=lambda x: (x["anime"].lower(), x["name"].lower(), int(x["character_id"])))
-    return items
 
 
-def _collection_animes_from_snapshot(
-    data: Dict[str, Any],
-    qty_by_char: Dict[int, int],
-) -> List[Dict[str, Any]]:
-    chars_by_anime = data.get("characters_by_anime") or {}
-    animes_by_id = data.get("animes_by_id") or {}
-    anime_owned: Dict[int, set] = {}
-
-    for cid, qty in qty_by_char.items():
-        if qty <= 0:
-            continue
-        meta = (data.get("characters_by_id") or {}).get(int(cid)) or {}
-        anime_id = int(meta.get("anime_id") or 0)
-        if anime_id <= 0:
-            continue
-        anime_owned.setdefault(anime_id, set()).add(int(cid))
-
-    items: List[Dict[str, Any]] = []
-    for anime_id, owned_ids in anime_owned.items():
-        chars = list(chars_by_anime.get(int(anime_id)) or [])
-        if not chars:
-            continue
-
-        anime_meta = dict(animes_by_id.get(int(anime_id)) or {})
-        anime_name = str(anime_meta.get("anime") or chars[0].get("anime") or f"Obra {anime_id}")
-        total_count = len(chars)
-        owned_count = len(owned_ids)
-        missing_count = max(0, total_count - owned_count)
-        completion_pct = int(round((owned_count / total_count) * 100)) if total_count else 0
-
-        items.append({
-            "anime_id": int(anime_id),
-            "anime": anime_name,
-            "owned_count": int(owned_count),
-            "total_count": int(total_count),
-            "missing_count": int(missing_count),
-            "completion_pct": int(completion_pct),
-            "cover_image": _web_image_url(anime_meta.get("cover_image") or anime_meta.get("banner_image")),
-            "banner_image": _web_image_url(anime_meta.get("banner_image") or anime_meta.get("cover_image")),
-        })
-
-    items.sort(key=lambda x: (x["anime"].lower(), int(x["anime_id"])))
-    return items
 
 
-def _collection_detail_from_snapshot(
-    data: Dict[str, Any],
-    qty_by_char: Dict[int, int],
-    subcategory_map: Dict[int, str],
-    anime_id: int,
-    mode: str,
-) -> Optional[Dict[str, Any]]:
-    anime_id = int(anime_id or 0)
-    if anime_id <= 0:
-        return None
-
-    chars = list((data.get("characters_by_anime") or {}).get(anime_id) or [])
-    if not chars:
-        return None
-
-    anime_meta = dict((data.get("animes_by_id") or {}).get(anime_id) or {})
-    anime_name = str(anime_meta.get("anime") or chars[0].get("anime") or f"Obra {anime_id}")
-
-    gallery_items: List[Dict[str, Any]] = []
-    owned_items: List[Dict[str, Any]] = []
-    missing_items: List[Dict[str, Any]] = []
-
-    for meta in chars:
-        cid = int(meta.get("id") or 0)
-        qty = int(qty_by_char.get(cid) or 0)
-        base = {
-            "id": cid,
-            "character_id": cid,
-            "name": str(meta.get("name") or f"Personagem {cid}"),
-            "anime_id": anime_id,
-            "anime": anime_name,
-            "image": _web_image_url(meta.get("image")),
-            "subcategory": str(subcategory_map.get(cid) or "").strip(),
-            "quantity": qty,
-            "owned": qty > 0,
-        }
-        gallery_items.append(base)
-        if qty > 0:
-            owned_items.append(base)
-        else:
-            missing_items.append(base)
-
-    gallery_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
-    owned_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
-    missing_items.sort(key=lambda x: (x["name"].lower(), int(x["id"])))
-
-    mode_key = str(mode or "owned").strip().lower()
-    if mode_key not in {"owned", "missing", "gallery"}:
-        mode_key = "owned"
-
-    items_map = {
-        "owned": owned_items,
-        "missing": missing_items,
-        "gallery": gallery_items,
-    }
-
-    return {
-        "anime": {
-            "anime_id": anime_id,
-            "anime": anime_name,
-            "cover_image": _web_image_url(anime_meta.get("cover_image") or anime_meta.get("banner_image")),
-            "banner_image": _web_image_url(anime_meta.get("banner_image") or anime_meta.get("cover_image")),
-        },
-        "mode": mode_key,
-        "items": items_map[mode_key],
-        "owned_count": len(owned_items),
-        "total_count": len(gallery_items),
-        "missing_count": len(missing_items),
-        "completion_pct": int(round((len(owned_items) / len(gallery_items)) * 100)) if gallery_items else 0,
-    }
 
 
 def _shop_css() -> str:
@@ -3995,128 +3802,12 @@ def api_shop_sell_confirm(
     })
 
 
-@app.get("/api/collection/state")
-def api_collection_state(
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    user_id = int(ctx["user_id"])
-    touch_user_identity(
-        user_id,
-        username=str(ctx.get("username") or "").strip(),
-        full_name=str(ctx.get("full_name") or "").strip(),
-    )
-
-    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
-    cards_items = _collection_cards_from_snapshot(data, qty_by_char, subcategory_map)
-    anime_items = _collection_animes_from_snapshot(data, qty_by_char)
-    profile = _collection_profile_payload(user_id, ctx=ctx)
-    profile["collection_total"] = len(cards_items)
-
-    return JSONResponse({
-        "ok": True,
-        "profile": profile,
-        "stats": {
-            "unique_cards": len(cards_items),
-            "total_copies": sum(int(item.get("quantity") or 0) for item in cards_items),
-            "completed_animes": sum(
-                1
-                for item in anime_items
-                if int(item.get("total_count") or 0) > 0 and int(item.get("missing_count") or 0) <= 0
-            ),
-            "active_animes": len(anime_items),
-            "favorite_name": str(((profile.get("favorite") or {}).get("name") or "")).strip() or "--",
-        },
-    })
 
 
-@app.get("/api/collection/cards")
-def api_collection_cards(
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    user_id = int(ctx["user_id"])
-    touch_user_identity(
-        user_id,
-        username=str(ctx.get("username") or "").strip(),
-        full_name=str(ctx.get("full_name") or "").strip(),
-    )
-
-    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
-    return JSONResponse({
-        "ok": True,
-        "items": _collection_cards_from_snapshot(data, qty_by_char, subcategory_map),
-    })
 
 
-@app.get("/api/collection/animes")
-def api_collection_animes(
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    user_id = int(ctx["user_id"])
-    touch_user_identity(
-        user_id,
-        username=str(ctx.get("username") or "").strip(),
-        full_name=str(ctx.get("full_name") or "").strip(),
-    )
-
-    data, qty_by_char, _ = _collection_snapshot(user_id)
-    return JSONResponse({
-        "ok": True,
-        "items": _collection_animes_from_snapshot(data, qty_by_char),
-    })
 
 
-@app.get("/api/collection/anime")
-def api_collection_anime(
-    anime_id: int = Query(..., ge=1),
-    mode: str = Query(default="owned"),
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    user_id = int(ctx["user_id"])
-    touch_user_identity(
-        user_id,
-        username=str(ctx.get("username") or "").strip(),
-        full_name=str(ctx.get("full_name") or "").strip(),
-    )
-
-    data, qty_by_char, subcategory_map = _collection_snapshot(user_id)
-    payload = _collection_detail_from_snapshot(
-        data,
-        qty_by_char,
-        subcategory_map,
-        anime_id=anime_id,
-        mode=mode,
-    )
-    if not payload:
-        return JSONResponse({"ok": False, "message": "Obra nao encontrada."}, status_code=404)
-    return JSONResponse({"ok": True, **payload})
 
 
 @app.post("/api/shop/buy/dado")
@@ -4344,14 +4035,6 @@ def loja_alias(uid: int = Query(default=0)):
     return shop_page(uid=uid)
 
 
-@app.get("/cccolecao", response_class=HTMLResponse)
-def collection_webapp_page(uid: int = Query(default=0)):
-    return HTMLResponse(
-        build_collection_page_html(
-            uid=int(uid or 0),
-            banner_url=CARDS_TOP_BANNER_URL,
-        )
-    )
 
 
 @app.get("/api/cards/contrib/work/search")
