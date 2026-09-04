@@ -69,3 +69,33 @@ def test_webapp_context_contract_is_preserved() -> None:
     assert '"xcollection_total": len(xcards)' in module
     assert '"xcollection_copies": sum(' in module
     assert "touch_user_identity(" in module
+
+
+def test_simple_profile_setting_routes_live_outside_monolith() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    module = (ROOT / "webapp_routes" / "profile_settings.py").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "webapp_entrypoint.py").read_text(encoding="utf-8")
+
+    for path in (
+        "/api/menu/language",
+        "/api/menu/privacy",
+        "/api/menu/notifications",
+    ):
+        assert f'@app.post("{path}")' not in legacy
+        assert f'@router.post("{path}")' in module
+
+    assert "profile_settings_router" in entrypoint
+    assert "app.include_router(profile_settings_router)" in entrypoint
+
+
+def test_simple_profile_setting_contract_is_preserved() -> None:
+    module = (ROOT / "webapp_routes" / "profile_settings.py").read_text(encoding="utf-8")
+
+    assert "resolve_webapp_user as _resolve_webapp_user" in module
+    assert 'language not in {"pt", "en", "es"}' in module
+    assert '"Idioma inválido."' in module
+    assert '"Valor de privacidade inválido."' in module
+    assert '"Valor de notificação inválido."' in module
+    assert "set_profile_language(user_id, language)" in module
+    assert 'set_profile_private(int(ctx["user_id"]), value)' in module
+    assert 'set_profile_notifications(int(ctx["user_id"]), value)' in module
