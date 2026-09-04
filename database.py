@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+from database_core import DATABASE_URL, pool, run as _run
 from zoneinfo import ZoneInfo
 
 import secrets
@@ -14,17 +14,6 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from datetime import date, datetime, timedelta, time as dt_time
 
-
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
-
-pool = ConnectionPool(
-    conninfo=DATABASE_URL,
-    min_size=1,
-    max_size=10,
-    timeout=10,
-)
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -41,45 +30,6 @@ DADO_ROLL_TTL_MINUTES = int(os.getenv("DADO_ROLL_TTL_MINUTES", "15"))
 
 # horários fixos do sistema
 DADO_RECHARGE_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
-
-
-# =========================================================
-# CORE SQL
-# =========================================================
-
-def _run(sql: str, params: Tuple[Any, ...] = (), fetch: str = "none"):
-    """
-    Executa SQL usando pool.
-
-    fetch:
-      - "none" -> None
-      - "one"  -> dict | None
-      - "all"  -> list[dict]
-    """
-    with pool.connection() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            try:
-                cur.execute(sql, params)
-
-                if fetch == "one":
-                    row = cur.fetchone()
-                    conn.commit()
-                    return row
-
-                if fetch == "all":
-                    rows = cur.fetchall() or []
-                    conn.commit()
-                    return rows
-
-                conn.commit()
-                return None
-
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                raise
 
 
 # =========================================================
