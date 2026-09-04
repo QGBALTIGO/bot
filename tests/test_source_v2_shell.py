@@ -49,5 +49,5 @@ def test_source_v2_contains_native_telegram_experience_hooks() -> None:
 
 def test_source_v2_contains_visible_seal_attribution() -> None:
     html = _page_html()
-    assert "Seal Your Waifu" in html
+    assert "AniNexus" in html
     assert "bisug" in html

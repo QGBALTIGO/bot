@@ -64,7 +64,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         saldo = 0
         prox_hora = "--:--"
 
-    url = f"{BASE_URL}/dado?uid={user.id}"
+    url = f"{BASE_URL}/menu?tab=dado&uid={user.id}"
     texto = (
         "<b>SISTEMA DE DADOS</b>\n\n"
         "Aqui voce podera usar seus dados para descobrir animes e obter personagens para a sua colecao.\n\n"
