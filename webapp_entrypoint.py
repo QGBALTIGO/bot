@@ -16,6 +16,7 @@ from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
 from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
+from webapp_routes.aninexus_me import build_aninexus_me_router
 from webapp_routes.aninexus_ranking import build_aninexus_ranking_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
@@ -49,26 +50,19 @@ profile_overview_router = build_profile_overview_router(
     collection_snapshot=collection_snapshot,
     collection_cards_from_snapshot=collection_cards_from_snapshot,
 )
-profile_page_router = build_profile_page_router(
-    default_banner_url=TOP_BANNER_URL,
-)
-collection_router = build_collection_router(
-    banner_url=CARDS_TOP_BANNER_URL,
-)
-memory_router = build_memory_router(
-    banner_url=CARDS_TOP_BANNER_URL,
-)
+profile_page_router = build_profile_page_router(default_banner_url=TOP_BANNER_URL)
+collection_router = build_collection_router(banner_url=CARDS_TOP_BANNER_URL)
+memory_router = build_memory_router(banner_url=CARDS_TOP_BANNER_URL)
 terms_router = build_terms_router(
     required_channel_url=REQUIRED_CHANNEL_URL,
     top_banner_url=TOP_BANNER_URL,
     background_url=BACKGROUND_URL,
     empty_bg_data_uri=EMPTY_BG_DATA_URI,
 )
-source_v2_router = build_source_v2_router(
-    banner_url=TOP_BANNER_URL,
-)
+source_v2_router = build_source_v2_router(banner_url=TOP_BANNER_URL)
 aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
+aninexus_me_router = build_aninexus_me_router()
 aninexus_ranking_router = build_aninexus_ranking_router()
 seal_progression_router = build_seal_progression_router()
 seal_compat_router = build_seal_compat_router()
@@ -94,6 +88,10 @@ def _install_runtime_routes() -> None:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
 
+    if "/api/v1_7b82/me" not in registered_paths:
+        app.include_router(aninexus_me_router)
+        registered_paths.add("/api/v1_7b82/me")
+
     aninexus_dado_paths = {
         "/api/v1_7b82/dado/state",
         "/api/v1_7b82/dado/roll",
@@ -117,7 +115,6 @@ def _install_runtime_routes() -> None:
         registered_paths.add("/api/v1_7b82/leaderboard")
 
     seal_progression_paths = {
-        "/api/v1_7b82/me",
         "/api/v1_7b82/achievements/list",
         "/api/v1_7b82/quests",
         "/api/v1_7b82/quests/claim/{quest_id}",
@@ -125,8 +122,6 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/claim_level/{level}",
         "/api/v1_7b82/buy_level",
         "/api/v1_7b82/claim_bank",
-        "/api/v1_7b82/shop/hub",
-        "/api/v1_7b82/shop/exchange",
     }
     if not seal_progression_paths.issubset(registered_paths):
         app.include_router(seal_progression_router)
@@ -134,7 +129,6 @@ def _install_runtime_routes() -> None:
 
     seal_compat_paths = {
         "/api/v1_7b82/secure_init",
-        "/api/v1_7b82/me",
         "/api/v1_7b82/harem",
         "/api/v1_7b82/rarities",
         "/api/v1_7b82/social/marriage",
@@ -144,11 +138,7 @@ def _install_runtime_routes() -> None:
         app.include_router(seal_compat_router)
         registered_paths.update(seal_compat_paths)
 
-    terms_paths = {
-        "/terms",
-        "/api/terms/accept",
-        "/api/terms/decline",
-    }
+    terms_paths = {"/terms", "/api/terms/accept", "/api/terms/decline"}
     if not terms_paths.issubset(registered_paths):
         app.include_router(terms_router)
         registered_paths.update(terms_paths)
@@ -177,10 +167,7 @@ def _install_runtime_routes() -> None:
         app.include_router(profile_settings_router)
         registered_paths.update(profile_setting_paths)
 
-    profile_collection_paths = {
-        "/api/menu/collection-characters",
-        "/api/menu/favorite",
-    }
+    profile_collection_paths = {"/api/menu/collection-characters", "/api/menu/favorite"}
     if not profile_collection_paths.issubset(registered_paths):
         app.include_router(profile_collection_router)
         registered_paths.update(profile_collection_paths)
@@ -200,21 +187,13 @@ def _install_runtime_routes() -> None:
         app.include_router(collection_router)
         registered_paths.update(collection_paths)
 
-    memory_paths = {
-        "/memoria",
-        "/memory",
-        "/api/memory/best",
-        "/api/memory/finish",
-    }
+    memory_paths = {"/memoria", "/memory", "/api/memory/best", "/api/memory/finish"}
     if not memory_paths.issubset(registered_paths):
         app.include_router(memory_router)
 
 
 def _install_runtime_middleware() -> None:
-    if any(
-        middleware.cls is RequestObservabilityMiddleware
-        for middleware in app.user_middleware
-    ):
+    if any(middleware.cls is RequestObservabilityMiddleware for middleware in app.user_middleware):
         return
     app.add_middleware(RequestObservabilityMiddleware)
 
