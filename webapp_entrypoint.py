@@ -23,6 +23,7 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_routes.source_v2_compat import router as source_v2_compat_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
@@ -77,6 +78,21 @@ def _install_runtime_routes() -> None:
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
+
+    v2_compat_paths = {
+        "/api/v1_7b82/bot/info",
+        "/api/v1_7b82/me",
+        "/api/v1_7b82/harem",
+        "/api/v1_7b82/gallery",
+        "/api/v1_7b82/rarities",
+        "/api/v1_7b82/social/marriage",
+        "/api/v1_7b82/battle/stats",
+        "/api/v1_7b82/achievements/list",
+        "/api/v1_7b82/compat/status",
+    }
+    if not v2_compat_paths.issubset(registered_paths):
+        app.include_router(source_v2_compat_router)
+        registered_paths.update(v2_compat_paths)
 
     terms_paths = {
         "/terms",
