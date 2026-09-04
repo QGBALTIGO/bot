@@ -2,7 +2,13 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
 
-from database import create_or_get_user, get_user_status, mark_welcome_sent, reset_welcome_sent
+from database import (
+    create_or_get_user,
+    get_user_status,
+    mark_welcome_sent,
+    reset_welcome_sent,
+    set_user_referrer,
+)
 from utils.gatekeeper import TERMS_VERSION
 
 # ====== CONFIG ======
@@ -14,18 +20,12 @@ BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
-# Canal obrigatório (se vazio, não bloqueia aqui — mas o gatekeeper pode bloquear)
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@SourceBaltigo").strip()
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/SourceBaltigo").strip()
 
-# Link do bot (pra abrir privado quando o comando vier de grupo)
-BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")  # coloque o user correto
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
-
-# Botão adicionar ao grupo
 ADD_TO_GROUP_URL = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-
-# Comunidade / QG
 QG_URL = os.getenv("QG_URL", "https://t.me/QG_BALTIGO").strip()
 
 
@@ -44,15 +44,24 @@ def _map_tg_lang(tg_lang: str | None) -> str:
     return "en"
 
 
+def _referrer_from_args(args: list[str] | tuple[str, ...] | None) -> int:
+    if not args:
+        return 0
+    raw = str(args[0] or "").strip().lower()
+    if not raw.startswith("ref_"):
+        return 0
+    try:
+        return int(raw.split("_", 1)[1])
+    except (TypeError, ValueError):
+        return 0
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user else 0
     name = (user.first_name or "Navegante") if user else "Navegante"
     tg_lang = _map_tg_lang(user.language_code if user else None)
 
-    # =========================
-    # /start em grupo -> mandar pro privado
-    # =========================
     if _is_group(update):
         texto = (
             "⚠️ <b>Acesso indisponível neste chat</b>\n\n"
@@ -67,29 +76,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_html(texto, reply_markup=kb)
         return
 
-    # =========================
-    # Garantir usuário no DB
-    # =========================
     if user_id <= 0:
         if update.message:
             await update.message.reply_text("❌ Não consegui identificar seu usuário.")
         return
 
     create_or_get_user(user_id)
+
+    # O vínculo é write-once no banco: abrir outro link depois não troca quem
+    # indicou o usuário e autoindicação é rejeitada pelo helper persistente.
+    referrer_id = _referrer_from_args(getattr(context, "args", None))
+    if referrer_id > 0 and referrer_id != user_id:
+        try:
+            set_user_referrer(user_id, referrer_id, ref_code=f"ref_{referrer_id}")
+        except Exception:
+            # Indicação nunca pode impedir o usuário de abrir o bot.
+            pass
+
     st = get_user_status(user_id) or {}
-
     terms_ok = bool(st.get("terms_accepted")) and (st.get("terms_version") == TERMS_VERSION)
-
-    # Link do WebApp termos
     terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
 
-    # =========================
-    # Caso 1: não aceitou termos (ou versão mudou)
-    # =========================
     if not terms_ok:
-        # se mudou versão, “zera” welcome pra mandar novamente quando aceitar
         reset_welcome_sent(user_id)
-
         caption = (
             f"👋 Olá, <b>{name}</b>\n\n"
             "Antes de continuar sua jornada na <b>Source Baltigo</b> 🎴✨\n\n"
@@ -97,11 +106,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Isso garante uma experiência <b>justa</b>, <b>segura</b> e <b>equilibrada</b> para todos.\n\n"
             "✅ Quando estiver pronto, toque no botão abaixo para ler e aceitar."
         )
-
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("📜 Ler e aceitar termos", web_app=WebAppInfo(url=terms_url))],
         ])
-
         if update.message:
             await update.message.reply_photo(
                 photo=BANNER_URL,
@@ -111,9 +118,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # =========================
-    # Caso 2: aceitou termos mas não está no canal obrigatório
-    # =========================
     if REQUIRED_CHANNEL:
         ok = False
         try:
@@ -124,26 +128,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not ok:
             reset_welcome_sent(user_id)
-
             texto = (
                 "📢 <b>Canal oficial obrigatório</b>\n\n"
                 "Para usar o <b>Source Baltigo</b>, você precisa entrar no nosso canal oficial.\n"
                 "Isso ajuda a manter a tripulação informada e o acesso organizado.\n\n"
                 "✅ <b>Entre no canal</b> e depois volte aqui novamente."
             )
-
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📢 Entrar no canal oficial", url=REQUIRED_CHANNEL_URL)],
                 [InlineKeyboardButton("📜 Abrir termos novamente", web_app=WebAppInfo(url=terms_url))],
             ])
-
             if update.message:
                 await update.message.reply_html(texto, reply_markup=kb)
             return
 
-    # =========================
-    # Caso 3: tudo ok -> boas-vindas (1x) ou de volta
-    # =========================
     welcome_sent = bool(st.get("welcome_sent"))
 
     if not welcome_sent:
@@ -177,5 +175,5 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=WELCOME_BANNER_URL,
             caption=texto,
             parse_mode="HTML",
-            reply_markup=teclado
+            reply_markup=teclado,
         )
