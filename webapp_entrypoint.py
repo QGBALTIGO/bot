@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from webapp import (
     BACKGROUND_URL,
     CARDS_TOP_BANNER_URL,
@@ -59,6 +61,22 @@ terms_router = build_terms_router(
     background_url=BACKGROUND_URL,
     empty_bg_data_uri=EMPTY_BG_DATA_URI,
 )
+
+
+def _maybe_apply_v2_migrations() -> None:
+    enabled = str(os.getenv("SOURCE_V2_AUTO_MIGRATE", "") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not enabled:
+        return
+
+    from database_migrations import apply_migrations
+
+    applied = apply_migrations()
+    print(f"[source-v2] migrations ready; applied={applied}", flush=True)
 
 
 def _install_runtime_routes() -> None:
@@ -166,6 +184,7 @@ def _install_runtime_middleware() -> None:
     app.add_middleware(RequestObservabilityMiddleware)
 
 
+_maybe_apply_v2_migrations()
 _install_runtime_routes()
 _install_runtime_middleware()
 install_source_v2_frontend(app)
