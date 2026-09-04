@@ -1,0 +1,32 @@
+name: Seal frontend integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - v2/seal-fusion
+
+permissions:
+  contents: read
+
+jobs:
+  exact-upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Seal upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/bisug/seal-your-waifu-bot.git /tmp/seal
+          git -C /tmp/seal checkout d9caac8e146d4b8c2d389e2ae220699b9a819a0d
+
+      - name: Assert frontend is byte-for-byte identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -qr /tmp/seal/frontend ./frontend
+          echo "frontend/ matches Seal upstream d9caac8e146d4b8c2d389e2ae220699b9a819a0d exactly"
