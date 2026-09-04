@@ -12,6 +12,7 @@ from webapp import (
 )
 from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
+from utils.source_v2_frontend import install_source_v2_frontend
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
 from webapp_routes.channel import build_channel_router
@@ -80,6 +81,7 @@ def _install_runtime_routes() -> None:
         registered_paths.add("/api/webapp/context")
 
     v2_compat_paths = {
+        "/api/v1_7b82/secure_init",
         "/api/v1_7b82/bot/info",
         "/api/v1_7b82/me",
         "/api/v1_7b82/harem",
@@ -166,3 +168,4 @@ def _install_runtime_middleware() -> None:
 
 _install_runtime_routes()
 _install_runtime_middleware()
+install_source_v2_frontend(app)
