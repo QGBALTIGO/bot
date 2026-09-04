@@ -22,6 +22,7 @@ from utils.public_character_image import is_own_image_proxy_url
 from utils.web_image_url import web_image_url as _web_image_url
 from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS
 from webapp_services.profile_collection import menu_collection_characters as _menu_collection_characters
+from webapp_services.profile_overview import build_menu_user_payload
 from utils.webapp_identity import (
     build_fallback_webapp_user as _build_fallback_webapp_user,
     coerce_positive_uid as _coerce_positive_uid,
@@ -3138,54 +3139,6 @@ MENU_BACKGROUND_URL = os.getenv(
     BACKGROUND_URL or "",
 ).strip()
 
-def _menu_user_payload(uid: int) -> Dict[str, Any]:
-    create_or_get_user(uid)
-
-    user = get_user_status(uid) or {}
-    progress = get_progress_row(uid) or {}
-    settings = get_profile_settings(uid) or {}
-    cards_data, qty_by_char, subcategory_map = _collection_snapshot(uid)
-    cards = _collection_cards_from_snapshot(cards_data, qty_by_char, subcategory_map)
-
-    favorite = None
-    fav_id = settings.get("favorite_character_id")
-    if fav_id:
-        try:
-            ch = get_character_by_id(int(fav_id))
-            if ch:
-                favorite = {
-                    "id": int(fav_id),
-                    "name": str(ch.get("name") or "").strip(),
-                    "anime": str(ch.get("anime") or "").strip(),
-                    "image": _web_image_url(ch.get("image")),
-                }
-        except Exception:
-            favorite = None
-
-    full_name = str(user.get("full_name") or "").strip()
-    username = str(user.get("username") or "").strip()
-
-    display_name = full_name or (f"@{username}" if username else f"User {uid}")
-
-    return {
-        "ok": True,
-        "profile": {
-            "user_id": int(uid),
-            "display_name": display_name,
-            "username": username,
-            "coins": int(user.get("coins") or 0),
-            "level": int(progress.get("level") or 1),
-            "collection_total": len(cards),
-            "nickname": str(settings.get("nickname") or "").strip(),
-            "favorite": favorite,
-            "country_code": str(settings.get("country_code") or "BR").strip().upper(),
-            "language": str(settings.get("language") or "pt").strip().lower(),
-            "private_profile": bool(settings.get("private_profile")),
-            "notifications_enabled": bool(settings.get("notifications_enabled", True)),
-        },
-        "countries": COUNTRY_OPTIONS,
-        "languages": LANGUAGE_OPTIONS,
-    }
 
 
 
@@ -3928,18 +3881,6 @@ def menu_page(uid: int = Query(...)):
     )
 
 
-@app.get("/api/menu/profile")
-def api_menu_profile(
-    uid: int = Query(default=0),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        uid=uid,
-        x_webapp_uid=x_webapp_uid,
-    )
-    return JSONResponse(_menu_user_payload(int(ctx["user_id"])))
 
 
 
@@ -4163,7 +4104,11 @@ def _collection_snapshot(user_id: int) -> Tuple[Dict[str, Any], Dict[int, int], 
 
 
 def _collection_profile_payload(user_id: int, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    data = _menu_user_payload(int(user_id))
+    data = build_menu_user_payload(
+        int(user_id),
+        collection_snapshot=_collection_snapshot,
+        collection_cards_from_snapshot=_collection_cards_from_snapshot,
+    )
     profile = dict((data or {}).get("profile") or {})
 
     username = str((ctx or {}).get("username") or profile.get("username") or "").strip()

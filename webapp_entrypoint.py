@@ -14,6 +14,7 @@ from webapp_routes.channel import build_channel_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
 from webapp_routes.profile_collection import router as profile_collection_router
+from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_settings import router as profile_settings_router
 
 channel_router = build_channel_router(
@@ -22,6 +23,10 @@ channel_router = build_channel_router(
     required_channel=REQUIRED_CHANNEL,
 )
 context_router = build_context_router(
+    collection_snapshot=_collection_snapshot,
+    collection_cards_from_snapshot=_collection_cards_from_snapshot,
+)
+profile_overview_router = build_profile_overview_router(
     collection_snapshot=_collection_snapshot,
     collection_cards_from_snapshot=_collection_cards_from_snapshot,
 )
@@ -45,6 +50,10 @@ def _install_runtime_routes() -> None:
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
+
+    if "/api/menu/profile" not in registered_paths:
+        app.include_router(profile_overview_router)
+        registered_paths.add("/api/menu/profile")
 
     profile_setting_paths = {
         "/api/menu/nickname",
