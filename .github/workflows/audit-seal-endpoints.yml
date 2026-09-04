@@ -1,0 +1,42 @@
+name: Audit Seal endpoint contracts
+
+on:
+  push:
+    branches:
+      - v2/seal-exact-frontend
+    paths:
+      - .github/workflows/audit-seal-endpoints.yml
+
+jobs:
+  endpoints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract literal API endpoints
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('seal_frontend/src')
+          patterns = [
+              re.compile(r"apiFetch\s*\(\s*['\"]([^'\"]+)"),
+              re.compile(r"useApi(?:<[^>]+>)?\s*\(\s*['\"]([^'\"]+)"),
+              re.compile(r"useInfiniteGrid(?:<[^>]+>)?\s*\(\s*['\"]([^'\"]+)"),
+          ]
+          found = {}
+          for path in sorted(root.rglob('*')):
+              if path.suffix not in {'.ts', '.tsx'}:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for pattern in patterns:
+                  for match in pattern.finditer(text):
+                      endpoint = match.group(1)
+                      found.setdefault(endpoint, set()).add(str(path))
+
+          print('SEAL_ENDPOINT_MANIFEST_BEGIN')
+          print('/secure_init | seal_frontend/src/api/client.ts')
+          for endpoint in sorted(found):
+              print(f"{endpoint} | {', '.join(sorted(found[endpoint]))}")
+          print('SEAL_ENDPOINT_MANIFEST_END')
+          PY
