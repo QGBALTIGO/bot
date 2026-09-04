@@ -3175,11 +3175,6 @@ LANGUAGE_OPTIONS = [
 ]
 
 
-def _valid_menu_nickname(nickname: str) -> bool:
-    nickname = (nickname or "").strip()
-    return bool(re.match(r"^[A-Z][A-Za-z0-9_]{3,16}$", nickname))
-
-
 def _menu_user_payload(uid: int) -> Dict[str, Any]:
     create_or_get_user(uid)
 
@@ -4027,38 +4022,6 @@ def api_menu_collection_characters(
         "ok": True,
         "items": _menu_collection_characters(int(ctx["user_id"])),
     })
-
-
-@app.post("/api/menu/nickname")
-def api_menu_nickname(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    user_id = int(ctx["user_id"])
-    nickname = str(payload.get("nickname") or "").strip()
-
-    if not _valid_menu_nickname(nickname):
-        return JSONResponse({
-            "ok": False,
-            "message": "Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula.",
-        }, status_code=400)
-
-    result = set_profile_nickname(user_id, nickname)
-    if not result.get("ok"):
-        error = result.get("error")
-        if error == "nickname_locked":
-            return JSONResponse({"ok": False, "message": "Você já definiu seu nickname."}, status_code=400)
-        if error == "nickname_taken":
-            return JSONResponse({"ok": False, "message": "Esse nickname já está em uso."}, status_code=409)
-        return JSONResponse({"ok": False, "message": "Não foi possível salvar o nickname."}, status_code=400)
-
-    return {"ok": True}
 
 
 @app.post("/api/menu/favorite")
