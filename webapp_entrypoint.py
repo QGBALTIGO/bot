@@ -1,9 +1,21 @@
 from __future__ import annotations
 
-from webapp import app
+from webapp import (
+    REQUIRED_CHANNEL,
+    _require_internal_api_secret,
+    _resolve_webapp_user,
+    app,
+)
 from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
+from webapp_routes.channel import build_channel_router
 from webapp_routes.image_proxy import router as image_proxy_router
+
+channel_router = build_channel_router(
+    resolve_webapp_user=_resolve_webapp_user,
+    require_internal_api_secret=_require_internal_api_secret,
+    required_channel=REQUIRED_CHANNEL,
+)
 
 
 def _install_runtime_routes() -> None:
@@ -15,6 +27,10 @@ def _install_runtime_routes() -> None:
 
     if "/api/image-proxy" not in registered_paths:
         app.include_router(image_proxy_router)
+        registered_paths.add("/api/image-proxy")
+
+    if "/api/channel/selftest" not in registered_paths or "/api/channel/check" not in registered_paths:
+        app.include_router(channel_router)
 
 
 def _install_runtime_middleware() -> None:
