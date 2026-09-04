@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -9,7 +8,6 @@ from typing import Any
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from cards_service import build_cards_final_data
 from source_v2_rewards import apply_reward_locked, grant_character_locked
 
 
@@ -54,6 +52,8 @@ def roll_wheel_index(value: float | None = None) -> int:
 
 
 def _character_pool() -> list[dict[str, Any]]:
+    from cards_service import build_cards_final_data
+
     chars = build_cards_final_data().get("characters_by_id") or {}
     pool: list[dict[str, Any]] = []
     for raw_id, meta in chars.items():
