@@ -52,8 +52,18 @@ def test_private_v2_routes_resolve_signed_identity() -> None:
 
 
 def test_v2_router_uses_shared_secure_resolver() -> None:
-    text = Path("webapp_routes/source_v2_compat.py").read_text(encoding="utf-8")
-    assert "from utils.webapp_identity import resolve_webapp_user" in text
+    path = Path("webapp_routes/source_v2_compat.py")
+    text = path.read_text(encoding="utf-8")
+    tree = ast.parse(text, filename=str(path))
+
+    imports_from_identity = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "utils.webapp_identity":
+            imports_from_identity.update(alias.name for alias in node.names)
+
+    assert "resolve_webapp_user" in imports_from_identity
+    assert "build_fallback_webapp_user" in imports_from_identity
+    assert "get_tg_user" in imports_from_identity
     assert "ALLOW_INSECURE_WEBAPP_UID_FALLBACK" not in text
     assert "x_telegram_init_data" in text
 
