@@ -2,6 +2,12 @@ name: System audit
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - ".github/workflows/system-audit.yml"
   push:
     branches: [main]
     paths:
@@ -15,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: system-audit-main
+  group: system-audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -132,7 +138,8 @@ jobs:
         env:
           BOT_TOKEN: "123456789:test-token-for-imports-only"
           BOT_OWNER_ID: "1"
-        run: pytest -q
+          PYTHONPATH: "."
+        run: python -m pytest -q
 
       - name: High-severity source security scan
         continue-on-error: true

@@ -29,6 +29,7 @@ create_tables()
 from commands.start import start
 from commands.menu import menu
 from commands.perfil import perfil
+from commands.health import health
 from commands.reset_users import reset_user, reset_all
 from commands.memoria import memoria
 
@@ -155,6 +156,11 @@ CONCURRENT_UPDATES = max(1, min(64, CONCURRENT_UPDATES))
 def run_webapp():
     try:
         from webapp import app as web_app
+        from utils.health_routes import router as health_router
+
+        registered_paths = {getattr(route, "path", "") for route in web_app.routes}
+        if "/health" not in registered_paths:
+            web_app.include_router(health_router)
 
         uvicorn.run(
             web_app,
@@ -187,6 +193,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("perfil", perfil))
+    app.add_handler(CommandHandler("health", health))
     app.add_handler(CommandHandler("resetuser", reset_user))
     app.add_handler(CommandHandler("resetall", reset_all))
     app.add_handler(CommandHandler("avisar", avisar))
@@ -359,7 +366,6 @@ def build_application():
                 await task
             except asyncio.CancelledError:
                 pass
-
 
     app = (
         Application.builder()
