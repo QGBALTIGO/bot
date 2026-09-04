@@ -125,6 +125,7 @@ from commands.messages_help import msgtutorial
 
 from handlers.capture_spawn import capture_message_handler, restore_capture_runtime
 from duel_service import restore_duel_runtime
+from utils.aninexus_news_publisher import aninexus_news_worker
 from utils.channel_verification_bridge import channel_verification_worker
 from utils.telegram_outbox import telegram_outbox_worker
 from utils.wallhaven_legacy_cleanup import cleanup_legacy_wallhaven_global_images
@@ -331,6 +332,10 @@ def build_application():
             telegram_outbox_worker(app),
             name="telegram-outbox",
         )
+        app.bot_data["aninexus_news_worker"] = asyncio.create_task(
+            aninexus_news_worker(app),
+            name="aninexus-news-channel",
+        )
         removed_legacy_wallhaven = await asyncio.to_thread(cleanup_legacy_wallhaven_global_images)
         if removed_legacy_wallhaven:
             print(
@@ -342,6 +347,7 @@ def build_application():
         tasks = [
             app.bot_data.pop("terms_channel_worker", None),
             app.bot_data.pop("telegram_outbox_worker", None),
+            app.bot_data.pop("aninexus_news_worker", None),
         ]
         for task in tasks:
             if task is not None:
