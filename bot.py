@@ -128,6 +128,7 @@ from handlers.capture_spawn import capture_message_handler, restore_capture_runt
 from duel_service import restore_duel_runtime
 from utils.aninexus_news_publisher import aninexus_news_worker
 from utils.channel_verification_bridge import channel_verification_worker
+from utils.health_monitor import source_health_monitor
 from utils.telegram_outbox import telegram_outbox_worker
 from utils.wallhaven_legacy_cleanup import cleanup_legacy_wallhaven_global_images
 
@@ -343,6 +344,10 @@ def build_application():
             aninexus_news_worker(app),
             name="aninexus-news-channel",
         )
+        app.bot_data["source_health_monitor"] = asyncio.create_task(
+            source_health_monitor(app),
+            name="source-health-monitor",
+        )
         removed_legacy_wallhaven = await asyncio.to_thread(cleanup_legacy_wallhaven_global_images)
         if removed_legacy_wallhaven:
             print(
@@ -355,6 +360,7 @@ def build_application():
             app.bot_data.pop("terms_channel_worker", None),
             app.bot_data.pop("telegram_outbox_worker", None),
             app.bot_data.pop("aninexus_news_worker", None),
+            app.bot_data.pop("source_health_monitor", None),
         ]
         for task in tasks:
             if task is not None:
