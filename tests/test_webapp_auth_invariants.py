@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WEBAPP_PATH = ROOT / "webapp.py"
+WEBAPP_IDENTITY_PATH = ROOT / "utils" / "webapp_identity.py"
 PREMIUM_UI_PATH = ROOT / "premium_webapp_ui.py"
 
 
@@ -77,9 +78,17 @@ def test_shared_miniapp_client_sends_telegram_init_data() -> None:
 
 
 def test_insecure_uid_fallback_is_opt_in_only() -> None:
-    text = WEBAPP_PATH.read_text(encoding="utf-8")
+    text = WEBAPP_IDENTITY_PATH.read_text(encoding="utf-8")
     assert '"ALLOW_INSECURE_WEBAPP_UID_FALLBACK"' in text
     assert 'raise HTTPException(status_code=401, detail="telegram_init_data_required")' in text
+    assert 'raise HTTPException(status_code=403, detail="uid_divergente")' in text
+
+
+def test_webapp_monolith_imports_shared_identity_resolver() -> None:
+    text = WEBAPP_PATH.read_text(encoding="utf-8")
+    assert "from utils.webapp_identity import" in text
+    assert "resolve_webapp_user as _resolve_webapp_user" in text
+    assert "def _resolve_webapp_user(" not in text
 
 
 def test_dado_reward_failures_keep_refund_paths() -> None:
