@@ -33,6 +33,23 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Align drawer matcher
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/wire_aninexus_media_admin.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "{ id: 'upload', label: 'Cadastro', icon: UploadCloud },",
+              "{ id: 'upload', label: 'Cadastro', icon: Satellite },",
+          )
+          text = text.replace(
+              "{ id: 'upload', label: 'Artes 2:3', icon: UploadCloud },",
+              "{ id: 'upload', label: 'Artes 2:3', icon: Satellite },",
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Wire media admin
         run: python scripts/wire_aninexus_media_admin.py
 
