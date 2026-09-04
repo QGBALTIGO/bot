@@ -65,17 +65,17 @@ export const Card = memo(
     const rarityVariant = getRarityVariant(rarityLabel);
 
     return (
-        <button
-          ref={ref}
-          type="button"
-          onClick={handleClick}
-          className={cn(
-            'relative rounded-md overflow-hidden aspect-[3/4.2] group cursor-pointer select-none',
-            'bg-zinc-950 border border-white/5 transition-all duration-200 active:scale-[0.98]',
-            'hover:border-white/10',
-            soldOut && 'border-red-500/10',
-          )}
-        >
+      <button
+        ref={ref}
+        type="button"
+        onClick={handleClick}
+        className={cn(
+          'relative rounded-md overflow-hidden aspect-[2/3] group cursor-pointer select-none',
+          'bg-zinc-950 border border-white/5 transition-all duration-200 active:scale-[0.98]',
+          'hover:border-white/10',
+          soldOut && 'border-red-500/10',
+        )}
+      >
         {!imgError ? (
           <img
             src={character.img_url || FALLBACK_IMAGE}
