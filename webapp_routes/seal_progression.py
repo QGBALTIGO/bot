@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, Query
@@ -87,7 +88,6 @@ def _quest_item(
 def build_seal_progression_router() -> APIRouter:
     router = APIRouter(prefix=API_PREFIX, tags=["seal-progression"])
 
-    @router.get("/me")
     def me(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -95,8 +95,6 @@ def build_seal_progression_router() -> APIRouter:
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
 
-        # Achievements auto-unlock like the upstream Seal bot. This is idempotent
-        # and rewards are granted at most once per Source account generation.
         sync_achievements(user_id)
         wallet = get_wallet(user_id)
         pass_state = get_pass_state(user_id)
@@ -135,7 +133,6 @@ def build_seal_progression_router() -> APIRouter:
         payload["stats"] = stats
         return JSONResponse(payload)
 
-    @router.get("/achievements/list")
     def achievements(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -158,7 +155,6 @@ def build_seal_progression_router() -> APIRouter:
             ]
         )
 
-    @router.get("/quests")
     def quests(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -167,7 +163,6 @@ def build_seal_progression_router() -> APIRouter:
         user_id = int(session_user.get("id") or 0)
         pass_type = normalize_pass_tier(get_pass_state(user_id).get("pass_type"))
         daily_ids = get_daily_selection(user_id)
-
         return JSONResponse(
             {
                 "daily": [
@@ -192,7 +187,6 @@ def build_seal_progression_router() -> APIRouter:
             }
         )
 
-    @router.post("/quests/claim/{quest_id}")
     def claim_quest_endpoint(
         quest_id: str,
         authorization: str = Header(default=""),
@@ -220,7 +214,6 @@ def build_seal_progression_router() -> APIRouter:
         }
         return _error(messages.get(error_code, "Could not claim quest."), error_code)
 
-    @router.get("/pass_data")
     def pass_data(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -232,7 +225,6 @@ def build_seal_progression_router() -> APIRouter:
         progress = get_progress_values(int(wallet.get("xp") or 0))
         pass_type = normalize_pass_tier(state.get("pass_type"))
         pass_bank = dict(state.get("pass_bank") or {})
-
         return JSONResponse(
             {
                 **progress,
@@ -262,11 +254,7 @@ def build_seal_progression_router() -> APIRouter:
             }
         )
 
-    @router.post("/claim_level/{level}")
-    def claim_level(
-        level: int,
-        authorization: str = Header(default=""),
-    ):
+    def claim_level(level: int, authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
             return error
@@ -287,7 +275,6 @@ def build_seal_progression_router() -> APIRouter:
         }
         return _error(messages.get(code, "Could not claim this level."), code)
 
-    @router.post("/buy_level")
     def buy_level(
         levels: int = Query(default=1, ge=1, le=50),
         authorization: str = Header(default=""),
@@ -309,7 +296,6 @@ def build_seal_progression_router() -> APIRouter:
             }
         )
 
-    @router.post("/claim_bank")
     def claim_bank(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -320,7 +306,6 @@ def build_seal_progression_router() -> APIRouter:
             return _error("Must upgrade pass to claim bank.", "pass_required")
         return _error("Bank is empty.", "bank_empty")
 
-    @router.get("/shop/hub")
     def shop_hub(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -329,8 +314,6 @@ def build_seal_progression_router() -> APIRouter:
         user_id = int(session_user.get("id") or 0)
         wallet = get_wallet(user_id)
         state = get_pass_state(user_id)
-        from datetime import datetime, timedelta, timezone
-
         now = datetime.now(timezone.utc)
         reset_at = (now + timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0
@@ -347,7 +330,6 @@ def build_seal_progression_router() -> APIRouter:
             }
         )
 
-    @router.get("/shop/exchange")
     def exchange_data(authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
@@ -364,4 +346,14 @@ def build_seal_progression_router() -> APIRouter:
             }
         )
 
+    router.add_api_route("/me", me, methods=["GET"])
+    router.add_api_route("/achievements/list", achievements, methods=["GET"])
+    router.add_api_route("/quests", quests, methods=["GET"])
+    router.add_api_route("/quests/claim/{quest_id}", claim_quest_endpoint, methods=["POST"])
+    router.add_api_route("/pass_data", pass_data, methods=["GET"])
+    router.add_api_route("/claim_level/{level}", claim_level, methods=["POST"])
+    router.add_api_route("/buy_level", buy_level, methods=["POST"])
+    router.add_api_route("/claim_bank", claim_bank, methods=["POST"])
+    router.add_api_route("/shop/hub", shop_hub, methods=["GET"])
+    router.add_api_route("/shop/exchange", exchange_data, methods=["GET"])
     return router
