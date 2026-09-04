@@ -3,16 +3,16 @@ from __future__ import annotations
 from webapp import (
     REQUIRED_CHANNEL,
     _require_internal_api_secret,
-    _resolve_webapp_user,
     app,
 )
 from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
+from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.channel import build_channel_router
 from webapp_routes.image_proxy import router as image_proxy_router
 
 channel_router = build_channel_router(
-    resolve_webapp_user=_resolve_webapp_user,
+    resolve_webapp_user=resolve_webapp_user,
     require_internal_api_secret=_require_internal_api_secret,
     required_channel=REQUIRED_CHANNEL,
 )
