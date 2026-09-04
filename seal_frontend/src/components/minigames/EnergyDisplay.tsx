@@ -3,17 +3,17 @@ import { Timer, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 
-export const ENERGY_RECHARGE_MS = 20 * 60 * 1000; // 20 mins per energy unit
-
 export const EnergyDisplay = ({
   energy,
   maxEnergy,
   lastRecharge,
+  rechargeMinutes = 120,
   onRecharge,
 }: {
   energy: number;
   maxEnergy: number;
   lastRecharge: string | null;
+  rechargeMinutes?: number;
   onRecharge?: () => void;
 }) => {
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
@@ -24,25 +24,29 @@ export const EnergyDisplay = ({
       return;
     }
 
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       const last = new Date(lastRecharge).getTime();
-      const diff = last + ENERGY_RECHARGE_MS - Date.now();
+      const diff = last + rechargeMinutes * 60 * 1000 - Date.now();
 
       if (diff <= 0) {
         setTimeLeft('00:00');
-        clearInterval(interval);
-        // Energy should have refilled server-side; resync state.
+        window.clearInterval(interval);
         onRecharge?.();
         return;
       }
 
-      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
-      setTimeLeft(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+      setTimeLeft(
+        hours > 0
+          ? `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+          : `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
+      );
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [energy, maxEnergy, lastRecharge, onRecharge]);
+    return () => window.clearInterval(interval);
+  }, [energy, maxEnergy, lastRecharge, rechargeMinutes, onRecharge]);
 
   return (
     <Card className="p-4 bg-zinc-900/50 border-white/[0.04] mb-6 overflow-hidden relative">
@@ -53,7 +57,7 @@ export const EnergyDisplay = ({
           </div>
           <div>
             <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">
-              Energy
+              Energia
             </h4>
             <div className="flex items-end gap-1.5">
               <span className="text-xl font-mono font-bold text-zinc-100">{energy}</span>
@@ -64,7 +68,7 @@ export const EnergyDisplay = ({
         {timeLeft && (
           <div className="text-right">
             <h4 className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest mb-1">
-              Refills in
+              Recarga em
             </h4>
             <div className="flex items-center gap-1.5 text-zinc-400 font-mono text-sm">
               <Timer size={12} className="text-zinc-600" />
@@ -74,7 +78,6 @@ export const EnergyDisplay = ({
         )}
       </div>
 
-      {/* Visual Energy Bar */}
       <div className="absolute bottom-0 left-0 h-0.5 bg-zinc-800 w-full">
         <m.div
           initial={{ width: 0 }}
