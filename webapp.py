@@ -3123,7 +3123,6 @@ from database import (
     set_profile_language,
     set_profile_private,
     set_profile_notifications,
-    delete_user_account,
 )
 
 from cards_service import get_character_by_id
@@ -3887,19 +3886,6 @@ def menu_page(uid: int = Query(...)):
 
 
 
-@app.post("/api/menu/delete-account")
-def api_menu_delete_account(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    delete_user_account(int(ctx["user_id"]))
-    return {"ok": True}
 
 # =========================================================
 # SHOP — HELPERS
