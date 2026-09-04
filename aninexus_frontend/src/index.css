@@ -1,0 +1,323 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors - Premium Product Palette (90% Professional / 10% Tactical) */
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+
+  --color-brand-midnight: #09090b;
+  --color-brand-deep: #0c0c0e;
+  --color-brand-surface: #18181b;
+  --color-brand-accent: #3b82f6;
+  --color-brand-accent-muted: rgba(59, 130, 246, 0.1);
+  --color-brand-glass: rgba(9, 9, 11, 0.8);
+  --color-brand-glass-border: rgba(255, 255, 255, 0.08);
+
+  --color-muted: #71717a;
+  --color-muted-foreground: #a1a1aa;
+
+  --color-border: rgba(255, 255, 255, 0.08);
+
+  /* Semantic Accents - WCAG AA Optimized */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-premium: #fbbf24;
+  --color-rare: #06b6d4;
+  --color-epic: #a855f7;
+
+  /* Radius - Standardized & Modern */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Spacing */
+  --spacing-container: 1.5rem;
+
+  /* Breakpoints */
+  --breakpoint-xs: 360px;
+
+  /* Animations - Purposeful & Fluid */
+  --animate-in: in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-out: out 0.2s cubic-bezier(0.7, 0, 0.84, 0);
+  --animate-shimmer: shimmer 2.5s linear infinite;
+
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes toast-bar {
+    from {
+      width: 100%;
+    }
+    to {
+      width: 0%;
+    }
+  }
+
+  @keyframes intro-pulse {
+    0%,
+    100% {
+      opacity: 0.2;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.1);
+    }
+  }
+
+  @keyframes intro-step {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+
+  .rotateY-180 {
+    transform: rotateY(180deg);
+  }
+}
+
+:root {
+  color-scheme: dark;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --content-px: 1.25rem;
+
+  /* Premium UI variables */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --accent-glow: 0 0 15px rgba(59, 130, 246, 0.1);
+  --brand-accent-rgb: 59, 130, 246;
+
+  /* Safe Area Insets */
+  --sat: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  outline-color: var(--color-brand-accent);
+}
+
+html {
+  /* Fallback for older WebViews without svh support (some Telegram clients). */
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+@supports (height: 100svh) {
+  html,
+  body,
+  #root {
+    height: 100svh;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "Outfit", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+  line-height: 1.6;
+  letter-spacing: -0.011em;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+button,
+a {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  /* Transition only visual props — `transition: all` forces style recalc
+     for every animatable property and janks scrolling on low-end phones. */
+  transition-property: color, background-color, border-color, opacity, transform, filter, box-shadow;
+  transition-duration: 0.25s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.adaptive-px {
+  padding-left: var(--content-px);
+  padding-right: var(--content-px);
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+.glass-panel {
+  background: rgba(9, 9, 11, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--color-brand-glass-border);
+}
+
+/* Subtle Tactical Elements (the 10%) */
+.tactical-dots {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.corner-accent {
+  position: relative;
+}
+
+.corner-accent::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  bottom: 0;
+  right: 0;
+  border-bottom: 1px solid var(--color-brand-accent);
+  border-right: 1px solid var(--color-brand-accent);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--background);
+}
+
+.app-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* pan-x pan-y: allow nested horizontal scrollers (e.g. Leaderboard tabs)
+     to pan on touch; pan-y alone blocks them. */
+  touch-action: pan-x pan-y;
+  overscroll-behavior-y: contain;
+  position: relative;
+  /* Bottom breathing room + safe-area inset. Pages no longer stack pb-32 on
+     top of this — the old 84px reserved a bottom nav bar that doesn't exist. */
+  padding-bottom: calc(24px + var(--sab, 24px));
+}
+
+.safe-bottom {
+  padding-bottom: var(--sab, 24px);
+}
+
+/* Page Transitions */
+.page-transition-wrapper {
+  display: contents;
+}
+
+/* Stats Typography */
+.stats-value {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.stats-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-muted-foreground);
+}
+
+/* Shimmer/Skeleton */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-brand-surface);
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+  animation: shimmer 2s infinite;
+}
