@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 
 from cards_service import build_cards_final_data
+from database_migrations import migration_status
 from utils.runtime_guard import AsyncRateLimiter
 from utils.webapp_identity import (
     build_fallback_webapp_user,
@@ -203,10 +204,12 @@ def achievements_list(
 @router.get("/compat/status")
 def compat_status():
     data = build_cards_final_data()
+    schema = migration_status()
     return {
         "ok": True,
         "version": "source-v2-seal-fusion",
         "catalog_characters": len(data.get("characters_by_id") or {}),
+        "schema": schema,
         "implemented": [
             "/secure_init",
             "/me",
