@@ -14,7 +14,9 @@ from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
+from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
+from webapp_routes.aninexus_ranking import build_aninexus_ranking_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
@@ -65,7 +67,9 @@ terms_router = build_terms_router(
 source_v2_router = build_source_v2_router(
     banner_url=TOP_BANNER_URL,
 )
+aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
+aninexus_ranking_router = build_aninexus_ranking_router()
 seal_progression_router = build_seal_progression_router()
 seal_compat_router = build_seal_compat_router()
 
@@ -90,6 +94,15 @@ def _install_runtime_routes() -> None:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
 
+    aninexus_dado_paths = {
+        "/api/v1_7b82/dado/state",
+        "/api/v1_7b82/dado/roll",
+        "/api/v1_7b82/dado/pick",
+    }
+    if not aninexus_dado_paths.issubset(registered_paths):
+        app.include_router(aninexus_dado_router)
+        registered_paths.update(aninexus_dado_paths)
+
     aninexus_games_paths = {
         "/api/v1_7b82/minigames/state",
         "/api/v1_7b82/minigames/start/{game_type}",
@@ -98,6 +111,10 @@ def _install_runtime_routes() -> None:
     if not aninexus_games_paths.issubset(registered_paths):
         app.include_router(aninexus_games_router)
         registered_paths.update(aninexus_games_paths)
+
+    if "/api/v1_7b82/leaderboard" not in registered_paths:
+        app.include_router(aninexus_ranking_router)
+        registered_paths.add("/api/v1_7b82/leaderboard")
 
     seal_progression_paths = {
         "/api/v1_7b82/me",
