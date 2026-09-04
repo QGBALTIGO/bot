@@ -13,12 +13,12 @@ ANINEXUS_ASSETS_DIR = ANINEXUS_RUNTIME_DIR / "assets"
 
 
 def install_aninexus_runtime(app: FastAPI) -> None:
-    """Serve o build gerado a partir do frontend upstream sem editar seus arquivos."""
+    """Serve o build compilado da MiniApp AniNexus."""
 
     index_file = ANINEXUS_RUNTIME_DIR / "index.html"
     if not index_file.is_file() or not ANINEXUS_ASSETS_DIR.is_dir():
         raise RuntimeError(
-            "aninexus_runtime ausente. Gere o build do frontend exato antes do deploy."
+            "aninexus_runtime ausente. Gere o build da MiniApp AniNexus antes do deploy."
         )
 
     existing_paths = {getattr(route, "path", "") for route in app.routes}
@@ -27,29 +27,28 @@ def install_aninexus_runtime(app: FastAPI) -> None:
         app.mount(
             "/assets",
             StaticFiles(directory=str(ANINEXUS_ASSETS_DIR)),
-            name="seal-assets",
+            name="aninexus-assets",
         )
         existing_paths.add("/assets")
 
-    def seal_favicon():
+    def aninexus_favicon():
         return FileResponse(ANINEXUS_RUNTIME_DIR / "favicon.svg")
 
-    def seal_icons():
+    def aninexus_icons():
         return FileResponse(ANINEXUS_RUNTIME_DIR / "icons.svg")
 
-    def seal_menu():
+    def aninexus_menu():
         return FileResponse(index_file, media_type="text/html")
 
-    def seal_preview():
+    def aninexus_preview():
         return FileResponse(index_file, media_type="text/html")
 
     # Registra programaticamente para que exista apenas uma declaração estática
-    # de /menu no código legado; em runtime este handler é instalado primeiro e
-    # assume a rota antes do fallback antigo.
+    # de /menu no código legado; este runtime é instalado primeiro e assume a rota.
     if "/favicon.svg" not in existing_paths:
         app.add_api_route(
             "/favicon.svg",
-            seal_favicon,
+            aninexus_favicon,
             methods=["GET"],
             include_in_schema=False,
         )
@@ -58,7 +57,7 @@ def install_aninexus_runtime(app: FastAPI) -> None:
     if "/icons.svg" not in existing_paths:
         app.add_api_route(
             "/icons.svg",
-            seal_icons,
+            aninexus_icons,
             methods=["GET"],
             include_in_schema=False,
         )
@@ -67,7 +66,7 @@ def install_aninexus_runtime(app: FastAPI) -> None:
     if "/menu" not in existing_paths:
         app.add_api_route(
             "/menu",
-            seal_menu,
+            aninexus_menu,
             methods=["GET"],
             include_in_schema=False,
         )
@@ -76,7 +75,7 @@ def install_aninexus_runtime(app: FastAPI) -> None:
     if "/aninexus" not in existing_paths:
         app.add_api_route(
             "/aninexus",
-            seal_preview,
+            aninexus_preview,
             methods=["GET"],
             include_in_schema=False,
         )
