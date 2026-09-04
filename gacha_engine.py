@@ -148,5 +148,6 @@ def apply_pity_update_in_place(
     rarities: Iterable[RarityRule],
     selected: RarityRule,
 ) -> None:
+    updated = update_pity_counts(target, rarities, selected)
     target.clear()
-    target.update(update_pity_counts(target, rarities, selected))
+    target.update(updated)
