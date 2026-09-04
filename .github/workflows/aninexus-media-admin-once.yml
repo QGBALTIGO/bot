@@ -53,6 +53,26 @@ jobs:
       - name: Wire media admin
         run: python scripts/wire_aninexus_media_admin.py
 
+      - name: Fix strict TypeScript array guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('aninexus_frontend/src/pages/MediaAdmin.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = """  useEffect(() => {
+    if (!selected && results.length === 1) void loadAssets(results[0]);
+  }, [results]);
+"""
+          new = """  useEffect(() => {
+    const onlyResult = results[0];
+    if (!selected && results.length === 1 && onlyResult) void loadAssets(onlyResult);
+  }, [results, selected]);
+"""
+          if old not in text:
+              raise SystemExit('MediaAdmin guard block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Install frontend dependencies
         working-directory: aninexus_frontend
         run: bun install --frozen-lockfile
