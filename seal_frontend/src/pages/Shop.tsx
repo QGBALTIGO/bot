@@ -1,3 +1,4 @@
+import { m } from 'framer-motion';
 import { Coins, Dice5, Lock, RefreshCw, ShoppingBag, Sparkles, Store, Zap } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { apiFetch, getErrorMessage } from '../api/client';
