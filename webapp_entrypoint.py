@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from webapp import (
     REQUIRED_CHANNEL,
+    TOP_BANNER_URL,
     _collection_cards_from_snapshot,
     _collection_snapshot,
     _require_internal_api_secret,
@@ -16,6 +17,7 @@ from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
 from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
+from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
 
 channel_router = build_channel_router(
@@ -30,6 +32,9 @@ context_router = build_context_router(
 profile_overview_router = build_profile_overview_router(
     collection_snapshot=_collection_snapshot,
     collection_cards_from_snapshot=_collection_cards_from_snapshot,
+)
+profile_page_router = build_profile_page_router(
+    default_banner_url=TOP_BANNER_URL,
 )
 
 
@@ -51,6 +56,10 @@ def _install_runtime_routes() -> None:
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
+
+    if "/menu" not in registered_paths:
+        app.include_router(profile_page_router)
+        registered_paths.add("/menu")
 
     if "/api/menu/profile" not in registered_paths:
         app.include_router(profile_overview_router)
