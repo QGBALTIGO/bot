@@ -19,7 +19,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
-from utils.telegram_webapp_auth import TelegramWebAppAuthError, validate_telegram_init_data
+from utils.webapp_identity import (
+    build_fallback_webapp_user as _build_fallback_webapp_user,
+    coerce_positive_uid as _coerce_positive_uid,
+    get_tg_user as _get_tg_user,
+    resolve_webapp_user as _resolve_webapp_user,
+    verify_telegram_init_data,
+)
 
 from premium_webapp_ui import (
     build_baltigoflix_page as build_baltigoflix_page_html,
@@ -2464,101 +2470,6 @@ _DADO_LOCAL_CACHE: Dict[str, Any] = {
 
 def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECONDS) -> bool:
     return _webapp_rate_limit(user_id, f"dado:{key}", window)
-
-
-# =========================================================
-# TELEGRAM WEBAPP AUTH
-# =========================================================
-
-def verify_telegram_init_data(init_data: str) -> dict:
-    try:
-        validated = validate_telegram_init_data(init_data, BOT_TOKEN)
-    except TelegramWebAppAuthError as exc:
-        code = str(exc) or "init_data_invalid"
-        status_code = 503 if code == "bot_token_missing" else 401
-        raise HTTPException(status_code=status_code, detail=code) from exc
-
-    return {
-        "user": dict(validated.get("user") or {}),
-        "raw": dict(validated.get("raw") or {}),
-    }
-
-
-def _get_tg_user(x_telegram_init_data: str) -> Dict[str, Any]:
-    payload = verify_telegram_init_data(x_telegram_init_data)
-    user = payload["user"]
-
-    user_id = int(user["id"])
-    username = (user.get("username") or "").strip()
-    full_name = " ".join(
-        p for p in [
-            (user.get("first_name") or "").strip(),
-            (user.get("last_name") or "").strip(),
-        ] if p
-    ).strip()
-
-    create_or_get_user(user_id)
-    return {
-        "user_id": user_id,
-        "username": username,
-        "full_name": full_name,
-    }
-
-
-def _coerce_positive_uid(*values: Any) -> int:
-    for value in values:
-        try:
-            uid = int(str(value or "").strip())
-        except Exception:
-            continue
-        if uid > 0:
-            return uid
-    return 0
-
-
-def _build_fallback_webapp_user(user_id: int) -> Dict[str, Any]:
-    from database import get_user_status
-
-    user_id = int(user_id or 0)
-    if user_id <= 0:
-        raise HTTPException(status_code=401, detail="uid ausente")
-
-    create_or_get_user(user_id)
-    row = get_user_status(user_id) or {}
-
-    return {
-        "user_id": int(user_id),
-        "username": str(row.get("username") or "").strip(),
-        "full_name": str(row.get("full_name") or "").strip(),
-        "auth_mode": "uid_fallback",
-    }
-
-
-def _resolve_webapp_user(
-    *,
-    x_telegram_init_data: str = "",
-    uid: Any = None,
-    x_webapp_uid: Any = None,
-    body_uid: Any = None,
-) -> Dict[str, Any]:
-    fallback_uid = _coerce_positive_uid(body_uid, uid, x_webapp_uid)
-
-    if x_telegram_init_data:
-        data = _get_tg_user(x_telegram_init_data)
-        signed_user_id = int(data["user_id"])
-        if fallback_uid > 0 and fallback_uid != signed_user_id:
-            raise HTTPException(status_code=403, detail="uid_divergente")
-        data["auth_mode"] = "telegram_init_data"
-        return data
-
-    allow_insecure_fallback = os.getenv(
-        "ALLOW_INSECURE_WEBAPP_UID_FALLBACK",
-        "",
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    if allow_insecure_fallback and fallback_uid > 0:
-        return _build_fallback_webapp_user(fallback_uid)
-
-    raise HTTPException(status_code=401, detail="telegram_init_data_required")
 
 
 @app.get("/api/webapp/context")
