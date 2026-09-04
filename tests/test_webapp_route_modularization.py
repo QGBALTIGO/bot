@@ -47,3 +47,25 @@ def test_channel_route_contract_and_privacy_are_preserved() -> None:
     assert "require_internal_api_secret(x_internal_api_secret)" in module
     assert "resolve_webapp_user(" in module
     assert "user_id={user_id}" not in module
+
+
+def test_webapp_context_route_lives_outside_monolith() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    module = (ROOT / "webapp_routes" / "context.py").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "webapp_entrypoint.py").read_text(encoding="utf-8")
+
+    assert '@app.get("/api/webapp/context")' not in legacy
+    assert '@router.get("/api/webapp/context")' in module
+    assert "build_context_router" in entrypoint
+    assert "app.include_router(context_router)" in entrypoint
+
+
+def test_webapp_context_contract_is_preserved() -> None:
+    module = (ROOT / "webapp_routes" / "context.py").read_text(encoding="utf-8")
+
+    assert "resolve_webapp_user as _resolve_webapp_user" in module
+    assert '"auth_mode": str(ctx.get("auth_mode") or "")' in module
+    assert '"collection_total": len(cards)' in module
+    assert '"xcollection_total": len(xcards)' in module
+    assert '"xcollection_copies": sum(' in module
+    assert "touch_user_identity(" in module
