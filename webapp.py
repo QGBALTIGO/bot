@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from utils.image_proxy import ImageProxyError, fetch_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
+from utils.profile_options import COUNTRY_OPTIONS, LANGUAGE_OPTIONS
 from utils.webapp_identity import (
     build_fallback_webapp_user as _build_fallback_webapp_user,
     coerce_positive_uid as _coerce_positive_uid,
@@ -3161,20 +3162,6 @@ MENU_BACKGROUND_URL = os.getenv(
     BACKGROUND_URL or "",
 ).strip()
 
-COUNTRY_OPTIONS = [
-    {"code": "BR", "flag": "🇧🇷", "name": "Brasil"},
-    {"code": "US", "flag": "🇺🇸", "name": "United States"},
-    {"code": "ES", "flag": "🇪🇸", "name": "España"},
-    {"code": "JP", "flag": "🇯🇵", "name": "日本"},
-]
-
-LANGUAGE_OPTIONS = [
-    {"code": "pt", "name": "Português"},
-    {"code": "en", "name": "English"},
-    {"code": "es", "name": "Español"},
-]
-
-
 def _menu_user_payload(uid: int) -> Dict[str, Any]:
     create_or_get_user(uid)
 
@@ -4051,27 +4038,6 @@ def api_menu_favorite(
         }, status_code=403)
 
     set_profile_favorite(user_id, character_id)
-    return {"ok": True}
-
-
-@app.post("/api/menu/country")
-def api_menu_country(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=payload.get("uid"),
-    )
-    user_id = int(ctx["user_id"])
-    country_code = str(payload.get("country_code") or "BR").strip().upper()
-
-    if country_code not in {country["code"] for country in COUNTRY_OPTIONS}:
-        return JSONResponse({"ok": False, "message": "País inválido."}, status_code=400)
-
-    set_profile_country(user_id, country_code)
     return {"ok": True}
 
 
