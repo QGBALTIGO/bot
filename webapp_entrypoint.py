@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from webapp import (
+    BACKGROUND_URL,
     CARDS_TOP_BANNER_URL,
+    EMPTY_BG_DATA_URI,
     REQUIRED_CHANNEL,
+    REQUIRED_CHANNEL_URL,
     TOP_BANNER_URL,
     _require_internal_api_secret,
     app,
@@ -20,6 +23,7 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
     collection_snapshot,
@@ -47,6 +51,12 @@ collection_router = build_collection_router(
 memory_router = build_memory_router(
     banner_url=CARDS_TOP_BANNER_URL,
 )
+terms_router = build_terms_router(
+    required_channel_url=REQUIRED_CHANNEL_URL,
+    top_banner_url=TOP_BANNER_URL,
+    background_url=BACKGROUND_URL,
+    empty_bg_data_uri=EMPTY_BG_DATA_URI,
+)
 
 
 def _install_runtime_routes() -> None:
@@ -67,6 +77,15 @@ def _install_runtime_routes() -> None:
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
+
+    terms_paths = {
+        "/terms",
+        "/api/terms/accept",
+        "/api/terms/decline",
+    }
+    if not terms_paths.issubset(registered_paths):
+        app.include_router(terms_router)
+        registered_paths.update(terms_paths)
 
     if "/menu" not in registered_paths:
         app.include_router(profile_page_router)
