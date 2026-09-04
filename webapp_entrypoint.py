@@ -14,6 +14,7 @@ from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
+from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
@@ -64,13 +65,12 @@ terms_router = build_terms_router(
 source_v2_router = build_source_v2_router(
     banner_url=TOP_BANNER_URL,
 )
+aninexus_games_router = build_aninexus_games_router()
 seal_progression_router = build_seal_progression_router()
 seal_compat_router = build_seal_compat_router()
 
 
 def _install_runtime_routes() -> None:
-    # O build do Seal é instalado primeiro para assumir /menu e /assets.
-    # O frontend vendorizado em seal_frontend/ permanece intocado.
     install_seal_runtime(app)
     registered_paths = {getattr(route, "path", "") for route in app.routes}
 
@@ -90,8 +90,15 @@ def _install_runtime_routes() -> None:
         app.include_router(context_router)
         registered_paths.add("/api/webapp/context")
 
-    # Instala antes da camada de compatibilidade: estes handlers substituem os
-    # placeholders de leitura/escrita para progressão, mantendo o frontend exato.
+    aninexus_games_paths = {
+        "/api/v1_7b82/minigames/state",
+        "/api/v1_7b82/minigames/start/{game_type}",
+        "/api/v1_7b82/minigames/submit",
+    }
+    if not aninexus_games_paths.issubset(registered_paths):
+        app.include_router(aninexus_games_router)
+        registered_paths.update(aninexus_games_paths)
+
     seal_progression_paths = {
         "/api/v1_7b82/me",
         "/api/v1_7b82/achievements/list",
