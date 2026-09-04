@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from webapp import (
+    CARDS_TOP_BANNER_URL,
     REQUIRED_CHANNEL,
     TOP_BANNER_URL,
-    _collection_cards_from_snapshot,
-    _collection_snapshot,
     _require_internal_api_secret,
     app,
 )
@@ -13,12 +12,17 @@ from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
 from webapp_routes.channel import build_channel_router
+from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
 from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_services.collection import (
+    collection_cards_from_snapshot,
+    collection_snapshot,
+)
 
 channel_router = build_channel_router(
     resolve_webapp_user=resolve_webapp_user,
@@ -26,15 +30,18 @@ channel_router = build_channel_router(
     required_channel=REQUIRED_CHANNEL,
 )
 context_router = build_context_router(
-    collection_snapshot=_collection_snapshot,
-    collection_cards_from_snapshot=_collection_cards_from_snapshot,
+    collection_snapshot=collection_snapshot,
+    collection_cards_from_snapshot=collection_cards_from_snapshot,
 )
 profile_overview_router = build_profile_overview_router(
-    collection_snapshot=_collection_snapshot,
-    collection_cards_from_snapshot=_collection_cards_from_snapshot,
+    collection_snapshot=collection_snapshot,
+    collection_cards_from_snapshot=collection_cards_from_snapshot,
 )
 profile_page_router = build_profile_page_router(
     default_banner_url=TOP_BANNER_URL,
+)
+collection_router = build_collection_router(
+    banner_url=CARDS_TOP_BANNER_URL,
 )
 
 
@@ -86,6 +93,17 @@ def _install_runtime_routes() -> None:
 
     if "/api/menu/delete-account" not in registered_paths:
         app.include_router(account_router)
+        registered_paths.add("/api/menu/delete-account")
+
+    collection_paths = {
+        "/cccolecao",
+        "/api/collection/state",
+        "/api/collection/cards",
+        "/api/collection/animes",
+        "/api/collection/anime",
+    }
+    if not collection_paths.issubset(registered_paths):
+        app.include_router(collection_router)
 
 
 def _install_runtime_middleware() -> None:
