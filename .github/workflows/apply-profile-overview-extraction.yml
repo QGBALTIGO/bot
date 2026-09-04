@@ -1,0 +1,99 @@
+name: Apply profile overview extraction
+
+on:
+  push:
+    branches:
+      - v2/p1-webapp-profile-overview
+    paths:
+      - .github/workflows/apply-profile-overview-extraction.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/p1-webapp-profile-overview
+          fetch-depth: 0
+
+      - name: Install test runner
+        run: python -m pip install -q pytest
+
+      - name: Apply surgical extraction
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('webapp.py')
+          text = path.read_text(encoding='utf-8')
+          lines = text.splitlines(keepends=True)
+          tree = ast.parse(text, filename=str(path))
+
+          targets = {'_menu_user_payload', 'api_menu_profile'}
+          nodes = {}
+          for node in tree.body:
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in targets:
+                  nodes[node.name] = node
+
+          missing = targets - nodes.keys()
+          if missing:
+              raise SystemExit(f'Abortando: funções esperadas não encontradas: {sorted(missing)}')
+
+          route_node = nodes['api_menu_profile']
+          uses = [
+              node.lineno
+              for node in ast.walk(tree)
+              if isinstance(node, ast.Name)
+              and node.id == '_menu_user_payload'
+              and isinstance(node.ctx, ast.Load)
+          ]
+          outside = [
+              lineno for lineno in uses
+              if not (route_node.lineno <= lineno <= (route_node.end_lineno or route_node.lineno))
+          ]
+          if outside:
+              raise SystemExit(f'Abortando: _menu_user_payload possui usos externos: {outside}')
+
+          ranges = []
+          for name, node in nodes.items():
+              start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+              end = node.end_lineno or node.lineno
+              ranges.append((start, end, name))
+
+          for start, end, _ in sorted(ranges, reverse=True):
+              del lines[start - 1:end]
+
+          new_text = ''.join(lines)
+          parsed = ast.parse(new_text, filename=str(path))
+          remaining = {
+              node.name
+              for node in parsed.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+          leaked = targets & remaining
+          if leaked:
+              raise SystemExit(f'Abortando: funções legadas permaneceram: {sorted(leaked)}')
+
+          path.write_text(new_text, encoding='utf-8')
+          PY
+
+          python -m compileall -q webapp.py webapp_entrypoint.py webapp_routes webapp_services utils
+          python -m pytest -q \
+            tests/test_profile_overview_service.py \
+            tests/test_profile_overview_architecture.py \
+            tests/test_webapp_auth_invariants.py \
+            tests/test_webapp_route_modularization.py
+
+      - name: Commit final refactor
+        run: |
+          rm .github/workflows/apply-profile-overview-extraction.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: extrair overview do perfil [profile-overview-extracted]"
+          git push origin HEAD:v2/p1-webapp-profile-overview
