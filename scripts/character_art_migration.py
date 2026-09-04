@@ -8,10 +8,6 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote
 
-from cards_service import build_cards_final_data, reload_cards_cache
-from database import set_global_character_image
-from utils.public_character_image import public_origin
-
 
 @dataclass(frozen=True)
 class MatchResult:
@@ -62,8 +58,9 @@ def _read_aliases(path: Path | None) -> dict[str, int]:
     return aliases
 
 
-def _catalog_indexes() -> tuple[dict[int, dict[str, Any]], dict[tuple[str, str], list[int]], dict[str, list[int]]]:
-    characters = build_cards_final_data()["characters_by_id"]
+def catalog_indexes_from_characters(
+    characters: dict[int | str, dict[str, Any]],
+) -> tuple[dict[int, dict[str, Any]], dict[tuple[str, str], list[int]], dict[str, list[int]]]:
     by_id: dict[int, dict[str, Any]] = {int(cid): dict(meta) for cid, meta in characters.items()}
     by_name_anime: dict[tuple[str, str], list[int]] = {}
     by_name: dict[str, list[int]] = {}
@@ -77,6 +74,13 @@ def _catalog_indexes() -> tuple[dict[int, dict[str, Any]], dict[tuple[str, str],
                 by_name_anime.setdefault((name_key, anime_key), []).append(cid)
 
     return by_id, by_name_anime, by_name
+
+
+def _catalog_indexes() -> tuple[dict[int, dict[str, Any]], dict[tuple[str, str], list[int]], dict[str, list[int]]]:
+    from cards_service import build_cards_final_data
+
+    characters = build_cards_final_data()["characters_by_id"]
+    return catalog_indexes_from_characters(characters)
 
 
 def _source_alias_keys(item: dict[str, Any]) -> Iterable[str]:
@@ -94,9 +98,15 @@ def _source_alias_keys(item: dict[str, Any]) -> Iterable[str]:
 def plan_character_art_updates(
     manifest: list[dict[str, Any]],
     aliases: dict[str, int] | None = None,
+    *,
+    catalog_indexes: tuple[
+        dict[int, dict[str, Any]],
+        dict[tuple[str, str], list[int]],
+        dict[str, list[int]],
+    ] | None = None,
 ) -> list[MatchResult]:
     aliases = aliases or {}
-    by_id, by_name_anime, by_name = _catalog_indexes()
+    by_id, by_name_anime, by_name = catalog_indexes or _catalog_indexes()
     results: list[MatchResult] = []
 
     for item in manifest:
@@ -203,7 +213,11 @@ def plan_character_art_updates(
 
 
 def portrait_proxy_url(source_url: str, origin: str | None = None) -> str:
-    base = str(origin or public_origin() or "").strip().rstrip("/")
+    if origin is None:
+        from utils.public_character_image import public_origin
+
+        origin = public_origin()
+    base = str(origin or "").strip().rstrip("/")
     if not base:
         raise RuntimeError("BASE_URL/RAILWAY_PUBLIC_DOMAIN is required to build portrait proxy URLs")
     return f"{base}/api/image-proxy?crop=portrait&url={quote(source_url, safe='')}"
@@ -216,6 +230,9 @@ def apply_character_art_updates(
     use_portrait_proxy: bool,
     origin: str | None = None,
 ) -> int:
+    from cards_service import reload_cards_cache
+    from database import set_global_character_image
+
     applied = 0
     for result in results:
         if result.status != "matched" or not result.character_id:
