@@ -77,6 +77,7 @@ def test_simple_profile_setting_routes_live_outside_monolith() -> None:
     entrypoint = (ROOT / "webapp_entrypoint.py").read_text(encoding="utf-8")
 
     for path in (
+        "/api/menu/nickname",
         "/api/menu/language",
         "/api/menu/privacy",
         "/api/menu/notifications",
@@ -99,3 +100,18 @@ def test_simple_profile_setting_contract_is_preserved() -> None:
     assert "set_profile_language(user_id, language)" in module
     assert 'set_profile_private(int(ctx["user_id"]), value)' in module
     assert 'set_profile_notifications(int(ctx["user_id"]), value)' in module
+
+
+def test_profile_nickname_contract_is_preserved() -> None:
+    legacy = (ROOT / "webapp.py").read_text(encoding="utf-8")
+    module = (ROOT / "webapp_routes" / "profile_settings.py").read_text(encoding="utf-8")
+
+    assert "def _valid_menu_nickname(" not in legacy
+    assert 're.match(r"^[A-Z][A-Za-z0-9_]{3,16}$", nickname)' in module
+    assert '"Nickname inválido. Use 4-17 caracteres, começando com letra maiúscula."' in module
+    assert 'error == "nickname_locked"' in module
+    assert '"Você já definiu seu nickname."' in module
+    assert 'error == "nickname_taken"' in module
+    assert '"Esse nickname já está em uso."' in module
+    assert "status_code=409" in module
+    assert "set_profile_nickname(user_id, nickname)" in module
