@@ -20,6 +20,9 @@ jobs:
           ref: v2/p1-webapp-profile-collection
           fetch-depth: 0
 
+      - name: Install test runner
+        run: python -m pip install -q pytest
+
       - name: Apply surgical extraction
         run: |
           python - <<'PY'
@@ -63,7 +66,6 @@ jobs:
           if missing:
               raise SystemExit(f'Abortando: blocos esperados não encontrados: {sorted(missing)}')
 
-          # DIRECT_IMAGE_HOSTS deve pertencer apenas ao helper legado que está sendo removido.
           direct_host_uses = []
           for node in ast.walk(tree):
               if isinstance(node, ast.Name) and node.id == 'DIRECT_IMAGE_HOSTS' and isinstance(node.ctx, ast.Load):
@@ -102,7 +104,6 @@ jobs:
                   raise SystemExit('Abortando: ponto de inserção do serviço de coleção não encontrado')
               new_text = new_text.replace(marker, collection_import + marker, 1)
 
-          # Garantias estruturais antes de gravar.
           parsed = ast.parse(new_text, filename=str(path))
           top_names = {
               node.name
