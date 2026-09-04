@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, Query, Request
@@ -58,8 +59,12 @@ def _issue_session(user: dict[str, Any]) -> str:
             "photo_url": str(user.get("photo_url") or ""),
         },
     }
-    body = _b64e(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-    signature = _b64e(hmac.new(_session_key(), body.encode("ascii"), hashlib.sha256).digest())
+    body = _b64e(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    )
+    signature = _b64e(
+        hmac.new(_session_key(), body.encode("ascii"), hashlib.sha256).digest()
+    )
     return f"{body}.{signature}"
 
 
@@ -101,8 +106,7 @@ def _require_user(authorization: str) -> dict[str, Any]:
     try:
         payload = _read_session(token)
     except ValueError as exc:
-        code = str(exc)
-        raise PermissionError(code) from exc
+        raise PermissionError(str(exc)) from exc
     return dict(payload.get("user") or {})
 
 
@@ -115,6 +119,18 @@ def _unauthorized(code: str = "unauthorized") -> JSONResponse:
             }
         },
         status_code=401,
+    )
+
+
+def _not_connected(message: str = "This system is not connected to Source yet.") -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": {
+                "code": "source_not_connected",
+                "message": message,
+            }
+        },
+        status_code=409,
     )
 
 
@@ -141,6 +157,15 @@ def _character_payload(meta: dict[str, Any], quantity: int = 0) -> dict[str, Any
     }
 
 
+def _progress_row(uid: int) -> dict[str, Any]:
+    try:
+        from database import get_progress_row
+
+        return dict(get_progress_row(int(uid)) or {})
+    except Exception:
+        return {}
+
+
 def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
     uid = int(session_user.get("id") or 0)
     overview = build_menu_user_payload(
@@ -149,7 +174,7 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         collection_cards_from_snapshot=collection_cards_from_snapshot,
     )
     profile = dict(overview.get("profile") or {})
-    data, qty_by_char, _subcategory_map = collection_snapshot(uid)
+    data, qty_by_char, subcategory_map = collection_snapshot(uid)
     characters_by_id = data.get("characters_by_id") or {}
 
     unique_count = len([qty for qty in qty_by_char.values() if int(qty or 0) > 0])
@@ -161,14 +186,7 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         else 0.0
     )
 
-    progress = {}
-    try:
-        from database import get_progress_row
-
-        progress = get_progress_row(uid) or {}
-    except Exception:
-        progress = {}
-
+    progress = _progress_row(uid)
     level = int(profile.get("level") or progress.get("level") or 1)
     xp_total = int(progress.get("xp") or progress.get("total_xp") or 0)
     xp_current = int(progress.get("xp_current") or progress.get("current_xp") or xp_total)
@@ -180,6 +198,17 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
     last_name = str(session_user.get("last_name") or "").strip()
     username = str(session_user.get("username") or profile.get("username") or "").strip()
     avatar = str(session_user.get("photo_url") or "").strip()
+
+    characters: list[dict[str, Any]] = []
+    for cid, quantity in qty_by_char.items():
+        if int(quantity or 0) <= 0:
+            continue
+        meta = dict(characters_by_id.get(int(cid)) or {})
+        if not meta:
+            continue
+        meta.setdefault("id", int(cid))
+        meta.setdefault("subcategory", str(subcategory_map.get(int(cid)) or ""))
+        characters.append(_character_payload(meta, int(quantity)))
 
     return {
         "id": uid,
@@ -221,15 +250,119 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         },
         "achievements": [],
         "titles": {"current": "OPERATOR", "all": ["OPERATOR"]},
-        "characters": [],
+        "characters": characters,
         "current_pet": None,
         "eggs": [],
         "pets": [],
     }
 
 
+def _owned_character_items(uid: int) -> list[dict[str, Any]]:
+    data, qty_by_char, subcategory_map = collection_snapshot(int(uid))
+    chars_by_id = data.get("characters_by_id") or {}
+    items: list[dict[str, Any]] = []
+    for cid, quantity in qty_by_char.items():
+        if int(quantity or 0) <= 0:
+            continue
+        meta = dict(chars_by_id.get(int(cid)) or {})
+        if not meta:
+            continue
+        meta.setdefault("id", int(cid))
+        meta.setdefault("subcategory", str(subcategory_map.get(int(cid)) or ""))
+        items.append(_character_payload(meta, int(quantity)))
+    return items
+
+
+def _catalog_character_items(uid: int) -> list[dict[str, Any]]:
+    from cards_service import build_cards_final_data
+
+    data = build_cards_final_data()
+    chars_by_id = data.get("characters_by_id") or {}
+    subcategory_map: dict[int, str] = {}
+    for raw_name, chars in (data.get("subcategories") or {}).items():
+        label = str(raw_name or "").strip()
+        for char in chars or []:
+            try:
+                cid = int((char or {}).get("id") or 0)
+            except Exception:
+                cid = 0
+            if cid > 0 and label and cid not in subcategory_map:
+                subcategory_map[cid] = label
+
+    try:
+        _data, qty_by_char, _ = collection_snapshot(int(uid))
+    except Exception:
+        qty_by_char = {}
+
+    items: list[dict[str, Any]] = []
+    for cid, raw_meta in chars_by_id.items():
+        try:
+            character_id = int(cid)
+        except Exception:
+            continue
+        meta = dict(raw_meta or {})
+        meta.setdefault("id", character_id)
+        meta.setdefault("subcategory", str(subcategory_map.get(character_id) or ""))
+        items.append(_character_payload(meta, int(qty_by_char.get(character_id) or 0)))
+    return items
+
+
+def _filter_character_items(
+    items: list[dict[str, Any]],
+    *,
+    search: str = "",
+    rarity: str = "",
+) -> list[dict[str, Any]]:
+    needle = str(search or "").strip().lower()
+    rarity_needle = str(rarity or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if needle and needle not in str(item.get("name") or "").lower() and needle not in str(item.get("anime") or "").lower():
+            continue
+        if rarity_needle and rarity_needle not in str(item.get("rarity") or "").lower():
+            continue
+        out.append(item)
+    return out
+
+
+def _paginate(items: list[dict[str, Any]], page: int, limit: int) -> dict[str, Any]:
+    page = max(1, int(page))
+    limit = max(1, min(100, int(limit)))
+    total = len(items)
+    start = (page - 1) * limit
+    return {"items": items[start:start + limit], "total": total, "page": page}
+
+
+def _achievement_payloads(uid: int) -> list[dict[str, Any]]:
+    unique_count = len(_owned_character_items(uid))
+    definitions = [
+        ("first_character", "First Contact", "Collect your first character.", 1, 100),
+        ("collector_10", "Collector I", "Collect 10 unique characters.", 10, 150),
+        ("collector_50", "Collector II", "Collect 50 unique characters.", 50, 300),
+        ("collector_100", "Collector III", "Collect 100 unique characters.", 100, 500),
+        ("collector_250", "Archivist", "Collect 250 unique characters.", 250, 800),
+        ("collector_500", "Master Archivist", "Collect 500 unique characters.", 500, 1200),
+        ("collector_1000", "Living Index", "Collect 1,000 unique characters.", 1000, 2000),
+    ]
+    return [
+        {
+            "id": achievement_id,
+            "name": name,
+            "description": description,
+            "icon": "trophy",
+            "reward_xp": reward_xp,
+            "unlocked": unique_count >= target,
+        }
+        for achievement_id, name, description, target, reward_xp in definitions
+    ]
+
+
 def build_seal_compat_router() -> APIRouter:
     router = APIRouter(prefix=API_PREFIX, tags=["seal-compat"])
+
+    @router.get("/healthz")
+    def healthz():
+        return {"ok": True}
 
     @router.post("/secure_init")
     async def secure_init(request: Request):
@@ -276,6 +409,15 @@ def build_seal_compat_router() -> APIRouter:
             return _unauthorized(str(exc))
         return JSONResponse(_user_payload(session_user))
 
+    @router.get("/bot/info")
+    def bot_info(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        # Mantém o fallback visual original do frontend (SEAL).
+        return JSONResponse({})
+
     @router.get("/harem")
     def harem(
         page: int = Query(default=1, ge=1),
@@ -288,51 +430,77 @@ def build_seal_compat_router() -> APIRouter:
             session_user = _require_user(authorization)
         except PermissionError as exc:
             return _unauthorized(str(exc))
-
         uid = int(session_user.get("id") or 0)
-        data, qty_by_char, subcategory_map = collection_snapshot(uid)
-        chars_by_id = data.get("characters_by_id") or {}
-        needle = str(search or "").strip().lower()
-        rarity_needle = str(rarity or "").strip().lower()
-        items: list[dict[str, Any]] = []
-
-        for cid, quantity in qty_by_char.items():
-            if int(quantity or 0) <= 0:
-                continue
-            meta = dict(chars_by_id.get(int(cid)) or {})
-            if not meta:
-                continue
-            meta.setdefault("id", int(cid))
-            meta.setdefault("subcategory", str(subcategory_map.get(int(cid)) or ""))
-            payload = _character_payload(meta, int(quantity))
-            if needle and needle not in payload["name"].lower() and needle not in payload["anime"].lower():
-                continue
-            if rarity_needle and rarity_needle not in payload["rarity"].lower():
-                continue
-            items.append(payload)
-
+        items = _filter_character_items(
+            _owned_character_items(uid), search=search, rarity=rarity
+        )
         items.sort(key=lambda item: (str(item["anime"]).lower(), str(item["name"]).lower()))
-        total = len(items)
-        start = (page - 1) * limit
-        return {"items": items[start:start + limit], "total": total}
+        return _paginate(items, page, limit)
+
+    @router.get("/harem/{target_user_id}")
+    def target_harem(
+        target_user_id: int,
+        limit: int = Query(default=50, ge=1, le=100),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        requester_id = int(session_user.get("id") or 0)
+        if int(target_user_id) != requester_id:
+            return JSONResponse(
+                {
+                    "error": {
+                        "code": "collection_lookup_unavailable",
+                        "message": "Player collection lookup is not connected yet.",
+                    }
+                },
+                status_code=403,
+            )
+        items = _owned_character_items(requester_id)
+        return _paginate(items, 1, limit)
+
+    @router.get("/gallery")
+    def gallery(
+        page: int = Query(default=1, ge=1),
+        limit: int = Query(default=42, ge=1, le=100),
+        search: str = Query(default=""),
+        rarity: str = Query(default=""),
+        sort: str = Query(default="numeric"),
+        order: str = Query(default="asc"),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        uid = int(session_user.get("id") or 0)
+        items = _filter_character_items(
+            _catalog_character_items(uid), search=search, rarity=rarity
+        )
+        reverse = str(order or "asc").lower() == "desc"
+        if str(sort or "numeric").lower() == "alphabet":
+            items.sort(key=lambda item: str(item.get("name") or "").lower(), reverse=reverse)
+        else:
+            items.sort(
+                key=lambda item: int(str(item.get("id") or "0") or 0),
+                reverse=reverse,
+            )
+        return _paginate(items, page, limit)
 
     @router.get("/rarities")
     def rarities(authorization: str = Header(default="")):
         try:
-            _require_user(authorization)
+            session_user = _require_user(authorization)
         except PermissionError as exc:
             return _unauthorized(str(exc))
-        data = collection_snapshot(0)[0]
-        labels: set[str] = set()
-        subcategories = data.get("subcategories") or {}
-        for label in subcategories.keys():
-            clean = str(label or "").strip()
-            if clean:
-                labels.add(clean)
-        for meta in (data.get("characters_by_id") or {}).values():
-            clean = str((meta or {}).get("rarity") or "").strip()
-            if clean:
-                labels.add(clean)
+        uid = int(session_user.get("id") or 0)
+        labels = {
+            str(item.get("rarity") or "").strip()
+            for item in _catalog_character_items(uid)
+            if str(item.get("rarity") or "").strip()
+        }
         return JSONResponse(sorted(labels, key=str.lower))
 
     @router.get("/social/marriage")
@@ -350,5 +518,199 @@ def build_seal_compat_router() -> APIRouter:
         except PermissionError as exc:
             return _unauthorized(str(exc))
         return JSONResponse(None)
+
+    @router.get("/achievements/list")
+    def achievements(authorization: str = Header(default="")):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse(_achievement_payloads(int(session_user.get("id") or 0)))
+
+    @router.get("/quests")
+    def quests(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse({"daily": [], "weekly": [], "pass": [], "pass_type": "free"})
+
+    @router.get("/pass_data")
+    def pass_data(authorization: str = Header(default="")):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        uid = int(session_user.get("id") or 0)
+        level = int(_user_payload(session_user).get("stats", {}).get("level") or 1)
+        return JSONResponse(
+            {
+                "level": min(level, 100),
+                "max_level": 100,
+                "claimed_levels": [],
+                "milestones": [],
+                "pass_type": "free",
+                "pass_bank": {},
+                "season_name": "Season Pass",
+                "level_buy_cost": 10000,
+                "prices": {"premium": 24, "elite": 49},
+                "upgrade_prices": {"premium": 24, "elite": 49},
+                "tiers": {},
+                "benefits": {},
+                "tracks": {},
+                "user_id": uid,
+            }
+        )
+
+    @router.get("/shop/characters")
+    def shop_characters(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse([])
+
+    @router.get("/shop/hub")
+    def shop_hub(authorization: str = Header(default="")):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        user = _user_payload(session_user)
+        now = datetime.now(timezone.utc)
+        reset_at = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return JSONResponse(
+            {
+                "balance": int(user.get("balance") or 0),
+                "zenith": int(user.get("zenith") or 0),
+                "pass_type": "free",
+                "characters_rarity": "",
+                "rotation_date": now.date().isoformat(),
+                "reset_at": reset_at.isoformat(),
+            }
+        )
+
+    @router.get("/shop/exchange")
+    def shop_exchange(authorization: str = Header(default="")):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        user = _user_payload(session_user)
+        return JSONResponse(
+            {
+                "balance": int(user.get("balance") or 0),
+                "zenith": int(user.get("zenith") or 0),
+                "rate": 10000,
+                "minimum_shards": 10000,
+                "minimum_zenith": 1,
+            }
+        )
+
+    @router.get("/shop/pets")
+    def shop_pets(authorization: str = Header(default="")):
+        try:
+            session_user = _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        level = int(_user_payload(session_user).get("stats", {}).get("level") or 1)
+        return JSONResponse({"pets": [], "owned": [], "owned_ids": [], "current_level": level})
+
+    @router.get("/social/referrals")
+    def referrals(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse([])
+
+    @router.get("/social/referrals/stats")
+    def referral_stats(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse(
+            {
+                "invited_count": 0,
+                "tracked_count": 0,
+                "earned_shards": 0,
+                "referrer_reward_shards": 500,
+                "referrer_reward_xp": 50,
+                "referred_reward_shards": 1500,
+                "referred_reward_pet": "blaze_fang",
+            }
+        )
+
+    @router.get("/minigames/state")
+    def minigames_state(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse({"energy": 0, "max_energy": 5, "last_energy_recharge": None})
+
+    @router.get("/trade/offers")
+    def trade_offers(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse([])
+
+    @router.get("/leaderboard")
+    def leaderboard(
+        metric: str = Query(default="harem"),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        _ = metric
+        return JSONResponse([])
+
+    @router.get("/admin/rarities")
+    def admin_rarities(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse([])
+
+    @router.get("/admin/sudos/contributions")
+    def admin_contributions(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse([])
+
+    @router.get("/admin/upload/options")
+    def upload_options(authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return JSONResponse({"character_rarities": [], "animes": []})
+
+    # Escritas do Seal são bloqueadas até cada subsistema ganhar uma
+    # implementação transacional no banco atual do Source. Isso impede que uma
+    # tela já navegável altere moedas ou coleção de forma parcial.
+    @router.post("/{path:path}")
+    async def unsupported_post(path: str, authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return _not_connected()
+
+    @router.patch("/{path:path}")
+    async def unsupported_patch(path: str, authorization: str = Header(default="")):
+        try:
+            _require_user(authorization)
+        except PermissionError as exc:
+            return _unauthorized(str(exc))
+        return _not_connected()
 
     return router
