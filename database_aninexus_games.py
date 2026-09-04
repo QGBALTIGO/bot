@@ -34,6 +34,27 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _pet_modifiers(user_id: int) -> Dict[str, Any]:
+    try:
+        from database_aninexus_pets import active_pet_modifiers
+
+        return dict(active_pet_modifiers(int(user_id)) or {})
+    except Exception:
+        return {
+            "pet_id": "",
+            "xp_multiplier": 1.0,
+            "bonus_coin_chance": 0.0,
+            "energy_bonus": 0,
+            "incubation_multiplier": 1.0,
+            "egg_drop_chance": 0.0,
+        }
+
+
+def _effective_max_energy(user_id: int) -> int:
+    modifiers = _pet_modifiers(int(user_id))
+    return max(1, MAX_ENERGY + max(0, int(modifiers.get("energy_bonus") or 0)))
+
+
 def _ensure_tables() -> None:
     global _TABLES_READY
     if _TABLES_READY:
@@ -81,14 +102,15 @@ def _ensure_tables() -> None:
         _TABLES_READY = True
 
 
-def _ensure_state_locked(cur, user_id: int) -> Dict[str, Any]:
+def _ensure_state_locked(cur, user_id: int, max_energy: int) -> Dict[str, Any]:
+    max_energy = max(1, int(max_energy))
     cur.execute(
         """
         INSERT INTO aninexus_game_state (user_id, energy, last_energy_recharge)
         VALUES (%s, %s, NOW())
         ON CONFLICT (user_id) DO NOTHING
         """,
-        (int(user_id), MAX_ENERGY),
+        (int(user_id), max_energy),
     )
     cur.execute(
         """
@@ -102,16 +124,26 @@ def _ensure_state_locked(cur, user_id: int) -> Dict[str, Any]:
     return dict(cur.fetchone() or {})
 
 
-def _refresh_energy_locked(cur, user_id: int) -> Dict[str, Any]:
-    row = _ensure_state_locked(cur, user_id)
-    energy = max(0, min(MAX_ENERGY, int(row.get("energy") or 0)))
+def _refresh_energy_locked(cur, user_id: int, max_energy: int) -> Dict[str, Any]:
+    max_energy = max(1, int(max_energy))
+    row = _ensure_state_locked(cur, user_id, max_energy)
+    raw_energy = max(0, int(row.get("energy") or 0))
+    energy = min(max_energy, raw_energy)
     last = row.get("last_energy_recharge")
     now = _now()
 
-    if energy >= MAX_ENERGY:
-        if energy != MAX_ENERGY:
-            energy = MAX_ENERGY
-        return {"energy": energy, "last_energy_recharge": None}
+    if raw_energy != energy:
+        cur.execute(
+            """
+            UPDATE aninexus_game_state
+            SET energy = %s, updated_at = NOW()
+            WHERE user_id = %s
+            """,
+            (energy, int(user_id)),
+        )
+
+    if energy >= max_energy:
+        return {"energy": max_energy, "last_energy_recharge": None}
 
     if not isinstance(last, datetime):
         last = now
@@ -133,9 +165,9 @@ def _refresh_energy_locked(cur, user_id: int) -> Dict[str, Any]:
     if gained <= 0:
         return {"energy": energy, "last_energy_recharge": last}
 
-    new_energy = min(MAX_ENERGY, energy + gained)
+    new_energy = min(max_energy, energy + gained)
     new_last = last + timedelta(minutes=gained * RECHARGE_MINUTES)
-    if new_energy >= MAX_ENERGY:
+    if new_energy >= max_energy:
         new_last = now
 
     cur.execute(
@@ -150,20 +182,21 @@ def _refresh_energy_locked(cur, user_id: int) -> Dict[str, Any]:
     )
     return {
         "energy": new_energy,
-        "last_energy_recharge": None if new_energy >= MAX_ENERGY else new_last,
+        "last_energy_recharge": None if new_energy >= max_energy else new_last,
     }
 
 
 def get_game_energy(user_id: int) -> Dict[str, Any]:
     _ensure_tables()
+    max_energy = _effective_max_energy(int(user_id))
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            state = _refresh_energy_locked(cur, int(user_id))
+            state = _refresh_energy_locked(cur, int(user_id), max_energy)
             conn.commit()
     last = state.get("last_energy_recharge")
     return {
         "energy": int(state.get("energy") or 0),
-        "max_energy": MAX_ENERGY,
+        "max_energy": max_energy,
         "last_energy_recharge": last.isoformat() if isinstance(last, datetime) else None,
         "recharge_minutes": RECHARGE_MINUTES,
     }
@@ -258,6 +291,7 @@ def start_game_session(user_id: int, game_type: str) -> Dict[str, Any]:
     if game_type not in {"cipher_match", "nexus_wheel"}:
         return {"ok": False, "error": "invalid_game"}
 
+    max_energy = _effective_max_energy(int(user_id))
     payload = _build_session_payload(game_type)
     if not payload:
         return {"ok": False, "error": "game_data_unavailable"}
@@ -299,14 +333,14 @@ def start_game_session(user_id: int, game_type: str) -> Dict[str, Any]:
                     data["session_id"] = str(existing.get("session_id") or "")
                     return {"ok": True, "reused": True, "session": data}
 
-                state = _refresh_energy_locked(cur, int(user_id))
+                state = _refresh_energy_locked(cur, int(user_id), max_energy)
                 energy = int(state.get("energy") or 0)
                 if energy <= 0:
                     conn.rollback()
                     return {"ok": False, "error": "not_enough_energy"}
 
                 last = state.get("last_energy_recharge")
-                if energy >= MAX_ENERGY or not isinstance(last, datetime):
+                if energy >= max_energy or not isinstance(last, datetime):
                     last = now
 
                 cur.execute(
@@ -368,6 +402,8 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
     session_id = str(session_id or "").strip()
     if game_type not in {"cipher_match", "nexus_wheel"} or not session_id:
         return {"ok": False, "error": "invalid_session"}
+
+    pet_modifiers = _pet_modifiers(int(user_id))
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -442,6 +478,20 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
                         conn.rollback()
                         return {"ok": False, "error": "invalid_prize"}
 
+                xp_multiplier = max(1.0, float(pet_modifiers.get("xp_multiplier") or 1.0))
+                xp = max(1, int(round(xp * xp_multiplier)))
+
+                bonus_coin = False
+                bonus_coin_chance = max(0.0, min(1.0, float(pet_modifiers.get("bonus_coin_chance") or 0.0)))
+                if bonus_coin_chance > 0 and random.random() < bonus_coin_chance:
+                    coins += 1
+                    bonus_coin = True
+
+                bonus_egg = False
+                egg_drop_chance = max(0.0, min(1.0, float(pet_modifiers.get("egg_drop_chance") or 0.0)))
+                if egg_drop_chance > 0 and random.random() < egg_drop_chance:
+                    bonus_egg = True
+
                 cur.execute(
                     """
                     INSERT INTO users (user_id, coins, created_at, updated_at)
@@ -457,8 +507,35 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
                         SET coins = COALESCE(coins, 0) + %s,
                             updated_at = NOW()
                         WHERE user_id = %s
+                        RETURNING coins
                         """,
                         (coins, int(user_id)),
+                    )
+                    balance_after = int((cur.fetchone() or {}).get("coins") or 0)
+                    cur.execute(
+                        """
+                        INSERT INTO shop_transactions
+                            (user_id, type, amount, balance_after, metadata)
+                        VALUES (
+                            %s,
+                            'aninexus_game_reward',
+                            %s,
+                            %s,
+                            jsonb_build_object(
+                                'game_type', %s,
+                                'session_id', %s,
+                                'pet_bonus_coin', %s
+                            )
+                        )
+                        """,
+                        (
+                            int(user_id),
+                            coins,
+                            balance_after,
+                            game_type,
+                            session_id,
+                            bonus_coin,
+                        ),
                     )
 
                 cur.execute(
@@ -500,10 +577,20 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
                         (int(user_id), character_id),
                     )
 
+                if bonus_egg:
+                    cur.execute(
+                        """
+                        INSERT INTO aninexus_user_eggs (user_id, tier, status, is_corrupted)
+                        VALUES (%s, 'common', 'fresh', FALSE)
+                        """,
+                        (int(user_id),),
+                    )
+
                 reward = {
                     "shards": coins,
                     "xp": xp,
                     "character": character,
+                    "bonus_egg": bonus_egg,
                 }
                 cur.execute(
                     """

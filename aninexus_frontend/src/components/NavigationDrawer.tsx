@@ -60,6 +60,7 @@ const SECTIONS: NavSection[] = [
     title: 'RECURSOS',
     items: [
       { id: 'mypets', label: 'Companheiros', icon: PawPrint },
+      { id: 'pets', label: 'Loja de Companheiros', icon: Store },
       { id: 'minigames', label: 'Jogos AniNexus', icon: Gamepad2 },
       { id: 'achievements', label: 'Conquistas', icon: BadgeCheck },
     ],

@@ -3,6 +3,7 @@ import { Activity, ArrowRight, CheckCircle2, Droplets, Egg, Flame, Target, Timer
 import { useEffect, useState } from 'react';
 import { apiFetch, getErrorMessage } from '../api/client';
 import { Badge } from '../components/ui/Badge';
+import { GachaReveal } from '../components/ui/GachaReveal';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { useToast } from '../components/ui/Toast';
@@ -24,6 +25,7 @@ export const Hatchery = () => {
   const { addToast } = useToast();
   const [actionId, setActionId] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
+  const [revealedChar, setRevealedChar] = useState<any>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -35,10 +37,12 @@ export const Hatchery = () => {
     setActionId(eggId);
     try {
       const result = await apiFetch(`/eggs/hatch/${eggId}`, { method: 'POST' });
-      addToast(
-        result?.character?.name ? `Hatched: ${result.character.name}` : 'Egg hatched successfully.',
-        'success',
-      );
+      if (result?.character) {
+        setRevealedChar(result.character);
+        addToast(`${result.character.name} entrou para sua coleção.`, 'success');
+      } else {
+        addToast('Ovo chocado com sucesso.', 'success');
+      }
       triggerRefresh();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -289,7 +293,7 @@ export const Hatchery = () => {
         <div className="flex items-center gap-2 opacity-60">
           <Activity size={10} className="text-zinc-500" />
           <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-            Hatch, fuse and sell your eggs
+            Incube, funda e choque seus ovos
           </p>
         </div>
       </header>
@@ -297,7 +301,7 @@ export const Hatchery = () => {
       <section className="grid grid-cols-3 gap-3">
         {[
           {
-            label: 'Active Slots',
+            label: 'Slot ativo',
             value: `${activeIncubations} / ${incubationSlots}`,
             color: 'text-zinc-100',
           },
@@ -306,7 +310,7 @@ export const Hatchery = () => {
             value: `${readyEggs.length}`,
             color: readyEggs.length > 0 ? 'text-emerald-500' : 'text-zinc-500',
           },
-          { label: 'Access', value: `${passType.toUpperCase()}`, color: 'text-brand-accent' },
+          { label: 'Acesso', value: `${passType.toUpperCase()}`, color: 'text-brand-accent' },
         ].map((stat, i) => (
           <Card key={i} variant="default" className="p-3.5">
             <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest mb-1.5">
@@ -321,7 +325,7 @@ export const Hatchery = () => {
         <section className="space-y-3">
           <div className="flex items-center gap-2 px-1">
             <h2 className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-              Fusion — 3× same tier → 1× next tier
+              Fusão — 3× do mesmo tipo → 1× do próximo tipo
             </h2>
             <div className="h-px flex-1 bg-white/[0.03]" />
           </div>
@@ -352,10 +356,10 @@ export const Hatchery = () => {
 
       {eggs.length > 0 ? (
         <div className="space-y-8">
-          {renderSection('READY TO HATCH', readyEggs)}
-          {renderSection('IN PROGRESS', incubatingEggs)}
-          {renderSection('NOT INCUBATED', freshEggs)}
-          {renderSection('OTHER', otherEggs)}
+          {renderSection('PRONTOS PARA CHOCAR', readyEggs)}
+          {renderSection('EM INCUBAÇÃO', incubatingEggs)}
+          {renderSection('NÃO INCUBADOS', freshEggs)}
+          {renderSection('OUTROS', otherEggs)}
         </div>
       ) : (
         <div className="py-20 flex flex-col items-center justify-center text-center space-y-6 border border-dashed border-white/5 rounded-lg bg-zinc-950/50">
@@ -364,13 +368,17 @@ export const Hatchery = () => {
           </div>
           <div className="space-y-1 px-6">
             <p className="text-zinc-300 font-bold uppercase tracking-widest text-sm">
-              No eggs yet
+              Nenhum ovo ainda
             </p>
             <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">
-              Go hunt with your pet to find eggs.
+              Ovos podem ser obtidos por recompensas e habilidades de companheiros.
             </p>
           </div>
         </div>
+      )}
+
+      {revealedChar && (
+        <GachaReveal character={revealedChar} onClose={() => setRevealedChar(null)} />
       )}
     </div>
   );

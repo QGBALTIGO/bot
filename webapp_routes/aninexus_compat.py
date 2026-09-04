@@ -358,7 +358,7 @@ def _achievement_payloads(uid: int) -> list[dict[str, Any]]:
 
 
 def build_aninexus_compat_router() -> APIRouter:
-    router = APIRouter(prefix=API_PREFIX, tags=["seal-compat"])
+    router = APIRouter(prefix=API_PREFIX, tags=["aninexus-compat"])
 
     @router.get("/healthz")
     def healthz():
@@ -694,7 +694,7 @@ def build_aninexus_compat_router() -> APIRouter:
             return _unauthorized(str(exc))
         return JSONResponse({"character_rarities": [], "animes": []})
 
-    # Escritas do Seal são bloqueadas até cada subsistema ganhar uma
+    # Escritas herdadas permanecem bloqueadas até cada subsistema ganhar uma
     # implementação transacional no banco atual do Source. Isso impede que uma
     # tela já navegável altere moedas ou coleção de forma parcial.
     @router.post("/{path:path}")

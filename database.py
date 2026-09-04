@@ -3463,6 +3463,23 @@ def delete_user_account(user_id: int) -> Dict[str, Any]:
                 if _optional_table_exists_locked(cur, "channel_verification_requests"):
                     cur.execute("DELETE FROM channel_verification_requests WHERE user_id = %s", (user_id,))
 
+                for table_name in (
+                    "aninexus_game_sessions",
+                    "aninexus_game_state",
+                    "aninexus_quest_claims",
+                    "aninexus_pass_claims",
+                    "aninexus_user_eggs",
+                    "aninexus_user_pets",
+                    "aninexus_pet_profiles",
+                ):
+                    if _optional_table_exists_locked(cur, table_name):
+                        cur.execute(f"DELETE FROM {table_name} WHERE user_id = %s", (user_id,))
+                if _optional_table_exists_locked(cur, "aninexus_referral_rewards"):
+                    cur.execute(
+                        "DELETE FROM aninexus_referral_rewards WHERE referred_user_id = %s OR referrer_user_id = %s",
+                        (user_id, user_id),
+                    )
+
                 cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
                 conn.commit()
                 return {
@@ -5204,6 +5221,19 @@ def delete_all_users() -> Dict[str, Any]:
                     cur.execute("TRUNCATE TABLE webapp_auth_requests")
                 if _optional_table_exists_locked(cur, "channel_verification_requests"):
                     cur.execute("TRUNCATE TABLE channel_verification_requests")
+
+                for table_name in (
+                    "aninexus_game_sessions",
+                    "aninexus_game_state",
+                    "aninexus_quest_claims",
+                    "aninexus_pass_claims",
+                    "aninexus_referral_rewards",
+                    "aninexus_user_eggs",
+                    "aninexus_user_pets",
+                    "aninexus_pet_profiles",
+                ):
+                    if _optional_table_exists_locked(cur, table_name):
+                        cur.execute(f"TRUNCATE TABLE {table_name}")
 
                 cur.execute("UPDATE global_character_images SET updated_by = 0")
                 cur.execute(
