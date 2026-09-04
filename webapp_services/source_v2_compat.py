@@ -35,8 +35,6 @@ def source_character_to_seal(item: Dict[str, Any], *, owned: bool | None = None)
         "id": str(int(item.get("character_id") or item.get("id") or 0)),
         "name": str(item.get("name") or "Personagem"),
         "anime": str(item.get("anime") or "Obra desconhecida"),
-        # Source ainda não possui uma taxonomia de raridade canônica equivalente
-        # ao Seal. Mantemos um valor estável até a migration de raridades/sets.
         "rarity": str(item.get("rarity") or "Standard"),
         "img_url": str(item.get("image") or item.get("img_url") or ""),
         "zenith_price": int(item.get("zenith_price") or 0),
@@ -123,6 +121,7 @@ def build_source_me(user_id: int, identity: Dict[str, Any]) -> Dict[str, Any]:
         get_progress_row,
         get_user_level_rank,
     )
+    from source_v2_shop import prism_balance
 
     user_id = int(user_id)
     profile_payload = build_menu_user_payload(
@@ -157,6 +156,7 @@ def build_source_me(user_id: int, identity: Dict[str, Any]) -> Dict[str, Any]:
 
     username = str(identity.get("username") or profile.get("username") or "").strip()
     coins = int(profile.get("coins") or 0)
+    prisms = prism_balance(user_id)
     is_sudo = user_id in _admin_ids()
     theme = get_level_theme(level) or {}
 
@@ -182,8 +182,7 @@ def build_source_me(user_id: int, identity: Dict[str, Any]) -> Dict[str, Any]:
         "role_perks": {},
         "role_benefits": [],
         "balance": coins,
-        # Mantido separado de Coins para a futura moeda premium/câmbio.
-        "zenith": 0,
+        "zenith": prisms,
         "stats": {
             "level": level,
             "xp": xp,
@@ -191,7 +190,7 @@ def build_source_me(user_id: int, identity: Dict[str, Any]) -> Dict[str, Any]:
             "xp_needed": max(1, int(progress_values.get("xp_needed") or 1)),
             "streak": 0,
             "points": coins,
-            "zenith": 0,
+            "zenith": prisms,
             "badges": [],
             "total_characters": total_copies,
             "unique_characters": unique_characters,
