@@ -10,6 +10,7 @@ from webapp import (
 from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
+from webapp_routes.account import router as account_router
 from webapp_routes.channel import build_channel_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
@@ -72,6 +73,10 @@ def _install_runtime_routes() -> None:
     }
     if not profile_collection_paths.issubset(registered_paths):
         app.include_router(profile_collection_router)
+        registered_paths.update(profile_collection_paths)
+
+    if "/api/menu/delete-account" not in registered_paths:
+        app.include_router(account_router)
 
 
 def _install_runtime_middleware() -> None:
