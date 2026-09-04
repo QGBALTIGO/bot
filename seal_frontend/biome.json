@@ -1,0 +1,87 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.json",
+      "**/*.jsonc",
+      "**/*.css",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/bun.lock"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "bracketSpacing": true,
+      "bracketSameLine": false,
+      "jsxQuoteStyle": "double"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "off",
+        "useNodejsImportProtocol": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noConsole": "off",
+        "noArrayIndexKey": "off",
+        "noImplicitAnyLet": "off",
+        "useIterableCallbackReturn": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "off",
+        "useExhaustiveDependencies": "warn"
+      },
+      "a11y": {
+        "preset": "recommended",
+        "useButtonType": "off",
+        "noLabelWithoutControl": "off",
+        "useMediaCaption": "off"
+      },
+      "complexity": {
+        "useDateNow": "off",
+        "useOptionalChain": "off"
+      }
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}
