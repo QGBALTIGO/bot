@@ -1,0 +1,177 @@
+name: Apply terms domain extraction
+
+on:
+  push:
+    branches:
+      - v2/p1-terms-domain
+    paths:
+      - .github/workflows/apply-terms-domain-extraction.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/p1-terms-domain
+          fetch-depth: 0
+
+      - name: Install test runner
+        run: python -m pip install -q pytest
+
+      - name: Extract original terms content and routes
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('webapp.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text, filename=str(path))
+
+          assignment_names = {'TERMS_VERSION', 'TEXTS', 'TERMS_LONG', 'TERMS_HTML'}
+          assignments = {}
+          pick_lang_node = None
+          route_names = {'terms_page', 'api_accept', 'api_decline'}
+          routes = {}
+
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id in assignment_names:
+                          assignments[target.id] = node
+              elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  if node.name == 'pick_lang':
+                      pick_lang_node = node
+                  if node.name in route_names:
+                      routes[node.name] = node
+
+          missing_assignments = assignment_names - assignments.keys()
+          missing_routes = route_names - routes.keys()
+          if missing_assignments or missing_routes or pick_lang_node is None:
+              raise SystemExit(
+                  'Abortando: blocos esperados ausentes: '
+                  f'assignments={sorted(missing_assignments)}, '
+                  f'routes={sorted(missing_routes)}, pick_lang={pick_lang_node is not None}'
+              )
+
+          # Gera o serviço usando exatamente os trechos originais do monólito.
+          source_parts = [
+              ast.get_source_segment(text, assignments['TERMS_VERSION']) or '',
+              ast.get_source_segment(text, pick_lang_node) or '',
+              ast.get_source_segment(text, assignments['TEXTS']) or '',
+              ast.get_source_segment(text, assignments['TERMS_LONG']) or '',
+              ast.get_source_segment(text, assignments['TERMS_HTML']) or '',
+          ]
+          if any(not part.strip() for part in source_parts):
+              raise SystemExit('Abortando: falha ao extrair conteúdo literal de Termos')
+
+          service_text = (
+              'from __future__ import annotations\n\n'
+              'import os\n'
+              'from typing import Optional\n\n\n'
+              + '\n\n\n'.join(source_parts)
+              + '\n'
+          )
+          service_path = Path('webapp_services/terms.py')
+          if service_path.exists():
+              raise SystemExit('Abortando: webapp_services/terms.py já existe inesperadamente')
+          service_path.write_text(service_text, encoding='utf-8')
+          ast.parse(service_text, filename=str(service_path))
+
+          owners = [
+              (node.lineno, node.end_lineno or node.lineno, node.name)
+              for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          ]
+          def owner_for(line: int) -> str:
+              for start, end, name in owners:
+                  if start <= line <= end:
+                      return name
+              return '<module>'
+
+          # Os helpers de banco devem ser exclusivos das rotas que estão saindo.
+          for symbol in {'accept_terms', 'set_language'}:
+              uses = [
+                  (node.lineno, owner_for(node.lineno))
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Name)
+                  and node.id == symbol
+                  and isinstance(node.ctx, ast.Load)
+              ]
+              outside = [item for item in uses if item[1] not in route_names]
+              if outside:
+                  raise SystemExit(f'Abortando: {symbol} possui consumidores externos: {outside}')
+
+          ranges = []
+          for name in {'TEXTS', 'TERMS_LONG', 'TERMS_HTML', 'TERMS_VERSION'}:
+              node = assignments[name]
+              ranges.append((node.lineno, node.end_lineno or node.lineno, name))
+          ranges.append((pick_lang_node.lineno, pick_lang_node.end_lineno or pick_lang_node.lineno, 'pick_lang'))
+          for name, node in routes.items():
+              start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+              ranges.append((start, node.end_lineno or node.lineno, name))
+
+          lines = text.splitlines(keepends=True)
+          for start, end, _ in sorted(ranges, reverse=True):
+              del lines[start - 1:end]
+          new_text = ''.join(lines)
+
+          # Reexporta TERMS_VERSION para compatibilidade com possíveis imports legados.
+          version_import = 'from webapp_services.terms import TERMS_VERSION\n'
+          marker = 'from webapp_services.profile_collection import menu_collection_characters as _menu_collection_characters\n'
+          if marker not in new_text:
+              raise SystemExit('Abortando: ponto de inserção do reexport TERMS_VERSION não encontrado')
+          new_text = new_text.replace(marker, marker + version_import, 1)
+
+          for import_line in ('    accept_terms,\n', '    set_language,\n'):
+              if new_text.count(import_line) != 1:
+                  raise SystemExit(
+                      f'Abortando: import esperado não é único: {import_line.strip()} count={new_text.count(import_line)}'
+                  )
+              new_text = new_text.replace(import_line, '', 1)
+
+          parsed = ast.parse(new_text, filename=str(path))
+          remaining_defs = {
+              node.name
+              for node in parsed.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+          leaked_defs = ({'pick_lang'} | route_names) & remaining_defs
+          if leaked_defs:
+              raise SystemExit(f'Abortando: funções legadas permaneceram: {sorted(leaked_defs)}')
+
+          for symbol in {'TEXTS', 'TERMS_LONG', 'TERMS_HTML'}:
+              stores = [
+                  node.lineno
+                  for node in ast.walk(parsed)
+                  if isinstance(node, ast.Name)
+                  and node.id == symbol
+                  and isinstance(node.ctx, ast.Store)
+              ]
+              if stores:
+                  raise SystemExit(f'Abortando: assignment legado permaneceu para {symbol}: {stores}')
+
+          path.write_text(new_text, encoding='utf-8')
+          PY
+
+          python -m compileall -q webapp.py webapp_entrypoint.py webapp_routes webapp_services utils
+          python -m pytest -q \
+            tests/test_terms_service.py \
+            tests/test_terms_domain_architecture.py \
+            tests/test_memory_domain_architecture.py \
+            tests/test_webapp_auth_invariants.py \
+            tests/test_webapp_route_modularization.py
+
+      - name: Commit final refactor
+        run: |
+          rm .github/workflows/apply-terms-domain-extraction.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: extrair domínio de Termos [terms-domain-extracted]"
+          git push origin HEAD:v2/p1-terms-domain
