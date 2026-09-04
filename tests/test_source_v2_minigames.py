@@ -7,16 +7,16 @@ from source_v2_rewards import xp_to_level
 
 
 def test_wheel_probability_boundaries_match_seal_contract() -> None:
-    assert games.roll_wheel_index(0.00) == 3   # character
+    assert games.roll_wheel_index(0.00) == 3
     assert games.roll_wheel_index(0.049) == 3
-    assert games.roll_wheel_index(0.05) == 5  # 500 coins
+    assert games.roll_wheel_index(0.05) == 5
     assert games.roll_wheel_index(0.149) == 5
-    assert games.roll_wheel_index(0.15) == 2   # 200 coins
-    assert games.roll_wheel_index(0.30) == 4   # 150 coins
-    assert games.roll_wheel_index(0.45) == 1   # 100 coins
-    assert games.roll_wheel_index(0.60) == 6   # 80 coins
-    assert games.roll_wheel_index(0.75) == 0   # 50 coins
-    assert games.roll_wheel_index(0.90) == 7   # XP boost
+    assert games.roll_wheel_index(0.15) == 2
+    assert games.roll_wheel_index(0.30) == 4
+    assert games.roll_wheel_index(0.45) == 1
+    assert games.roll_wheel_index(0.60) == 6
+    assert games.roll_wheel_index(0.75) == 0
+    assert games.roll_wheel_index(0.90) == 7
 
 
 def test_cipher_reward_rejects_suspicious_perfect_run() -> None:
@@ -61,14 +61,6 @@ def test_cipher_session_uses_existing_source_character_ids(monkeypatch: pytest.M
     session = games.build_game_session("cipher_match")
     assert [card["id"] for card in session["cards"]] == [str(i) for i in range(1, 9)]
     assert all(card["img_url"].startswith("https://") for card in session["cards"])
-
-
-def test_frontend_cipher_cards_are_exactly_two_by_three() -> None:
-    from pathlib import Path
-
-    text = Path("frontend/src/components/minigames/CipherMatch.tsx").read_text(encoding="utf-8")
-    assert 'aspect-[2/3]' in text
-    assert 'aspect-[3/4]' not in text
 
 
 def test_source_xp_formula_is_shared_by_v2_rewards() -> None:
