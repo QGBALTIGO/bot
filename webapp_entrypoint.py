@@ -15,6 +15,7 @@ from webapp_routes.channel import build_channel_router
 from webapp_routes.collection import build_collection_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
+from webapp_routes.memory import build_memory_router
 from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
@@ -41,6 +42,9 @@ profile_page_router = build_profile_page_router(
     default_banner_url=TOP_BANNER_URL,
 )
 collection_router = build_collection_router(
+    banner_url=CARDS_TOP_BANNER_URL,
+)
+memory_router = build_memory_router(
     banner_url=CARDS_TOP_BANNER_URL,
 )
 
@@ -104,6 +108,16 @@ def _install_runtime_routes() -> None:
     }
     if not collection_paths.issubset(registered_paths):
         app.include_router(collection_router)
+        registered_paths.update(collection_paths)
+
+    memory_paths = {
+        "/memoria",
+        "/memory",
+        "/api/memory/best",
+        "/api/memory/finish",
+    }
+    if not memory_paths.issubset(registered_paths):
+        app.include_router(memory_router)
 
 
 def _install_runtime_middleware() -> None:
