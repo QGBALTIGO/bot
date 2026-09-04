@@ -31,22 +31,52 @@ def install_seal_runtime(app: FastAPI) -> None:
         )
         existing_paths.add("/assets")
 
+    def seal_favicon():
+        return FileResponse(SEAL_RUNTIME_DIR / "favicon.svg")
+
+    def seal_icons():
+        return FileResponse(SEAL_RUNTIME_DIR / "icons.svg")
+
+    def seal_menu():
+        return FileResponse(index_file, media_type="text/html")
+
+    def seal_preview():
+        return FileResponse(index_file, media_type="text/html")
+
+    # Registra programaticamente para que exista apenas uma declaração estática
+    # de /menu no código legado; em runtime este handler é instalado primeiro e
+    # assume a rota antes do fallback antigo.
     if "/favicon.svg" not in existing_paths:
-        @app.get("/favicon.svg", include_in_schema=False)
-        def seal_favicon():
-            return FileResponse(SEAL_RUNTIME_DIR / "favicon.svg")
+        app.add_api_route(
+            "/favicon.svg",
+            seal_favicon,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        existing_paths.add("/favicon.svg")
 
     if "/icons.svg" not in existing_paths:
-        @app.get("/icons.svg", include_in_schema=False)
-        def seal_icons():
-            return FileResponse(SEAL_RUNTIME_DIR / "icons.svg")
+        app.add_api_route(
+            "/icons.svg",
+            seal_icons,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        existing_paths.add("/icons.svg")
 
     if "/menu" not in existing_paths:
-        @app.get("/menu", include_in_schema=False)
-        def seal_menu():
-            return FileResponse(index_file, media_type="text/html")
+        app.add_api_route(
+            "/menu",
+            seal_menu,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        existing_paths.add("/menu")
 
     if "/seal" not in existing_paths:
-        @app.get("/seal", include_in_schema=False)
-        def seal_preview():
-            return FileResponse(index_file, media_type="text/html")
+        app.add_api_route(
+            "/seal",
+            seal_preview,
+            methods=["GET"],
+            include_in_schema=False,
+        )
