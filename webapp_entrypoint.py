@@ -13,6 +13,7 @@ from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.channel import build_channel_router
 from webapp_routes.context import build_context_router
 from webapp_routes.image_proxy import router as image_proxy_router
+from webapp_routes.profile_settings import router as profile_settings_router
 
 channel_router = build_channel_router(
     resolve_webapp_user=resolve_webapp_user,
@@ -42,6 +43,15 @@ def _install_runtime_routes() -> None:
 
     if "/api/webapp/context" not in registered_paths:
         app.include_router(context_router)
+        registered_paths.add("/api/webapp/context")
+
+    profile_paths = {
+        "/api/menu/language",
+        "/api/menu/privacy",
+        "/api/menu/notifications",
+    }
+    if not profile_paths.issubset(registered_paths):
+        app.include_router(profile_settings_router)
 
 
 def _install_runtime_middleware() -> None:
