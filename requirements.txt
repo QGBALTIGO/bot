@@ -8,3 +8,4 @@ beautifulsoup4
 httpx
 lxml
 Pillow>=10.4,<12
+cryptography>=42,<47
