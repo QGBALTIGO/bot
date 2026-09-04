@@ -20,6 +20,10 @@ class MatchResult:
     matched_name: str | None = None
     matched_anime: str | None = None
     previous_image_url: str | None = None
+    source_type: str | None = None
+    source_credit: str | None = None
+    source_license: str | None = None
+    variant: str | None = None
     reason: str | None = None
 
 
@@ -95,6 +99,40 @@ def _source_alias_keys(item: dict[str, Any]) -> Iterable[str]:
         yield normalize_identity(name)
 
 
+def _provenance(item: dict[str, Any]) -> dict[str, str | None]:
+    return {
+        "source_type": str(item.get("source_type") or "import").strip() or "import",
+        "source_credit": str(item.get("source_credit") or item.get("credit") or "").strip() or None,
+        "source_license": str(item.get("source_license") or item.get("license") or "").strip() or None,
+        "variant": str(item.get("variant") or "default").strip() or "default",
+    }
+
+
+def _result(
+    *,
+    item: dict[str, Any],
+    status: str,
+    name: str,
+    anime: str,
+    image_url: str,
+    source_id: str | None,
+    **kwargs: Any,
+) -> MatchResult:
+    provenance = _provenance(item)
+    return MatchResult(
+        status=status,
+        source_name=name,
+        source_anime=anime,
+        source_image_url=image_url,
+        source_character_id=source_id,
+        source_type=provenance["source_type"],
+        source_credit=provenance["source_credit"],
+        source_license=provenance["source_license"],
+        variant=provenance["variant"],
+        **kwargs,
+    )
+
+
 def plan_character_art_updates(
     manifest: list[dict[str, Any]],
     aliases: dict[str, int] | None = None,
@@ -116,12 +154,13 @@ def plan_character_art_updates(
         source_id = str(item.get("source_character_id") or item.get("seal_id") or "").strip() or None
 
         if not image_url.startswith("https://"):
-            results.append(MatchResult(
+            results.append(_result(
+                item=item,
                 status="invalid",
-                source_name=name,
-                source_anime=anime,
-                source_image_url=image_url,
-                source_character_id=source_id,
+                name=name,
+                anime=anime,
+                image_url=image_url,
+                source_id=source_id,
                 reason="image_url must use https",
             ))
             continue
@@ -136,12 +175,13 @@ def plan_character_art_updates(
             if parsed_id in by_id:
                 candidate_id = parsed_id
             else:
-                results.append(MatchResult(
+                results.append(_result(
+                    item=item,
                     status="unmatched",
-                    source_name=name,
-                    source_anime=anime,
-                    source_image_url=image_url,
-                    source_character_id=source_id,
+                    name=name,
+                    anime=anime,
+                    image_url=image_url,
+                    source_id=source_id,
                     reason=f"explicit character_id {explicit_id!r} not found in Source catalog",
                 ))
                 continue
@@ -160,12 +200,13 @@ def plan_character_art_updates(
             if len(ids) == 1:
                 candidate_id = ids[0]
             elif len(ids) > 1:
-                results.append(MatchResult(
+                results.append(_result(
+                    item=item,
                     status="ambiguous",
-                    source_name=name,
-                    source_anime=anime,
-                    source_image_url=image_url,
-                    source_character_id=source_id,
+                    name=name,
+                    anime=anime,
+                    image_url=image_url,
+                    source_id=source_id,
                     reason=f"{len(ids)} Source characters share the same normalized name + anime",
                 ))
                 continue
@@ -175,35 +216,38 @@ def plan_character_art_updates(
             if len(ids) == 1:
                 candidate_id = ids[0]
             elif len(ids) > 1:
-                results.append(MatchResult(
+                results.append(_result(
+                    item=item,
                     status="ambiguous",
-                    source_name=name,
-                    source_anime=anime,
-                    source_image_url=image_url,
-                    source_character_id=source_id,
+                    name=name,
+                    anime=anime,
+                    image_url=image_url,
+                    source_id=source_id,
                     reason=f"{len(ids)} Source characters share the normalized name; anime/alias required",
                 ))
                 continue
 
         if candidate_id is None:
-            results.append(MatchResult(
+            results.append(_result(
+                item=item,
                 status="unmatched",
-                source_name=name,
-                source_anime=anime,
-                source_image_url=image_url,
-                source_character_id=source_id,
+                name=name,
+                anime=anime,
+                image_url=image_url,
+                source_id=source_id,
                 reason="no Source character matched",
             ))
             continue
 
         meta = by_id[candidate_id]
-        results.append(MatchResult(
+        results.append(_result(
+            item=item,
             status="matched",
-            source_name=name,
-            source_anime=anime,
-            source_image_url=image_url,
+            name=name,
+            anime=anime,
+            image_url=image_url,
+            source_id=source_id,
             character_id=candidate_id,
-            source_character_id=source_id,
             matched_name=str(meta.get("name") or ""),
             matched_anime=str(meta.get("anime") or ""),
             previous_image_url=str(meta.get("image") or "") or None,
@@ -231,8 +275,10 @@ def apply_character_art_updates(
     origin: str | None = None,
 ) -> int:
     from cards_service import reload_cards_cache
-    from database import set_global_character_image
+    from database_character_art import record_primary_character_art
+    from database_migrations import apply_migrations
 
+    apply_migrations()
     applied = 0
     for result in results:
         if result.status != "matched" or not result.character_id:
@@ -240,7 +286,16 @@ def apply_character_art_updates(
         image_url = result.source_image_url
         if use_portrait_proxy:
             image_url = portrait_proxy_url(image_url, origin=origin)
-        set_global_character_image(result.character_id, image_url, int(updated_by))
+        record_primary_character_art(
+            result.character_id,
+            image_url,
+            source_type=result.source_type or "import",
+            source_url=result.source_image_url,
+            source_credit=result.source_credit,
+            source_license=result.source_license,
+            variant=result.variant or "default",
+            updated_by=int(updated_by),
+        )
         applied += 1
     if applied:
         reload_cards_cache()
@@ -274,7 +329,8 @@ def main() -> None:
 
     report = {
         "summary": summary,
-        "ownership_strategy": "preserve character_id; only global image override is changed",
+        "ownership_strategy": "preserve character_id; only the global image pointer changes",
+        "provenance_strategy": "source URL/credit/license are stored separately in character_art_assets",
         "items": [asdict(result) for result in results],
     }
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
