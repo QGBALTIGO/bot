@@ -1,0 +1,53 @@
+name: Build Seal exact runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/seal-exact-frontend
+    paths:
+      - .github/workflows/build-seal-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: v2/seal-exact-frontend
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install exact frontend dependencies
+        working-directory: seal_frontend
+        run: bun install --frozen-lockfile
+
+      - name: Type-check and build exact frontend
+        working-directory: seal_frontend
+        run: bun run build
+
+      - name: Publish build output without editing source
+        run: |
+          rm -rf seal_runtime
+          mkdir -p seal_runtime
+          cp -a seal_frontend/dist/. seal_runtime/
+          printf '%s\n' 'd9caac8e146d4b8c2d389e2ae220699b9a819a0d' > seal_runtime/UPSTREAM_COMMIT
+
+      - name: Commit runtime build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add seal_runtime
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "build: gerar runtime do frontend exato do Seal"
+          git push origin HEAD:v2/seal-exact-frontend
