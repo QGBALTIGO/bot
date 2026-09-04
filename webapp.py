@@ -842,61 +842,6 @@ def api_decline(
         )
 
 
-from utils.channel_verification_bridge import wait_for_verification, worker_health
-
-
-@app.get("/api/channel/selftest")
-def api_channel_selftest(
-    x_internal_api_secret: str = Header(default=""),
-):
-    _require_internal_api_secret(x_internal_api_secret)
-    health = worker_health()
-    return JSONResponse(health, status_code=200 if health.get("ok") else 503)
-
-
-@app.post("/api/channel/check")
-def api_channel_check(
-    payload: dict = Body(...),
-    x_telegram_init_data: str = Header(default=""),
-    x_webapp_uid: str = Header(default=""),
-):
-    ctx = _resolve_webapp_user(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        body_uid=(payload or {}).get("uid"),
-    )
-    user_id = int(ctx["user_id"])
-
-    if not REQUIRED_CHANNEL:
-        return {"ok": True}
-
-    try:
-        result = wait_for_verification(user_id, timeout_seconds=8.0)
-    except Exception as exc:
-        print(
-            f"[terms-membership] bridge failed user_id={user_id} type={type(exc).__name__}",
-            flush=True,
-        )
-        return JSONResponse(
-            {"ok": False, "message": "Não foi possível iniciar a verificação agora."},
-            status_code=502,
-        )
-
-    if result.get("ok"):
-        return {"ok": True}
-
-    status = str(result.get("status") or "")
-    if status == "not_member":
-        return JSONResponse(
-            {"ok": False, "message": "Você ainda não está no canal obrigatório."},
-            status_code=403,
-        )
-
-    return JSONResponse(
-        {"ok": False, "message": str(result.get("message") or "Falha na verificação.")},
-        status_code=503 if status == "timeout" else 502,
-    )
-
 
 # =========================
 # CONFIG — CATÁLOGO
