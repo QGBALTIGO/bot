@@ -129,7 +129,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-[0.2em] uppercase">SEAL</span>
+            <span className="text-2xl font-black text-white tracking-[0.2em] uppercase">SOURCE</span>
             <span className="text-[9px] font-bold text-zinc-600 tracking-[0.4em] uppercase">
               Waifu Collector
             </span>

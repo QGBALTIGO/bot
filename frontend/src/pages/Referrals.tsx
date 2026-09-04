@@ -58,7 +58,7 @@ export const Referrals = () => {
 
   const shareReferral = () => {
     if (!referralLink) return;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Join me on SEAL — hatch and collect anime waifus. Starter perks for new collectors.')}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Vem para o Source Baltigo — colecione personagens, jogue e evolua sua coleção. Benefícios para novos collectors.')}`;
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     if (window.Telegram?.WebApp?.openTelegramLink) {
       window.Telegram.WebApp.openTelegramLink(shareUrl);
