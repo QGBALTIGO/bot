@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 
 from cards_service import build_cards_final_data
 from database_migrations import migration_status
+from source_v2_progression import claim_quest, get_user_quests, list_achievements
 from utils.runtime_guard import AsyncRateLimiter
 from utils.webapp_identity import (
     build_fallback_webapp_user,
@@ -56,6 +57,18 @@ def _identity(
     return identity
 
 
+def _private_identity(
+    x_telegram_init_data: str,
+    x_webapp_uid: str,
+    authorization: str,
+) -> dict[str, Any]:
+    return _identity(
+        x_telegram_init_data=x_telegram_init_data,
+        x_webapp_uid=x_webapp_uid,
+        authorization=authorization,
+    )
+
+
 @router.post("/secure_init")
 async def secure_init(request: Request, payload: dict = Body(...)):
     client_key = request.client.host if request.client else "unknown"
@@ -101,11 +114,7 @@ def me(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    identity = _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
     return build_source_me(int(identity["user_id"]), identity)
 
 
@@ -119,11 +128,7 @@ def harem(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    identity = _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
     _, _, items = build_source_collection(int(identity["user_id"]))
     return paginate_items(items, page=page, limit=limit, search=search, rarity=rarity)
 
@@ -138,19 +143,15 @@ def gallery(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    identity = _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
     items = build_source_gallery(int(identity["user_id"]))
     return paginate_items(items, page=page, limit=limit, search=search, rarity=rarity)
 
 
 @router.get("/rarities")
 def rarities():
-    # Rarity persistence is already reserved by migration 001; until character
-    # assignments are migrated, legacy Source cards remain in the Standard pool.
+    # Character-to-rarity migration comes later. Legacy cards stay Standard until
+    # each existing Source character is mapped deliberately.
     return ["Standard"]
 
 
@@ -160,11 +161,7 @@ def marriage(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
+    _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
     return None
 
 
@@ -174,16 +171,28 @@ def battle_stats(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
+    from database_core import run
+
+    row = run(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE winner_user_id = %s) AS wins,
+            COUNT(*) FILTER (WHERE loser_user_id = %s) AS losses
+        FROM duels
+        WHERE winner_user_id = %s OR loser_user_id = %s
+        """,
+        (int(identity["user_id"]), int(identity["user_id"]), int(identity["user_id"]), int(identity["user_id"])),
+        fetch="one",
+    ) or {}
+    wins = int(row.get("wins") or 0)
+    losses = int(row.get("losses") or 0)
+    total = wins + losses
     return {
-        "total_battles": 0,
-        "wins": 0,
-        "losses": 0,
-        "win_rate": 0,
+        "total_battles": total,
+        "wins": wins,
+        "losses": losses,
+        "win_rate": round((wins / total) * 100, 1) if total else 0,
     }
 
 
@@ -193,12 +202,36 @@ def achievements_list(
     x_webapp_uid: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    _identity(
-        x_telegram_init_data=x_telegram_init_data,
-        x_webapp_uid=x_webapp_uid,
-        authorization=authorization,
-    )
-    return []
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
+    return list_achievements(int(identity["user_id"]))
+
+
+@router.get("/quests")
+def quests(
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
+):
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
+    return get_user_quests(int(identity["user_id"]))
+
+
+@router.post("/quests/claim/{quest_id}")
+def quests_claim(
+    quest_id: str,
+    x_telegram_init_data: str = Header(default=""),
+    x_webapp_uid: str = Header(default=""),
+    authorization: str = Header(default=""),
+):
+    identity = _private_identity(x_telegram_init_data, x_webapp_uid, authorization)
+    try:
+        return claim_quest(int(identity["user_id"]), str(quest_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'") or "quest_not_found") from exc
+    except ValueError as exc:
+        code = str(exc) or "quest_invalid"
+        status = 409 if code == "quest_already_claimed" else 400
+        raise HTTPException(status_code=status, detail=code) from exc
 
 
 @router.get("/compat/status")
@@ -219,5 +252,7 @@ def compat_status():
             "/social/marriage",
             "/battle/stats",
             "/achievements/list",
+            "/quests",
+            "/quests/claim/{quest_id}",
         ],
     }
