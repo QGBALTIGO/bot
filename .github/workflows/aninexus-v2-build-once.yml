@@ -83,6 +83,11 @@ jobs:
               'url = f"{BASE_URL}/menu?tab=dado&uid={user.id}"',
           )
           dado.write_text(dado_text, encoding='utf-8')
+
+          ptbr = Path('aninexus_frontend/src/ptBR.ts')
+          ptbr_text = ptbr.read_text(encoding='utf-8')
+          ptbr_text = ptbr_text.replace("  'READY': 'PRONTO',\n", '', 1)
+          ptbr.write_text(ptbr_text, encoding='utf-8')
           PY
 
       - name: Remove obsolete Seal progression modules
