@@ -1,23 +1,14 @@
-import {
-  AlertCircle,
-  Boxes,
-  CheckCircle2,
-  Clock,
-  Coins,
-  Gem,
-  PackageOpen,
-  RefreshCw,
-  Store,
-} from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card as CharacterCard } from '../components/character/Card';
+import { Coins, Dice5, Lock, RefreshCw, ShoppingBag, Sparkles, Store, Zap } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { apiFetch, getErrorMessage } from '../api/client';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
-import { CardSkeleton, Skeleton } from '../components/ui/Skeleton';
-import { Character, useUser } from '../context/UserContext';
+import { Skeleton } from '../components/ui/Skeleton';
+import type { Character } from '../context/UserContext';
+import { useToast } from '../components/ui/Toast';
+import { useUser } from '../context/UserContext';
 import { useApi } from '../hooks/useApi';
 import { cn, formatNumber } from '../utils';
 
@@ -25,267 +16,231 @@ interface ShopProps {
   onCharClick: (char: Character) => void;
 }
 
-interface ShopHub {
-  balance: number;
-  zenith: number;
-  pass_type: string;
-  characters_rarity: string;
-  rotation_date: string;
-  reset_at: string;
-}
-
-const getStockRemaining = (character: Character) => {
-  if (typeof character.stock_remaining === 'number') return Math.max(0, character.stock_remaining);
-  if (typeof character.stock_limit === 'number' && typeof character.sold_count === 'number') {
-    return Math.max(0, character.stock_limit - character.sold_count);
-  }
-  return null;
+type Offer = {
+  slot_code: string;
+  group: string;
+  card_id: number;
+  name: string;
+  title: string;
+  card_no: string;
+  rarity: string;
+  bp: string;
+  image: string;
+  price: number;
+  level_required: number;
+  bought: boolean;
 };
 
-const isSoldOut = (character: Character) => {
-  const remaining = getStockRemaining(character);
-  return Boolean(character.sold_out) || (remaining !== null && remaining <= 0);
-};
-
-const getCountdown = (resetAt: string | undefined, now: number) => {
-  if (!resetAt) return '--:--';
-
-  const resetTime = new Date(resetAt).getTime();
-  if (!Number.isFinite(resetTime)) return '--:--';
-
-  const diff = Math.max(0, resetTime - now);
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-  if (hours <= 0 && minutes <= 0 && seconds <= 10) return 'RESETTING';
-  if (hours <= 0) return `${minutes}m ${seconds}s`;
-  return `${hours}h ${minutes}m`;
+type ShopState = {
+  coins: number;
+  dado_balance: number;
+  dado_max: number;
+  dado_price: number;
+  level: number;
+  next_refresh_iso?: string | null;
+  countdown_label: string;
+  offers: Offer[];
 };
 
 export const Shop = ({ onCharClick }: ShopProps) => {
-  const { user, refreshUser } = useUser();
+  void onCharClick;
+  const { addToast } = useToast();
+  const { refreshUser } = useUser();
   const {
-    data: shopData,
+    data,
     loading,
     error,
-    execute: fetchShop,
-  } = useApi<Character[]>('/shop/characters');
-  const {
-    data: hubData,
-    loading: hubLoading,
-    error: hubError,
-    execute: fetchHub,
-  } = useApi<ShopHub>('/shop/hub');
-  const [now, setNow] = useState(() => Date.now());
-  const rotatedRef = useRef(false);
+    execute: refresh,
+  } = useApi<ShopState>('/source-shop');
+  const [buying, setBuying] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const refreshAll = useCallback(async () => {
+    await Promise.allSettled([refresh(), refreshUser()]);
+  }, [refresh, refreshUser]);
 
-  // When the rotation reset time passes, refetch once so users see the new
-  // rotation without a manual refresh.
-  useEffect(() => {
-    if (!hubData?.reset_at) {
-      rotatedRef.current = false;
-      return;
-    }
-    const resetTime = new Date(hubData.reset_at).getTime();
-    if (!Number.isFinite(resetTime)) return;
-    if (now >= resetTime && !rotatedRef.current) {
-      rotatedRef.current = true;
-      fetchShop().catch(() => undefined);
-      fetchHub().catch(() => undefined);
-    }
-  }, [now, hubData?.reset_at, fetchShop, fetchHub]);
-
-  const zenithBalance = Number(hubData?.zenith ?? user?.stats?.zenith ?? user?.zenith ?? 0);
-  const shardBalance = Number(hubData?.balance ?? user?.balance ?? 0);
-
-  const inventory = useMemo(() => {
-    const ownedIds = new Set((user?.characters || []).map((char) => String(char.id)));
-
-    return (shopData || [])
-      .map((char) => {
-        const owned = char.owned || ownedIds.has(String(char.id));
-        const stockRemaining = getStockRemaining(char);
-        const soldOut = isSoldOut(char);
-
-        return {
-          ...char,
-          owned,
-          stock_remaining: stockRemaining !== null ? stockRemaining : char.stock_remaining,
-          sold_out: soldOut,
-        };
-      })
-      .sort((a, b) => {
-        const rank = (char: Character) => {
-          if (char.owned) return 3;
-          if (isSoldOut(char)) return 4;
-          if (Number(char.zenith_price || 0) <= zenithBalance) return 1;
-          return 2;
-        };
-
-        const rankDiff = rank(a) - rank(b);
-        if (rankDiff !== 0) return rankDiff;
-        return Number(a.zenith_price || 0) - Number(b.zenith_price || 0);
-      });
-  }, [shopData, user?.characters, zenithBalance]);
-
-  const summary = useMemo(() => {
-    const owned = inventory.filter((char) => char.owned).length;
-    const available = inventory.filter((char) => !char.owned && !isSoldOut(char)).length;
-    const affordable = inventory.filter(
-      (char) => !char.owned && !isSoldOut(char) && Number(char.zenith_price || 0) <= zenithBalance,
-    ).length;
-    const soldOut = inventory.filter((char) => !char.owned && isSoldOut(char)).length;
-
-    return { owned, available, affordable, soldOut };
-  }, [inventory, zenithBalance]);
-
-  const handleRefresh = async () => {
+  const buyDado = async () => {
+    setBuying('dado');
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-    await Promise.allSettled([fetchShop(), fetchHub(), refreshUser()]);
+    try {
+      await apiFetch('/source-shop/buy-dado', { method: 'POST' });
+      addToast('+1 Dado adicionado ao seu saldo.', 'success');
+      await refreshAll();
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error');
+    } finally {
+      setBuying(null);
+    }
   };
 
-  if (loading && !shopData)
+  const buyXCard = async (offer: Offer) => {
+    setBuying(offer.slot_code);
+    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
+    try {
+      await apiFetch(`/source-shop/buy-xcard/${encodeURIComponent(offer.slot_code)}`, {
+        method: 'POST',
+      });
+      addToast(`${offer.name} foi adicionado às suas XCards.`, 'success');
+      await refreshAll();
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error');
+    } finally {
+      setBuying(null);
+    }
+  };
+
+  if (error && !data) {
+    return (
+      <div className="pt-6 adaptive-px max-w-2xl mx-auto">
+        <ErrorState message={error} onAction={refresh} />
+      </div>
+    );
+  }
+
+  if (loading || !data) {
     return (
       <div className="pt-6 adaptive-px max-w-5xl mx-auto space-y-8">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-8 w-48 rounded-md" />
-          <Skeleton className="h-4 w-64 rounded-md opacity-50" />
+        <Skeleton className="h-9 w-56 rounded-md" />
+        <div className="grid grid-cols-3 gap-3">
+          {[1, 2, 3].map((item) => <Skeleton key={item} className="h-20 rounded-md" />)}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-20 rounded-md" />
-          ))}
-        </div>
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <CardSkeleton key={i} />
-          ))}
+        <Skeleton className="h-32 rounded-xl" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-xl" />)}
         </div>
       </div>
     );
-
-  if (error && !shopData)
-    return (
-      <div className="pt-6 max-w-2xl mx-auto adaptive-px">
-        <ErrorState message={error} onAction={handleRefresh} />
-      </div>
-    );
+  }
 
   return (
-    <div className="pt-6 max-w-5xl mx-auto adaptive-px space-y-8">
+    <div className="pt-6 max-w-5xl mx-auto adaptive-px space-y-8 select-none">
       <header className="space-y-6">
         <div className="flex items-start justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <Store size={20} className="text-brand-accent" />
-              <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Market</h1>
+              <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Loja AniNexus</h1>
             </div>
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-relaxed">
-              Characters rotate daily — stock resets with the timer
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+              Itens reais do Source • ofertas de XCards renovadas diariamente
             </p>
           </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefresh}
-            isLoading={loading || hubLoading}
-            className="w-9 h-9 p-0"
-          >
-            <RefreshCw size={16} className={loading || hubLoading ? 'animate-spin' : ''} />
+          <Button variant="secondary" size="sm" onClick={refreshAll} className="w-9 h-9 p-0">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {[
-            { icon: Coins, label: 'Coins', value: formatNumber(shardBalance), variant: 'warning' },
-            { icon: Gem, label: 'Prisms', value: formatNumber(zenithBalance), variant: 'primary' },
-            {
-              icon: Clock,
-              label: 'Reset In',
-              value: getCountdown(hubData?.reset_at, now),
-              variant: 'secondary',
-            },
-            {
-              icon: PackageOpen,
-              label: 'Available',
-              value: `${summary.available}`,
-              variant: 'success',
-            },
-            {
-              icon: CheckCircle2,
-              label: 'Collected',
-              value: `${summary.owned}`,
-              variant: 'secondary',
-            },
-          ].map((metric, i) => (
-            <Card key={i} variant="default" className="p-3.5">
-              <div className="flex items-center gap-2 mb-2">
-                <metric.icon
-                  size={11}
-                  className={cn(
-                    metric.variant === 'primary' && 'text-brand-accent',
-                    metric.variant === 'success' && 'text-emerald-500',
-                    metric.variant === 'warning' && 'text-amber-500',
-                    metric.variant === 'secondary' && 'text-zinc-600',
-                  )}
-                />
-                <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest truncate">
-                  {metric.label}
-                </span>
-              </div>
-              <p className="text-sm font-mono font-bold text-zinc-100 tabular-nums uppercase truncate">
-                {metric.value}
-              </p>
-            </Card>
-          ))}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-3.5">
+            <Coins size={12} className="text-amber-500 mb-2" />
+            <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">Coins</p>
+            <p className="text-lg font-mono font-bold text-zinc-100 mt-1">{formatNumber(data.coins)}</p>
+          </Card>
+          <Card className="p-3.5">
+            <Dice5 size={12} className="text-brand-accent mb-2" />
+            <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">Dados</p>
+            <p className="text-lg font-mono font-bold text-zinc-100 mt-1">{data.dado_balance}/{data.dado_max}</p>
+          </Card>
+          <Card className="p-3.5">
+            <Zap size={12} className="text-emerald-500 mb-2" />
+            <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">Nível</p>
+            <p className="text-lg font-mono font-bold text-zinc-100 mt-1">{data.level}</p>
+          </Card>
         </div>
-
-        {(error || hubError) && shopData && (
-          <Badge
-            variant="warning"
-            icon={AlertCircle}
-            className="w-full py-2.5 rounded-md justify-center border-amber-500/10"
-          >
-            CONNECTION UNSTABLE: USING LOCAL CACHE
-          </Badge>
-        )}
       </header>
 
-      <section className="space-y-6">
-        <div className="flex items-center justify-between gap-4 px-1">
-          <div className="flex items-center gap-2">
-            <Boxes size={14} className="text-brand-accent" />
-            <h2 className="text-[10px] font-bold text-zinc-100 uppercase tracking-widest">
-              Available Characters
-            </h2>
+      <Card variant="surface" className="p-5 sm:p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_20%,rgba(59,130,246,0.10),transparent_45%)]" />
+        <div className="relative z-10 flex items-center justify-between gap-5">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-14 h-14 rounded-xl bg-brand-accent/10 border border-brand-accent/20 flex items-center justify-center shrink-0">
+              <Dice5 size={26} className="text-brand-accent" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-sm font-bold text-zinc-100 uppercase tracking-tight">+1 Dado</h2>
+                <Badge variant="primary" size="xs">{data.dado_price} Coins</Badge>
+              </div>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest leading-relaxed">
+                Adiciona um Dado ao mesmo saldo usado pelo comando /dado.
+              </p>
+            </div>
           </div>
-          <Badge variant="secondary" size="xs">
-            {summary.affordable} READY
-          </Badge>
+          <Button
+            onClick={buyDado}
+            isLoading={buying === 'dado'}
+            disabled={data.dado_balance >= data.dado_max || data.coins < data.dado_price}
+            size="sm"
+            className="shrink-0"
+          >
+            {data.dado_balance >= data.dado_max ? 'Cheio' : 'Comprar'}
+          </Button>
+        </div>
+      </Card>
+
+      <section className="space-y-5">
+        <div className="flex items-center justify-between px-1 gap-3">
+          <div className="flex items-center gap-2">
+            <ShoppingBag size={14} className="text-brand-accent" />
+            <h2 className="text-[10px] font-bold text-zinc-100 uppercase tracking-widest">XCards do dia</h2>
+          </div>
+          <Badge variant="secondary" size="xs">RENOVA EM {data.countdown_label || '--'}</Badge>
         </div>
 
-        {inventory.length > 0 ? (
-          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 px-0.5">
-            {inventory.map((char) => (
-              <CharacterCard key={char.id} character={char} onClick={() => onCharClick(char)} />
-            ))}
-          </div>
-        ) : (
-          <div className="py-20 border border-dashed border-white/5 rounded-lg bg-zinc-950/50">
-            <EmptyState
-              icon={Store}
-              title="Nexus Offline"
-              message="No characters available in the current rotation."
-            />
-          </div>
-        )}
+        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 sm:gap-4">
+          {(data.offers || []).map((offer, index) => {
+            const locked = data.level < offer.level_required;
+            const unavailable = offer.bought || locked || data.coins < offer.price;
+            return (
+              <m.article
+                key={offer.slot_code}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.035, 0.25) }}
+                className="rounded-xl overflow-hidden border border-white/[0.06] bg-zinc-900/50"
+              >
+                <div className="relative aspect-[2/3] overflow-hidden bg-zinc-950">
+                  {offer.image ? (
+                    <img
+                      src={offer.image}
+                      alt={offer.name}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center"><Sparkles className="text-zinc-800" /></div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+                  <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2">
+                    <Badge variant={offer.group === 'special' ? 'epic' : offer.group === 'rare' ? 'primary' : 'secondary'} size="xs">
+                      {offer.rarity || offer.group}
+                    </Badge>
+                    {offer.bought && <Badge variant="success" size="xs">COMPRADO</Badge>}
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 p-3">
+                    <p className="text-xs font-bold text-white leading-tight line-clamp-2">{offer.name}</p>
+                    <p className="text-[8px] text-zinc-400 uppercase tracking-wider mt-1 line-clamp-1">{offer.title}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      {offer.bp && <span className="text-[8px] font-mono text-zinc-500">BP {offer.bp}</span>}
+                      {locked && <span className="text-[8px] text-red-400 flex items-center gap-1"><Lock size={8} /> NV {offer.level_required}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-2.5">
+                  <Button
+                    variant={offer.bought ? 'ghost' : 'outline'}
+                    size="sm"
+                    isLoading={buying === offer.slot_code}
+                    disabled={unavailable}
+                    onClick={() => buyXCard(offer)}
+                    className={cn('w-full h-9', offer.bought && 'opacity-50')}
+                  >
+                    {offer.bought ? 'Comprado' : locked ? `Nível ${offer.level_required}` : `${offer.price} Coins`}
+                  </Button>
+                </div>
+              </m.article>
+            );
+          })}
+        </div>
       </section>
     </div>
   );
