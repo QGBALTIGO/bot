@@ -23,6 +23,7 @@ from webapp_routes.profile_collection import router as profile_collection_router
 from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
+from webapp_routes.source_v2 import build_source_v2_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
@@ -57,6 +58,9 @@ terms_router = build_terms_router(
     background_url=BACKGROUND_URL,
     empty_bg_data_uri=EMPTY_BG_DATA_URI,
 )
+source_v2_router = build_source_v2_router(
+    banner_url=TOP_BANNER_URL,
+)
 
 
 def _install_runtime_routes() -> None:
@@ -86,6 +90,11 @@ def _install_runtime_routes() -> None:
     if not terms_paths.issubset(registered_paths):
         app.include_router(terms_router)
         registered_paths.update(terms_paths)
+
+    source_v2_paths = {"/source-v2", "/app-v2"}
+    if not source_v2_paths.issubset(registered_paths):
+        app.include_router(source_v2_router)
+        registered_paths.update(source_v2_paths)
 
     if "/menu" not in registered_paths:
         app.include_router(profile_page_router)
