@@ -103,8 +103,18 @@ jobs:
           leaked = targets & remaining
           if leaked:
               raise SystemExit(f'Abortando: funções legadas permaneceram: {sorted(leaked)}')
-          if '_menu_user_payload(' in new_text:
-              raise SystemExit('Abortando: chamada legada permaneceu no monólito')
+
+          legacy_loads = [
+              node.lineno
+              for node in ast.walk(parsed)
+              if isinstance(node, ast.Name)
+              and node.id == '_menu_user_payload'
+              and isinstance(node.ctx, ast.Load)
+          ]
+          if legacy_loads:
+              raise SystemExit(
+                  f'Abortando: referências exatas ao helper legado permaneceram: {legacy_loads}'
+              )
 
           path.write_text(new_text, encoding='utf-8')
           PY
