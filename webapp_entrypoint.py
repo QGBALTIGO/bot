@@ -27,6 +27,7 @@ from webapp_routes.profile_overview import build_profile_overview_router
 from webapp_routes.profile_page import build_profile_page_router
 from webapp_routes.profile_settings import router as profile_settings_router
 from webapp_routes.source_v2_compat import router as source_v2_compat_router
+from webapp_routes.source_v2_social import router as source_v2_social_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
@@ -73,10 +74,17 @@ def _maybe_apply_v2_migrations() -> None:
     if not enabled:
         return
 
-    from database_migrations import apply_migrations
+    from database_migrations import apply_migrations, migration_status
 
     applied = apply_migrations()
-    print(f"[source-v2] migrations ready; applied={applied}", flush=True)
+    schema = migration_status()
+    print(
+        "[source-v2] migrations ready; "
+        f"applied={applied} versions={schema.get('applied_versions')} "
+        f"pending={schema.get('pending_versions')} ready={schema.get('ready')} "
+        f"rarities={schema.get('rarity_count')}",
+        flush=True,
+    )
 
 
 def _install_runtime_routes() -> None:
@@ -108,11 +116,23 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/social/marriage",
         "/api/v1_7b82/battle/stats",
         "/api/v1_7b82/achievements/list",
+        "/api/v1_7b82/quests",
+        "/api/v1_7b82/quests/claim/{quest_id}",
         "/api/v1_7b82/compat/status",
     }
     if not v2_compat_paths.issubset(registered_paths):
         app.include_router(source_v2_compat_router)
         registered_paths.update(v2_compat_paths)
+
+    v2_social_paths = {
+        "/api/v1_7b82/social/referrals",
+        "/api/v1_7b82/social/referrals/stats",
+        "/api/v1_7b82/leaderboard",
+        "/api/v1_7b82/ws/leaderboard",
+    }
+    if not v2_social_paths.issubset(registered_paths):
+        app.include_router(source_v2_social_router)
+        registered_paths.update(v2_social_paths)
 
     terms_paths = {
         "/terms",
