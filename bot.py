@@ -131,6 +131,7 @@ from utils.channel_verification_bridge import channel_verification_worker
 from utils.health_monitor import source_health_monitor
 from utils.telegram_outbox import telegram_outbox_worker
 from utils.wallhaven_legacy_cleanup import cleanup_legacy_wallhaven_global_images
+from utils.worker_supervisor import supervise_worker
 
 
 # =========================================================
@@ -333,19 +334,35 @@ def build_application():
         await restore_capture_purchase_runtime(app)
         await restore_duel_runtime(app)
         app.bot_data["terms_channel_worker"] = asyncio.create_task(
-            channel_verification_worker(app),
+            supervise_worker(
+                app,
+                name="channel_verification",
+                worker=channel_verification_worker,
+            ),
             name="terms-channel-verification",
         )
         app.bot_data["telegram_outbox_worker"] = asyncio.create_task(
-            telegram_outbox_worker(app),
+            supervise_worker(
+                app,
+                name="telegram_outbox",
+                worker=telegram_outbox_worker,
+            ),
             name="telegram-outbox",
         )
         app.bot_data["aninexus_news_worker"] = asyncio.create_task(
-            aninexus_news_worker(app),
+            supervise_worker(
+                app,
+                name="aninexus_news",
+                worker=aninexus_news_worker,
+            ),
             name="aninexus-news-channel",
         )
         app.bot_data["source_health_monitor"] = asyncio.create_task(
-            source_health_monitor(app),
+            supervise_worker(
+                app,
+                name="source_health",
+                worker=source_health_monitor,
+            ),
             name="source-health-monitor",
         )
         removed_legacy_wallhaven = await asyncio.to_thread(cleanup_legacy_wallhaven_global_images)
