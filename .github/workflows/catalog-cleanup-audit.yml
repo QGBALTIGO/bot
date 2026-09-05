@@ -11,6 +11,7 @@ on:
       - 'scripts/resolve_catalog_reviews_final.py'
       - 'scripts/audit_franchise_gaps.py'
       - 'scripts/ensure_franchise_must_haves.py'
+      - 'scripts/normalize_must_have_targets.py'
       - 'scripts/build_catalog_cleanup_overrides.py'
       - 'scripts/build_catalog_impact_manifest.py'
       - 'scripts/finalize_catalog_cleanup_plan.py'
@@ -21,6 +22,7 @@ on:
       - 'webapp_entrypoint.py'
       - 'tests/test_catalog_cleanup.py'
       - 'tests/test_franchise_must_haves.py'
+      - 'tests/test_normalize_must_have_targets.py'
       - 'tests/test_catalog_identity_display.py'
       - 'tests/test_catalog_review_resolution.py'
       - 'tests/test_catalog_review_resolution_final.py'
@@ -56,6 +58,7 @@ jobs:
           pytest -q
           tests/test_catalog_cleanup.py
           tests/test_franchise_must_haves.py
+          tests/test_normalize_must_have_targets.py
           tests/test_catalog_identity_display.py
           tests/test_catalog_review_resolution.py
           tests/test_catalog_review_resolution_final.py
@@ -114,6 +117,11 @@ jobs:
         run: |
           python scripts/ensure_franchise_must_haves.py \
             --input /tmp/catalog_franchise_gaps.raw.json \
+            --output /tmp/catalog_franchise_gaps.must_haves.json
+      - name: Normalize canonical franchise targets
+        run: |
+          python scripts/normalize_must_have_targets.py \
+            --input /tmp/catalog_franchise_gaps.must_haves.json \
             --output /tmp/catalog_franchise_gaps.json
       - name: Build non-production catalog proposal
         run: |
@@ -138,7 +146,9 @@ jobs:
               row=reports.get(aid) or {}
               print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'recommended=', row.get('recommended_total_after_final_review', row.get('recommended_total_after_review_resolution')))
           print('FRANCHISE_GLOBAL', json.dumps(f.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('CANONICAL_TARGETS', json.dumps(f.get('canonical_target_normalization') or {}, ensure_ascii=False, sort_keys=True))
           print('PROPOSAL_COUNTS', 'deleted=', len(o.get('deleted_characters') or []), 'custom_animes=', len(o.get('custom_animes') or []), 'custom_characters=', len(o.get('custom_characters') or []))
+          print('NEW_ANIMES', [x.get('anime') for x in (o.get('custom_animes') or []) if x.get('_catalog_source') in {'franchise_cleanup_v1','must_have_franchise_v1'}])
           print('NARUTO_MUST_HAVES', json.dumps(f.get('must_have_insertions') or [], ensure_ascii=False))
           print('IDENTITY_ALIASES', json.dumps(f.get('identity_aliases') or {}, ensure_ascii=False, sort_keys=True))
           print('IDENTITY_DISPLAY', json.dumps(f.get('identity_display_overrides') or {}, ensure_ascii=False, sort_keys=True))
