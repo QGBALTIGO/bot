@@ -19,7 +19,60 @@ permissions:
   contents: read
 
 jobs:
+  catalog-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Measure full catalog and current image coverage
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          raw=json.loads(Path('data/personagens_anilist.txt').read_text(encoding='utf-8'))
+          animes=raw.get('items',[]) if isinstance(raw,dict) else raw
+          chars={}
+          anime_count=0
+          with_image=0
+          for anime in animes or []:
+              if not isinstance(anime,dict):
+                  continue
+              anime_count += 1
+              for ch in anime.get('characters') or []:
+                  if not isinstance(ch,dict):
+                      continue
+                  try: cid=int(ch.get('id') or 0)
+                  except Exception: continue
+                  if cid <= 0 or cid in chars: continue
+                  chars[cid]=ch
+                  if str(ch.get('image') or '').strip(): with_image += 1
+
+          wh_raw=json.loads(Path('data/wallhaven_character_overrides.json').read_text(encoding='utf-8'))
+          wh=(wh_raw.get('characters') or {}) if isinstance(wh_raw,dict) else {}
+          state_raw=json.loads(Path('data/wallhaven_curation_state.json').read_text(encoding='utf-8'))
+          processed=(state_raw.get('processed') or {}) if isinstance(state_raw,dict) else {}
+          statuses=Counter(str((v or {}).get('status') or 'unknown') for v in processed.values() if isinstance(v,dict))
+
+          result={
+              'anime_entries': anime_count,
+              'unique_characters': len(chars),
+              'anilist_image_present': with_image,
+              'wallhaven_approved_file': len(wh),
+              'wallhaven_processed': len(processed),
+              'wallhaven_statuses': dict(statuses),
+              'needs_better_than_wallhaven': max(0, len(chars)-len(wh)),
+              'wallhaven_coverage_pct': round((len(wh)/len(chars)*100),2) if chars else 0,
+          }
+          print('CATALOG_STATS',json.dumps(result,ensure_ascii=False,sort_keys=True))
+          PY
+
   offline-tests:
+    needs: catalog-stats
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
