@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,54 @@ def load_retired_ids(path: Path) -> list[int]:
 def audit_hash(retired_ids: list[int]) -> str:
     payload = ",".join(str(x) for x in sorted(retired_ids)).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def runtime_overrides_path() -> Path:
+    raw = str(os.getenv("CARDS_OVERRIDES_PATH") or "").strip()
+    return Path(raw) if raw else ROOT / "data" / "cards_overrides.json"
+
+
+def load_runtime_deleted_ids(path: Path | None = None) -> set[int]:
+    overrides_path = path or runtime_overrides_path()
+    if not overrides_path.exists():
+        raise RuntimeError(f"arquivo de overrides ativo não existe: {overrides_path}")
+    payload = load_json_object(overrides_path)
+    deleted: set[int] = set()
+    for value in payload.get("deleted_characters") or []:
+        try:
+            cid = int(value)
+        except Exception:
+            continue
+        if cid > 0:
+            deleted.add(cid)
+    return deleted
+
+
+def assert_catalog_already_disabled(retired_ids: list[int], path: Path | None = None) -> dict[str, Any]:
+    """Impede compensar/remover enquanto as cartas ainda podem nascer no catálogo.
+
+    A ordem operacional obrigatória é:
+    1. publicar o overrides final com as cartas desativadas;
+    2. só então executar a migração econômica.
+
+    Assim uma carta não pode reaparecer entre a compensação e a atualização do
+    catálogo. Se o deploy do catálogo falhar, nenhuma coleção é tocada.
+    """
+    target = {int(x) for x in retired_ids if int(x) > 0}
+    deleted = load_runtime_deleted_ids(path)
+    missing = sorted(target - deleted)
+    if missing:
+        preview = missing[:20]
+        raise RuntimeError(
+            "catálogo ativo ainda permite personagens do plano final; "
+            f"faltam {len(missing)} IDs em deleted_characters (ex.: {preview}). "
+            "Publique o overrides final antes de compensar/remover."
+        )
+    return {
+        "retire_character_count": len(target),
+        "disabled_character_count": len(target & deleted),
+        "all_retired_cards_disabled": True,
+    }
 
 
 def load_apply_plan(path: Path, approved_hash: str) -> dict[str, Any]:
@@ -423,6 +472,8 @@ def apply_batch(retired_ids: list[int], batch_id: str, *, expected: dict[str, An
     if digest != str(expected.get("final_hash") or ""):
         raise RuntimeError("hash do lote não corresponde ao plano final aprovado")
 
+    catalog_guard = assert_catalog_already_disabled(retired_ids)
+
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
@@ -442,6 +493,7 @@ def apply_batch(retired_ids: list[int], batch_id: str, *, expected: dict[str, An
                             "already_completed": True,
                             "batch_id": batch_id,
                             "retire_character_count": len(retired_ids),
+                            **catalog_guard,
                         }
                 else:
                     cur.execute(
@@ -545,6 +597,7 @@ def apply_batch(retired_ids: list[int], batch_id: str, *, expected: dict[str, An
                     "coins_awarded": total_awarded,
                     "ledger_rows_inserted": inserted_rows,
                     "collection_rows_deleted": deleted_collection_rows,
+                    **catalog_guard,
                     **favorite_result,
                     **closed_refs,
                 }
