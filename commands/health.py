@@ -17,9 +17,9 @@ from telegram.ext import ContextTypes
 from scripts.guard_catalog_retirements_by_usage import (
     DEFAULT_COPY_REVIEW_THRESHOLD,
     DEFAULT_OWNER_REVIEW_THRESHOLD,
-    load_candidate_manifest,
     run_live_usage_guard,
 )
+from utils.catalog_impact_manifest import load_candidate_manifest
 from utils.runtime_guard import lock_manager, rate_limiter
 from utils.system_health import (
     application_version,
@@ -86,7 +86,11 @@ def _catalog_public_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in manifest.items()
-        if key not in {"candidate_ids", "candidate_ids_zlib_base64"}
+        if key not in {
+            "candidate_ids",
+            "candidate_ids_zlib_base64",
+            "candidate_ids_payload_chunks",
+        }
     }
 
 
