@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import io
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from cards_service import build_cards_final_data, find_anime, override_set_chara
 from database import get_all_global_character_images, pool
 from utils.aninexus_admin import is_admin
 from utils.card_image_review_rules import score_zerochan_post, zerochan_queries
+from utils.portrait_image import crop_portrait_bytes
 from utils.public_character_image import public_origin
 
 logger = logging.getLogger(__name__)
@@ -108,7 +110,7 @@ def ensure_review_tables() -> None:
         conn.commit()
 
 
-def _fetch_json(url: str) -> Any:
+def _throttle_zerochan() -> None:
     global _ZEROCHAN_NEXT_REQUEST_AT
     with _ZEROCHAN_RATE_LOCK:
         now = time.monotonic()
@@ -116,20 +118,53 @@ def _fetch_json(url: str) -> Any:
         if delay:
             time.sleep(delay)
         _ZEROCHAN_NEXT_REQUEST_AT = time.monotonic() + 1.15
-    request = Request(url, headers={"User-Agent": ZEROCHAN_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=25) as response:
-        return json.load(response)
+
+
+def _fetch_json(url: str) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(3):
+        _throttle_zerochan()
+        request = Request(url, headers={"User-Agent": ZEROCHAN_AGENT, "Accept": "application/json"})
+        try:
+            with urlopen(request, timeout=25) as response:
+                return json.load(response)
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(3 * (attempt + 1))
+    raise RuntimeError("zerochan_request_failed") from last_error
+
+
+def _telegram_photo(source_url: str, post_id: int) -> io.BytesIO:
+    request = Request(
+        str(source_url),
+        headers={
+            "User-Agent": ZEROCHAN_AGENT,
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer": "https://www.zerochan.net/",
+        },
+    )
+    with urlopen(request, timeout=45) as response:
+        content = response.read(12 * 1024 * 1024 + 1)
+    if not content or len(content) > 12 * 1024 * 1024:
+        raise ValueError("invalid_review_image_size")
+    portrait, _metadata = crop_portrait_bytes(content)
+    stream = io.BytesIO(portrait)
+    stream.name = f"character-{int(post_id)}.jpg"
+    return stream
 
 
 def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int) -> list[Candidate]:
     ranked: dict[int, tuple[float, dict[str, Any]]] = {}
     successful_searches = 0
+    failed_searches = 0
     for query in zerochan_queries(name):
         url = f"https://www.zerochan.net/{quote(query, safe='+')}?json&strict&s=fav&t=0&l=100"
         try:
             payload = _fetch_json(url)
             successful_searches += 1
         except Exception as exc:
+            failed_searches += 1
             logger.warning("Zerochan search failed query=%s error=%s", query, type(exc).__name__)
             continue
         rows = payload if isinstance(payload, list) else payload.get("items", []) if isinstance(payload, dict) else []
@@ -145,6 +180,8 @@ def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int
 
     if successful_searches == 0:
         raise RuntimeError("zerochan_unavailable")
+    if not ranked and failed_searches:
+        raise RuntimeError("zerochan_partial_failure")
 
     results: list[Candidate] = []
     for post_id, (score, post) in sorted(ranked.items(), key=lambda item: item[1][0], reverse=True):
@@ -291,6 +328,44 @@ def _mark_protected(character_id: int) -> None:
         conn.commit()
 
 
+def _recover_failed_deliveries(anime_id: int) -> int:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE card_image_review_queue q
+                SET status='queued', round_no=0, updated_at=NOW()
+                WHERE q.anime_id=%s
+                  AND q.status NOT IN ('approved', 'protected')
+                  AND EXISTS (
+                      SELECT 1 FROM card_image_review_candidates c
+                      WHERE c.character_id=q.character_id
+                        AND c.status='send_failed'
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM card_image_review_candidates c
+                      WHERE c.character_id=q.character_id
+                        AND c.status='pending'
+                  )
+                """,
+                (int(anime_id),),
+            )
+            recovered = int(cur.rowcount or 0)
+            cur.execute(
+                """
+                DELETE FROM card_image_review_candidates c
+                USING card_image_review_queue q
+                WHERE c.character_id=q.character_id
+                  AND q.anime_id=%s
+                  AND q.status='queued'
+                  AND c.status='send_failed'
+                """,
+                (int(anime_id),),
+            )
+        conn.commit()
+    return recovered
+
+
 def _caption(queue_row: dict[str, Any], candidate: dict[str, Any], total_options: int) -> str:
     artist = str(candidate.get("artist") or "").strip()
     artist_line = f"\n🎨 {html.escape(artist)}" if artist else ""
@@ -328,9 +403,14 @@ async def _dispatch_next_character(application) -> bool:
     sent = 0
     for candidate in stored:
         try:
+            photo = await asyncio.to_thread(
+                _telegram_photo,
+                str(candidate["source_url"]),
+                int(candidate["zerochan_post_id"]),
+            )
             message = await application.bot.send_photo(
                 chat_id=REVIEW_CHANNEL,
-                photo=str(candidate["image_url"]),
+                photo=photo,
                 caption=_caption(row, candidate, len(stored)),
                 parse_mode="HTML",
                 reply_markup=_keyboard(int(candidate["id"])),
@@ -353,10 +433,9 @@ async def _dispatch_next_character(application) -> bool:
     if sent == 0:
         with pool.connection() as conn:
             with conn.cursor() as cur:
-                next_status = "queued" if int(row.get("round_no") or 0) + 1 < MAX_ROUNDS else "exhausted"
                 cur.execute(
-                    "UPDATE card_image_review_queue SET status=%s, updated_at=NOW() WHERE character_id=%s AND status='reviewing'",
-                    (next_status, int(row["character_id"])),
+                    "UPDATE card_image_review_queue SET status='queued', updated_at=NOW() WHERE character_id=%s AND status='reviewing'",
+                    (int(row["character_id"]),),
                 )
             conn.commit()
     return sent > 0
@@ -575,6 +654,9 @@ async def card_image_review_worker(application) -> None:
     ensure_review_tables()
     for anime_id in AUTO_ANIME_IDS:
         try:
+            recovered = await asyncio.to_thread(_recover_failed_deliveries, anime_id)
+            if recovered:
+                logger.info("Recovered failed image review deliveries anime=%s total=%s", anime_id, recovered)
             await asyncio.to_thread(seed_anime_review, anime_id)
         except Exception:
             logger.exception("Could not seed automatic card image review anime=%s", anime_id)
