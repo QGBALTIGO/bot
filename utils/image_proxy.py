@@ -14,7 +14,7 @@ MAX_IMAGE_BYTES = max(1, int(os.getenv("IMAGE_PROXY_MAX_BYTES", str(12 * 1024 * 
 MAX_REDIRECTS = max(0, min(8, int(os.getenv("IMAGE_PROXY_MAX_REDIRECTS", "4"))))
 
 
-@dataclass(frozen=True)
+@dataclass
 class ImageProxyError(Exception):
     code: str
     status_code: int = 400

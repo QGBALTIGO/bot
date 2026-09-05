@@ -781,3 +781,21 @@ def get_character_by_id(character_id: int) -> Optional[Dict[str, Any]]:
         "image": str(ch.get("image") or "").strip(),
         "anime_id": int(ch.get("anime_id") or 0),
     }
+
+
+def get_character_base_image(character_id: int) -> str:
+    """Return the catalog image before global or manual image overrides."""
+    cid = int(character_id)
+
+    for anime in load_cards_assets_raw():
+        for character in anime.get("characters", []) or []:
+            if _safe_int(character.get("id")) == cid:
+                return str(character.get("image") or "").strip()
+
+    # Safe-rollout characters and administrator-created characters live in
+    # custom_characters. Their own image is still the correct baseline.
+    for character in load_cards_overrides().get("custom_characters", []) or []:
+        if isinstance(character, dict) and _safe_int(character.get("id")) == cid:
+            return str(character.get("image") or "").strip()
+
+    return ""
