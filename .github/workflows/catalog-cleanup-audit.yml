@@ -11,11 +11,14 @@ on:
       - 'scripts/audit_franchise_gaps.py'
       - 'scripts/ensure_franchise_must_haves.py'
       - 'scripts/build_catalog_cleanup_overrides.py'
+      - 'scripts/finalize_catalog_cleanup_plan.py'
       - 'scripts/apply_catalog_retirements.py'
       - 'tests/test_catalog_cleanup.py'
       - 'tests/test_franchise_must_haves.py'
       - 'tests/test_catalog_identity_display.py'
       - 'tests/test_catalog_review_resolution.py'
+      - 'tests/test_finalize_catalog_cleanup_plan.py'
+      - 'tests/test_catalog_apply_safety.py'
       - '.github/workflows/catalog-cleanup-audit.yml'
       - 'data/personagens_anilist.txt'
       - 'data/cards_overrides.json'
@@ -39,7 +42,14 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install --disable-pip-version-check httpx 'psycopg[binary]' pytest
       - name: Catalog cleanup unit tests
-        run: pytest -q tests/test_catalog_cleanup.py tests/test_franchise_must_haves.py tests/test_catalog_identity_display.py tests/test_catalog_review_resolution.py
+        run: >-
+          pytest -q
+          tests/test_catalog_cleanup.py
+          tests/test_franchise_must_haves.py
+          tests/test_catalog_identity_display.py
+          tests/test_catalog_review_resolution.py
+          tests/test_finalize_catalog_cleanup_plan.py
+          tests/test_catalog_apply_safety.py
 
   # Full external audit is intentionally manual. Re-running it on every commit
   # wastes AniList quota and can make two catalog snapshots compete.
