@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: test-zerochan-curator-v2
-          fetch-depth: 1
+          fetch-depth: 20
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -72,6 +72,8 @@ jobs:
             exit 0
           fi
           git commit -m 'data: advance Zerochan character curation'
+          git fetch origin test-zerochan-curator-v2
+          git rebase origin/test-zerochan-curator-v2
           git push origin HEAD:test-zerochan-curator-v2
       - uses: actions/upload-artifact@v4
         if: always()
