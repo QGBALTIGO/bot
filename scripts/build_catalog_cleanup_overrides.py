@@ -14,7 +14,7 @@ DEFAULT_FRANCHISE = ROOT / "data" / "catalog_franchise_gaps.json"
 DEFAULT_OUTPUT = ROOT / "data" / "cards_overrides.cleanup_proposal.json"
 
 # Só cria categoria nova automaticamente para franquias realmente populares.
-# O restante continua no relatório para revisão manual.
+# O restante continua no relatório para revisão manual, salvo must-haves explícitos.
 AUTO_NEW_ANIME_MAX_RANK = 125
 AUTO_NEW_ANIME_MIN_POPULARITY = 300_000
 
@@ -65,6 +65,8 @@ def base_catalog_ids(dataset_path: Path = DEFAULT_DATASET) -> tuple[set[int], se
 
 
 def _missing_franchise_is_high_confidence(plan: dict[str, Any]) -> bool:
+    if plan.get("force_auto_add") is True:
+        return True
     media = plan.get("missing_popular_media") or plan.get("component_media") or []
     if not media:
         return False
@@ -134,6 +136,7 @@ def build_proposal(
     current_character_ids = set(base_character_ids) | set(existing_custom_chars)
 
     new_anime_ids: set[int] = set()
+    forced_new_anime_ids: set[int] = set()
     skipped_missing_animes: list[dict[str, Any]] = []
     for plan in franchise.get("missing_franchises") or []:
         if not isinstance(plan, dict) or str(plan.get("status") or "") != "MISSING_FRANCHISE":
@@ -154,12 +157,14 @@ def build_proposal(
         existing_custom_animes[target_id] = {
             "anime_id": target_id,
             "anime": str(plan.get("target_anime") or f"Anime {target_id}").strip(),
-            "banner_image": "",
-            "cover_image": "",
-            "_catalog_source": "franchise_cleanup_v1",
+            "banner_image": str(plan.get("banner_image") or "").strip(),
+            "cover_image": str(plan.get("cover_image") or "").strip(),
+            "_catalog_source": "must_have_franchise_v1" if plan.get("force_auto_add") is True else "franchise_cleanup_v1",
         }
         current_anime_ids.add(target_id)
         new_anime_ids.add(target_id)
+        if plan.get("force_auto_add") is True:
+            forced_new_anime_ids.add(target_id)
 
     added_char_ids: set[int] = set()
     audit_added_ids: set[int] = set()
@@ -211,8 +216,6 @@ def build_proposal(
         return True
 
     # 1) Lacunas detectadas dentro das próprias obras já existentes.
-    # Antes esta lista era ignorada pelo builder, fazendo personagens óbvios
-    # (Mikasa, Misa Amane, Askeladd etc.) continuarem ausentes mesmo após a auditoria.
     for row in audit.get("add_candidates") or []:
         if not isinstance(row, dict) or str(row.get("decision") or "") != "ADD":
             continue
@@ -234,8 +237,7 @@ def build_proposal(
         ):
             audit_added_ids.add(cid)
 
-    # 2) Lacunas encontradas em sequências/remakes/franquias e na nova categoria Naruto.
-    # IDs já adicionados acima são ignorados automaticamente, evitando duplicação.
+    # 2) Lacunas encontradas em sequências/remakes/franquias e must-haves.
     for row in franchise.get("character_add_candidates") or []:
         if not isinstance(row, dict) or str(row.get("decision") or "") != "ADD":
             continue
@@ -244,6 +246,7 @@ def build_proposal(
             aid = int(row.get("target_anime_id") or 0)
         except Exception:
             continue
+        source = "must_have_franchise_v1" if aid in forced_new_anime_ids else "franchise_cleanup_v1"
         if add_character(
             cid=cid,
             aid=aid,
@@ -252,14 +255,11 @@ def build_proposal(
             image=str(row.get("anilist_image_reference") or ""),
             role=str(row.get("role") or ""),
             favourites=int(row.get("favourites") or 0),
-            catalog_source="franchise_cleanup_v1",
+            catalog_source=source,
             missing_target_reason="target_anime_not_auto_added",
         ):
             franchise_added_ids.add(cid)
 
-    # Identidades que são o mesmo personagem (ex.: Tobi/Obito e Pain/Nagato)
-    # continuam com um único ID, mas recebem um nome de exibição que contém os
-    # dois nomes conhecidos. Um override manual já existente sempre tem prioridade.
     applied_identity_names: dict[str, str] = {}
     display_overrides = franchise.get("identity_display_overrides") or {}
     if isinstance(display_overrides, dict):
@@ -291,6 +291,7 @@ def build_proposal(
         "refined_retire_candidates": len(refined_retire),
         "total_deleted_characters_after_merge": len(deleted),
         "new_anime_ids": sorted(new_anime_ids),
+        "forced_new_anime_ids": sorted(forced_new_anime_ids),
         "new_animes_added": len(new_anime_ids),
         "audit_character_ids_added": sorted(audit_added_ids),
         "audit_characters_added": len(audit_added_ids),
