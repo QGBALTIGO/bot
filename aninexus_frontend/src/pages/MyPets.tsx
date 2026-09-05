@@ -120,21 +120,21 @@ const ActivePetCard = ({
               {pet.name}
             </h2>
             <Badge variant="primary" size="xs">
-              ACTIVE
+              ATIVO
             </Badge>
           </div>
           <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest leading-relaxed line-clamp-2">
-            {pet.desc || pet.ability || 'Loyal companion'}
+            {pet.desc || pet.ability || 'Companheiro leal'}
           </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-4 border-y border-white/5">
-          <InlineStat icon={Heart} label="Vitality" value={pet.hp ?? 0} color="text-emerald-500" />
-          <InlineStat icon={Swords} label="Strike" value={pet.atk ?? 0} color="text-red-500" />
-          <InlineStat icon={Wind} label="Velocity" value={pet.spd ?? 0} color="text-brand-accent" />
+          <InlineStat icon={Heart} label="Vitalidade" value={pet.hp ?? 0} color="text-emerald-500" />
+          <InlineStat icon={Swords} label="Ataque" value={pet.atk ?? 0} color="text-red-500" />
+          <InlineStat icon={Wind} label="Velocidade" value={pet.spd ?? 0} color="text-brand-accent" />
           <InlineStat
             icon={Clover}
-            label="Luck"
+            label="Sorte"
             value={`${Math.round(Number(pet.luck || 0) * 100)}%`}
             color="text-amber-500"
           />
@@ -145,14 +145,14 @@ const ActivePetCard = ({
             LVL {pet.level || 1}
           </Badge>
           <Badge variant="secondary" size="xs" className="font-mono">
-            SYNC: {pet.affection ?? 0}%
+            VÍNCULO: {pet.affection ?? 0}%
           </Badge>
         </div>
 
         <ProgressBar
           current={pet.xp || 0}
           total={Math.max(1, pet.xp_needed || 100)}
-          label="XP to next level"
+          label="XP para o próximo nível"
           compact
         />
 
@@ -165,7 +165,7 @@ const ActivePetCard = ({
             disabled={careBusy !== null}
             className="h-8 px-4"
           >
-            <Beef size={13} className="mr-1.5" /> Feed
+            <Beef size={13} className="mr-1.5" /> Alimentar
           </Button>
           <Button
             variant="secondary"
@@ -175,7 +175,7 @@ const ActivePetCard = ({
             disabled={careBusy !== null}
             className="h-8 px-4"
           >
-            <Dumbbell size={13} className="mr-1.5" /> Train
+            <Dumbbell size={13} className="mr-1.5" /> Treinar
           </Button>
         </div>
       </div>
@@ -196,7 +196,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     try {
       const result = await apiFetch(`/pets/${action}`, { method: 'POST' });
-      addToast(result?.message || 'Done.', 'success');
+      addToast(result?.message || 'Concluído.', 'success');
       await refreshUser();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -249,7 +249,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
     try {
       await apiFetch(`/pets/set_active/${encodeURIComponent(petRef)}`, { method: 'POST' });
       await refreshUser();
-      addToast(`${pet.name} activated.`, 'success');
+      addToast(`${pet.name} foi ativado.`, 'success');
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
     } finally {
@@ -267,11 +267,11 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
             <div className="flex items-center gap-2.5">
               <PawPrint className="text-brand-accent" size={20} />
               <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">
-                Companions
+                Companheiros
               </h1>
             </div>
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-              Your pets, their levels and bonds
+              Seus companheiros, níveis e vínculos
             </p>
           </div>
 
@@ -291,7 +291,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
         {currentPet && (
           <section className="space-y-4">
             <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-1">
-              Active pet
+              Companheiro ativo
             </h2>
             <ActivePetCard
               pet={currentPet}
@@ -306,10 +306,10 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
         <section className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
-              All pets
+              Todos os companheiros
             </h2>
             <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">
-              Sorted by level
+              Ordenados por nível
             </p>
           </div>
 
@@ -348,7 +348,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
                             {isActive && <div className="w-1 h-1 rounded-full bg-brand-accent" />}
                           </div>
                           <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest line-clamp-1">
-                            {pet.ability || 'No special ability'}
+                            {pet.ability || 'Sem habilidade especial'}
                           </p>
                           <div className="flex items-center gap-2 pt-0.5">
                             <span className="text-[9px] font-mono font-bold text-zinc-600 uppercase">
@@ -356,7 +356,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
                             </span>
                             <span className="text-zinc-800">•</span>
                             <span className="text-[9px] font-mono font-bold text-zinc-600 uppercase">
-                              Bond {pet.affection ?? 0}%
+                              Vínculo {pet.affection ?? 0}%
                             </span>
                           </div>
                         </div>
@@ -387,7 +387,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
                           isLoading={isSwitching}
                           size="sm"
                         >
-                          {isActive ? 'Active Companion' : 'Activate'}
+                          {isActive ? 'Companheiro ativo' : 'Ativar'}
                         </Button>
                       </div>
                     </Card>
@@ -400,7 +400,7 @@ export const MyPets = ({ onPetClick }: MyPetsProps) => {
                   <PawPrint size={24} />
                 </div>
                 <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">
-                  No pets yet — visit the Breeder
+                  Nenhum companheiro ainda — visite a Loja de Companheiros
                 </p>
               </div>
             )}

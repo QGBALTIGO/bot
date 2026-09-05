@@ -79,11 +79,11 @@ export const Achievements = () => {
         <div className="flex items-center gap-2.5">
           <BadgeCheck className="text-brand-accent" size={20} />
           <div className="flex flex-col">
-            <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Milestones</h1>
+            <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Conquistas</h1>
             <div className="flex items-center gap-1.5 opacity-60">
               <Target size={10} className="text-zinc-500" />
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                Bragging rights you've earned
+                Marcos que você conquistou
               </p>
             </div>
           </div>
@@ -93,7 +93,7 @@ export const Achievements = () => {
           <Card variant="surface" className="p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Progress
+                Progresso
               </span>
               <span className="text-[10px] font-mono font-bold text-zinc-400 tabular-nums">
                 {unlockedCount} / {totalCount}
@@ -108,7 +108,7 @@ export const Achievements = () => {
           <Card variant="default" className="p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Rank
+                Classificação
               </span>
               <Medal size={14} className="text-emerald-500" />
             </div>
@@ -118,10 +118,10 @@ export const Achievements = () => {
               </div>
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-zinc-100 uppercase tracking-wider">
-                  Collector
+                  Colecionador
                 </span>
                 <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">
-                  Keep hatching
+                  Continue evoluindo
                 </span>
               </div>
             </div>
@@ -165,7 +165,7 @@ export const Achievements = () => {
                     </h3>
                     {ach.unlocked && (
                       <Badge variant="success" size="xs">
-                        CLEAR
+                        CONCLUÍDA
                       </Badge>
                     )}
                   </div>

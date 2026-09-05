@@ -503,15 +503,6 @@ def build_aninexus_compat_router() -> APIRouter:
         }
         return JSONResponse(sorted(labels, key=str.lower))
 
-    @router.get("/social/marriage")
-    def marriage(authorization: str = Header(default="")):
-        try:
-            _require_user(authorization)
-        except PermissionError as exc:
-            return _unauthorized(str(exc))
-        return JSONResponse(None)
-
-
     @router.get("/admin/rarities")
     def admin_rarities(authorization: str = Header(default="")):
         try:
