@@ -9,9 +9,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = ROOT / "data" / "catalog_franchise_gaps.must_haves.json"
 DEFAULT_OUTPUT = ROOT / "data" / "catalog_franchise_gaps.json"
 
-# IDs que a auditoria de relações pode associar a uma sequência, embora a carta
-# deva pertencer à categoria canônica consolidada no Source.
-CANONICAL_TARGETS: dict[int, dict[str, Any]] = {
+# Sequências que o Source não quer expor como uma categoria separada. Qualquer
+# candidato detectado nelas é associado à categoria canônica da franquia.
+CANONICAL_ANIME_TARGETS: dict[int, dict[str, Any]] = {
+    213702: {
+        "target_anime_id": 147105,
+        "target_anime": "Witch Hat Atelier",
+        "reason": "consolidate_sequel_into_base_franchise",
+    },
+}
+
+# Núcleo explicitamente obrigatório. Se algum destes cair em REVIEW por uma
+# oscilação de metadados, continua sendo promovido para ADD.
+CANONICAL_CHARACTER_TARGETS: dict[int, dict[str, Any]] = {
     129840: {"target_anime_id": 147105, "target_anime": "Witch Hat Atelier", "role": "MAIN"},
     129841: {"target_anime_id": 147105, "target_anime": "Witch Hat Atelier", "role": "MAIN"},
     129842: {"target_anime_id": 147105, "target_anime": "Witch Hat Atelier", "role": "SUPPORTING"},
@@ -28,6 +38,13 @@ def _cid(row: Any) -> int:
         return 0
 
 
+def _target_id(row: Any) -> int:
+    try:
+        return int((row or {}).get("target_anime_id") or 0)
+    except Exception:
+        return 0
+
+
 def normalize_targets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     out = dict(payload)
     additions = [dict(row) for row in (payload.get("character_add_candidates") or []) if isinstance(row, dict)]
@@ -36,6 +53,8 @@ def normalize_targets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str
     by_id: dict[int, dict[str, Any]] = {}
     order: list[int] = []
     remapped: list[int] = []
+    remapped_adds: list[int] = []
+    remapped_reviews: list[int] = []
     promoted: list[int] = []
 
     def absorb(row: dict[str, Any], *, from_review: bool) -> None:
@@ -50,20 +69,34 @@ def normalize_targets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         elif str(current.get("decision") or "").upper() != "ADD" and str(row.get("decision") or "").upper() == "ADD":
             current.update(row)
 
-        canonical = CANONICAL_TARGETS.get(cid)
-        if canonical:
-            old_target = int(current.get("target_anime_id") or 0)
-            current["target_anime_id"] = int(canonical["target_anime_id"])
-            current["target_anime"] = str(canonical["target_anime"])
-            current["role"] = str(current.get("role") or canonical.get("role") or "SUPPORTING")
-            current["decision"] = "ADD"
-            current["franchise_status"] = "MUST_HAVE_FRANCHISE"
-            current["catalog_reason"] = "canonical_must_have_target"
-            current["source_media_id"] = int(canonical["target_anime_id"])
-            if old_target != int(canonical["target_anime_id"]):
-                remapped.append(cid)
-            if from_review:
+        old_target = _target_id(current)
+        character_target = CANONICAL_CHARACTER_TARGETS.get(cid)
+        anime_target = CANONICAL_ANIME_TARGETS.get(old_target)
+        canonical = character_target or anime_target
+        if not canonical:
+            return
+
+        new_target = int(canonical["target_anime_id"])
+        current["target_anime_id"] = new_target
+        current["target_anime"] = str(canonical["target_anime"])
+        current["source_media_id"] = new_target
+        current["franchise_status"] = "MUST_HAVE_FRANCHISE"
+
+        if character_target:
+            current["role"] = str(current.get("role") or character_target.get("role") or "SUPPORTING")
+            if str(current.get("decision") or "REVIEW").upper() != "ADD":
+                current["decision"] = "ADD"
                 promoted.append(cid)
+            current["catalog_reason"] = "canonical_must_have_target"
+        else:
+            current["catalog_reason"] = str(anime_target.get("reason") or "canonical_franchise_target")
+
+        if old_target != new_target:
+            remapped.append(cid)
+            if str(current.get("decision") or "REVIEW").upper() == "ADD":
+                remapped_adds.append(cid)
+            else:
+                remapped_reviews.append(cid)
 
     for row in additions:
         absorb(row, from_review=False)
@@ -87,16 +120,23 @@ def normalize_targets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str
     summary = dict(out.get("summary") or {})
     summary["definite_character_add_candidates"] = len(normalized_additions)
     summary["review_character_add_candidates"] = len(normalized_reviews)
-    summary["canonical_must_have_targets_remapped"] = len(set(remapped))
+    summary["canonical_targets_remapped"] = len(set(remapped))
+    summary["canonical_add_targets_remapped"] = len(set(remapped_adds))
+    summary["canonical_review_targets_remapped"] = len(set(remapped_reviews))
     summary["canonical_must_have_reviews_promoted"] = len(set(promoted))
     out["summary"] = summary
     out["canonical_target_normalization"] = {
         "remapped_ids": sorted(set(remapped)),
+        "remapped_add_ids": sorted(set(remapped_adds)),
+        "remapped_review_ids": sorted(set(remapped_reviews)),
         "promoted_from_review_ids": sorted(set(promoted)),
-        "canonical_targets": {str(cid): dict(spec) for cid, spec in CANONICAL_TARGETS.items()},
+        "canonical_anime_targets": {str(aid): dict(spec) for aid, spec in CANONICAL_ANIME_TARGETS.items()},
+        "canonical_character_targets": {str(cid): dict(spec) for cid, spec in CANONICAL_CHARACTER_TARGETS.items()},
     }
     return out, {
         "remapped": len(set(remapped)),
+        "remapped_adds": len(set(remapped_adds)),
+        "remapped_reviews": len(set(remapped_reviews)),
         "promoted": len(set(promoted)),
         "additions": len(normalized_additions),
         "reviews": len(normalized_reviews),
@@ -104,7 +144,7 @@ def normalize_targets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Normaliza personagens must-have para a categoria canônica da franquia.")
+    parser = argparse.ArgumentParser(description="Normaliza candidatos para a categoria canônica consolidada da franquia.")
     parser.add_argument("--input", default=str(DEFAULT_INPUT))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     args = parser.parse_args()
