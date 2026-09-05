@@ -13,6 +13,7 @@ on:
       - 'scripts/ensure_franchise_must_haves.py'
       - 'scripts/normalize_must_have_targets.py'
       - 'scripts/build_catalog_cleanup_overrides.py'
+      - 'scripts/consolidate_catalog_franchises.py'
       - 'scripts/build_catalog_impact_manifest.py'
       - 'scripts/finalize_catalog_cleanup_plan.py'
       - 'scripts/materialize_final_catalog_overrides.py'
@@ -23,6 +24,7 @@ on:
       - 'tests/test_catalog_cleanup.py'
       - 'tests/test_franchise_must_haves.py'
       - 'tests/test_normalize_must_have_targets.py'
+      - 'tests/test_consolidate_catalog_franchises.py'
       - 'tests/test_catalog_identity_display.py'
       - 'tests/test_catalog_review_resolution.py'
       - 'tests/test_catalog_review_resolution_final.py'
@@ -59,6 +61,7 @@ jobs:
           tests/test_catalog_cleanup.py
           tests/test_franchise_must_haves.py
           tests/test_normalize_must_have_targets.py
+          tests/test_consolidate_catalog_franchises.py
           tests/test_catalog_identity_display.py
           tests/test_catalog_review_resolution.py
           tests/test_catalog_review_resolution_final.py
@@ -128,6 +131,13 @@ jobs:
           python scripts/build_catalog_cleanup_overrides.py \
             --audit /tmp/catalog_cleanup_audit.json \
             --franchise /tmp/catalog_franchise_gaps.json \
+            --output /tmp/cards_overrides.cleanup_raw.json
+      - name: Consolidate duplicate and empty categories
+        run: |
+          python scripts/consolidate_catalog_franchises.py \
+            --proposal /tmp/cards_overrides.cleanup_raw.json \
+            --audit /tmp/catalog_cleanup_audit.json \
+            --franchise /tmp/catalog_franchise_gaps.json \
             --output /tmp/cards_overrides.cleanup_proposal.json
       - name: Print cleanup focus
         run: |
@@ -147,7 +157,7 @@ jobs:
               print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'recommended=', row.get('recommended_total_after_final_review', row.get('recommended_total_after_review_resolution')))
           print('FRANCHISE_GLOBAL', json.dumps(f.get('summary') or {}, ensure_ascii=False, sort_keys=True))
           print('CANONICAL_TARGETS', json.dumps(f.get('canonical_target_normalization') or {}, ensure_ascii=False, sort_keys=True))
-          print('PROPOSAL_COUNTS', 'deleted=', len(o.get('deleted_characters') or []), 'custom_animes=', len(o.get('custom_animes') or []), 'custom_characters=', len(o.get('custom_characters') or []))
+          print('PROPOSAL_COUNTS', 'deleted_chars=', len(o.get('deleted_characters') or []), 'deleted_animes=', len(o.get('deleted_animes') or []), 'custom_animes=', len(o.get('custom_animes') or []), 'custom_characters=', len(o.get('custom_characters') or []))
           print('NEW_ANIMES', [x.get('anime') for x in (o.get('custom_animes') or []) if x.get('_catalog_source') in {'franchise_cleanup_v1','must_have_franchise_v1'}])
           print('NARUTO_MUST_HAVES', json.dumps(f.get('must_have_insertions') or [], ensure_ascii=False))
           print('IDENTITY_ALIASES', json.dumps(f.get('identity_aliases') or {}, ensure_ascii=False, sort_keys=True))
