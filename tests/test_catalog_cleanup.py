@@ -18,6 +18,7 @@ audit = load_module("audit_character_catalog", "scripts/audit_character_catalog.
 retire = load_module("apply_catalog_retirements", "scripts/apply_catalog_retirements.py")
 refine = load_module("refine_catalog_cleanup_audit", "scripts/refine_catalog_cleanup_audit.py")
 franchise = load_module("audit_franchise_gaps", "scripts/audit_franchise_gaps.py")
+builder = load_module("build_catalog_cleanup_overrides", "scripts/build_catalog_cleanup_overrides.py")
 
 
 def test_main_character_is_kept_even_with_zero_favourites():
@@ -128,3 +129,90 @@ def test_franchise_character_add_requires_real_interest():
     assert franchise.character_add_decision({"name": "Important", "role": "MAIN", "favourites": 0, "rank_in_media": 1}) == "ADD"
     assert franchise.character_add_decision({"name": "Known Side", "role": "SUPPORTING", "favourites": 150, "rank_in_media": 40}) == "ADD"
     assert franchise.character_add_decision({"name": "Tiny Extra", "role": "BACKGROUND", "favourites": 0, "rank_in_media": 50}) is None
+
+
+def test_builder_preserves_manual_data_and_adds_high_confidence_franchise():
+    overrides = {
+        "deleted_characters": [999],
+        "deleted_animes": [],
+        "custom_animes": [{"anime_id": 777, "anime": "Manual Anime"}],
+        "custom_characters": [{"id": 888, "anime_id": 777, "anime": "Manual Anime", "name": "Manual Character", "image": "https://example.com/manual.jpg"}],
+        "character_image_overrides": {"42": "https://example.com/42.jpg"},
+        "character_name_overrides": {},
+        "anime_name_overrides": {},
+        "anime_banner_overrides": {},
+        "anime_cover_overrides": {},
+        "subcategories": {},
+    }
+    audit_payload = {"retire_ids": [1, 2]}
+    franchise_payload = {
+        "missing_franchises": [
+            {
+                "status": "MISSING_FRANCHISE",
+                "target_anime_id": 20,
+                "target_anime": "Naruto",
+                "missing_popular_media": [{"anime_id": 20, "anime": "Naruto", "popularity_rank": 5, "popularity": 900000}],
+            }
+        ],
+        "character_add_candidates": [
+            {
+                "id": 3,
+                "name": "Naruto Uzumaki",
+                "decision": "ADD",
+                "target_anime_id": 20,
+                "target_anime": "Naruto",
+                "role": "MAIN",
+                "favourites": 50000,
+                "anilist_image_reference": "https://example.com/naruto.jpg",
+            }
+        ],
+    }
+    proposal, stats = builder.build_proposal(
+        overrides,
+        audit_payload,
+        franchise_payload,
+        base_anime_ids={10},
+        base_character_ids={1, 2},
+    )
+    assert set(proposal["deleted_characters"]) == {1, 2, 999}
+    assert any(int(x["anime_id"]) == 777 for x in proposal["custom_animes"])
+    assert any(int(x["anime_id"]) == 20 for x in proposal["custom_animes"])
+    assert any(int(x["id"]) == 888 for x in proposal["custom_characters"])
+    naruto = next(x for x in proposal["custom_characters"] if int(x["id"]) == 3)
+    assert naruto["_image_status"] == "temporary_anilist_reference"
+    assert stats["new_animes_added"] == 1
+    assert stats["new_characters_added"] == 1
+
+
+def test_builder_does_not_create_duplicate_existing_franchise_target():
+    overrides = {
+        "deleted_characters": [], "deleted_animes": [], "custom_animes": [], "custom_characters": [],
+        "character_image_overrides": {}, "character_name_overrides": {}, "anime_name_overrides": {},
+        "anime_banner_overrides": {}, "anime_cover_overrides": {}, "subcategories": {},
+    }
+    franchise_payload = {
+        "missing_franchises": [],
+        "character_add_candidates": [
+            {
+                "id": 50,
+                "name": "DBZ Character",
+                "decision": "ADD",
+                "target_anime_id": 223,
+                "target_anime": "Dragon Ball",
+                "role": "MAIN",
+                "favourites": 1000,
+                "anilist_image_reference": "https://example.com/dbz.jpg",
+            }
+        ],
+    }
+    proposal, stats = builder.build_proposal(
+        overrides,
+        {"retire_ids": []},
+        franchise_payload,
+        base_anime_ids={223},
+        base_character_ids=set(),
+    )
+    assert proposal["custom_animes"] == []
+    assert len(proposal["custom_characters"]) == 1
+    assert int(proposal["custom_characters"][0]["anime_id"]) == 223
+    assert stats["new_animes_added"] == 0
