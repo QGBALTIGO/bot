@@ -1,0 +1,84 @@
+name: AniNexus live polish once
+
+on:
+  push:
+    branches:
+      - v2/aninexus-social-admin-media
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aninexus-live-polish-once
+  cancel-in-progress: false
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2/aninexus-social-admin-media
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Apply live polish patch
+        run: python scripts/fix_aninexus_live_polish.py
+
+      - name: Compile Python
+        run: python -m compileall -q .
+
+      - name: Run live polish contract tests
+        run: python -m pytest -q tests/test_aninexus_live_polish_contracts.py
+
+      - name: Install frontend dependencies
+        working-directory: aninexus_frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck and build frontend
+        working-directory: aninexus_frontend
+        run: bun run build
+
+      - name: Verify known regressions are gone
+        shell: bash
+        run: |
+          if grep -RInE 'POSIÇÃOING|INTERNAL ERRO NO SERVIDOR|INCUBAÇÃO STARTED|YOUR COLLECTION|EVERY WAIFU|ALL RARITIES' aninexus_frontend/src; then
+            echo 'Known visible regression remains.'
+            exit 1
+          fi
+          if grep -n 'new WebSocket' aninexus_frontend/src/pages/Leaderboard.tsx; then
+            echo 'Unsupported leaderboard WebSocket remains.'
+            exit 1
+          fi
+
+      - name: Publish built runtime
+        run: |
+          rm -rf aninexus_runtime
+          cp -R aninexus_frontend/dist aninexus_runtime
+          test -f aninexus_runtime/index.html
+          test -d aninexus_runtime/assets
+
+      - name: Remove one-time files
+        run: |
+          rm -f scripts/fix_aninexus_live_polish.py
+          rm -f .github/workflows/aninexus-live-polish-once.yml
+
+      - name: Commit fixed runtime
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: corrigir bugs e idioma da MiniApp AniNexus'
+          git push origin HEAD:v2/aninexus-social-admin-media
