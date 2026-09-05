@@ -138,6 +138,18 @@ class FakeCursor:
         self.rowcount = next(self._rowcounts)
 
 
+class RecordingCursor:
+    def __init__(self):
+        self.rowcount = 0
+        self.sql: list[str] = []
+        self.params: list[object] = []
+
+    def execute(self, sql, params=None):
+        self.sql.append(" ".join(str(sql).split()))
+        self.params.append(params)
+        self.rowcount = 0
+
+
 def test_cleanup_closes_legacy_spawns_and_buybacks_too():
     cur = FakeCursor([2, 3, 4, 5, 6])
     result = apply._close_pending_refs(cur, [10, 20])
@@ -162,3 +174,24 @@ def test_cleanup_clears_both_favorite_tables():
     assert result["profile_favorites_cleared"] == 6
     assert result["collection_favorites_cleared"] == 7
     assert result["favorites_cleared"] == 13
+
+
+def test_migration_installs_database_level_retired_character_guard():
+    cur = RecordingCursor()
+    apply.ensure_migration_tables(cur)
+    combined = "\n".join(cur.sql)
+    assert "CREATE TABLE IF NOT EXISTS catalog_retired_characters" in combined
+    assert "CREATE OR REPLACE FUNCTION block_retired_character_collection_write" in combined
+    assert "CREATE TRIGGER trg_block_retired_character_collection_write" in combined
+    assert "BEFORE INSERT OR UPDATE ON user_card_collection" in combined
+    assert "character_id % is retired" in combined
+
+
+def test_retired_ids_are_registered_in_database_guard_inside_batch():
+    cur = RecordingCursor()
+    count = apply._register_retired_character_guard(cur, [10, 20, 30], "batch-v2")
+    combined = "\n".join(cur.sql)
+    assert count == 3
+    assert "INSERT INTO catalog_retired_characters" in combined
+    assert "unnest(%s::bigint[])" in combined
+    assert cur.params[-1] == ("batch-v2", [10, 20, 30])
