@@ -72,15 +72,7 @@ def load_runtime_deleted_ids(path: Path | None = None) -> set[int]:
 
 
 def assert_catalog_already_disabled(retired_ids: list[int], path: Path | None = None) -> dict[str, Any]:
-    """Impede compensar/remover enquanto as cartas ainda podem nascer no catálogo.
-
-    A ordem operacional obrigatória é:
-    1. publicar o overrides final com as cartas desativadas;
-    2. só então executar a migração econômica.
-
-    Assim uma carta não pode reaparecer entre a compensação e a atualização do
-    catálogo. Se o deploy do catálogo falhar, nenhuma coleção é tocada.
-    """
+    """Impede compensar/remover enquanto as cartas ainda podem nascer no catálogo."""
     target = {int(x) for x in retired_ids if int(x) > 0}
     deleted = load_runtime_deleted_ids(path)
     missing = sorted(target - deleted)
@@ -99,12 +91,6 @@ def assert_catalog_already_disabled(retired_ids: list[int], path: Path | None = 
 
 
 def load_apply_plan(path: Path, approved_hash: str) -> dict[str, Any]:
-    """Valida o plano final antes de permitir qualquer mutação.
-
-    Um audit bruto ou uma lista de IDs pode ser usado para dry-run, mas nunca
-    para --apply. A aplicação exige o final-plan gerado após o usage guard e o
-    hash final informado explicitamente pelo operador.
-    """
     plan = load_json_object(path)
     if str(plan.get("schema") or "") != FINAL_PLAN_SCHEMA:
         raise ValueError("--apply exige source.catalog-cleanup.final-plan.v1")
@@ -191,6 +177,73 @@ def ensure_migration_tables(cur) -> None:
         ON catalog_retirement_compensations (user_id, created_at DESC)
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS catalog_retired_characters (
+            character_id BIGINT PRIMARY KEY,
+            batch_id TEXT NOT NULL,
+            retired_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE OR REPLACE FUNCTION block_retired_character_collection_write()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF COALESCE(NEW.quantity, 0) > 0
+               AND EXISTS (
+                    SELECT 1
+                    FROM catalog_retired_characters r
+                    WHERE r.character_id = NEW.character_id
+               ) THEN
+                RAISE EXCEPTION 'character_id % is retired and cannot enter user_card_collection', NEW.character_id
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_trigger
+                WHERE tgname = 'trg_block_retired_character_collection_write'
+                  AND tgrelid = 'user_card_collection'::regclass
+                  AND NOT tgisinternal
+            ) THEN
+                CREATE TRIGGER trg_block_retired_character_collection_write
+                BEFORE INSERT OR UPDATE ON user_card_collection
+                FOR EACH ROW
+                EXECUTE FUNCTION block_retired_character_collection_write();
+            END IF;
+        END;
+        $$
+        """
+    )
+
+
+def _register_retired_character_guard(cur, retired_ids: list[int], batch_id: str) -> int:
+    if not retired_ids:
+        return 0
+    cur.execute(
+        """
+        INSERT INTO catalog_retired_characters (character_id, batch_id, retired_at)
+        SELECT item, %s, NOW()
+        FROM unnest(%s::bigint[]) AS item
+        ON CONFLICT (character_id) DO UPDATE
+        SET batch_id = EXCLUDED.batch_id,
+            retired_at = EXCLUDED.retired_at
+        """,
+        (str(batch_id), retired_ids),
+    )
+    return len(retired_ids)
 
 
 def load_owned_rows(cur, retired_ids: list[int], *, for_update: bool = False) -> list[dict[str, Any]]:
@@ -308,8 +361,6 @@ def dry_run(retired_ids: list[int]) -> dict[str, Any]:
 
 
 def _lock_catalog_mutation_tables(cur) -> None:
-    # Uma migração é rara e curta. Bloquear writes nessas tabelas evita que
-    # coleção/troca/spawn/favorito/recompra mude entre a rechecagem e o COMMIT.
     cur.execute(
         """
         LOCK TABLE
@@ -412,8 +463,6 @@ def _close_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
     )
     offers_expired = int(cur.rowcount or 0)
 
-    # Tabela legada ainda pode manter o card ativo por chat; não possui coluna
-    # de status, então a forma segura de encerrá-lo é remover a linha ativa.
     cur.execute(
         """
         DELETE FROM active_group_spawns
@@ -423,9 +472,6 @@ def _close_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
     )
     legacy_spawns_removed = int(cur.rowcount or 0)
 
-    # A recompra antiga busca shop_card_sales diretamente e pode devolver uma
-    # carta à coleção. Removemos todos os tickets de recompra dos IDs aposentados
-    # no mesmo lock/transação para impedir reentrada pós-compensação.
     cur.execute(
         """
         DELETE FROM shop_card_sales
@@ -534,6 +580,7 @@ def apply_batch(retired_ids: list[int], batch_id: str, *, expected: dict[str, An
                 owned_rows = checked["rows"]
                 before = checked["summary"]
 
+                db_guard_registered = _register_retired_character_guard(cur, retired_ids, batch_id)
                 closed_refs = _close_pending_refs(cur, retired_ids)
                 awards_by_user: dict[int, int] = defaultdict(int)
                 inserted_rows = 0
@@ -621,6 +668,7 @@ def apply_batch(retired_ids: list[int], batch_id: str, *, expected: dict[str, An
                     "coins_awarded": total_awarded,
                     "ledger_rows_inserted": inserted_rows,
                     "collection_rows_deleted": deleted_collection_rows,
+                    "db_retirement_guard_registered": db_guard_registered,
                     **catalog_guard,
                     **favorite_result,
                     **closed_refs,
