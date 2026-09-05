@@ -1,0 +1,43 @@
+{
+  "schema": "source.catalog-safe-additions.v1",
+  "enabled": true,
+  "phase": "additions_only",
+  "source_pr": 40,
+  "selection_policy": {
+    "naruto_all_curated": true,
+    "witch_hat_all_curated": true,
+    "existing_catalog_rule": "MAIN or favourites>=100, usable non-default image",
+    "retirements_applied": 0,
+    "coins_awarded": 0
+  },
+  "custom_animes": [
+    {
+      "anime_id": 20,
+      "anime": "Naruto",
+      "banner_image": "",
+      "cover_image": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx20-YJvLbgJQPCoI.jpg",
+      "_catalog_source": "franchise_cleanup_v1"
+    },
+    {
+      "anime_id": 147105,
+      "anime": "Witch Hat Atelier",
+      "banner_image": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/147105-fTjmRrILFixZ.jpg",
+      "cover_image": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx147105-rwOX8qyUy8gV.jpg",
+      "_catalog_source": "must_have_franchise_v1"
+    }
+  ],
+  "character_name_overrides": {
+    "3149": "Obito Uchiha (Tobi)",
+    "3180": "Nagato (Pain)"
+  },
+  "part_files": [
+    "part_01.json",
+    "part_02.json",
+    "part_03.json",
+    "part_04.json",
+    "part_05.json",
+    "part_06.json",
+    "part_07.json"
+  ],
+  "character_count": 493
+}
