@@ -104,3 +104,20 @@ def test_configure_writes_materialized_pool_and_sets_environment(tmp_path: Path,
     assert payload["schema"] == "source.dado-catalog.materialized.v1"
     assert os.environ["CARDS_LOCAL_PATH"] == str(output_path)
     assert stats["characters"] == 2
+
+
+def test_standalone_webapp_materializes_dado_pool_before_importing_legacy_webapp():
+    text = (ROOT / "webapp_entrypoint.py").read_text(encoding="utf-8")
+    bootstrap = text.index("_DADO_CATALOG_BOOTSTRAP = configure_dado_catalog_pool()")
+    legacy_import = text.index("from webapp import")
+    assert bootstrap < legacy_import
+
+
+def test_full_bot_imports_dado_bootstrap_before_webapp_is_started():
+    bot = (ROOT / "bot.py").read_text(encoding="utf-8")
+    dado_import = bot.index("from commands.dado import dado")
+    webapp_start = bot.index("def run_webapp")
+    assert dado_import < webapp_start
+
+    command = (ROOT / "commands" / "dado.py").read_text(encoding="utf-8")
+    assert "_DADO_CATALOG_BOOTSTRAP = configure_dado_catalog_pool()" in command
