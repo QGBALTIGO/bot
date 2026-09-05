@@ -61,7 +61,9 @@ def score_zerochan_post(post: dict[str, Any]) -> float | None:
     if width < 900 or height < 1200:
         return None
     ratio = width / max(1, height)
-    if ratio < 0.48 or ratio > 1.12:
+    # Keep the same safe source window used by the real 2:3 cropper. Wider or
+    # extremely tall art would discard too much of the character.
+    if ratio < 0.55 or ratio > 0.80:
         return None
 
     score = min(width * height / 1_000_000, 8.0)
