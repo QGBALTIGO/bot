@@ -76,3 +76,9 @@ def test_fanart_can_pass_but_scores_lower_than_official():
     assert official is not None and fanart is not None
     assert fanart.fanart is True
     assert official.score > fanart.score
+
+
+def test_portrait_with_too_much_crop_loss_is_rejected():
+    candidate, status = mod.evaluate_candidate(detail(width=1800, height=2108), character())
+    assert candidate is None
+    assert status == "crop_loss"
