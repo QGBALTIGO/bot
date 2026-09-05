@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from utils.catalog_safe_rollout import load_safe_additions, merge_safe_additions
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_real_safe_rollout_manifest_is_complete_and_curated():
@@ -42,3 +49,27 @@ def test_manual_overrides_and_deletions_keep_priority_over_safe_rollout():
     assert merged["character_name_overrides"]["3149"] == "Obito Manual"
     assert merged["_safe_catalog_rollout"]["retirements_applied"] == 0
     assert merged["_safe_catalog_rollout"]["coins_awarded"] == 0
+
+
+def test_sitecustomize_activates_rollout_when_pythonpath_and_flag_are_set(tmp_path):
+    output = tmp_path / "runtime-overrides.json"
+    env = dict(os.environ)
+    env.update(
+        {
+            "PYTHONPATH": str(ROOT),
+            "SOURCE_CATALOG_SAFE_ROLLOUT": "1",
+            "CATALOG_SAFE_RUNTIME_OVERRIDES_PATH": str(output),
+            "CARDS_OVERRIDES_PATH": str(ROOT / "data" / "cards_overrides.json"),
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", "import os; print('OVERRIDE=' + os.environ.get('CARDS_OVERRIDES_PATH',''))"],
+        cwd=ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "CATALOG_SAFE_ROLLOUT active characters=493 animes=2" in result.stdout
+    assert f"OVERRIDE={output}" in result.stdout
+    assert output.exists()
