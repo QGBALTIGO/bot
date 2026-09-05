@@ -74,16 +74,18 @@ def test_empty_category_is_deleted_but_category_receiving_custom_character_survi
     assert stats["empty_categories_deleted"] == 1
 
 
-def test_incomplete_or_missing_audit_never_deletes_or_consolidates():
+def test_incomplete_or_missing_audit_never_deletes_or_consolidates_those_categories():
     au = audit()
     au["anime_reports"].pop("3")
     au["anime_reports"]["2"]["current_count"] = 3  # only two rows => partial
     result, stats = consolidate.consolidate(proposal(), au, franchise(), dataset())
     assert 2 not in result["deleted_animes"]
     assert 3 not in result["deleted_animes"]
+    assert 4 in result["deleted_animes"]  # unrelated category still has a complete all-RETIRE audit
     assert stats["duplicate_categories_consolidated"] == 0
     assert stats["duplicate_anime_ids_skipped_incomplete_audit"] == [2]
-    assert stats["empty_categories_deleted"] == 0
+    assert stats["empty_categories_deleted"] == 1
+    assert stats["empty_anime_ids_deleted"] == [4]
     assert stats["fail_closed_on_incomplete_audit"] is True
 
 
