@@ -138,17 +138,19 @@ class FakeCursor:
         self.rowcount = next(self._rowcounts)
 
 
-def test_cleanup_closes_legacy_spawns_too():
-    cur = FakeCursor([2, 3, 4, 5])
+def test_cleanup_closes_legacy_spawns_and_buybacks_too():
+    cur = FakeCursor([2, 3, 4, 5, 6])
     result = apply._close_pending_refs(cur, [10, 20])
     combined = "\n".join(cur.sql)
     assert "UPDATE card_trades" in combined
     assert "UPDATE capture_spawns" in combined
     assert "DELETE FROM active_group_spawns" in combined
+    assert "DELETE FROM shop_card_sales" in combined
     assert result["pending_trades_cancelled"] == 2
     assert result["active_spawns_expired"] == 3
     assert result["open_purchase_offers_expired"] == 4
     assert result["legacy_active_spawns_removed"] == 5
+    assert result["buyback_sales_invalidated"] == 6
 
 
 def test_cleanup_clears_both_favorite_tables():
