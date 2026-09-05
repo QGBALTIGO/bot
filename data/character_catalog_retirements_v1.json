@@ -1,0 +1,5019 @@
+{
+  "version": 1,
+  "batch_key": "catalog-curation-pilot-v1",
+  "generated_at_epoch": 1788574866,
+  "refund_coins_per_copy": 1,
+  "retired_character_ids": [
+    2519,
+    3879,
+    4886,
+    4891,
+    4892,
+    4893,
+    4894,
+    4895,
+    4897,
+    4898,
+    4899,
+    5412,
+    5414,
+    5415,
+    5416,
+    5417,
+    5418,
+    5419,
+    5420,
+    5421,
+    5422,
+    5423,
+    7400,
+    7454,
+    7455,
+    9320,
+    9321,
+    9322,
+    9324,
+    9325,
+    9326,
+    9327,
+    9333,
+    9344,
+    9561,
+    9562,
+    9656,
+    9880,
+    10830,
+    10910,
+    11398,
+    11400,
+    12232,
+    12362,
+    13109,
+    17561,
+    17763,
+    18437,
+    18783,
+    19168,
+    19311,
+    19375,
+    19376,
+    19379,
+    20098,
+    20175,
+    20176,
+    20177,
+    20288,
+    20289,
+    20293,
+    20294,
+    20308,
+    20814,
+    20946,
+    20947,
+    21095,
+    21096,
+    21097,
+    21098,
+    21212,
+    21213,
+    21218,
+    21219,
+    21220,
+    21223,
+    21263,
+    21264,
+    21265,
+    21266,
+    21267,
+    21268,
+    21269,
+    21310,
+    21311,
+    21312,
+    21314,
+    21315,
+    21316,
+    21318,
+    21366,
+    21367,
+    21368,
+    21369,
+    21370,
+    21371,
+    21372,
+    21373,
+    21375,
+    21376,
+    21377,
+    21378,
+    21379,
+    21380,
+    21382,
+    21399,
+    21526,
+    21527,
+    21528,
+    21529,
+    21530,
+    21531,
+    21532,
+    21535,
+    21536,
+    21537,
+    21538,
+    21539,
+    21540,
+    21541,
+    21542,
+    21543,
+    21544,
+    21553,
+    21554,
+    21555,
+    21556,
+    21557,
+    21558,
+    21560,
+    21613,
+    21688,
+    21804,
+    21805,
+    21806,
+    21807,
+    21808,
+    21810,
+    21812,
+    22409,
+    22411,
+    22412,
+    22413,
+    22414,
+    22415,
+    22442,
+    22443,
+    22444,
+    22588,
+    22619,
+    22620,
+    22621,
+    22622,
+    22625,
+    22626,
+    22627,
+    22647,
+    22676,
+    22677,
+    22685,
+    22686,
+    22690,
+    22691,
+    22692,
+    22693,
+    22694,
+    22797,
+    22798,
+    22799,
+    22800,
+    22801,
+    22802,
+    22803,
+    23021,
+    23022,
+    23023,
+    23024,
+    23025,
+    23026,
+    23027,
+    23200,
+    23201,
+    23202,
+    23203,
+    23211,
+    23212,
+    23213,
+    23214,
+    23365,
+    23366,
+    23367,
+    23368,
+    23369,
+    23370,
+    23371,
+    23372,
+    23373,
+    23527,
+    23528,
+    23529,
+    23530,
+    23531,
+    23532,
+    23533,
+    23534,
+    23535,
+    23536,
+    23537,
+    23677,
+    23678,
+    23679,
+    23812,
+    23831,
+    24010,
+    24383,
+    25352,
+    25380,
+    25386,
+    25388,
+    25389,
+    25390,
+    25391,
+    25393,
+    25394,
+    25432,
+    25859,
+    26127,
+    26128,
+    27199,
+    27200,
+    27201,
+    27203,
+    27204,
+    27205,
+    27945,
+    27946,
+    28193,
+    28194,
+    29803,
+    30992,
+    31180,
+    31181,
+    31182,
+    31183,
+    31184,
+    31185,
+    31186,
+    31187,
+    31189,
+    31190,
+    32718,
+    32871,
+    32872,
+    32949,
+    33568,
+    33569,
+    33598,
+    33713,
+    33726,
+    34405,
+    34408,
+    34410,
+    35188,
+    35277,
+    35278,
+    35280,
+    35282,
+    35283,
+    35284,
+    35285,
+    35834,
+    35960,
+    36843,
+    36844,
+    36845,
+    36846,
+    37448,
+    37449,
+    37450,
+    37451,
+    37452,
+    37453,
+    37456,
+    37457,
+    37458,
+    37459,
+    37460,
+    37461,
+    37462,
+    38644,
+    40258,
+    40259,
+    40260,
+    40261,
+    40262,
+    40263,
+    40264,
+    40265,
+    40267,
+    40268,
+    40269,
+    40271,
+    40272,
+    40274,
+    40275,
+    40276,
+    40420,
+    41205,
+    41922,
+    43091,
+    43092,
+    43094,
+    43095,
+    43096,
+    43145,
+    43588,
+    49817,
+    49819,
+    49821,
+    49823,
+    51077,
+    52553,
+    52557,
+    52689,
+    52691,
+    53799,
+    53801,
+    53803,
+    54497,
+    54499,
+    54501,
+    55355,
+    55357,
+    55359,
+    55361,
+    55363,
+    55365,
+    55367,
+    55369,
+    55371,
+    55373,
+    55375,
+    55377,
+    55379,
+    55557,
+    55559,
+    56715,
+    56717,
+    56719,
+    56721,
+    56723,
+    56727,
+    56729,
+    56731,
+    56733,
+    56941,
+    59243,
+    59245,
+    59247,
+    59249,
+    59251,
+    59253,
+    59255,
+    59257,
+    59269,
+    59271,
+    59273,
+    59279,
+    59281,
+    59283,
+    61031,
+    67141,
+    67143,
+    67347,
+    67349,
+    67351,
+    74848,
+    77421,
+    78343,
+    78345,
+    78911,
+    78913,
+    78915,
+    78917,
+    85655,
+    85731,
+    87421,
+    88957,
+    126103,
+    126145,
+    126146,
+    126147,
+    126148,
+    126150,
+    126182,
+    127846,
+    127847,
+    127886,
+    127887,
+    127892,
+    127893,
+    127894,
+    127895,
+    127896,
+    127897,
+    127898,
+    127901,
+    127906,
+    127907,
+    127909,
+    127911,
+    127912,
+    127914,
+    127915,
+    127916,
+    127917,
+    127921,
+    128126,
+    128128,
+    128129,
+    128131,
+    128132,
+    128133,
+    128134,
+    128136,
+    128492,
+    128670,
+    128671,
+    128672,
+    128673,
+    128674,
+    128675,
+    128676,
+    128677,
+    128678,
+    128679,
+    128680,
+    128681,
+    128682,
+    128683,
+    128684,
+    131427,
+    131430,
+    131431,
+    131433,
+    131434,
+    131435,
+    131436,
+    131437,
+    132229,
+    132669,
+    132728,
+    135947,
+    135949,
+    135950,
+    135951,
+    135952,
+    135953,
+    136035,
+    136036,
+    137633,
+    137651,
+    138116,
+    147149,
+    149218,
+    149219,
+    169008,
+    172132,
+    172133,
+    172134,
+    174688,
+    179623,
+    179624,
+    181760,
+    181761,
+    181762,
+    181763,
+    181764,
+    181765,
+    181766,
+    181767,
+    181768,
+    181769,
+    184736,
+    184737,
+    184738,
+    184739,
+    184740,
+    184741,
+    184742,
+    184743,
+    184744,
+    184745,
+    184746,
+    184747,
+    184754,
+    184755,
+    184756,
+    184757,
+    184758,
+    184759,
+    184760,
+    184761,
+    184762,
+    184766,
+    191776,
+    191777,
+    191778,
+    194108,
+    206813,
+    208634,
+    208899,
+    209251,
+    209253,
+    212101,
+    212102,
+    212103,
+    212104,
+    212105,
+    212106,
+    212107,
+    212166,
+    212167,
+    212168,
+    212623,
+    212624,
+    212625,
+    213466,
+    216702,
+    219823,
+    220761,
+    220763,
+    220764,
+    226059,
+    226745,
+    226746,
+    226747,
+    226748,
+    227571,
+    230240,
+    230369,
+    233481,
+    233907,
+    233908,
+    233909,
+    233910,
+    235354,
+    243878,
+    243879,
+    244046,
+    244943,
+    244944,
+    247775,
+    247777,
+    247781,
+    247782,
+    247786,
+    247794,
+    256489,
+    261266,
+    264134,
+    264135,
+    264136,
+    269870,
+    270362,
+    270492,
+    270547,
+    271028,
+    271029,
+    271030,
+    271031,
+    271032,
+    271788,
+    272673,
+    276043,
+    279543,
+    280268,
+    280559,
+    282077,
+    285905,
+    287798,
+    289466,
+    289668,
+    289671,
+    289674,
+    289680,
+    289681,
+    290147,
+    290148,
+    290685,
+    290686,
+    290687,
+    290689,
+    291751,
+    294035,
+    294036,
+    294037,
+    298424,
+    299038,
+    311122,
+    318197,
+    318494,
+    326791,
+    326792,
+    326793,
+    326794,
+    332649,
+    332650,
+    332661,
+    332667,
+    340682,
+    342392,
+    345426,
+    345428,
+    345429,
+    345450,
+    345451,
+    345452,
+    348750,
+    354399,
+    354400,
+    354401,
+    354402,
+    365031,
+    365033,
+    382626
+  ],
+  "retired_characters": [
+    {
+      "id": 2519,
+      "name": "Kuro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 3879,
+      "name": "Galdino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4886,
+      "name": "Jango",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4891,
+      "name": "Chew",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4892,
+      "name": "Genzo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4893,
+      "name": "Johnny",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4894,
+      "name": "Yosaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4895,
+      "name": "Kuroobi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4897,
+      "name": "Cabaji",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4898,
+      "name": "Richie",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 4899,
+      "name": "Alvida",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5412,
+      "name": "Apis",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5414,
+      "name": "Mr. 9",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5415,
+      "name": "Igaram",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5416,
+      "name": "Miss Monday",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5417,
+      "name": "Mikita",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5418,
+      "name": "Gem",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5419,
+      "name": "Marianne",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5420,
+      "name": "Dorry",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5421,
+      "name": "Brogy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5422,
+      "name": "Wapol",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 5423,
+      "name": "Dalton",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 7400,
+      "name": "Don Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 7454,
+      "name": "Moria Gecko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 7455,
+      "name": "Hogback",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9320,
+      "name": "Krieg Don",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9321,
+      "name": "Gin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9322,
+      "name": "Carne",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9324,
+      "name": "Burgess Jesus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9325,
+      "name": "Augur Van",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9326,
+      "name": "Q Doc",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9327,
+      "name": "Lafitte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9333,
+      "name": "Morgan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9344,
+      "name": "Cobra Nefertari",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9561,
+      "name": "Oars",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9562,
+      "name": "Yasopp",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9656,
+      "name": "Cindry Victoria",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 9880,
+      "name": "Kaya",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 10830,
+      "name": "Purinpurin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 10910,
+      "name": "Porche",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 11398,
+      "name": "Nero",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 11400,
+      "name": "Jyabura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 12232,
+      "name": "Rockstar",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 12362,
+      "name": "Helmeppo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 13109,
+      "name": "Babe",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 17561,
+      "name": "Gedatsu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 17763,
+      "name": "Yorki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 18437,
+      "name": "Spandine",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 18783,
+      "name": "Mohmoo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 19168,
+      "name": "Duval",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 19311,
+      "name": "Pappag",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 19375,
+      "name": "Macro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 19376,
+      "name": "Tansui",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 19379,
+      "name": "Gyaro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20098,
+      "name": "Miss Merry Christmas",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20175,
+      "name": "Roswald Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20176,
+      "name": "Shalulia Guu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20177,
+      "name": "Devil Dias",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20288,
+      "name": "Apoo Scratchmen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20289,
+      "name": "Drake X.",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20293,
+      "name": "Basil Hawkins",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20294,
+      "name": "Urouge",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20308,
+      "name": "Saint Charloss",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20814,
+      "name": "Disco",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20946,
+      "name": "Sandersonia Boa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 20947,
+      "name": "Marigold Boa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21095,
+      "name": "Pascia",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21096,
+      "name": "Byron",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21097,
+      "name": "Lacueva",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21098,
+      "name": "Jean Bart",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21212,
+      "name": "Woop Slap",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21213,
+      "name": "Higuma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21218,
+      "name": "Patty",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21219,
+      "name": "Koshirou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21220,
+      "name": "Chaka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21223,
+      "name": "Ninjin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21263,
+      "name": "Poro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21264,
+      "name": "Boodle",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21265,
+      "name": "Hocker",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21266,
+      "name": "Kuina",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21267,
+      "name": "Rika",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21268,
+      "name": "Ririka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21269,
+      "name": "Merry",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21310,
+      "name": "Banchina",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21311,
+      "name": "Moodie",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21312,
+      "name": "Nako",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21314,
+      "name": "Chabo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21315,
+      "name": "Yu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21316,
+      "name": "Sapi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21318,
+      "name": "Matsu Ippon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21366,
+      "name": "Crocus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21367,
+      "name": "Heppoko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21368,
+      "name": "Poppoko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21369,
+      "name": "Peppoko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21370,
+      "name": "Sham Meowban",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21371,
+      "name": "Buchi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21372,
+      "name": "Nugire Yainu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21373,
+      "name": "Pearl",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21375,
+      "name": "Sarquiss",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21376,
+      "name": "Lily",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21377,
+      "name": "Ross",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21378,
+      "name": "Eddy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21379,
+      "name": "Hewitt",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21380,
+      "name": "Rivers",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21382,
+      "name": "Myure",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21399,
+      "name": "Sadi-chan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21526,
+      "name": "Nezumi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21527,
+      "name": "Chess",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21528,
+      "name": "Kaneshiro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21529,
+      "name": "Kuromarimo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21530,
+      "name": "Take",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21531,
+      "name": "Pisaro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21532,
+      "name": "Shioyaki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21535,
+      "name": "Cricket Montblanc",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21536,
+      "name": "Masira",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21537,
+      "name": "Shoujou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21538,
+      "name": "Ran",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21539,
+      "name": "Daisy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21540,
+      "name": "Sweet Pea",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21541,
+      "name": "Aphelandra",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21542,
+      "name": "Kikyou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21543,
+      "name": "Belladonna",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21544,
+      "name": "Enishida",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21553,
+      "name": "Bones Daz",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21554,
+      "name": "Mr. 7",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21555,
+      "name": "Mr. 11",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21556,
+      "name": "Zara",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21557,
+      "name": "Roshio",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21558,
+      "name": "Tsuru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21560,
+      "name": "Thatch",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21613,
+      "name": "Olvia Nico",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21688,
+      "name": "Zenny",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21804,
+      "name": "Sentoumaru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21805,
+      "name": "Gonbe",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21806,
+      "name": "Kokoro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21807,
+      "name": "Lulu Peeply",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21808,
+      "name": "Corgi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21810,
+      "name": "Mikazuki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 21812,
+      "name": "Buubuu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22409,
+      "name": "Kapoty",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22411,
+      "name": "Pickles",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22412,
+      "name": "Foxy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22413,
+      "name": "Hamburg",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22414,
+      "name": "Gina",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22415,
+      "name": "Itomimizu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22442,
+      "name": "Kiba",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22443,
+      "name": "Oimo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22444,
+      "name": "Kashii",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22588,
+      "name": "Hannyabal",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22619,
+      "name": "Saldeath",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22620,
+      "name": "Shiryuu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22621,
+      "name": "Domino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22622,
+      "name": "Minotaurus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22625,
+      "name": "Minorhinoceros",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22626,
+      "name": "Minokoala",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22627,
+      "name": "Minozebra",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22647,
+      "name": "Inazuma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22676,
+      "name": "Tom",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22677,
+      "name": "Tilestone",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22685,
+      "name": "Mozu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22686,
+      "name": "Kiwi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22690,
+      "name": "Nerine",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22691,
+      "name": "Cosmos",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22692,
+      "name": "Rindou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22693,
+      "name": "Bluefan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22694,
+      "name": "Gloriosa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22797,
+      "name": "Braham",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22798,
+      "name": "Gan Fall",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22799,
+      "name": "Kamakiri",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22800,
+      "name": "Ohm",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22801,
+      "name": "Satori",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22802,
+      "name": "Shura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 22803,
+      "name": "Yama",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23021,
+      "name": "Aisa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23022,
+      "name": "Amazon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23023,
+      "name": "Genbou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23024,
+      "name": "Laki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23025,
+      "name": "McKinley",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23026,
+      "name": "Musse",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23027,
+      "name": "Seto",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23200,
+      "name": "Spector",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23201,
+      "name": "Terry",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23202,
+      "name": "Tonjit",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23203,
+      "name": "Okome",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23211,
+      "name": "Tamachibi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23212,
+      "name": "Stool",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23213,
+      "name": "Marie Negikuma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23214,
+      "name": "Marie",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23365,
+      "name": "Bogart",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23366,
+      "name": "Brandnew",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23367,
+      "name": "Fullbody",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23368,
+      "name": "Gyoru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23369,
+      "name": "Hanger",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23370,
+      "name": "John Giant",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23371,
+      "name": "Lines",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23372,
+      "name": "Ripper",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23373,
+      "name": "Rokkaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23527,
+      "name": "Shine",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23528,
+      "name": "Kohza",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23529,
+      "name": "Toto",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23530,
+      "name": "Terracotta",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23531,
+      "name": "Hou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23532,
+      "name": "Potsun",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23533,
+      "name": "Agotogi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23534,
+      "name": "Farafra",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23535,
+      "name": "Eric",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23536,
+      "name": "Lucas Thalassa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23537,
+      "name": "Titi Nefertari",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23677,
+      "name": "Shiki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23678,
+      "name": "Akumai",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23679,
+      "name": "Aswa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23812,
+      "name": "Mao",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 23831,
+      "name": "Rouge Portgas",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 24010,
+      "name": "Momonga",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 24383,
+      "name": "Lil Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25352,
+      "name": "Bacura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25380,
+      "name": "Shepherd",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25386,
+      "name": "Ukkari",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25388,
+      "name": "Atomos",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25389,
+      "name": "Doma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25390,
+      "name": "Makugai",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25391,
+      "name": "Squardo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25393,
+      "name": "Oars Jr.",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25394,
+      "name": "Bay Whitey",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25432,
+      "name": "Dream",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 25859,
+      "name": "Roji",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 26127,
+      "name": "Kitton",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 26128,
+      "name": "Taroimo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27199,
+      "name": "Heracles",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27200,
+      "name": "Elizabeth",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27201,
+      "name": "Soran",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27203,
+      "name": "T-Bone",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27204,
+      "name": "Komir",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27205,
+      "name": "Stalker",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27945,
+      "name": "Gu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 27946,
+      "name": "Jonathan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 28193,
+      "name": "Yokozuna",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 28194,
+      "name": "Yamakaji",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 29803,
+      "name": "Suu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 30992,
+      "name": "Inuppe",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31180,
+      "name": "Shot Vasco",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31181,
+      "name": "Catarina Devon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31182,
+      "name": "Avalo Pizarro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31183,
+      "name": "Sanjuan Wolf",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31184,
+      "name": "Onigumo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31185,
+      "name": "Blenheim",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31186,
+      "name": "Curiel",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31187,
+      "name": "Strawberry",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31189,
+      "name": "Zanbai",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 31190,
+      "name": "Clover",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 32718,
+      "name": "Wanze",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 32871,
+      "name": "Kappa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 32872,
+      "name": "Maidy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 32949,
+      "name": "Kong",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 33568,
+      "name": "Reik",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 33569,
+      "name": "Whetton",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 33598,
+      "name": "Carmen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 33713,
+      "name": "Octopako",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 33726,
+      "name": "Erik",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 34405,
+      "name": "Jessica",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 34408,
+      "name": "Dr. Kobato",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 34410,
+      "name": "Mekao",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35188,
+      "name": "Harry",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35277,
+      "name": "Ronse",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35278,
+      "name": "Lacroix",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35280,
+      "name": "Haredas",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35282,
+      "name": "Rakuyou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35283,
+      "name": "Blamenco",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35284,
+      "name": "Haruta",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35285,
+      "name": "Fossa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35834,
+      "name": "Lola",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 35960,
+      "name": "Lola",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 36843,
+      "name": "Namur",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 36844,
+      "name": "Kingdew",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 36845,
+      "name": "Speed Jiru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 36846,
+      "name": "Yukimura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37448,
+      "name": "Caroline",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37449,
+      "name": "Higelyges Chadros",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37450,
+      "name": "Dogura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37451,
+      "name": "Magura",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37452,
+      "name": "Porchemy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37453,
+      "name": "Bluejam",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37456,
+      "name": "Stelly",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37457,
+      "name": "Saint Jalmack",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37458,
+      "name": "Gorilla",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37459,
+      "name": "Caribou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37460,
+      "name": "Coribou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37461,
+      "name": "Albion",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 37462,
+      "name": "Lip Doughty",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 38644,
+      "name": "Dalmatian",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40258,
+      "name": "Cocoa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40259,
+      "name": "Gyro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40260,
+      "name": "Daruma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40261,
+      "name": "Demalo Black",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40262,
+      "name": "Dosun",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40263,
+      "name": "Drip",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40264,
+      "name": "Fukaboshi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40265,
+      "name": "Hammond",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40267,
+      "name": "Hyouzou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40268,
+      "name": "Ikaros Muhhi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40269,
+      "name": "Kaizeruhige",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40271,
+      "name": "Neptune",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40272,
+      "name": "Ryuuboshi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40274,
+      "name": "Shyarly",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40275,
+      "name": "Vander Decken IX",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40276,
+      "name": "Zeo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 40420,
+      "name": "Kamonegi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 41205,
+      "name": "Den",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 41922,
+      "name": "Otohime",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43091,
+      "name": "Saint Mjosgard",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43092,
+      "name": "Kadar",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43094,
+      "name": "Aladdin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43095,
+      "name": "Sadaijin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43096,
+      "name": "Udaijin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43145,
+      "name": "Minchey",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 43588,
+      "name": "Naguri",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 49817,
+      "name": "Chocolat",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 49819,
+      "name": "Turco",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 49821,
+      "name": "Mounblutain",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 49823,
+      "name": "Nora Gitsune",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 51077,
+      "name": "Kumashi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 52553,
+      "name": "Wadatsumi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 52557,
+      "name": "Rapanui Pasqua",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 52689,
+      "name": "Daddy Masterson",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 52691,
+      "name": "Carol Masterson",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 53799,
+      "name": "Ishilly",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 53801,
+      "name": "Kasagoba",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 53803,
+      "name": "Maria Napole",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 54497,
+      "name": "Tamago Danshaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 54499,
+      "name": "Pekoms",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 54501,
+      "name": "Bobbin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55355,
+      "name": "Isoka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55357,
+      "name": "Henzo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55359,
+      "name": "Arbell Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55361,
+      "name": "Salcho Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55363,
+      "name": "Hockera Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55365,
+      "name": "Campacino Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55367,
+      "name": "Brindo Achino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55369,
+      "name": "Akibi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55371,
+      "name": "Pukau",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55373,
+      "name": "Rongo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55375,
+      "name": "Barbarossa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55377,
+      "name": "Rasa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55379,
+      "name": "Zaba",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55557,
+      "name": "Jigorou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 55559,
+      "name": "Pierre",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56715,
+      "name": "Ichika",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56717,
+      "name": "Nika",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56719,
+      "name": "Sanka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56721,
+      "name": "Yonka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56723,
+      "name": "Yonka Two",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56727,
+      "name": "Mero",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56729,
+      "name": "Seira",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56731,
+      "name": "Hiramera",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56733,
+      "name": "Kairen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 56941,
+      "name": "Royal Nelson",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59243,
+      "name": "Yuya",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59245,
+      "name": "Yuki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59247,
+      "name": "Yoko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59249,
+      "name": "Yoko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59251,
+      "name": "Tajio",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59253,
+      "name": "Shou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59255,
+      "name": "Sayo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59257,
+      "name": "Lina",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59269,
+      "name": "Kodama",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59271,
+      "name": "Odama",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59273,
+      "name": "Jiro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59279,
+      "name": "Ayako",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59281,
+      "name": "Akihiro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 59283,
+      "name": "Aunt",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 61031,
+      "name": "Papaneel",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 67141,
+      "name": "Bins",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 67143,
+      "name": "Ain",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 67347,
+      "name": "Vergo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 67349,
+      "name": "Yarisugi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 67351,
+      "name": "Harisenbon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 74848,
+      "name": "Doran",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 77421,
+      "name": "Nuru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78343,
+      "name": "Mocha",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78345,
+      "name": "Sind",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78911,
+      "name": "Biyo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78913,
+      "name": "Ally",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78915,
+      "name": "Doran",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 78917,
+      "name": "Uzu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 85655,
+      "name": "Chinjao",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 85731,
+      "name": "Blue Gilly",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 87421,
+      "name": "Luca",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 88957,
+      "name": "Sugar",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126103,
+      "name": "Kelly Funk",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126145,
+      "name": "Karasu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126146,
+      "name": "Belo Betty",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126147,
+      "name": "Lindbergh",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126148,
+      "name": "Morley",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126150,
+      "name": "Leo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 126182,
+      "name": "Inuarashi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127846,
+      "name": "Sukiyaki Kouzuki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127847,
+      "name": "Jibuemon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127886,
+      "name": "Gorobe",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127887,
+      "name": "Kyoushirou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127892,
+      "name": "Yonji Vinsmoke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127893,
+      "name": "Ichiji Vinsmoke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127894,
+      "name": "Sora Vinsmoke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127895,
+      "name": "Judge Vinsmoke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127896,
+      "name": "Niji Vinsmoke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127897,
+      "name": "Yomo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127898,
+      "name": "Holdem",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127901,
+      "name": "Speed",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127906,
+      "name": "Kamijirou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127907,
+      "name": "Tokikake",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127909,
+      "name": "Gion",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127911,
+      "name": "Tsuru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127912,
+      "name": "Urashima",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127914,
+      "name": "Hitetsu Tenguyama",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127915,
+      "name": "Komachiyo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127916,
+      "name": "Minatomo (Wano)",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127917,
+      "name": "Hihimaru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 127921,
+      "name": "Nosgarl",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128126,
+      "name": "Shinobu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128128,
+      "name": "Shutenmaru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128129,
+      "name": "Goldberg",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128131,
+      "name": "Galley",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128132,
+      "name": "Road",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128133,
+      "name": "Mororon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128134,
+      "name": "Tacos",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128136,
+      "name": "Pinkbeard",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128492,
+      "name": "Myukuru Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128670,
+      "name": "Yuen Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128671,
+      "name": "Joconde Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128672,
+      "name": "Snack Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128673,
+      "name": "Brownie Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128674,
+      "name": "Raideen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128675,
+      "name": "Flampe Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128676,
+      "name": "Carmel",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128677,
+      "name": "Lady Tree",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128678,
+      "name": "Buche",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128679,
+      "name": "Marble Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128680,
+      "name": "Jarl",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128681,
+      "name": "Bavarois Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128682,
+      "name": "Jorl",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128683,
+      "name": "Gerth",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 128684,
+      "name": "Prim Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131427,
+      "name": "Queen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131430,
+      "name": "Suke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131431,
+      "name": "Kaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131433,
+      "name": "Hyou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131434,
+      "name": "Dobon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131435,
+      "name": "Komurasaki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131436,
+      "name": "Kuni",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 131437,
+      "name": "Toko",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 132229,
+      "name": "Sai",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 132669,
+      "name": "Orochi Kurozumi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 132728,
+      "name": "Bingo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135947,
+      "name": "Du  Feld",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135949,
+      "name": "Jack",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135950,
+      "name": "Morgans",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135951,
+      "name": "Drug Peclo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135952,
+      "name": "Umit",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 135953,
+      "name": "Giberson",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 136035,
+      "name": "Cracker Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 136036,
+      "name": "Smoothie Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 137633,
+      "name": "Salome",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 137651,
+      "name": "Gild Tesoro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 138116,
+      "name": "Moda",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 147149,
+      "name": "Hattori",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 149218,
+      "name": "Ann",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 149219,
+      "name": "Spiel",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 169008,
+      "name": "Guarana",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 172132,
+      "name": "Page One",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 172133,
+      "name": "Who's-Who",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 172134,
+      "name": "Bao Huang",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 174688,
+      "name": "Gama Pyonnosuke",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 179623,
+      "name": "Kanjuurou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 179624,
+      "name": "Gladius",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181760,
+      "name": "Perospero Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181761,
+      "name": "Oven Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181762,
+      "name": "Daifuku Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181763,
+      "name": "Counter Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181764,
+      "name": "Cadenza Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181765,
+      "name": "Cabaletta Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181766,
+      "name": "Montd'Or Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181767,
+      "name": "Brulee Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181768,
+      "name": "Galette Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 181769,
+      "name": "Opera Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184736,
+      "name": "Bluemarine",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184737,
+      "name": "Erio",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184738,
+      "name": "Rowing",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184739,
+      "name": "Ganryuu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184740,
+      "name": "Donquino",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184741,
+      "name": "CB Gallant",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184742,
+      "name": "Marks Max",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184743,
+      "name": "Petermoo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184744,
+      "name": "Jacksonbanner",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184745,
+      "name": "Mr. Momora",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184746,
+      "name": "Mugren Taisa",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184747,
+      "name": "Bankuro",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184754,
+      "name": "Koyama",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184755,
+      "name": "Hitsugisukan Koushaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184756,
+      "name": "Rangram",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184757,
+      "name": "Yuui",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184758,
+      "name": "Higurashi Kurozumi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184759,
+      "name": "Pine Millet",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184760,
+      "name": "Semimaru Kurozumi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184761,
+      "name": "Spencer",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184762,
+      "name": "Yama no Kami",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 184766,
+      "name": "John",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 191776,
+      "name": "Wanda",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 191777,
+      "name": "Raizou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 191778,
+      "name": "Penguin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 194108,
+      "name": "Minatomo (East Blue)",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 206813,
+      "name": "Randolph",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 208634,
+      "name": "Leo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 208899,
+      "name": "Tanaka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 209251,
+      "name": "Ginrummy",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 209253,
+      "name": "Praline Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212101,
+      "name": "Jose",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212102,
+      "name": "Scorpion",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212103,
+      "name": "Camus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212104,
+      "name": "Chip",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212105,
+      "name": "Dip",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212106,
+      "name": "Raoul",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212107,
+      "name": "Ed",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212166,
+      "name": "Arrow",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212167,
+      "name": "Ipponume",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212168,
+      "name": "Brahm",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212623,
+      "name": "Hyota",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212624,
+      "name": "Barrel",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 212625,
+      "name": "Mashikaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 213466,
+      "name": "Shachi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 216702,
+      "name": "Scopper Gaban",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 219823,
+      "name": "Sheepshead",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 220761,
+      "name": "Tarou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 220763,
+      "name": "Doringo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 220764,
+      "name": "Yamon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 226059,
+      "name": "Dellinger",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 226745,
+      "name": "Vito",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 226746,
+      "name": "Gotti",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 226747,
+      "name": "Pound",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 226748,
+      "name": "Chiffon Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 227571,
+      "name": "Big Pan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 230240,
+      "name": "Epoida",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 230369,
+      "name": "Karma",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 233481,
+      "name": "Orlumbus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 233907,
+      "name": "Kingbaum",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 233908,
+      "name": "Riku Doldo III",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 233909,
+      "name": "Zeus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 233910,
+      "name": "Prometheus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 235354,
+      "name": "Bian",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 243878,
+      "name": "Hack",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 243879,
+      "name": "Ideo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 244046,
+      "name": "Hajrudin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 244943,
+      "name": "Machvise",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 244944,
+      "name": "Giolla",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247775,
+      "name": "Buffalo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247777,
+      "name": "Kabu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247781,
+      "name": "Streusen",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247782,
+      "name": "Shuu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247786,
+      "name": "Sharinguru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 247794,
+      "name": "Berry Good",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 256489,
+      "name": "Nusstorte Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 261266,
+      "name": "Nola",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 264134,
+      "name": "Bariete",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 264135,
+      "name": "Zepo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 264136,
+      "name": "Fukurokuju",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 269870,
+      "name": "Bonk Punch",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 270362,
+      "name": "Bakkin",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 270492,
+      "name": "Ushimaru Shimotsuki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 270547,
+      "name": "Anana Charlotte",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271028,
+      "name": "Monster",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271029,
+      "name": "Hongo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271030,
+      "name": "Building Snake",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271031,
+      "name": "Limejuice",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271032,
+      "name": "Howling Gab",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 271788,
+      "name": "Aramaki",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 272673,
+      "name": "Megalo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 276043,
+      "name": "Maynard",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 279543,
+      "name": "Sarahebi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 280268,
+      "name": "All-Hunt Grount",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 280559,
+      "name": "Smiley",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 282077,
+      "name": "Vegapunk",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 285905,
+      "name": "Bellett",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 287798,
+      "name": "Lassoo",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289466,
+      "name": "Matsuge",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289668,
+      "name": "Ivan X",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289671,
+      "name": "Stomp",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289674,
+      "name": "Bourbon Jr.",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289680,
+      "name": "Kentauros",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 289681,
+      "name": "Hikoichi",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290147,
+      "name": "Russian",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290148,
+      "name": "Gimlet",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290685,
+      "name": "Anjou",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290686,
+      "name": "Islewan",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290687,
+      "name": "Miss Friday",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 290689,
+      "name": "Atlas",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 291751,
+      "name": "Scarlett",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 294035,
+      "name": "Skull",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 294036,
+      "name": "Kotatsu",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 294037,
+      "name": "Mihal",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 298424,
+      "name": "Doll",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 299038,
+      "name": "Jaygarcia Saturn Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 311122,
+      "name": "Bastille",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 318197,
+      "name": "Zunesha",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 318494,
+      "name": "Ginny",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 326791,
+      "name": "York",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 326792,
+      "name": "Shaka",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 326793,
+      "name": "Edison",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 326794,
+      "name": "Pythagoras",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 332649,
+      "name": "Misery",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 332650,
+      "name": "Pandora",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 332661,
+      "name": "Hera",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 332667,
+      "name": "Napoleon",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 340682,
+      "name": "S-Snake",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 342392,
+      "name": "Guernica",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345426,
+      "name": "Kujaku",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345428,
+      "name": "Prince Grus",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345429,
+      "name": "Hibari",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345450,
+      "name": "Maha",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345451,
+      "name": "Gismonda",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 345452,
+      "name": "Joseph",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 348750,
+      "name": "Mishoin Cashible",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 354399,
+      "name": "Figarland Garling Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 354400,
+      "name": "Marcus Mars Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 354401,
+      "name": "Ethanbaron V Nusjurou Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 354402,
+      "name": "Shepherd Juu Peter Sei",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 365031,
+      "name": "S-Hawk",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 365033,
+      "name": "Onimaru",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    },
+    {
+      "id": 382626,
+      "name": "Emet",
+      "anime_id": 21,
+      "anime": "ONE PIECE",
+      "reason": "outside_curated_relevance_cut"
+    }
+  ],
+  "notes": "1 Coin is refunded for each owned copy removed. Apply with scripts/apply_character_catalog_retirement.py after catalog activation."
+}
