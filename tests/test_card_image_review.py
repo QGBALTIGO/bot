@@ -12,6 +12,7 @@ def test_candidate_requires_safe_high_quality_solo_fanart():
     assert score_zerochan_post(_post(["Fanart", "Solo"], width=400, height=600)) is None
     assert score_zerochan_post(_post(["Fanart", "Solo", "Shirtless Male"])) is None
     assert score_zerochan_post(_post(["Fanart", "Solo", "Tongue"])) is None
+    assert score_zerochan_post(_post(["Fanart", "Solo"], width=1600, height=1200)) is None
 
 
 def test_preferred_artist_and_action_score_higher():
