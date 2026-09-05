@@ -12,12 +12,14 @@ on:
       - 'scripts/ensure_franchise_must_haves.py'
       - 'scripts/build_catalog_cleanup_overrides.py'
       - 'scripts/finalize_catalog_cleanup_plan.py'
+      - 'scripts/materialize_final_catalog_overrides.py'
       - 'scripts/apply_catalog_retirements.py'
       - 'tests/test_catalog_cleanup.py'
       - 'tests/test_franchise_must_haves.py'
       - 'tests/test_catalog_identity_display.py'
       - 'tests/test_catalog_review_resolution.py'
       - 'tests/test_finalize_catalog_cleanup_plan.py'
+      - 'tests/test_materialize_final_catalog_overrides.py'
       - 'tests/test_catalog_apply_safety.py'
       - '.github/workflows/catalog-cleanup-audit.yml'
       - 'data/personagens_anilist.txt'
@@ -49,6 +51,7 @@ jobs:
           tests/test_catalog_identity_display.py
           tests/test_catalog_review_resolution.py
           tests/test_finalize_catalog_cleanup_plan.py
+          tests/test_materialize_final_catalog_overrides.py
           tests/test_catalog_apply_safety.py
 
   # Full external audit is intentionally manual. Re-running it on every commit
