@@ -257,6 +257,26 @@ def build_proposal(
         ):
             franchise_added_ids.add(cid)
 
+    # Identidades que são o mesmo personagem (ex.: Tobi/Obito e Pain/Nagato)
+    # continuam com um único ID, mas recebem um nome de exibição que contém os
+    # dois nomes conhecidos. Um override manual já existente sempre tem prioridade.
+    applied_identity_names: dict[str, str] = {}
+    display_overrides = franchise.get("identity_display_overrides") or {}
+    if isinstance(display_overrides, dict):
+        name_overrides = proposal["character_name_overrides"]
+        for cid_raw, display_name_raw in display_overrides.items():
+            try:
+                cid = int(cid_raw)
+            except Exception:
+                continue
+            display_name = str(display_name_raw or "").strip()
+            if cid <= 0 or not display_name or cid not in current_character_ids:
+                continue
+            key = str(cid)
+            if key not in name_overrides:
+                name_overrides[key] = display_name
+                applied_identity_names[key] = display_name
+
     proposal["deleted_characters"] = sorted(deleted)
     proposal["custom_animes"] = sorted(
         existing_custom_animes.values(),
@@ -278,6 +298,7 @@ def build_proposal(
         "franchise_characters_added": len(franchise_added_ids),
         "new_character_ids": sorted(added_char_ids),
         "new_characters_added": len(added_char_ids),
+        "identity_display_overrides_applied": applied_identity_names,
         "missing_animes_left_for_review": skipped_missing_animes,
         "characters_left_for_review": skipped_chars,
         "anilist_images_are_temporary_only": True,
