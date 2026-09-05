@@ -6,6 +6,7 @@ import os
 import socket
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import httpx
 
@@ -165,3 +166,53 @@ async def fetch_public_image(
                 raise ImageProxyError("image_fetch_failed", 502) from exc
 
     raise ImageProxyError("image_redirect_invalid", 502)
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _urlopen_public_image(url: str, headers: dict[str, str]) -> tuple[bytes, str, str]:
+    request = Request(url, headers=headers)
+    opener = build_opener(_NoRedirect)
+    with opener.open(request, timeout=45) as response:
+        content = response.read(MAX_IMAGE_BYTES + 1)
+        declared_type = str(response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+
+    if not content:
+        raise ImageProxyError("image_source_unavailable", 502)
+    if len(content) > MAX_IMAGE_BYTES:
+        raise ImageProxyError("image_too_large", 413)
+
+    sniffed_type = _sniff_image_type(content)
+    if declared_type.startswith("image/"):
+        media_type = declared_type
+    elif sniffed_type:
+        media_type = sniffed_type
+    else:
+        raise ImageProxyError("invalid_image_content", 415)
+    return content, media_type, url
+
+
+async def fetch_compatible_public_image(
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: httpx.Timeout | None = None,
+) -> tuple[bytes, str, str]:
+    """Fetch safely, retrying with urllib for public CDNs that reject httpx."""
+    request_headers = dict(headers or {})
+    try:
+        return await fetch_public_image(url, headers=request_headers, timeout=timeout)
+    except ImageProxyError as original_error:
+        if original_error.code not in {"image_source_unavailable", "image_fetch_failed"}:
+            raise
+        try:
+            return await asyncio.to_thread(
+                _urlopen_public_image,
+                str(url or "").strip(),
+                request_headers,
+            )
+        except Exception:
+            raise original_error

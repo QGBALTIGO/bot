@@ -3,6 +3,7 @@ import io
 import pytest
 from PIL import Image
 
+from utils import image_proxy
 from utils import telegram_photo
 from utils.image_proxy import ImageProxyError
 
@@ -57,8 +58,13 @@ async def test_urlopen_fallback_recovers_a_source_rejected_by_httpx(monkeypatch)
     async def rejected_fetch(url, **kwargs):
         raise ImageProxyError("image_source_unavailable", 502)
 
-    monkeypatch.setattr(telegram_photo, "fetch_public_image", rejected_fetch)
-    monkeypatch.setattr(telegram_photo, "_urlopen_image", lambda url, headers: _jpeg())
+    async def compatible_fetch(url, **kwargs):
+        try:
+            return await rejected_fetch(url, **kwargs)
+        except ImageProxyError:
+            return _jpeg(), "image/jpeg", url
+
+    monkeypatch.setattr(telegram_photo, "fetch_compatible_public_image", compatible_fetch)
     telegram_photo._FILE_ID_CACHE.clear()
     message = _Message()
 
@@ -86,3 +92,24 @@ def test_stale_public_proxy_is_unwrapped_and_keeps_portrait_crop():
         "https://cdn.example/approved.jpg",
         True,
     )
+
+
+@pytest.mark.asyncio
+async def test_compatible_fetch_uses_urlopen_after_safe_httpx_rejection(monkeypatch):
+    async def rejected_fetch(url, **kwargs):
+        raise ImageProxyError("image_source_unavailable", 502)
+
+    monkeypatch.setattr(image_proxy, "fetch_public_image", rejected_fetch)
+    monkeypatch.setattr(
+        image_proxy,
+        "_urlopen_public_image",
+        lambda url, headers: (_jpeg(), "image/jpeg", url),
+    )
+
+    content, media_type, final_url = await image_proxy.fetch_compatible_public_image(
+        "https://cdn.donmai.us/approved.jpg"
+    )
+
+    assert content == _jpeg()
+    assert media_type == "image/jpeg"
+    assert final_url.endswith("approved.jpg")

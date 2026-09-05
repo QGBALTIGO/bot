@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import io
 import os
 from collections import OrderedDict
 from typing import Any
 from urllib.parse import parse_qs, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import httpx
 from PIL import Image, ImageOps
 
-from utils.image_proxy import ImageProxyError, MAX_IMAGE_BYTES, fetch_public_image
+from utils.image_proxy import fetch_compatible_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 from utils.public_character_image import is_own_image_proxy_url
 
@@ -60,24 +58,6 @@ def _request_headers(url: str) -> dict[str, str]:
     elif hostname.endswith("wallhaven.cc"):
         headers["Referer"] = "https://wallhaven.cc/"
     return headers
-
-
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-def _urlopen_image(url: str, headers: dict[str, str]) -> bytes:
-    """Fallback for CDNs that reject httpx but accepted the review publisher."""
-    request = Request(url, headers=headers)
-    opener = build_opener(_NoRedirect)
-    with opener.open(request, timeout=45) as response:
-        content = response.read(MAX_IMAGE_BYTES + 1)
-    if not content:
-        raise ValueError("empty_image")
-    if len(content) > MAX_IMAGE_BYTES:
-        raise ValueError("image_too_large")
-    return content
 
 
 def _jpeg_bytes(content: bytes, *, portrait_crop: bool) -> bytes:
@@ -131,19 +111,11 @@ async def reply_photo_from_url(message: Any, image_url: str, **kwargs: Any) -> A
 
     source_url, portrait_crop = _source_url(value)
     headers = _request_headers(source_url)
-    try:
-        content, _media_type, _final_url = await fetch_public_image(
-            source_url,
-            headers=headers,
-            timeout=httpx.Timeout(45.0, connect=10.0),
-        )
-    except ImageProxyError as original_error:
-        if original_error.code not in {"image_source_unavailable", "image_fetch_failed"}:
-            raise
-        try:
-            content = await asyncio.to_thread(_urlopen_image, source_url, headers)
-        except Exception:
-            raise original_error
+    content, _media_type, _final_url = await fetch_compatible_public_image(
+        source_url,
+        headers=headers,
+        timeout=httpx.Timeout(45.0, connect=10.0),
+    )
     prepared = _jpeg_bytes(content, portrait_crop=portrait_crop)
     stream = io.BytesIO(prepared)
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
