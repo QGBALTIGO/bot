@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
-from utils.image_proxy import ImageProxyError, fetch_public_image
+from utils.image_proxy import ImageProxyError, fetch_compatible_public_image
 from utils.portrait_image import PortraitCropError, crop_portrait_bytes
 
 router = APIRouter(tags=["images"])
@@ -34,9 +35,15 @@ async def api_image_proxy(
     }
     if parsed.scheme in {"http", "https"} and parsed.netloc:
         headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+    if hostname.endswith("donmai.us"):
+        headers["User-Agent"] = f"SourceBaltigo-Curation - {os.getenv('ZEROCHAN_USER', 'kaykys468')}"
+        headers["Referer"] = "https://danbooru.donmai.us/"
+    elif hostname.endswith("zerochan.net"):
+        headers["User-Agent"] = f"SourceBaltigo-Curation - {os.getenv('ZEROCHAN_USER', 'kaykys468')}"
+        headers["Referer"] = "https://www.zerochan.net/"
 
     try:
-        content, media_type, _ = await fetch_public_image(
+        content, media_type, _ = await fetch_compatible_public_image(
             target,
             headers=headers,
             timeout=httpx.Timeout(20.0, connect=10.0),

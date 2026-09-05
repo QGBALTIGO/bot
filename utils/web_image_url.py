@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote, urlparse
-
-from utils.public_character_image import is_own_image_proxy_url
+from urllib.parse import parse_qs, quote, urlparse
 
 DIRECT_IMAGE_HOSTS = frozenset({
     "s4.anilist.co",
@@ -20,12 +18,20 @@ def web_image_url(url: Any) -> str:
 
     if value.startswith(("data:", "/api/image-proxy?")):
         return value
-    if is_own_image_proxy_url(value):
-        return value
 
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return value
+
+    # Approved images may retain an absolute URL from an older Railway proxy.
+    # Rebuild it against the WebApp's current proxy instead of returning a stale host.
+    if parsed.scheme == "https" and parsed.path == "/api/image-proxy":
+        params = parse_qs(parsed.query)
+        source = str((params.get("url") or [""])[0]).strip()
+        if source.startswith(("http://", "https://")):
+            crop = str((params.get("crop") or [""])[0]).strip().lower()
+            crop_arg = "crop=portrait&" if crop == "portrait" else ""
+            return f"/api/image-proxy?{crop_arg}url={quote(source, safe='')}"
 
     host = (parsed.hostname or "").strip().lower()
     if host in DIRECT_IMAGE_HOSTS:

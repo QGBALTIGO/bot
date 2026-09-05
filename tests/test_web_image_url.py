@@ -34,3 +34,14 @@ def test_web_image_url_proxies_other_public_http_urls() -> None:
 
 def test_web_image_url_leaves_non_http_values_unchanged() -> None:
     assert web_image_url("relative/image.jpg") == "relative/image.jpg"
+
+
+def test_web_image_url_rebuilds_stale_absolute_proxy_as_current_relative_proxy() -> None:
+    source = "https://cdn.donmai.us/original/approved.jpg"
+    stale = (
+        "https://old-bot.up.railway.app/api/image-proxy?crop=portrait&url="
+        + quote(source, safe="")
+    )
+    assert web_image_url(stale) == (
+        "/api/image-proxy?crop=portrait&url=" + quote(source, safe="")
+    )
