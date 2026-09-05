@@ -19,6 +19,7 @@ def test_witch_hat_candidates_are_remapped_from_season_two_to_canonical_anime():
         "character_add_candidates": [
             {"id": 129840, "name": "Coco", "decision": "ADD", "target_anime_id": 213702, "target_anime": "Witch Hat Atelier Season 2", "favourites": 2000},
             {"id": 129841, "name": "Qifrey", "decision": "ADD", "target_anime_id": 213702, "target_anime": "Witch Hat Atelier Season 2", "favourites": 3000},
+            {"id": 331260, "name": "Fudemushi", "decision": "ADD", "target_anime_id": 213702, "target_anime": "Witch Hat Atelier Season 2", "favourites": 539},
         ],
         "review_character_add_candidates": [],
     }
@@ -26,9 +27,12 @@ def test_witch_hat_candidates_are_remapped_from_season_two_to_canonical_anime():
     rows = {int(row["id"]): row for row in out["character_add_candidates"]}
     assert rows[129840]["target_anime_id"] == 147105
     assert rows[129841]["target_anime_id"] == 147105
-    assert rows[129840]["target_anime"] == "Witch Hat Atelier"
+    assert rows[331260]["target_anime_id"] == 147105
+    assert rows[331260]["target_anime"] == "Witch Hat Atelier"
+    assert rows[331260]["decision"] == "ADD"
     assert rows[129840]["franchise_status"] == "MUST_HAVE_FRANCHISE"
-    assert stats["remapped"] == 2
+    assert stats["remapped"] == 3
+    assert stats["remapped_adds"] == 3
 
 
 def test_review_core_character_is_promoted_to_add_and_deduplicated():
@@ -48,6 +52,24 @@ def test_review_core_character_is_promoted_to_add_and_deduplicated():
     assert 129839 in ids
     assert all(int(row.get("id") or 0) != 129839 for row in out["review_character_add_candidates"])
     assert stats["promoted"] >= 1
+
+
+def test_non_core_review_from_witch_sequel_is_remapped_but_not_promoted():
+    payload = {
+        "summary": {},
+        "character_add_candidates": [],
+        "review_character_add_candidates": [
+            {"id": 999001, "name": "Ambiguous Witch Character", "decision": "REVIEW", "target_anime_id": 213702, "target_anime": "Witch Hat Atelier Season 2", "favourites": 20},
+        ],
+    }
+    out, stats = normalize.normalize_targets(payload)
+    assert out["character_add_candidates"] == []
+    row = out["review_character_add_candidates"][0]
+    assert row["target_anime_id"] == 147105
+    assert row["target_anime"] == "Witch Hat Atelier"
+    assert row["decision"] == "REVIEW"
+    assert stats["remapped_reviews"] == 1
+    assert stats["promoted"] == 0
 
 
 def test_unrelated_candidates_are_untouched():
