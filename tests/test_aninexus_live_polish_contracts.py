@@ -27,7 +27,9 @@ def test_dado_reward_returns_to_private_chat_once():
     assert "def _deliver_dado_reward(" in source
     assert 'dedupe_key=f"dado:{int(user_id)}:{int(roll_id)}"' in source
     assert "if not already_done:" in source
-    assert "_deliver_dado_reward(user_id, roll_id, character)" in source
+    assert "_deliver_dado_reward(" in source
+    assert '"tier": tier["tier"]' in source
+    assert '"stars": tier["stars"]' in source
     assert "Adicionado à sua coleção!" in source
 
 

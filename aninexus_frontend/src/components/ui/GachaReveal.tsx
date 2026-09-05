@@ -2,7 +2,7 @@ import { AnimatePresence, m } from 'framer-motion';
 import { ShieldCheck, Terminal, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Character } from '../../context/UserContext';
-import { FALLBACK_IMAGE } from '../../utils';
+import { cleanRarityLabel, FALLBACK_IMAGE } from '../../utils';
 import { Badge } from './Badge';
 import { Button } from './Button';
 
@@ -23,13 +23,7 @@ export const GachaReveal = ({ character, onClose }: GachaRevealProps) => {
 
   if (!character) return null;
 
-  const rarityLabel = character.rarity
-    .replace(
-      /[\u2700-\u27bf]|[\u2190-\u21ff]|[\u2000-\u206f]|[\u2600-\u26ff]|[\u2b00-\u2bff]|[\u00a0-\u00bf]|\u2013|\u2014/g,
-      '',
-    )
-    .trim()
-    .toUpperCase();
+  const rarityLabel = cleanRarityLabel(character.rarity).toUpperCase();
 
   return (
     <AnimatePresence>
@@ -89,7 +83,7 @@ export const GachaReveal = ({ character, onClose }: GachaRevealProps) => {
                 onClick={onClose}
                 className="w-full h-14 bg-white text-black font-bold uppercase text-[11px] tracking-widest"
               >
-                Authorize Entry
+                Continuar
               </Button>
             </div>
           </div>

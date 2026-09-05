@@ -36,8 +36,8 @@ const SORT_OPTIONS: Array<{
   label: string;
   Icon: LucideIcon;
 }> = [
-  { sort: 'numeric', order: 'asc', label: 'ID Asc', Icon: ArrowUp01 },
-  { sort: 'numeric', order: 'desc', label: 'ID Desc', Icon: ArrowDown10 },
+  { sort: 'numeric', order: 'asc', label: 'ID crescente', Icon: ArrowUp01 },
+  { sort: 'numeric', order: 'desc', label: 'ID decrescente', Icon: ArrowDown10 },
   { sort: 'alphabet', order: 'asc', label: 'A-Z', Icon: ArrowUpAZ },
   { sort: 'alphabet', order: 'desc', label: 'Z-A', Icon: ArrowDownZA },
 ];
@@ -70,17 +70,17 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
         <div className="flex items-center gap-2.5">
           <BookOpen className="text-brand-accent" size={20} />
           <div className="flex flex-col flex-1">
-            <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Archive</h1>
+            <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Catálogo</h1>
             <div className="flex items-center gap-1.5 opacity-60">
               <Database size={10} className="text-zinc-500" />
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                Every character you've Collected
+                Todos os personagens disponíveis no AniNexus
               </p>
             </div>
           </div>
           <button
             type="button"
-            aria-label="Refresh archive"
+            aria-label="Atualizar catálogo"
             onClick={() => {
               window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
               refresh();
@@ -95,7 +95,7 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
           <div className="relative">
             <Input
               icon={Search}
-              placeholder="Search characters..."
+              placeholder="Buscar personagens..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={cn('h-10', search && 'pr-10')}
@@ -103,7 +103,7 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
             {search && (
               <button
                 type="button"
-                aria-label="Clear search"
+                aria-label="Limpar busca"
                 onClick={() => setSearch('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-200 transition-colors"
               >
@@ -115,12 +115,12 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
           <div className="flex items-center gap-2">
             <div className="relative group flex-1 min-w-0">
               <select
-                aria-label="Filter by rarity"
+                aria-label="Filtrar por raridade"
                 value={rarity}
                 onChange={(event) => setRarity(event.target.value)}
                 className="w-full h-10 pl-3.5 pr-10 bg-zinc-900 border border-white/10 rounded-md text-[10px] font-bold text-zinc-400 uppercase tracking-widest outline-none focus:border-brand-accent appearance-none cursor-pointer hover:bg-zinc-800 transition-all truncate"
               >
-                <option value="">ALL RARITIES</option>
+                <option value="">TODAS AS RARIDADES</option>
                 {rarityOptions.map(({ value, label }) => (
                   <option key={value} value={value}>
                     {label.toUpperCase()}
@@ -136,7 +136,7 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
             <div className="relative shrink-0">
               <button
                 type="button"
-                aria-label="Sort options"
+                aria-label="Opções de ordenação"
                 aria-expanded={sortOpen}
                 onClick={() => setSortOpen((v) => !v)}
                 className="h-10 w-10 flex items-center justify-center rounded-md bg-zinc-900 border border-white/10 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all"
@@ -186,7 +186,7 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
 
       {!loading && !error && items.length > 0 && (
         <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest -mt-4">
-          {items.length} record{items.length === 1 ? '' : 's'} found
+          {items.length} personagem{items.length === 1 ? '' : 's'} encontrado{items.length === 1 ? '' : 's'}
         </p>
       )}
 
@@ -216,8 +216,8 @@ export const Gallery = ({ onCharClick }: GalleryProps) => {
         <div className="py-20 border border-dashed border-white/5 rounded-lg bg-zinc-950/50">
           <EmptyState
             icon={Search}
-            title="Archive Mismatch"
-            message="Nothing here yet — hatch some eggs first."
+            title="Nenhum personagem encontrado"
+            message="Tente ajustar a busca ou os filtros."
           />
         </div>
       )}

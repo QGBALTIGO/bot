@@ -5,7 +5,7 @@ import { cn } from '../utils';
 export type IntroStatus = 'loading' | 'ready' | 'error';
 
 // Steps map to the real boot phases: secure_init → token verify → /me fetch.
-const LOADING_STEPS = ['INITIALIZING', 'VERIFYING TELEGRAM', 'LOADING PROFILE'];
+const LOADING_STEPS = ['INICIANDO', 'VERIFICANDO TELEGRAM', 'CARREGANDO PERFIL'];
 
 // Minimum time the intro stays visible so it never flashes on fast networks.
 const MIN_DISPLAY_MS = 900;
@@ -57,8 +57,8 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
   const failed = status === 'error';
 
   const currentStep = useMemo(() => {
-    if (failed) return 'CONNECTION FAILED';
-    if (progress >= 100) return 'READY';
+    if (failed) return 'FALHA NA CONEXÃO';
+    if (progress >= 100) return 'PRONTO';
     const index = Math.min(
       LOADING_STEPS.length - 1,
       Math.floor((progress / 90) * LOADING_STEPS.length),
@@ -95,7 +95,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
                   failed ? 'text-red-400' : 'text-white',
                 )}
               >
-                S
+                A
               </span>
               <div
                 className={cn(
@@ -131,7 +131,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
           <div className="flex flex-col items-center gap-1">
             <span className="text-2xl font-black text-white tracking-[0.2em] uppercase">ANINEXUS</span>
             <span className="text-[9px] font-bold text-zinc-600 tracking-[0.4em] uppercase">
-              Waifu Collector
+              Colecionador de personagens
             </span>
           </div>
         </div>
@@ -182,7 +182,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
             <div className="flex items-center gap-1.5">
               <Fingerprint size={9} className="text-zinc-600" />
               <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">
-                Signed in via Telegram
+                Conectado via Telegram
               </span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -202,7 +202,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
                   failed ? 'text-red-400' : 'text-zinc-600',
                 )}
               >
-                {failed ? 'FAILED' : progress >= 100 ? 'READY' : 'SYNCING'}
+                {failed ? 'FALHA' : progress >= 100 ? 'PRONTO' : 'SINCRONIZANDO'}
               </span>
             </div>
           </div>
