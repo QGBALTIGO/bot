@@ -67,6 +67,9 @@ def finalize_plan(audit: dict[str, Any], live_report: dict[str, Any]) -> dict[st
     if coins != copies:
         raise ValueError("Coins precisam ser exatamente 1 por cópia após a trava")
 
+    owner_threshold = max(1, int(live_report.get("owner_review_threshold") or 10))
+    copy_threshold = max(1, int(live_report.get("copy_review_threshold") or 20))
+
     original_review = int_set(audit.get("review_ids"))
     final_review = original_review | moved_to_review
     summary = dict(audit.get("summary") or {})
@@ -92,6 +95,14 @@ def finalize_plan(audit: dict[str, Any], live_report: dict[str, Any]) -> dict[st
         "review_ids": sorted(final_review),
         "moved_to_review_by_collection_impact": moved_rows,
         "summary": summary,
+        "usage_guard": {
+            "applied": True,
+            "candidate_count": candidate_count,
+            "owner_review_threshold": owner_threshold,
+            "copy_review_threshold": copy_threshold,
+            "moved_to_review_count": len(moved_to_review),
+            "live_report_generated_at": live_report.get("generated_at"),
+        },
         "compensation": {
             "coins_per_removed_copy": 1,
             "affected_users": int(after_guard.get("affected_users") or 0),
