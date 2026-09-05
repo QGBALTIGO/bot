@@ -359,14 +359,14 @@ def _next_queue_row(preferred_anime_id: int | None = None) -> dict[str, Any] | N
                   AND NOT EXISTS (
                       SELECT 1 FROM card_image_review_queue active
                       WHERE active.status = 'reviewing'
-                  )
+                )
                 ORDER BY
-                    CASE WHEN %s IS NOT NULL AND q.anime_id=%s THEN 0 ELSE 1 END,
+                    CASE WHEN q.anime_id=%s THEN 0 ELSE 1 END,
                     q.anime_id,
                     q.position
                 LIMIT 1
                 """,
-                (MAX_ROUNDS, preferred_anime_id, preferred_anime_id),
+                (MAX_ROUNDS, preferred_anime_id),
             )
             row = cur.fetchone()
             return dict(row) if row else None
