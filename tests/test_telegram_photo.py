@@ -56,3 +56,14 @@ def test_image_proxy_error_accepts_traceback_assignment():
     error = ImageProxyError("image_source_unavailable", 502)
     error.__traceback__ = None
     assert str(error) == "image_source_unavailable"
+
+
+def test_stale_public_proxy_is_unwrapped_and_keeps_portrait_crop():
+    stored = (
+        "https://old-bot.up.railway.app/api/image-proxy?crop=portrait&"
+        "url=https%3A%2F%2Fcdn.example%2Fapproved.jpg"
+    )
+    assert telegram_photo._source_url(stored) == (
+        "https://cdn.example/approved.jpg",
+        True,
+    )
