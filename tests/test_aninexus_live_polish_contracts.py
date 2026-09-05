@@ -40,6 +40,13 @@ def test_portuguese_translator_does_not_replace_substrings_inside_words():
     assert "'INTERNAL SERVER ERROR': 'ERRO INTERNO NO SERVIDOR'" in source
 
 
+def test_api_errors_are_localized_for_visible_failures():
+    source = _read("aninexus_frontend/src/api/client.ts")
+    assert "500: 'Erro interno no servidor.'" in source
+    assert "Sessão expirada. Reabra a MiniApp." in source
+    assert "Algo deu errado. Tente novamente." in source
+
+
 def test_leaderboard_uses_http_polling_in_current_runtime():
     source = _read("aninexus_frontend/src/pages/Leaderboard.tsx")
     assert "new WebSocket" not in source
@@ -64,6 +71,22 @@ def test_profile_known_visible_copy_is_native_portuguese():
         assert forbidden not in source
     assert "Sua coleção" in source
     assert "TODAS AS RARIDADES" in source
+
+
+def test_hatchery_primary_actions_are_native_portuguese():
+    source = _read("aninexus_frontend/src/pages/Hatchery.tsx")
+    for forbidden in (
+        "Incubation started.",
+        "Egg sold.",
+        "Egg purified.",
+        "Eggs fused.",
+        ">Hatchery</h1>",
+        "m remaining",
+    ):
+        assert forbidden not in source
+    assert "Incubação iniciada." in source
+    assert ">Incubadora</h1>" in source
+    assert "min restantes" in source
 
 
 def test_trade_cards_have_explicit_ratio_and_wait_for_target_collection():
