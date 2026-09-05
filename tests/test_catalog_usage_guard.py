@@ -23,6 +23,10 @@ manifest_loader = _load_module(
     "catalog_impact_manifest",
     "utils/catalog_impact_manifest.py",
 )
+runner = _load_module(
+    "run_catalog_impact_readonly",
+    "scripts/run_catalog_impact_readonly.py",
+)
 
 
 def test_high_collection_impact_moves_retirement_to_review():
@@ -136,3 +140,33 @@ def test_live_report_uses_exact_distinct_user_summary_after_guard():
     assert report["after_guard"]["affected_users"] == 2
     assert report["coins_required_after_guard"] == 4
     assert [row["character_id"] for row in report["moved_to_review"]] == [1, 2]
+
+
+def test_one_shot_runner_keeps_manifest_payload_private_and_summary_aggregate_only():
+    manifest = manifest_loader.load_candidate_manifest(
+        ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
+    )
+    public = runner.public_manifest(manifest)
+    assert "candidate_ids" not in public
+    assert "candidate_ids_payload_chunks" not in public
+    assert public["candidate_count"] == 4136
+
+    report = {
+        "candidate_count": 4136,
+        "moved_to_review_count": 12,
+        "final_retire_count": 4124,
+        "before_guard": {"affected_users": 30, "copies": 100},
+        "after_guard": {"affected_users": 20, "copies": 60},
+        "coins_required_after_guard": 60,
+        "manifest": public,
+    }
+    summary = runner.compact_summary(report)
+    assert summary["read_only"] is True
+    assert summary["coins_required_after_guard"] == 60
+    assert summary["candidate_ids_sha256"] == public["candidate_ids_sha256"]
+    assert "user_id" not in json_text(summary)
+
+
+def json_text(value):
+    import json
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
