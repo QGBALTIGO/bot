@@ -12,7 +12,7 @@ consolidate = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(consolidate)
 
-# This assertion suite also serves as the deliberate canonical full-audit trigger.
+# This assertion suite is also used as a deliberate canonical full-audit trigger.
 
 def proposal():
     return {
@@ -30,29 +30,10 @@ def proposal():
 def dataset():
     return {
         "items": [
-            {
-                "anime_id": 1,
-                "anime": "Fate/stay night",
-                "characters": [{"id": 1, "name": "Stay", "image": "stay.jpg"}],
-            },
-            {
-                "anime_id": 2,
-                "anime": "Fate/Zero",
-                "characters": [
-                    {"id": 2, "name": "Zero Keep", "image": "zero.jpg"},
-                    {"id": 3, "name": "Zero Retire", "image": "retire.jpg"},
-                ],
-            },
-            {
-                "anime_id": 3,
-                "anime": "Empty Movie",
-                "characters": [{"id": 4, "name": "Background", "image": "bg.jpg"}],
-            },
-            {
-                "anime_id": 4,
-                "anime": "Receives New Character",
-                "characters": [{"id": 5, "name": "Old Retire", "image": "old.jpg"}],
-            },
+            {"anime_id": 1, "anime": "Fate/stay night", "characters": [{"id": 1, "name": "Stay", "image": "stay.jpg"}]},
+            {"anime_id": 2, "anime": "Fate/Zero", "characters": [{"id": 2, "name": "Zero Keep", "image": "zero.jpg"}, {"id": 3, "name": "Zero Retire", "image": "retire.jpg"}]},
+            {"anime_id": 3, "anime": "Empty Movie", "characters": [{"id": 4, "name": "Background", "image": "bg.jpg"}]},
+            {"anime_id": 4, "anime": "Receives New Character", "characters": [{"id": 5, "name": "Old Retire", "image": "old.jpg"}]},
         ]
     }
 
@@ -60,26 +41,22 @@ def dataset():
 def audit():
     return {
         "anime_reports": {
-            "1": {"counts": {"KEEP": 1, "REVIEW": 0, "RETIRE": 0}, "current_characters": [{"id": 1, "decision": "KEEP"}]},
-            "2": {"counts": {"KEEP": 1, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 2, "decision": "KEEP"}, {"id": 3, "decision": "RETIRE"}]},
-            "3": {"counts": {"KEEP": 0, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 4, "decision": "RETIRE"}]},
-            "4": {"counts": {"KEEP": 0, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 5, "decision": "RETIRE"}]},
+            "1": {"current_count": 1, "counts": {"KEEP": 1, "REVIEW": 0, "RETIRE": 0}, "current_characters": [{"id": 1, "decision": "KEEP"}]},
+            "2": {"current_count": 2, "counts": {"KEEP": 1, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 2, "decision": "KEEP"}, {"id": 3, "decision": "RETIRE"}]},
+            "3": {"current_count": 1, "counts": {"KEEP": 0, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 4, "decision": "RETIRE"}]},
+            "4": {"current_count": 1, "counts": {"KEEP": 0, "REVIEW": 0, "RETIRE": 1}, "current_characters": [{"id": 5, "decision": "RETIRE"}]},
         }
     }
 
 
 def franchise():
-    return {
-        "duplicate_current_franchises": [
-            {"current_anime_ids": [1, 2], "recommended_target_anime_id": 1, "target_anime": "Fate/stay night"}
-        ]
-    }
+    return {"duplicate_current_franchises": [{"current_anime_ids": [1, 2], "recommended_target_anime_id": 1, "target_anime": "Fate/stay night"}]}
 
 
 def test_duplicate_component_is_deleted_and_retained_character_is_moved():
     result, stats = consolidate.consolidate(proposal(), audit(), franchise(), dataset())
     assert 2 in result["deleted_animes"]
-    assert result["anime_name_overrides"]["1"] == "Fate/stay night"  # fixture target not canonical production id
+    assert result["anime_name_overrides"]["1"] == "Fate/stay night"
     moved = next(row for row in result["custom_characters"] if int(row["id"]) == 2)
     assert moved["anime_id"] == 1
     assert moved["name"] == "Zero Keep"
@@ -90,13 +67,24 @@ def test_duplicate_component_is_deleted_and_retained_character_is_moved():
 
 def test_empty_category_is_deleted_but_category_receiving_custom_character_survives():
     p = proposal()
-    p["custom_characters"].append(
-        {"id": 50, "anime_id": 4, "anime": "Receives New Character", "name": "New", "image": "new.jpg"}
-    )
+    p["custom_characters"].append({"id": 50, "anime_id": 4, "anime": "Receives New Character", "name": "New", "image": "new.jpg"})
     result, stats = consolidate.consolidate(p, audit(), {"duplicate_current_franchises": []}, dataset())
     assert 3 in result["deleted_animes"]
     assert 4 not in result["deleted_animes"]
     assert stats["empty_categories_deleted"] == 1
+
+
+def test_incomplete_or_missing_audit_never_deletes_or_consolidates():
+    au = audit()
+    au["anime_reports"].pop("3")
+    au["anime_reports"]["2"]["current_count"] = 3  # only two rows => partial
+    result, stats = consolidate.consolidate(proposal(), au, franchise(), dataset())
+    assert 2 not in result["deleted_animes"]
+    assert 3 not in result["deleted_animes"]
+    assert stats["duplicate_categories_consolidated"] == 0
+    assert stats["duplicate_anime_ids_skipped_incomplete_audit"] == [2]
+    assert stats["empty_categories_deleted"] == 0
+    assert stats["fail_closed_on_incomplete_audit"] is True
 
 
 def test_production_canonical_names_are_generalized():
@@ -111,10 +99,10 @@ def test_production_canonical_names_are_generalized():
     }
     au = {
         "anime_reports": {
-            "356": {"counts": {"KEEP": 1}, "current_characters": []},
-            "10087": {"counts": {"KEEP": 1}, "current_characters": [{"id": 16021, "decision": "KEEP"}]},
-            "113415": {"counts": {"KEEP": 1}, "current_characters": []},
-            "172463": {"counts": {"KEEP": 1}, "current_characters": [{"id": 248818, "decision": "KEEP"}]},
+            "356": {"current_count": 1, "counts": {"KEEP": 1}, "current_characters": [{"id": 1, "decision": "KEEP"}]},
+            "10087": {"current_count": 1, "counts": {"KEEP": 1}, "current_characters": [{"id": 16021, "decision": "KEEP"}]},
+            "113415": {"current_count": 1, "counts": {"KEEP": 1}, "current_characters": [{"id": 2, "decision": "KEEP"}]},
+            "172463": {"current_count": 1, "counts": {"KEEP": 1}, "current_characters": [{"id": 248818, "decision": "KEEP"}]},
         }
     }
     fr = {
