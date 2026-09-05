@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.guard_catalog_retirements_by_usage import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.guard_catalog_retirements_by_usage import (  # noqa: E402
     DEFAULT_COPY_REVIEW_THRESHOLD,
     DEFAULT_OWNER_REVIEW_THRESHOLD,
     run_live_usage_guard,
 )
-from utils.catalog_impact_manifest import load_candidate_manifest
+from utils.catalog_impact_manifest import load_candidate_manifest  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
 DEFAULT_OUTPUT = ROOT / "data" / "catalog_cleanup_live_impact.json"
 
