@@ -157,14 +157,13 @@ def _telegram_photo(source_url: str, post_id: int) -> io.BytesIO:
 def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int) -> list[Candidate]:
     ranked: dict[int, tuple[float, dict[str, Any]]] = {}
     successful_searches = 0
-    failed_searches = 0
     for query in zerochan_queries(name):
-        url = f"https://www.zerochan.net/{quote(query, safe='+')}?json&strict&s=fav&t=0&l=100"
+        encoded_query = quote(query.replace(" ", "+"), safe="+")
+        url = f"https://www.zerochan.net/{encoded_query}?json&strict&s=fav&t=0&l=100"
         try:
             payload = _fetch_json(url)
             successful_searches += 1
         except Exception as exc:
-            failed_searches += 1
             logger.warning("Zerochan search failed query=%s error=%s", query, type(exc).__name__)
             continue
         rows = payload if isinstance(payload, list) else payload.get("items", []) if isinstance(payload, dict) else []
@@ -180,8 +179,6 @@ def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int
 
     if successful_searches == 0:
         raise RuntimeError("zerochan_unavailable")
-    if not ranked and failed_searches:
-        raise RuntimeError("zerochan_partial_failure")
 
     results: list[Candidate] = []
     for post_id, (score, post) in sorted(ranked.items(), key=lambda item: item[1][0], reverse=True):
@@ -398,6 +395,10 @@ async def _dispatch_next_character(application) -> bool:
     candidates = await asyncio.to_thread(fetch_zerochan_candidates, str(row["character_name"]), excluded, OPTIONS_PER_CHARACTER)
     if not candidates:
         await asyncio.to_thread(_mark_no_candidates, int(row["character_id"]))
+        application.create_task(
+            dispatch_next_character(application),
+            name="skip-empty-card-image-review",
+        )
         return False
     stored = await asyncio.to_thread(_store_candidates, row, candidates)
     sent = 0

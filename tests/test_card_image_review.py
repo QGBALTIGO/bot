@@ -24,3 +24,4 @@ def test_preferred_artist_and_action_score_higher():
 def test_zerochan_query_uses_family_name_first():
     assert zerochan_queries("Kakashi Hatake")[0] == "Hatake Kakashi"
     assert "Uchiha Sasuke" in zerochan_queries("Sasuke Uchiha")
+    assert zerochan_queries("Anko Mitarashi")[0] == "Mitarashi Anko"
