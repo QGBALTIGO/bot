@@ -55,11 +55,30 @@ HARD_REJECT_TAGS = {
     "no character", "no people", "duo", "trio", "quartet", "quintet", "group",
     "large group", "two girls", "two males", "two boys", "three girls", "three males",
     "four girls", "four males", "five girls", "five males",
+    "low quality", "very low quality", "bad quality", "blurry", "pixelated", "jpeg artifacts",
+    "ecchi", "nsfw", "nude", "nudity", "topless", "bare breasts", "underwear", "panties",
+    "lingerie", "bikini", "swimsuit", "breast hold", "cameltoe", "see through",
 }
-SOFT_PENALTY_TAGS = {"text": 8.0, "english text": 6.0, "manga page": 10.0, "watermark": 6.0, "comic": 8.0}
+SOFT_PENALTY_TAGS = {
+    "text": 8.0,
+    "english text": 6.0,
+    "manga page": 12.0,
+    "manga cover": 5.0,
+    "scan": 4.0,
+    "watermark": 6.0,
+    "comic": 8.0,
+}
+CLEAN_BONUS_TAGS = {
+    "simple background": 4.0,
+    "white background": 2.0,
+    "transparent background": 3.0,
+    "official character information": 4.0,
+    "tag cover": 3.0,
+}
 OFFICIAL_TAGS = {
     "official art", "official card illustration", "key visual", "novel illustration",
     "book cover", "chapter cover", "official character information", "splash art",
+    "official art from x", "official art from pixiv",
 }
 FANART_TAGS = {"fanart", "fanart from pixiv", "fanart from x twitter", "fanart from deviantart"}
 TARGET_RATIO = 2.0 / 3.0
@@ -70,7 +89,9 @@ MIN_WIDTH = 1000
 MIN_HEIGHT = 1400
 MIN_SCORE = 72.0
 MAX_DETAIL_REQUESTS = 10
-REQUEST_DELAY = 1.1
+REQUEST_DELAY = 1.20
+HTTP_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 2.5
 
 
 @dataclass(frozen=True)
@@ -164,6 +185,20 @@ def _full_url(detail: dict[str, Any], primary: str, entry_id: int) -> str:
     return f"https://static.zerochan.net/{safe_primary}.full.{entry_id}.png" if primary else ""
 
 
+def _expected_character_tags(character: dict[str, Any]) -> tuple[str, ...]:
+    values = list(character.get("zerochan_tags") or [])
+    values.extend([character.get("zerochan_tag"), character.get("name")])
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        raw = str(value or "").strip()
+        key = normalize(raw)
+        if raw and key and key not in seen:
+            seen.add(key)
+            out.append(raw)
+    return tuple(out)
+
+
 def evaluate_candidate(detail: dict[str, Any], character: dict[str, Any]) -> tuple[Candidate | None, str]:
     entry_id = int(detail.get("id") or 0)
     if entry_id <= 0:
@@ -191,9 +226,9 @@ def evaluate_candidate(detail: dict[str, Any], character: dict[str, Any]) -> tup
     if hard_hits:
         return None, f"hard_tag:{hard_hits[0]}"
 
-    expected_tag = str(character.get("zerochan_tag") or character.get("name") or "").strip()
     primary = str(detail.get("primary") or detail.get("tag") or "").strip()
-    p_match = similarity(expected_tag, primary)
+    expected_tags = _expected_character_tags(character)
+    p_match = max((similarity(expected, primary) for expected in expected_tags), default=0.0)
     if p_match < 0.76:
         return None, "primary_mismatch"
 
@@ -232,6 +267,10 @@ def evaluate_candidate(detail: dict[str, Any], character: dict[str, Any]) -> tup
         if tag in normalized_tags:
             score -= penalty
             reasons.append(f"penalty:{tag}")
+    for tag, bonus in CLEAN_BONUS_TAGS.items():
+        if tag in normalized_tags:
+            score += bonus
+            reasons.append(f"bonus:{tag}")
 
     score = round(score, 3)
     if score < MIN_SCORE:
@@ -252,11 +291,14 @@ class ZerochanClient:
         if not username:
             raise ValueError("ZEROCHAN_USERNAME is required by Zerochan's API policy")
         self.username = username
-        self.delay = max(1.0, float(delay))
+        self.delay = max(1.05, float(delay))
         self.client = httpx.Client(
             timeout=timeout,
             follow_redirects=True,
-            headers={"User-Agent": f"SourceBaltigo-Zerochan-Curator/0.1 - {username}", "Accept": "application/json"},
+            headers={
+                "User-Agent": f"SourceBaltigo-Zerochan-Curator/0.2 - {username}",
+                "Accept": "application/json,text/plain;q=0.9,*/*;q=0.1",
+            },
         )
         self._last_request = 0.0
 
@@ -269,19 +311,59 @@ class ZerochanClient:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request
         if elapsed < self.delay:
             time.sleep(self.delay - elapsed)
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         query = dict(params or {})
         query["json"] = ""
-        response = self.client.get(f"{ZEROCHAN_BASE_URL}{path}", params=query)
-        self._last_request = time.monotonic()
-        if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After", "60")
-            raise RuntimeError(f"zerochan_rate_limited:{retry_after}")
-        response.raise_for_status()
-        return response.json()
+        last_error = ""
+
+        for attempt in range(1, HTTP_RETRIES + 1):
+            self._throttle()
+            try:
+                response = self.client.get(f"{ZEROCHAN_BASE_URL}{path}", params=query)
+                self._last_request = time.monotonic()
+            except httpx.RequestError as exc:
+                last_error = f"{type(exc).__name__}:{exc}"
+                if attempt >= HTTP_RETRIES:
+                    raise RuntimeError(f"zerochan_network_error:{last_error}") from exc
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                continue
+
+            if response.status_code == 429:
+                raw_retry = str(response.headers.get("Retry-After") or "5").strip()
+                try:
+                    retry_after = max(2.0, min(30.0, float(raw_retry)))
+                except ValueError:
+                    retry_after = 5.0
+                last_error = f"rate_limited:{retry_after}"
+                if attempt >= HTTP_RETRIES:
+                    raise RuntimeError(f"zerochan_rate_limited:{retry_after}")
+                time.sleep(retry_after)
+                continue
+
+            if response.status_code >= 500:
+                last_error = f"http_{response.status_code}"
+                if attempt >= HTTP_RETRIES:
+                    response.raise_for_status()
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                continue
+
+            response.raise_for_status()
+            try:
+                return response.json()
+            except ValueError as exc:
+                content_type = str(response.headers.get("content-type") or "").split(";", 1)[0]
+                preview = re.sub(r"\s+", " ", response.text[:120]).strip()
+                last_error = f"non_json:{response.status_code}:{content_type}:{preview}"
+                if attempt >= HTTP_RETRIES:
+                    raise RuntimeError(f"zerochan_non_json:{last_error}") from exc
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+        raise RuntimeError(f"zerochan_request_failed:{last_error or 'unknown'}")
 
     def search(self, tag: str, *, limit: int = 30) -> list[dict[str, Any]]:
         encoded = quote(tag.strip().replace(" ", "+"), safe="+().,_-'!")
@@ -298,6 +380,26 @@ class ZerochanClient:
     def detail(self, entry_id: int) -> dict[str, Any]:
         payload = self._get(f"/{int(entry_id)}")
         return payload if isinstance(payload, dict) else {}
+
+
+def _search_tag_variants(character_id: int, name: str, anime_title: str) -> tuple[str, ...]:
+    values: list[str] = []
+    alias = str(ZEROCHAN_TAG_ALIASES.get(character_id) or "").strip()
+    if alias:
+        values.append(alias)
+    values.append(name)
+    if anime_title:
+        values.append(f"{name} ({anime_title})")
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        raw = str(value or "").strip()
+        key = normalize(raw)
+        if raw and key and key not in seen:
+            seen.add(key)
+            out.append(raw)
+    return tuple(out)
 
 
 def load_characters(dataset_path: Path = DATASET_PATH) -> list[dict[str, Any]]:
@@ -318,10 +420,15 @@ def load_characters(dataset_path: Path = DATASET_PATH) -> list[dict[str, Any]]:
             if cid <= 0 or not name or cid in seen:
                 continue
             seen.add(cid)
+            variants = _search_tag_variants(cid, name, anime_title)
             out.append({
-                "id": cid, "name": name, "anime_id": anime_id, "anime": anime_title,
+                "id": cid,
+                "name": name,
+                "anime_id": anime_id,
+                "anime": anime_title,
                 "anilist_image": str(ch.get("image") or "").strip(),
-                "zerochan_tag": ZEROCHAN_TAG_ALIASES.get(cid, name),
+                "zerochan_tag": variants[0] if variants else name,
+                "zerochan_tags": list(variants),
             })
     return out
 
@@ -344,34 +451,63 @@ def load_wallhaven(path: Path = WALLHAVEN_PATH) -> dict[int, dict[str, Any]]:
 
 
 def curate_character(client: ZerochanClient, character: dict[str, Any], *, detail_limit: int = MAX_DETAIL_REQUESTS) -> dict[str, Any]:
-    search_items = client.search(character["zerochan_tag"], limit=max(20, detail_limit * 2))
-    filtered = []
-    for item in search_items:
-        width = int(item.get("width") or 0)
-        height = int(item.get("height") or 0)
-        if width and height and (width < MIN_WIDTH or height < MIN_HEIGHT or width >= height):
-            continue
-        filtered.append(item)
-
+    search_tags = list(character.get("zerochan_tags") or [character.get("zerochan_tag") or character.get("name")])
     approved: list[Candidate] = []
     rejected: dict[str, int] = {}
-    for item in filtered[: max(1, detail_limit)]:
-        entry_id = int(item.get("id") or 0)
-        if entry_id <= 0:
+    attempts: list[dict[str, Any]] = []
+    total_results = 0
+    details_checked = 0
+    selected_search_tag = ""
+
+    for search_tag in search_tags:
+        search_tag = str(search_tag or "").strip()
+        if not search_tag:
             continue
-        detail = client.detail(entry_id)
-        candidate, status = evaluate_candidate(detail, character)
-        if candidate:
-            approved.append(candidate)
-        else:
-            rejected[status] = rejected.get(status, 0) + 1
+        search_items = client.search(search_tag, limit=max(20, detail_limit * 2))
+        total_results += len(search_items)
+        filtered: list[dict[str, Any]] = []
+        for item in search_items:
+            width = int(item.get("width") or 0)
+            height = int(item.get("height") or 0)
+            if width and height and (width < MIN_WIDTH or height < MIN_HEIGHT or width >= height):
+                continue
+            filtered.append(item)
+
+        local_approved: list[Candidate] = []
+        local_checked = 0
+        for item in filtered[: max(1, detail_limit)]:
+            entry_id = int(item.get("id") or 0)
+            if entry_id <= 0:
+                continue
+            detail = client.detail(entry_id)
+            merged = dict(item)
+            merged.update(detail)
+            candidate, status = evaluate_candidate(merged, character)
+            local_checked += 1
+            details_checked += 1
+            if candidate:
+                local_approved.append(candidate)
+            else:
+                rejected[status] = rejected.get(status, 0) + 1
+
+        attempts.append({
+            "tag": search_tag,
+            "search_results": len(search_items),
+            "details_checked": local_checked,
+            "approved": len(local_approved),
+        })
+        if local_approved:
+            approved.extend(local_approved)
+            selected_search_tag = search_tag
+            break
 
     approved.sort(key=lambda x: (x.official, x.score, x.solo, x.favorites, x.width * x.height), reverse=True)
     selected = approved[0] if approved else None
     return {
-        "search_tag": character["zerochan_tag"],
-        "search_results": len(search_items),
-        "details_checked": min(len(filtered), max(1, detail_limit)),
+        "search_tag": selected_search_tag or (attempts[-1]["tag"] if attempts else ""),
+        "search_attempts": attempts,
+        "search_results": total_results,
+        "details_checked": details_checked,
         "rejected": rejected,
         "selected": asdict(selected) if selected else None,
         "top_candidates": [asdict(x) for x in approved[:3]],
@@ -402,7 +538,7 @@ def main() -> int:
 
     wallhaven = load_wallhaven()
     report = {
-        "version": 1,
+        "version": 2,
         "source": "zerochan-test",
         "generated_at_epoch": int(time.time()),
         "policy": {
@@ -413,7 +549,9 @@ def main() -> int:
             "min_height": MIN_HEIGHT,
             "min_score": MIN_SCORE,
             "reject_group_or_cosplay_or_screenshot": True,
+            "reject_low_quality_and_explicit": True,
             "official_art_bonus": True,
+            "http_retries": HTTP_RETRIES,
             "applies_changes": False,
         },
         "characters": {},
@@ -421,7 +559,11 @@ def main() -> int:
 
     with ZerochanClient(args.username) as client:
         for character in chars:
-            print(f"CHECK id={character['id']} {character['name']} / {character['anime']} tag={character['zerochan_tag']!r}", flush=True)
+            print(
+                f"CHECK id={character['id']} {character['name']} / {character['anime']} "
+                f"tags={character.get('zerochan_tags')!r}",
+                flush=True,
+            )
             try:
                 zerochan = curate_character(client, character, detail_limit=max(1, min(15, args.detail_limit)))
                 selected = zerochan.get("selected") or {}
