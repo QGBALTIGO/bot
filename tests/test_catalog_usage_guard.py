@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-import base64
 import importlib.util
-import zlib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location(
+
+def _load_module(name: str, relative_path: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+guard = _load_module(
     "guard_catalog_retirements_by_usage",
-    ROOT / "scripts" / "guard_catalog_retirements_by_usage.py",
+    "scripts/guard_catalog_retirements_by_usage.py",
 )
-guard = importlib.util.module_from_spec(spec)
-assert spec.loader is not None
-spec.loader.exec_module(guard)
+manifest_loader = _load_module(
+    "catalog_impact_manifest",
+    "utils/catalog_impact_manifest.py",
+)
 
 
 def test_high_collection_impact_moves_retirement_to_review():
@@ -66,26 +74,8 @@ def test_usage_guard_keeps_coin_math_on_final_retire_only():
     assert guarded["summary"]["projected_unique_after_retire_before_add"] == 98
 
 
-def test_candidate_manifest_is_integrity_checked():
-    ids = [3, 1, 2]
-    canonical = ",".join(str(value) for value in sorted(ids)).encode("utf-8")
-    manifest = {
-        "candidate_count": 3,
-        "candidate_ids_sha256": guard.candidate_ids_hash(ids),
-        "encoding": "zlib+base64(csv-int-ascending)",
-        "candidate_ids_zlib_base64": base64.b64encode(
-            zlib.compress(canonical, 9)
-        ).decode("ascii"),
-    }
-    assert guard.decode_candidate_manifest(manifest) == [1, 2, 3]
-
-    manifest["candidate_ids_sha256"] = "0" * 64
-    with pytest.raises(ValueError, match="hash"):
-        guard.decode_candidate_manifest(manifest)
-
-
-def test_pinned_catalog_manifest_has_expected_3621_candidates():
-    manifest = guard.load_candidate_manifest(
+def test_compact_candidate_manifest_is_integrity_checked():
+    manifest = manifest_loader.load_candidate_manifest(
         ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
     )
     assert manifest["candidate_count"] == 3621
@@ -93,7 +83,22 @@ def test_pinned_catalog_manifest_has_expected_3621_candidates():
     assert manifest["candidate_ids_sha256"] == (
         "093b4b96da41aa943cb9714d3fa951f6a664b89a77aa2e50a00cfbe37f8600fb"
     )
-    assert guard.candidate_ids_hash(manifest["candidate_ids"]) == manifest["candidate_ids_sha256"]
+    assert manifest_loader.candidate_ids_hash(manifest["candidate_ids"]) == manifest["candidate_ids_sha256"]
+    assert manifest["candidate_ids"] == sorted(set(manifest["candidate_ids"]))
+
+
+def test_manifest_hash_tampering_is_rejected():
+    manifest = manifest_loader.load_candidate_manifest(
+        ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
+    )
+    bad = {
+        key: value
+        for key, value in manifest.items()
+        if key != "candidate_ids"
+    }
+    bad["candidate_ids_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="hash"):
+        manifest_loader.decode_candidate_manifest(bad)
 
 
 def test_live_report_uses_exact_distinct_user_summary_after_guard():
