@@ -1,0 +1,29 @@
+{
+  "schema": "source.catalog-retirement-final.v1",
+  "batch_id": "catalog_cleanup_2026_09_v3",
+  "candidate_count": 4311,
+  "candidate_ids_sha256": "597fbd838e4ba01be19209c663408d992ccb9dc5b3a947fd69752804d7895dbe",
+  "saved_by_collection": [
+    {
+      "character_id": 285128,
+      "name": "Ryouko Hanawa",
+      "anime": "Seishun Buta Yarou wa Yumemiru Shoujo no Yume wo Minai",
+      "owners": 26,
+      "copies": 33,
+      "decision": "REVIEW_BY_COLLECTION_IMPACT"
+    }
+  ],
+  "final_retire_count": 4310,
+  "final_retire_ids_sha256": "c8957314ca814b094121eebae7f9a601f96e766cf30caa1de5c84378847e7a08",
+  "owner_review_threshold": 10,
+  "copy_review_threshold": 20,
+  "compensation": {
+    "coins_per_removed_copy": 1,
+    "affected_users": 88,
+    "removed_copies": 5722,
+    "coins_required": 5722
+  },
+  "requires_catalog_disabled_before_apply": true,
+  "requires_live_recheck_before_apply": true,
+  "apply_ready": false
+}
