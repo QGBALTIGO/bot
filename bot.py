@@ -129,6 +129,7 @@ from duel_service import restore_duel_runtime
 from utils.aninexus_news_publisher import aninexus_news_worker
 from utils.channel_verification_bridge import channel_verification_worker
 from utils.health_monitor import source_health_monitor
+from utils.card_image_review import card_image_review_worker, image_review_callback, review_photos_command
 from utils.telegram_outbox import telegram_outbox_worker
 from utils.wallhaven_legacy_cleanup import cleanup_legacy_wallhaven_global_images
 from utils.worker_supervisor import supervise_worker
@@ -276,6 +277,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("card_subadd", card_subadd))
     app.add_handler(CommandHandler("card_subremove", card_subremove))
     app.add_handler(CommandHandler("setfoto", setfoto))
+    app.add_handler(CommandHandler("revisarfotos", review_photos_command))
 
 
 # =========================================================
@@ -306,6 +308,7 @@ def register_callbacks(app: Application):
     app.add_handler(CallbackQueryHandler(callback_ranking, pattern=r"^rank:"))
 
     app.add_handler(CallbackQueryHandler(termo_callback, pattern=r"^termo:"))
+    app.add_handler(CallbackQueryHandler(image_review_callback, pattern=r"^imgrev:[ar]:\d+$"))
 
 
 # =========================================================
@@ -365,6 +368,14 @@ def build_application():
             ),
             name="source-health-monitor",
         )
+        app.bot_data["card_image_review_worker"] = asyncio.create_task(
+            supervise_worker(
+                app,
+                name="card_image_review",
+                worker=card_image_review_worker,
+            ),
+            name="card-image-review",
+        )
         removed_legacy_wallhaven = await asyncio.to_thread(cleanup_legacy_wallhaven_global_images)
         if removed_legacy_wallhaven:
             print(
@@ -378,6 +389,7 @@ def build_application():
             app.bot_data.pop("telegram_outbox_worker", None),
             app.bot_data.pop("aninexus_news_worker", None),
             app.bot_data.pop("source_health_monitor", None),
+            app.bot_data.pop("card_image_review_worker", None),
         ]
         for task in tasks:
             if task is not None:
