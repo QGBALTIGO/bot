@@ -1,6 +1,6 @@
 {
   "schema": "source.reviewed-character-portraits.v1",
-  "enabled": true,
+  "enabled": false,
   "batch_id": "naruto-zerochan-pilot-20260905",
   "criteria": {
     "single_character": true,
@@ -667,5 +667,6 @@
       "reason": "no_approved_image_in_first_pass",
       "search_status": "needs_visual_review"
     }
-  ]
+  ],
+  "disabled_reason": "User rejected the visual selection; restore existing baseline images."
 }
