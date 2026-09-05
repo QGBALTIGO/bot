@@ -64,3 +64,5 @@ jobs:
           name: catalog-cleanup-audit
           path: /tmp/catalog_cleanup_audit.json
           retention-days: 14
+
+# trigger: full catalog audit
