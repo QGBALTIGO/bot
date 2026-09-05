@@ -87,20 +87,62 @@ def ensure_migration_tables(cur) -> None:
     )
 
 
-def load_owned_rows(cur, retired_ids: list[int]) -> list[dict[str, Any]]:
+def load_owned_rows(cur, retired_ids: list[int], *, for_update: bool = False) -> list[dict[str, Any]]:
     if not retired_ids:
         return []
+    suffix = " FOR UPDATE" if for_update else ""
     cur.execute(
-        """
+        f"""
         SELECT user_id, character_id, quantity
         FROM user_card_collection
         WHERE quantity > 0
           AND character_id = ANY(%s)
-        ORDER BY user_id, character_id
+        ORDER BY user_id, character_id{suffix}
         """,
         (retired_ids,),
     )
     return [dict(row) for row in (cur.fetchall() or [])]
+
+
+def _count_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM card_trades
+        WHERE status = 'pending'
+          AND (from_character_id = ANY(%s) OR to_character_id = ANY(%s))
+        """,
+        (retired_ids, retired_ids),
+    )
+    pending_trades = int((cur.fetchone() or {}).get("total") or 0)
+
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM capture_spawns
+        WHERE character_id = ANY(%s)
+          AND status = 'active'
+        """,
+        (retired_ids,),
+    )
+    active_spawns = int((cur.fetchone() or {}).get("total") or 0)
+
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM capture_spawns
+        WHERE character_id = ANY(%s)
+          AND status = 'captured_offer_open'
+        """,
+        (retired_ids,),
+    )
+    open_purchase_offers = int((cur.fetchone() or {}).get("total") or 0)
+
+    return {
+        "pending_trades_to_cancel": pending_trades,
+        "active_spawns_to_expire": active_spawns,
+        "open_purchase_offers_to_expire": open_purchase_offers,
+    }
 
 
 def dry_run(retired_ids: list[int]) -> dict[str, Any]:
@@ -110,9 +152,77 @@ def dry_run(retired_ids: list[int]) -> dict[str, Any]:
         with conn.cursor(row_factory=dict_row) as cur:
             rows = load_owned_rows(cur, retired_ids)
             summary = summarize_rows(rows)
+            summary.update(_count_pending_refs(cur, retired_ids))
             summary["retire_character_count"] = len(retired_ids)
             summary["apply"] = False
             return summary
+
+
+def _close_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
+    # Propostas tradicionais de /trocar usam os IDs do catálogo normal.
+    # Se uma das cartas vai sair, a troca precisa deixar de ser aceitável.
+    cur.execute(
+        """
+        UPDATE card_trades
+        SET status = 'cancelled'
+        WHERE status = 'pending'
+          AND (from_character_id = ANY(%s) OR to_character_id = ANY(%s))
+        """,
+        (retired_ids, retired_ids),
+    )
+    trades_cancelled = int(cur.rowcount or 0)
+
+    # Spawns ainda não capturados deixam de ser ativos imediatamente.
+    cur.execute(
+        """
+        UPDATE capture_spawns
+        SET status = 'escaped',
+            updated_at = NOW(),
+            expires_at = LEAST(expires_at, NOW())
+        WHERE character_id = ANY(%s)
+          AND status = 'active'
+        """,
+        (retired_ids,),
+    )
+    spawns_expired = int(cur.rowcount or 0)
+
+    # Se alguém acertou o nome mas ainda não comprou a carta, encerra a janela
+    # para impedir que uma carta aposentada seja adquirida após a migração.
+    cur.execute(
+        """
+        UPDATE capture_spawns
+        SET status = 'captured_offer_expired',
+            purchase_expires_at = NOW(),
+            updated_at = NOW()
+        WHERE character_id = ANY(%s)
+          AND status = 'captured_offer_open'
+        """,
+        (retired_ids,),
+    )
+    offers_expired = int(cur.rowcount or 0)
+
+    return {
+        "pending_trades_cancelled": trades_cancelled,
+        "active_spawns_expired": spawns_expired,
+        "open_purchase_offers_expired": offers_expired,
+    }
+
+
+def _record_compensation_transaction(cur, user_id: int, amount: int, balance_after: int, batch_id: str) -> None:
+    # Mantém o extrato de Coins coerente com as outras movimentações da economia.
+    cur.execute(
+        """
+        INSERT INTO shop_transactions
+            (user_id, type, amount, balance_after, reference_id, metadata)
+        VALUES (%s, 'catalog_retirement_compensation', %s, %s, NULL, %s::jsonb)
+        """,
+        (
+            int(user_id),
+            int(amount),
+            int(balance_after),
+            json.dumps({"batch_id": batch_id, "reason": "retired_character_compensation"}, ensure_ascii=False),
+        ),
+    )
 
 
 def apply_batch(retired_ids: list[int], batch_id: str) -> dict[str, Any]:
@@ -149,7 +259,11 @@ def apply_batch(retired_ids: list[int], batch_id: str) -> dict[str, Any]:
                         (batch_id, digest, len(retired_ids)),
                     )
 
-                owned_rows = load_owned_rows(cur, retired_ids)
+                closed_refs = _close_pending_refs(cur, retired_ids)
+
+                # Bloqueia as linhas que serão compensadas/removidas para impedir
+                # que uma troca concorrente altere a quantidade no meio da conta.
+                owned_rows = load_owned_rows(cur, retired_ids, for_update=True)
                 before = summarize_rows(owned_rows)
                 awards_by_user: dict[int, int] = defaultdict(int)
                 inserted_rows = 0
@@ -186,13 +300,19 @@ def apply_batch(retired_ids: list[int], batch_id: str) -> dict[str, Any]:
                         SET coins = COALESCE(coins, 0) + %s,
                             updated_at = NOW()
                         WHERE user_id = %s
+                        RETURNING coins
                         """,
                         (amount, user_id),
                     )
+                    updated_user = cur.fetchone() or {}
+                    if not updated_user:
+                        raise RuntimeError(f"usuário {user_id} da coleção não existe em users")
+                    balance_after = int(updated_user.get("coins") or 0)
+                    _record_compensation_transaction(cur, user_id, amount, balance_after, batch_id)
                     total_awarded += amount
 
-                # Aposenta de verdade da coleção somente depois que a compensação
-                # daquele usuário/personagem foi registrada na mesma transação.
+                # Aposenta da coleção somente depois que a compensação daquele
+                # usuário/personagem foi registrada na mesma transação.
                 cur.execute(
                     """
                     DELETE FROM user_card_collection uc
@@ -209,8 +329,7 @@ def apply_batch(retired_ids: list[int], batch_id: str) -> dict[str, Any]:
                 )
                 deleted_collection_rows = int(cur.rowcount or 0)
 
-                # Se o personagem aposentado era favorito, limpa a referência para
-                # não deixar perfil apontando para uma carta que deixou o catálogo.
+                # Perfil não pode continuar apontando para uma carta aposentada.
                 cur.execute(
                     """
                     UPDATE user_profile_settings
@@ -242,6 +361,7 @@ def apply_batch(retired_ids: list[int], batch_id: str) -> dict[str, Any]:
                     "ledger_rows_inserted": inserted_rows,
                     "collection_rows_deleted": deleted_collection_rows,
                     "favorites_cleared": cleared_favorites,
+                    **closed_refs,
                 }
             except Exception:
                 conn.rollback()
