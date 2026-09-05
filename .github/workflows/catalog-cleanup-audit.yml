@@ -6,6 +6,8 @@ on:
       - catalog-cleanup-v1
     paths:
       - 'scripts/audit_character_catalog.py'
+      - 'scripts/refine_catalog_cleanup_audit.py'
+      - 'scripts/audit_franchise_gaps.py'
       - 'scripts/apply_catalog_retirements.py'
       - 'tests/test_catalog_cleanup.py'
       - '.github/workflows/catalog-cleanup-audit.yml'
@@ -32,7 +34,7 @@ jobs:
   full-audit:
     needs: tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,25 +46,41 @@ jobs:
           CATALOG_AUDIT_REQUEST_DELAY: '2.10'
         run: |
           python scripts/audit_character_catalog.py \
+            --output /tmp/catalog_cleanup_audit_raw.json
+      - name: Refine retirement decisions
+        run: |
+          python scripts/refine_catalog_cleanup_audit.py \
+            --input /tmp/catalog_cleanup_audit_raw.json \
             --output /tmp/catalog_cleanup_audit.json
-      - name: Print One Piece and Naruto summary
+      - name: Audit franchises and missing sequel characters
+        run: |
+          python scripts/audit_franchise_gaps.py \
+            --output /tmp/catalog_franchise_gaps.json
+      - name: Print cleanup focus
         run: |
           python - <<'PY'
           import json
           p=json.load(open('/tmp/catalog_cleanup_audit.json', encoding='utf-8'))
-          print('GLOBAL', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          f=json.load(open('/tmp/catalog_franchise_gaps.json', encoding='utf-8'))
+          print('GLOBAL_REFINED', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
           reports=p.get('anime_reports') or {}
-          for aid in ('21','20','1735'):
+          for aid in ('21','269','6702','527','113415'):
               row=reports.get(aid) or {}
-              print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'target=', row.get('target_size'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'missing=', len(row.get('missing_candidates') or []))
-          print('TOP_MISSING')
-          for row in (p.get('add_candidates') or [])[:50]:
-              print(row.get('id'), row.get('name'), '/', row.get('anime'), 'role=', row.get('role'), 'fav=', row.get('favourites'), 'rank=', row.get('relevance_rank'))
+              print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'recommended=', row.get('recommended_total_after_review'))
+          print('FRANCHISE_GLOBAL', json.dumps(f.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('MISSING_FRANCHISES')
+          for row in (f.get('missing_franchises') or [])[:40]:
+              media=row.get('missing_popular_media') or []
+              best=media[0] if media else {}
+              print(row.get('target_anime_id'), row.get('target_anime'), 'rank=', best.get('popularity_rank'), 'pop=', best.get('popularity'))
+          print('TOP_CHARACTER_ADDS')
+          for row in (f.get('character_add_candidates') or [])[:80]:
+              print(row.get('id'), row.get('name'), '/', row.get('target_anime'), 'role=', row.get('role'), 'fav=', row.get('favourites'))
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: catalog-cleanup-audit
-          path: /tmp/catalog_cleanup_audit.json
+          path: |
+            /tmp/catalog_cleanup_audit.json
+            /tmp/catalog_franchise_gaps.json
           retention-days: 14
-
-# trigger: full catalog audit
