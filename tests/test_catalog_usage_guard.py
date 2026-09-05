@@ -78,13 +78,15 @@ def test_compact_candidate_manifest_is_integrity_checked():
     manifest = manifest_loader.load_candidate_manifest(
         ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
     )
-    assert manifest["candidate_count"] == 3621
-    assert len(manifest["candidate_ids"]) == 3621
+    assert manifest["candidate_count"] == 4136
+    assert len(manifest["candidate_ids"]) == 4136
     assert manifest["candidate_ids_sha256"] == (
-        "093b4b96da41aa943cb9714d3fa951f6a664b89a77aa2e50a00cfbe37f8600fb"
+        "2e34dffdf6aae9cc4ae4b22aab0f724fbe5540b75b92737dd7d1ae94b5348533"
     )
     assert manifest_loader.candidate_ids_hash(manifest["candidate_ids"]) == manifest["candidate_ids_sha256"]
     assert manifest["candidate_ids"] == sorted(set(manifest["candidate_ids"]))
+    assert manifest["review_resolution"]["review_to_retire"] == 515
+    assert manifest["review_resolution"]["never_auto_retire_favourites_gte"] == 10
 
 
 def test_manifest_hash_tampering_is_rejected():
