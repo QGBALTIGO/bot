@@ -36,7 +36,10 @@ jobs:
       - name: Catalog cleanup unit tests
         run: pytest -q tests/test_catalog_cleanup.py
 
+  # Full external audit is intentionally manual. Re-running it on every commit
+  # wastes AniList quota and can make two catalog snapshots compete.
   full-audit:
+    if: github.event_name == 'workflow_dispatch'
     needs: tests
     runs-on: ubuntu-24.04
     timeout-minutes: 35
