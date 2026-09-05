@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from database import get_dado_state, get_user_level_rank
 from database_aninexus_pets import get_active_pet, get_user_eggs, get_user_pets
 from level_system import get_rank_tag
+from utils.aninexus_admin import is_admin, is_owner
 from webapp_routes.aninexus_compat import (
     API_PREFIX,
     _require_user,
@@ -33,7 +34,26 @@ def build_aninexus_me_router() -> APIRouter:
         pets = get_user_pets(user_id)
         active_pet = get_active_pet(user_id)
         eggs = get_user_eggs(user_id)
-        active_incubations = sum(1 for egg in eggs if str(egg.get("status") or "") == "incubating")
+        active_incubations = sum(
+            1 for egg in eggs if str(egg.get("status") or "") == "incubating"
+        )
+
+        admin = is_admin(user_id)
+        owner = is_owner(user_id)
+        payload["is_sudo"] = False  # Staff/raridades só será exposto quando o backend próprio estiver pronto.
+        payload["is_staff"] = admin
+        payload["can_upload"] = admin
+        payload["can_edit_character"] = admin
+        if owner:
+            payload["role"] = "owner"
+            payload["role_label"] = "Fundador"
+            payload["role_tag"] = "OWNER"
+            payload["role_symbol"] = "◆"
+        elif admin:
+            payload["role"] = "admin"
+            payload["role_label"] = "Administrador"
+            payload["role_tag"] = "ADMIN"
+            payload["role_symbol"] = "◇"
 
         # O frontend herdado ainda chama o segundo recurso de `zenith`
         # internamente. No AniNexus esse campo representa Dados, nunca uma

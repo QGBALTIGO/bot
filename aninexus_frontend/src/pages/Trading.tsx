@@ -56,8 +56,9 @@ const CharThumb = ({ char, selected, onClick }: { char: TradeCharacter; selected
     <button
       type="button"
       onClick={onClick}
+      style={{ aspectRatio: '2 / 3' }}
       className={cn(
-        'relative rounded-md overflow-hidden aspect-[2/3] border transition-all text-left',
+        'relative w-full min-w-0 rounded-md overflow-hidden border transition-all text-left',
         selected ? 'border-brand-accent ring-1 ring-brand-accent/50' : 'border-white/5 hover:border-white/15',
       )}
     >
@@ -299,11 +300,11 @@ export const Trading = () => {
               </Card>
             )}
 
-            {(myLoading || myChars.length > 0) && (
+            {targetChars.length > 0 && (myLoading || myChars.length > 0) && (
               <Card variant="surface" className="p-4 space-y-3">
                 <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">3 · Escolha o personagem que vai entregar</p>
                 {myLoading ? (
-                  <div className="grid grid-cols-4 gap-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-md" />)}</div>
+                  <div className="grid grid-cols-4 gap-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-md" />)}</div>
                 ) : (
                   <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-72 overflow-y-auto">
                     {myChars.map((char) => <CharThumb key={char.id} char={char} selected={myPick === char.id} onClick={() => setMyPick(myPick === char.id ? null : char.id)} />)}

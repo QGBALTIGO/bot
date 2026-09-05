@@ -14,6 +14,7 @@ from utils.health_routes import router as health_router
 from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
+from webapp_routes.aninexus_admin_media import build_aninexus_admin_media_router
 from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.aninexus_me import build_aninexus_me_router
@@ -63,6 +64,7 @@ terms_router = build_terms_router(
     empty_bg_data_uri=EMPTY_BG_DATA_URI,
 )
 source_v2_router = build_source_v2_router(banner_url=TOP_BANNER_URL)
+aninexus_admin_media_router = build_aninexus_admin_media_router()
 aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
 aninexus_me_router = build_aninexus_me_router()
@@ -120,6 +122,16 @@ def _install_runtime_routes() -> None:
         app.include_router(aninexus_ranking_router)
         registered_paths.add("/api/v1_7b82/leaderboard")
 
+    aninexus_admin_media_paths = {
+        "/api/v1_7b82/admin/media/search",
+        "/api/v1_7b82/admin/media/{character_id}/assets",
+        "/api/v1_7b82/admin/media/{character_id}/replace",
+        "/api/v1_7b82/admin/media/assets/{asset_id}/activate",
+    }
+    if not aninexus_admin_media_paths.issubset(registered_paths):
+        app.include_router(aninexus_admin_media_router)
+        registered_paths.update(aninexus_admin_media_paths)
+
     aninexus_shop_paths = {
         "/api/v1_7b82/source-shop",
         "/api/v1_7b82/source-shop/buy-dado",
@@ -138,6 +150,7 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/trade/offer",
         "/api/v1_7b82/trade/respond/{trade_id}",
         "/api/v1_7b82/economy",
+        "/api/v1_7b82/battle/stats",
     }
     if not aninexus_social_paths.issubset(registered_paths):
         app.include_router(aninexus_social_router)
@@ -177,7 +190,6 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/harem",
         "/api/v1_7b82/rarities",
         "/api/v1_7b82/social/marriage",
-        "/api/v1_7b82/battle/stats",
     }
     if not aninexus_compat_paths.issubset(registered_paths):
         app.include_router(aninexus_compat_router)

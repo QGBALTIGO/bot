@@ -30,7 +30,7 @@ const Achievements = lazy(() =>
 );
 const MyPets = lazy(() => import('./pages/MyPets').then((m) => ({ default: m.MyPets })));
 const Exchange = lazy(() => import('./pages/Exchange').then((m) => ({ default: m.Exchange })));
-const Upload = lazy(() => import('./pages/Upload').then((m) => ({ default: m.Upload })));
+const Upload = lazy(() => import('./pages/MediaAdmin').then((m) => ({ default: m.MediaAdmin })));
 const Staff = lazy(() => import('./pages/Staff').then((m) => ({ default: m.Staff })));
 const Minigames = lazy(() => import('./pages/Minigames').then((m) => ({ default: m.Minigames })));
 const Trading = lazy(() => import('./pages/Trading').then((m) => ({ default: m.Trading })));

@@ -154,7 +154,14 @@ def metric_value(user_id: int, metric: str, period: str = "daily") -> int:
                     """
                     SELECT COUNT(*) AS total
                     FROM dice_rolls
-                    WHERE user_id = %s AND created_at >= %s
+                    WHERE user_id = %s
+                      AND to_timestamp(
+                            CASE
+                                WHEN created_at > 100000000000
+                                    THEN created_at::double precision / 1000.0
+                                ELSE created_at::double precision
+                            END
+                          ) >= %s
                     """,
                     (user_id, start),
                 )

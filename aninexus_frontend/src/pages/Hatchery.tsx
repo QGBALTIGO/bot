@@ -55,7 +55,7 @@ export const Hatchery = () => {
     setActionId(eggId);
     try {
       await apiFetch(`/eggs/incubate/${eggId}`, { method: 'POST' });
-      addToast('Incubation started.', 'success');
+      addToast('Incubação iniciada.', 'success');
       triggerRefresh();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -68,7 +68,7 @@ export const Hatchery = () => {
     setActionId(eggId);
     try {
       const result = await apiFetch(`/eggs/sell/${eggId}`, { method: 'POST' });
-      addToast(result?.message || 'Egg sold.', 'success');
+      addToast(result?.message || 'Ovo vendido.', 'success');
       triggerRefresh();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -81,7 +81,7 @@ export const Hatchery = () => {
     setActionId(eggId);
     try {
       const result = await apiFetch(`/eggs/purify/${eggId}`, { method: 'POST' });
-      addToast(result?.message || 'Egg purified.', 'success');
+      addToast(result?.message || 'Ovo purificado.', 'success');
       triggerRefresh();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -94,7 +94,7 @@ export const Hatchery = () => {
     setActionId(`fuse_${tier}`);
     try {
       const result = await apiFetch(`/eggs/fuse/${tier}`, { method: 'POST' });
-      addToast(result?.message || 'Eggs fused.', 'success');
+      addToast(result?.message || 'Ovos fundidos.', 'success');
       triggerRefresh();
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -170,12 +170,12 @@ export const Hatchery = () => {
               <div className="flex flex-wrap items-center gap-2">
                 {egg.isIncubating && !egg.isReady && (
                   <Badge variant="primary" icon={Timer} size="xs" className="font-bold">
-                    {egg.remainingMins}m remaining
+                    {egg.remainingMins} min restantes
                   </Badge>
                 )}
                 {egg.isReady && (
                   <Badge variant="success" icon={CheckCircle2} size="xs" className="font-bold">
-                    READY
+                    PRONTO
                   </Badge>
                 )}
                 {egg.isFresh && (
@@ -185,17 +185,17 @@ export const Hatchery = () => {
                     size="xs"
                     className="font-bold opacity-70"
                   >
-                    {waitMin > 0 ? `${waitMin}m Cycle` : 'Standby'}
+                    {waitMin > 0 ? `${waitMin} min de ciclo` : 'Aguardando'}
                   </Badge>
                 )}
                 {isBoosted && (
                   <Badge variant="epic" icon={Zap} size="xs" className="font-bold">
-                    BOOSTED
+                    ACELERADO
                   </Badge>
                 )}
                 {egg.is_corrupted && (
                   <Badge variant="danger" icon={Flame} size="xs" className="font-bold">
-                    CORRUPTED
+                    CORROMPIDO
                   </Badge>
                 )}
               </div>
@@ -213,7 +213,7 @@ export const Hatchery = () => {
                   disabled={!hasEggId || activeIncubations >= incubationSlots}
                   className="h-9 px-4"
                 >
-                  Start <ArrowRight size={14} className="ml-1.5" />
+                  Incubar <ArrowRight size={14} className="ml-1.5" />
                 </Button>
                 {egg.is_corrupted && (
                   <Button
@@ -224,7 +224,7 @@ export const Hatchery = () => {
                     disabled={!hasEggId}
                     className="h-9 px-4 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
                   >
-                    Purify <Droplets size={14} className="ml-1.5" />
+                    Purificar <Droplets size={14} className="ml-1.5" />
                   </Button>
                 )}
                 <Button
@@ -235,7 +235,7 @@ export const Hatchery = () => {
                   disabled={!hasEggId}
                   className="h-9 px-4 text-zinc-400 hover:text-zinc-200"
                 >
-                  Sell {egg.sell_price ? `${egg.sell_price.toLocaleString()}🪙` : ''}
+                  Vender {egg.sell_price ? `${egg.sell_price.toLocaleString()}🪙` : ''}
                 </Button>
               </>
             )}
@@ -256,7 +256,7 @@ export const Hatchery = () => {
                 disabled={!hasEggId}
                 className="bg-emerald-500 hover:bg-emerald-400 h-9 px-6 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
               >
-                Hatch
+                Chocar
               </Button>
             )}
           </div>
@@ -288,7 +288,7 @@ export const Hatchery = () => {
       <header className="space-y-1">
         <div className="flex items-center gap-2.5">
           <Egg className="text-brand-accent" size={20} />
-          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Hatchery</h1>
+          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Incubadora</h1>
         </div>
         <div className="flex items-center gap-2 opacity-60">
           <Activity size={10} className="text-zinc-500" />
@@ -306,7 +306,7 @@ export const Hatchery = () => {
             color: 'text-zinc-100',
           },
           {
-            label: 'Ready',
+            label: 'Prontos',
             value: `${readyEggs.length}`,
             color: readyEggs.length > 0 ? 'text-emerald-500' : 'text-zinc-500',
           },
@@ -346,7 +346,7 @@ export const Hatchery = () => {
                   disabled={!g.canFuse}
                   className="h-8 px-4"
                 >
-                  Fuse
+                  Fundir
                 </Button>
               </Card>
             ))}

@@ -32,7 +32,7 @@ const getDisplayName = (user: LeaderboardUser, index: number) => {
   const name = (user.full_name || user.first_name || '').trim();
   if (name && name.toLowerCase() !== 'user') return name;
   if (user.username) return user.username;
-  return `Operator ${String(user.id || index + 1)
+  return `Usuário ${String(user.id || index + 1)
     .slice(-4)
     .toUpperCase()}`;
 };
@@ -61,58 +61,15 @@ export const Leaderboard = () => {
     setVisible(50);
   }, []);
 
-  // Realtime updates: the backend publishes to a Redis channel whenever a
-  // leaderboard ZSET changes; /ws/leaderboard relays those events here.
+  // Atualização automática sem depender de WebSocket no runtime atual.
   const fetchRef = useRef(fetchLeaderboard);
   fetchRef.current = fetchLeaderboard;
-  const [live, setLive] = useState(false);
 
   useEffect(() => {
-    const token = sessionStorage.getItem('auth_token');
-    if (!token) return;
-
-    const apiBase = import.meta.env.VITE_API_URL
-      ? `${import.meta.env.VITE_API_URL}/api/${import.meta.env.VITE_API_PREFIX ?? 'v1_7b82'}`
-      : `/api/${import.meta.env.VITE_API_PREFIX ?? 'v1_7b82'}`;
-    const wsUrl = `${apiBase.replace(/^http/, 'ws')}/ws/leaderboard`;
-
-    let ws: WebSocket | null = null;
-    let closedByUs = false;
-    let reconnectTimer: number | undefined;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket(wsUrl, [`aninexus-token.${token}`]);
-      } catch {
-        return;
-      }
-      ws.onopen = () => setLive(true);
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload?.type === 'leaderboard_update') {
-            fetchRef.current();
-          }
-        } catch {
-          // ignore non-JSON frames (pings)
-        }
-      };
-      ws.onclose = () => {
-        setLive(false);
-        if (!closedByUs) {
-          reconnectTimer = window.setTimeout(connect, 10000);
-        }
-      };
-      ws.onerror = () => ws?.close();
-    };
-
-    connect();
-
-    return () => {
-      closedByUs = true;
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      ws?.close();
-    };
+    const timer = window.setInterval(() => {
+      void fetchRef.current();
+    }, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const METRICS = [
@@ -129,7 +86,7 @@ export const Leaderboard = () => {
       <header className="space-y-1">
         <div className="flex items-center gap-2.5">
           <Trophy className="text-amber-500" size={20} />
-          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Rankings</h1>
+          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Ranking</h1>
         </div>
         <div className="flex items-center gap-2 opacity-60">
           <Radio size={10} className="text-zinc-500" />
@@ -137,11 +94,8 @@ export const Leaderboard = () => {
             Melhores jogadores do AniNexus
           </p>
           <span
-            className={cn(
-              'w-1.5 h-1.5 rounded-full',
-              live ? 'bg-emerald-500' : 'bg-zinc-700',
-            )}
-            title={live ? 'Live updates connected' : 'Live updates offline'}
+            className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+            title="Atualização automática a cada 30 segundos"
           />
         </div>
       </header>
@@ -268,7 +222,7 @@ export const Leaderboard = () => {
               {data && visible < data.length && (
                 <div className="flex justify-center pt-2">
                   <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + 50)}>
-                    Carregar mais ({data.length - visible} hidden)
+                    Carregar mais ({data.length - visible} ocultos)
                   </Button>
                 </div>
               )}

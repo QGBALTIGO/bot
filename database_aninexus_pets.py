@@ -329,7 +329,7 @@ def buy_pet(user_id: int, pet_id: str) -> Dict[str, Any]:
                         """
                         INSERT INTO shop_transactions
                             (user_id, type, amount, balance_after, metadata)
-                        VALUES (%s,'aninexus_buy_pet',%s,%s,jsonb_build_object('pet_id',%s))
+                        VALUES (%s,'aninexus_buy_pet',%s,%s,jsonb_build_object('pet_id', %s::text))
                         """,
                         (user_id, -price, new_balance, pet_id),
                     )
@@ -421,7 +421,7 @@ def care_for_active_pet(user_id: int, action: str) -> Dict[str, Any]:
                     cur.execute(
                         """
                         INSERT INTO shop_transactions (user_id,type,amount,balance_after,metadata)
-                        VALUES (%s,'aninexus_pet_feed',%s,%s,jsonb_build_object('pet_id',%s))
+                        VALUES (%s,'aninexus_pet_feed',%s,%s,jsonb_build_object('pet_id', %s::text))
                         """,
                         (user_id, -FEED_COST, new_balance, str(pet.get("pet_id"))),
                     )

@@ -17,6 +17,7 @@ from database_aninexus_social import (
     list_trade_offers,
     respond_trade_offer,
 )
+from database_core import run as db_run
 from utils.web_image_url import web_image_url
 from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 
@@ -75,8 +76,50 @@ def _trade_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _battle_stats(user_id: int) -> dict[str, Any]:
+    row = db_run(
+        """
+        SELECT total_duels, wins, losses, friendly_wins, friendly_losses,
+               wager_wins, wager_losses, surrendered, timeouts, cards_won,
+               cards_lost, coins_spent, coins_refunded
+        FROM duel_stats
+        WHERE user_id = %s
+        LIMIT 1
+        """,
+        (int(user_id),),
+        fetch="one",
+    ) or {}
+    total = max(0, int(row.get("total_duels") or 0))
+    wins = max(0, int(row.get("wins") or 0))
+    losses = max(0, int(row.get("losses") or 0))
+    return {
+        "total_battles": total,
+        "wins": wins,
+        "losses": losses,
+        "win_rate": round((wins / total) * 100, 2) if total else 0.0,
+        "friendly_wins": max(0, int(row.get("friendly_wins") or 0)),
+        "friendly_losses": max(0, int(row.get("friendly_losses") or 0)),
+        "wager_wins": max(0, int(row.get("wager_wins") or 0)),
+        "wager_losses": max(0, int(row.get("wager_losses") or 0)),
+        "surrendered": max(0, int(row.get("surrendered") or 0)),
+        "timeouts": max(0, int(row.get("timeouts") or 0)),
+        "cards_won": max(0, int(row.get("cards_won") or 0)),
+        "cards_lost": max(0, int(row.get("cards_lost") or 0)),
+        "coins_spent": max(0, int(row.get("coins_spent") or 0)),
+        "coins_refunded": max(0, int(row.get("coins_refunded") or 0)),
+    }
+
+
 def build_aninexus_social_router() -> APIRouter:
     router = APIRouter(prefix=API_PREFIX, tags=["aninexus-social"])
+
+    @router.get("/battle/stats")
+    def battle_stats(authorization: str = Header(default="")):
+        user, error = _auth(authorization)
+        if error:
+            return error
+        assert user is not None
+        return JSONResponse(_battle_stats(int(user.get("id") or 0)))
 
     @router.get("/social/referrals")
     def referrals(authorization: str = Header(default="")):
@@ -152,10 +195,7 @@ def build_aninexus_social_router() -> APIRouter:
         except (TypeError, ValueError):
             receiver_id = sender_char_id = receiver_char_id = 0
         result = create_trade_offer(
-            int(user.get("id") or 0),
-            receiver_id,
-            sender_char_id,
-            receiver_char_id,
+            int(user.get("id") or 0), receiver_id, sender_char_id, receiver_char_id
         )
         if result.get("ok"):
             return JSONResponse(result)
