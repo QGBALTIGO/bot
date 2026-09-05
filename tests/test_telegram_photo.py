@@ -52,6 +52,25 @@ async def test_remote_photo_is_uploaded_once_then_reuses_telegram_file_id(monkey
     assert message.photos[1] == "telegram-file-id"
 
 
+@pytest.mark.asyncio
+async def test_urlopen_fallback_recovers_a_source_rejected_by_httpx(monkeypatch):
+    async def rejected_fetch(url, **kwargs):
+        raise ImageProxyError("image_source_unavailable", 502)
+
+    monkeypatch.setattr(telegram_photo, "fetch_public_image", rejected_fetch)
+    monkeypatch.setattr(telegram_photo, "_urlopen_image", lambda url, headers: _jpeg())
+    telegram_photo._FILE_ID_CACHE.clear()
+    message = _Message()
+
+    await telegram_photo.reply_photo_from_url(
+        message,
+        "https://cdn.donmai.us/approved.jpg",
+        caption="card",
+    )
+
+    assert isinstance(message.photos[0], io.BytesIO)
+
+
 def test_image_proxy_error_accepts_traceback_assignment():
     error = ImageProxyError("image_source_unavailable", 502)
     error.__traceback__ = None
