@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 from psycopg.rows import dict_row
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import RetryAfter, TimedOut
 from telegram.ext import ContextTypes
 
 from cards_service import build_cards_final_data, find_anime, override_set_character_image
@@ -348,7 +349,7 @@ def seed_anime_review(anime_id: int) -> dict[str, int]:
     return {"inserted": inserted, "protected": skipped, "total": len(characters)}
 
 
-def _next_queue_row() -> dict[str, Any] | None:
+def _next_queue_row(preferred_anime_id: int | None = None) -> dict[str, Any] | None:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -359,10 +360,13 @@ def _next_queue_row() -> dict[str, Any] | None:
                       SELECT 1 FROM card_image_review_queue active
                       WHERE active.status = 'reviewing'
                   )
-                ORDER BY anime_id, position
+                ORDER BY
+                    CASE WHEN %s IS NOT NULL AND q.anime_id=%s THEN 0 ELSE 1 END,
+                    q.anime_id,
+                    q.position
                 LIMIT 1
                 """,
-                (MAX_ROUNDS,),
+                (MAX_ROUNDS, preferred_anime_id, preferred_anime_id),
             )
             row = cur.fetchone()
             return dict(row) if row else None
@@ -470,6 +474,97 @@ def _recover_failed_deliveries(anime_id: int) -> int:
     return recovered
 
 
+def _resume_anime_review(anime_id: int) -> dict[str, int]:
+    """Reopen recoverable rows without touching approved or protected images."""
+    recovered = _recover_failed_deliveries(anime_id)
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE card_image_review_queue q
+                SET status='queued', updated_at=NOW()
+                WHERE q.anime_id=%s
+                  AND q.status='reviewing'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM card_image_review_candidates c
+                      WHERE c.character_id=q.character_id
+                        AND c.status='pending'
+                        AND c.channel_message_id IS NOT NULL
+                  )
+                """,
+                (int(anime_id),),
+            )
+            stale = int(cur.rowcount or 0)
+            cur.execute(
+                """
+                DELETE FROM card_image_review_candidates c
+                USING card_image_review_queue q
+                WHERE c.character_id=q.character_id
+                  AND q.anime_id=%s
+                  AND q.status='queued'
+                  AND c.status='pending'
+                  AND c.channel_message_id IS NULL
+                """,
+                (int(anime_id),),
+            )
+            cur.execute(
+                """
+                UPDATE card_image_review_queue
+                SET status='queued', round_no=0, updated_at=NOW()
+                WHERE anime_id=%s AND status='exhausted'
+                """,
+                (int(anime_id),),
+            )
+            exhausted = int(cur.rowcount or 0)
+        conn.commit()
+    return {"failed": recovered, "stale": stale, "exhausted": exhausted}
+
+
+def _anime_review_counts(anime_id: int) -> dict[str, int]:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status, COUNT(*) FROM card_image_review_queue WHERE anime_id=%s GROUP BY status",
+                (int(anime_id),),
+            )
+            return {str(row[0]): int(row[1]) for row in cur.fetchall()}
+
+
+def _retry_after_seconds(exc: RetryAfter) -> float:
+    retry_after = exc.retry_after
+    if hasattr(retry_after, "total_seconds"):
+        return max(0.0, float(retry_after.total_seconds()))
+    return max(0.0, float(retry_after))
+
+
+async def _send_review_photo(application, photo_bytes: bytes, filename: str, **kwargs):
+    for attempt in range(4):
+        stream = io.BytesIO(photo_bytes)
+        stream.name = filename
+        try:
+            return await application.bot.send_photo(
+                photo=stream,
+                read_timeout=60,
+                write_timeout=60,
+                connect_timeout=20,
+                pool_timeout=20,
+                **kwargs,
+            )
+        except RetryAfter as exc:
+            if attempt >= 3:
+                raise
+            delay = _retry_after_seconds(exc) + 1.0
+            logger.warning("Telegram flood control; retrying image review in %.1fs", delay)
+            await asyncio.sleep(delay)
+        except TimedOut:
+            if attempt >= 3:
+                raise
+            delay = 2.0 * (attempt + 1)
+            logger.warning("Telegram image upload timed out; retrying in %.1fs", delay)
+            await asyncio.sleep(delay)
+    raise RuntimeError("review_photo_retry_exhausted")
+
+
 def _caption(queue_row: dict[str, Any], candidate: dict[str, Any], total_options: int) -> str:
     artist = str(candidate.get("artist") or "").strip()
     artist_line = f"\n🎨 {html.escape(artist)}" if artist else ""
@@ -488,15 +583,19 @@ def _keyboard(candidate_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("✅ Usar esta", callback_data=f"imgrev:a:{candidate_id}"), InlineKeyboardButton("❌ Rejeitar", callback_data=f"imgrev:r:{candidate_id}")]])
 
 
-async def _dispatch_next_character(application) -> bool:
+async def _dispatch_next_character(application, preferred_anime_id: int | None = None) -> bool:
     if not REVIEW_CHANNEL:
         return False
-    row = await asyncio.to_thread(_next_queue_row)
+    row = await asyncio.to_thread(_next_queue_row, preferred_anime_id)
     if not row:
         return False
     current_overrides = await asyncio.to_thread(get_all_global_character_images)
     if int(row["character_id"]) in current_overrides:
         await asyncio.to_thread(_mark_protected, int(row["character_id"]))
+        application.create_task(
+            dispatch_next_character(application, preferred_anime_id),
+            name="skip-protected-card-image-review",
+        )
         return False
     excluded = await asyncio.to_thread(_existing_posts, int(row["character_id"]))
     candidates = await asyncio.to_thread(
@@ -509,7 +608,7 @@ async def _dispatch_next_character(application) -> bool:
     if not candidates:
         await asyncio.to_thread(_mark_no_candidates, int(row["character_id"]))
         application.create_task(
-            dispatch_next_character(application),
+            dispatch_next_character(application, preferred_anime_id),
             name="skip-empty-card-image-review",
         )
         return False
@@ -522,9 +621,11 @@ async def _dispatch_next_character(application) -> bool:
                 str(candidate["source_url"]),
                 int(candidate["zerochan_post_id"]),
             )
-            message = await application.bot.send_photo(
+            message = await _send_review_photo(
+                application,
+                photo.getvalue(),
+                str(photo.name),
                 chat_id=REVIEW_CHANNEL,
-                photo=photo,
                 caption=_caption(row, candidate, len(stored)),
                 parse_mode="HTML",
                 reply_markup=_keyboard(int(candidate["id"])),
@@ -543,7 +644,7 @@ async def _dispatch_next_character(application) -> bool:
                         (int(candidate["id"]),),
                     )
                 conn.commit()
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(1.25)
     if sent == 0:
         with pool.connection() as conn:
             with conn.cursor() as cur:
@@ -555,13 +656,13 @@ async def _dispatch_next_character(application) -> bool:
     return sent > 0
 
 
-async def dispatch_next_character(application) -> bool:
+async def dispatch_next_character(application, preferred_anime_id: int | None = None) -> bool:
     lock = application.bot_data.get("card_image_review_dispatch_lock")
     if lock is None:
         lock = asyncio.Lock()
         application.bot_data["card_image_review_dispatch_lock"] = lock
     async with lock:
-        return await _dispatch_next_character(application)
+        return await _dispatch_next_character(application, preferred_anime_id)
 
 
 def _approved_stale_proxy_rows() -> list[dict[str, Any]]:
@@ -790,7 +891,7 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
         await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n✅ <b>APROVADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
         context.application.create_task(
-            dispatch_next_character(context.application),
+            dispatch_next_character(context.application, int(row["anime_id"])),
             name="next-card-image-review",
         )
         sibling_message_ids = await asyncio.to_thread(
@@ -808,7 +909,10 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer("Opção rejeitada.")
     await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n❌ <b>REJEITADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
     if round_finished:
-        context.application.create_task(dispatch_next_character(context.application), name="retry-card-image-review")
+        context.application.create_task(
+            dispatch_next_character(context.application, int(row["anime_id"])),
+            name="retry-card-image-review",
+        )
 
 
 async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -825,8 +929,8 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
     query = " ".join(context.args).strip()
     if not query:
         await message.reply_text(
-            "Uso: /revisarfotos Naruto\n"
-            "Também aceita o ID da obra ou /revisarfotos status."
+            "Uso: /fotos Naruto\n"
+            "Também aceita o ID da obra ou /fotos status."
         )
         return
     if query.casefold() == "status":
@@ -849,11 +953,18 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
         await message.reply_text("❌ Obra não encontrada nos cards.")
         return
     result = await asyncio.to_thread(seed_anime_review, int(anime["anime_id"]))
+    resumed = await asyncio.to_thread(_resume_anime_review, int(anime["anime_id"]))
+    counts = await asyncio.to_thread(_anime_review_counts, int(anime["anime_id"]))
     await message.reply_text(
-        f"✅ Revisão preparada para {anime['anime']}.\n"
-        f"Na fila: {result['inserted']} · protegidos: {result['protected']} · total: {result['total']}"
+        f"✅ Fotos de {anime['anime']} iniciadas/retomadas.\n"
+        f"Na fila: {counts.get('queued', 0)} · em avaliação: {counts.get('reviewing', 0)} · "
+        f"aprovadas: {counts.get('approved', 0)} · preservadas: {result['protected']}\n"
+        f"Retomadas agora: {sum(resumed.values())} · total da obra: {result['total']}"
     )
-    context.application.create_task(dispatch_next_character(context.application), name="start-card-image-review")
+    context.application.create_task(
+        dispatch_next_character(context.application, int(anime["anime_id"])),
+        name="start-card-image-review",
+    )
 
 
 async def card_image_review_worker(application) -> None:

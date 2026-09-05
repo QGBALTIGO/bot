@@ -277,6 +277,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("card_subadd", card_subadd))
     app.add_handler(CommandHandler("card_subremove", card_subremove))
     app.add_handler(CommandHandler("setfoto", setfoto))
+    app.add_handler(CommandHandler("fotos", review_photos_command))
     app.add_handler(CommandHandler("revisarfotos", review_photos_command))
 
 
