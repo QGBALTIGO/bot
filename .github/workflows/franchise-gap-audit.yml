@@ -1,0 +1,52 @@
+name: Franchise gap audit
+
+on:
+  push:
+    branches:
+      - catalog-cleanup-v1
+    paths:
+      - 'scripts/audit_franchise_gaps.py'
+      - '.github/workflows/franchise-gap-audit.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: franchise-gap-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx
+      - name: Audit franchise gaps deeply
+        run: |
+          python scripts/audit_franchise_gaps.py --output /tmp/catalog_franchise_gaps.json
+      - name: Validate Naruto coverage
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/catalog_franchise_gaps.json', encoding='utf-8'))
+          adds=[x for x in (p.get('character_add_candidates') or []) if int(x.get('target_anime_id') or 0)==20]
+          names={str(x.get('name') or '').casefold() for x in adds}
+          expected=['madara uchiha','obito uchiha','hashirama senju','tobirama senju','nagato']
+          print('FRANCHISE_SUMMARY', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('NARUTO_ADD_COUNT', len(adds))
+          for name in expected:
+              print('NARUTO_EXPECTED', name, name in names)
+          print('NARUTO_ADDS')
+          for row in adds:
+              print(row.get('id'), row.get('name'), 'role=', row.get('role'), 'fav=', row.get('favourites'), 'rank=', row.get('rank_in_media'), 'media=', row.get('source_media_id'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: franchise-gap-audit
+          path: /tmp/catalog_franchise_gaps.json
+          retention-days: 14
