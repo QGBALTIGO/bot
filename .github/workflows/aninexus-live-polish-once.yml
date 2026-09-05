@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: aninexus-live-polish-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   polish:
