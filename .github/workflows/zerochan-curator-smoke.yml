@@ -1,0 +1,86 @@
+name: Zerochan curator smoke
+
+on:
+  push:
+    branches:
+      - test-zerochan-curator-v2
+    paths:
+      - 'scripts/curate_zerochan_characters.py'
+      - 'tests/test_zerochan_curator.py'
+      - '.github/workflows/zerochan-curator-smoke.yml'
+  workflow_dispatch:
+    inputs:
+      zerochan_username:
+        description: 'Zerochan username for the API User-Agent (optional if repository variable ZEROCHAN_USERNAME is configured)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx pytest
+      - name: Curator unit tests
+        run: pytest -q tests/test_zerochan_curator.py
+
+  live-zerochan-probe:
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ZEROCHAN_USERNAME: ${{ inputs.zerochan_username || vars.ZEROCHAN_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx
+      - name: Check whether live credentials are configured
+        id: config
+        shell: bash
+        run: |
+          if [ -n "${ZEROCHAN_USERNAME}" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'ZEROCHAN_USERNAME is not configured; offline tests passed and the live API probe is intentionally skipped.'
+          fi
+      - name: Compare real Zerochan candidates with current Wallhaven images
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          python scripts/curate_zerochan_characters.py \
+            --ids '40,62,723,137080,137079,176754,183965,130102,127518,133700' \
+            --detail-limit 5 \
+            --write \
+            --output /tmp/zerochan_test_results.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/zerochan_test_results.json', encoding='utf-8'))
+          for cid,row in p.get('characters',{}).items():
+              ch=row.get('character') or {}
+              selected=((row.get('zerochan') or {}).get('selected') or {})
+              current=row.get('wallhaven_current') or {}
+              print(
+                  'COMPARE', cid,
+                  ch.get('name'), '/', ch.get('anime'),
+                  'zerochan=', selected.get('zerochan_id'),
+                  'score=', selected.get('score'),
+                  'official=', selected.get('official'),
+                  'size=', f"{selected.get('width')}x{selected.get('height')}",
+                  'wallhaven=', current.get('wallhaven_id'),
+              )
+          PY
+      - uses: actions/upload-artifact@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          name: zerochan-curator-comparison
+          path: /tmp/zerochan_test_results.json
+          retention-days: 7
