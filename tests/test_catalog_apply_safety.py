@@ -101,6 +101,32 @@ def test_plan_with_tampered_retire_ids_is_rejected(tmp_path: Path):
         apply.load_apply_plan(path, approved)
 
 
+def test_catalog_guard_requires_every_final_retirement_already_disabled(tmp_path: Path):
+    overrides = write_json(
+        tmp_path,
+        {"deleted_characters": [1, "2", 3, 999]},
+        name="cards_overrides.json",
+    )
+    result = apply.assert_catalog_already_disabled([1, 2, 3], overrides)
+    assert result["all_retired_cards_disabled"] is True
+    assert result["disabled_character_count"] == 3
+
+
+def test_catalog_guard_fails_if_even_one_card_can_still_spawn(tmp_path: Path):
+    overrides = write_json(
+        tmp_path,
+        {"deleted_characters": [1, 3]},
+        name="cards_overrides.json",
+    )
+    with pytest.raises(RuntimeError, match="catálogo ativo ainda permite"):
+        apply.assert_catalog_already_disabled([1, 2, 3], overrides)
+
+
+def test_catalog_guard_fails_closed_if_overrides_file_is_missing(tmp_path: Path):
+    with pytest.raises(RuntimeError, match="overrides ativo não existe"):
+        apply.assert_catalog_already_disabled([1], tmp_path / "missing.json")
+
+
 class FakeCursor:
     def __init__(self, rowcounts: list[int]):
         self._rowcounts = iter(rowcounts)
