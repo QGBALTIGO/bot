@@ -16,13 +16,34 @@ export function formatNumber(num: number | string | null | undefined) {
   return new Intl.NumberFormat().format(value || 0);
 }
 
+const RARITY_PT: Record<string, string> = {
+  common: 'Comum',
+  medium: 'Médio',
+  uncommon: 'Incomum',
+  rare: 'Raro',
+  legendary: 'Lendário',
+  cosmic: 'Cósmico',
+  immortal: 'Imortal',
+  exclusive: 'Exclusivo',
+  eternal: 'Eterno',
+  royal: 'Real',
+  mythical: 'Mítico',
+  celestial: 'Celestial',
+  divine: 'Divino',
+  astral: 'Astral',
+  prestige: 'Prestígio',
+  starter: 'Inicial',
+  epic: 'Épico',
+};
+
 export function cleanRarityLabel(rarity: string) {
-  return rarity
+  const cleaned = rarity
     .replace(
       /[\u2700-\u27bf]|[\u2190-\u21ff]|[\u2000-\u206f]|[\u2600-\u26ff]|[\u2b00-\u2bff]|[\u00a0-\u00bf]|\u2013|\u2014/g,
       '',
     )
     .trim();
+  return RARITY_PT[cleaned.toLowerCase()] ?? cleaned;
 }
 
 export * from './haptics';
@@ -36,7 +57,7 @@ const PLACEHOLDER_SVG =
   "<rect width='300' height='420' fill='#090b14'/>" +
   "<rect x='8' y='8' width='284' height='404' rx='10' fill='none' stroke='#1f2230' stroke-width='2'/>" +
   "<text x='150' y='200' font-family='Arial,Helvetica,sans-serif' font-size='26' font-weight='800' fill='#2a2d3a' text-anchor='middle' letter-spacing='3'>ANINEXUS</text>" +
-  "<text x='150' y='226' font-family='Arial,Helvetica,sans-serif' font-size='11' font-weight='600' fill='#3a3d4a' text-anchor='middle' letter-spacing='2'>NO IMAGE</text>" +
+  "<text x='150' y='226' font-family='Arial,Helvetica,sans-serif' font-size='11' font-weight='600' fill='#3a3d4a' text-anchor='middle' letter-spacing='2'>SEM IMAGEM</text>" +
   '</svg>';
 
 export const FALLBACK_IMAGE = `data:image/svg+xml;utf8,${encodeURIComponent(PLACEHOLDER_SVG)}`;

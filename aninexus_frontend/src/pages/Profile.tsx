@@ -119,7 +119,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
 
   const stats = user.stats;
   const passType = stats?.pass_type || 'free';
-  const passLabel = `${passType.charAt(0).toUpperCase()}${passType.slice(1)} PASS`;
+  const passLabel = passType === 'free' ? 'PASSE GRÁTIS' : passType === 'premium' ? 'PASSE PREMIUM' : 'PASSE ELITE';
   const collectionOwned = stats?.unique_characters ?? stats?.total_characters ?? 0;
   const collectionTotal = stats?.total_available_characters || Math.max(collectionOwned, 1);
   const collectionPercent =
@@ -129,8 +129,8 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
   const percentileLabel =
     typeof stats?.percentile === 'number' && stats.percentile > 0
       ? `TOP ${stats.percentile}%`
-      : 'UNRANKED';
-  const currentTitle = user.titles?.current || 'OPERATOR';
+      : 'SEM POSIÇÃO';
+  const currentTitle = user.titles?.current || 'USUÁRIO';
   const activePet = user.current_pet;
   const usernameLabel = user.username ? `@${user.username}` : `ID ${user.id}`;
 
@@ -164,7 +164,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-1">
                 <h1 className="text-xl font-bold text-zinc-100 tracking-tight uppercase truncate">
-                  {[user.first_name, user.last_name].filter(Boolean).join(' ') || 'Operator'}
+                  {[user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuário'}
                 </h1>
                 {user.role_tag && (
                   <Badge variant="primary" size="xs" className="font-bold">
@@ -190,7 +190,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
               <ProgressBar
                 current={stats?.xp_current || 0}
                 total={Math.max(1, stats?.xp_needed || 1000)}
-                label="EXPERIENCE"
+                label="EXPERIÊNCIA"
                 compact
               />
             </div>
@@ -203,11 +203,11 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             <div className="flex items-center gap-2">
               <BookOpen size={14} className="text-zinc-500" />
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                Archive
+                Coleção
               </span>
             </div>
             <Badge variant="secondary" size="xs">
-              Registry
+              Registro
             </Badge>
           </div>
 
@@ -219,7 +219,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
               </div>
               <div className="text-right">
                 <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">
-                  COLLECTED
+                  COLECIONADOS
                 </div>
                 <div className="text-sm font-mono font-bold text-zinc-100 tabular-nums">
                   {formatNumber(collectionOwned)}
@@ -250,21 +250,21 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
           },
           {
             icon: Gem,
-            label: 'Prisms',
+            label: 'Dados',
             value: formatNumber(stats?.zenith || 0),
             variant: 'primary',
           },
           {
             icon: Trophy,
-            label: 'Rank',
+            label: 'Posição',
             value: rankLabel,
             subValue: percentileLabel,
             variant: 'success',
           },
           {
             icon: Activity,
-            label: 'Streak',
-            value: `${formatNumber(stats?.streak || 0)} DAYS`,
+            label: 'Sequência',
+            value: `${formatNumber(stats?.streak || 0)} DIAS`,
             variant: 'rare',
           },
         ].map((stat, i) => (
@@ -311,10 +311,10 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">
-              COMPANION
+              COMPANHEIRO
             </div>
             <div className="text-xs font-bold text-zinc-100 truncate uppercase tracking-tight">
-              {activePet?.name || 'NONE ACTIVE'}
+              {activePet?.name || 'NENHUM ATIVO'}
             </div>
           </div>
           {activePet && (
@@ -336,15 +336,15 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">
-              INCUBATOR
+              INCUBADORA
             </div>
             <div className="text-xs font-bold text-zinc-100 truncate uppercase tracking-tight">
-              {stats?.active_incubations || 0} / {stats?.incubation_slots || 1} ACTIVE
+              {stats?.active_incubations || 0} / {stats?.incubation_slots || 1} ATIVO
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-1 h-1 rounded-full bg-emerald-500" />
-            <span className="text-[8px] font-bold text-zinc-600 uppercase">SYSTEM_OK</span>
+            <span className="text-[8px] font-bold text-zinc-600 uppercase">SISTEMA OK</span>
           </div>
         </Card>
       </section>
@@ -359,7 +359,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">
-                  BONDED WITH
+                  VÍNCULO COM
                 </div>
                 <div className="text-xs font-bold text-zinc-100 truncate uppercase tracking-tight">
                   {marriage.partner_name}
@@ -370,7 +370,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
                   const d = marriage.married_at ? new Date(marriage.married_at) : null;
                   return d && Number.isFinite(d.getTime())
                     ? d.toISOString().slice(0, 10)
-                    : 'BONDED';
+                    : 'VINCULADO';
                 })()}
               </Badge>
             </Card>
@@ -382,14 +382,14 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">
-                  COMBAT RECORD
+                  HISTÓRICO DE DUELOS
                 </div>
                 <div className="text-xs font-bold text-zinc-100 uppercase tracking-tight">
-                  {formatNumber(battleStats.wins)}W / {formatNumber(battleStats.losses)}L
+                  {formatNumber(battleStats.wins)} V / {formatNumber(battleStats.losses)} D
                 </div>
               </div>
               <Badge variant="secondary" size="xs" className="font-mono shrink-0">
-                {Number(battleStats.win_rate || 0).toFixed(0)}% WR
+                {Number(battleStats.win_rate || 0).toFixed(0)}% VITÓRIAS
               </Badge>
             </Card>
           )}
@@ -401,12 +401,12 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-1">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">
-              Your collection
+              Sua coleção
             </h2>
             <div className="flex items-center gap-1.5">
               <Zap size={10} className="text-brand-accent" />
               <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                Every waifu you've collected
+                Todos os personagens que você já coletou
               </p>
             </div>
           </div>
@@ -414,7 +414,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              aria-label="Refresh collection"
+              aria-label="Atualizar coleção"
               onClick={() => {
                 window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
                 refresh();
@@ -426,7 +426,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             <div className="w-full sm:w-64">
               <Input
                 icon={Search}
-                placeholder="Search characters..."
+                placeholder="Buscar personagens..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-10"
@@ -434,12 +434,12 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             </div>
             <div className="relative">
               <select
-                aria-label="Filter by rarity"
+                aria-label="Filtrar por raridade"
                 value={rarity}
                 onChange={(event) => setRarity(event.target.value)}
                 className="h-10 pl-3.5 pr-10 bg-zinc-950 border border-white/10 rounded-md text-[10px] font-bold text-zinc-400 uppercase tracking-widest outline-none focus:border-brand-accent appearance-none cursor-pointer hover:bg-zinc-900 transition-all"
               >
-                <option value="">ALL RARITIES</option>
+                <option value="">TODAS AS RARIDADES</option>
                 {rarityOptions.map(({ value, label }) => (
                   <option key={value} value={value}>
                     {label.toUpperCase()}
@@ -482,8 +482,8 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
           <div className="py-20 border border-dashed border-white/5 rounded-lg bg-zinc-950/50">
             <EmptyState
               icon={BookOpen}
-              title="Nothing here yet"
-              message="Hatch some eggs to start your collection."
+              title="Nada por aqui ainda"
+              message="Use o Dado, jogos e ovos para aumentar sua coleção."
             />
           </div>
         )}

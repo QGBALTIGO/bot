@@ -56,7 +56,7 @@ export const getErrorMessage = (error: unknown) => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === 'string' && error.trim()) return error;
-  return 'Something went wrong. Please try again.';
+  return 'Algo deu errado. Tente novamente.';
 };
 
 // Query-cache invalidation bus — replaces the old string-typed window events
@@ -171,7 +171,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     return JSON.parse(text);
   } catch (error) {
     throw new ApiError({
-      message: 'Invalid JSON response from server.',
+      message: 'Resposta inválida do servidor.',
       status: response.status,
       code: 'invalid_json',
       requestId: requestIdFrom(response),
@@ -183,7 +183,18 @@ async function parseResponseBody(response: Response): Promise<unknown> {
 
 function buildApiError(response: Response, payload: unknown) {
   const status = response.status;
-  let message = response.statusText || `API error: ${status}`;
+  const statusMessages: Record<number, string> = {
+    400: 'Solicitação inválida.',
+    401: 'Sessão expirada. Reabra a MiniApp.',
+    403: 'Acesso negado.',
+    404: 'Recurso não encontrado.',
+    409: 'A operação não pôde ser concluída.',
+    429: 'Muitas tentativas. Aguarde um pouco.',
+    500: 'Erro interno no servidor.',
+    502: 'Serviço temporariamente indisponível.',
+    503: 'Serviço temporariamente indisponível.',
+  };
+  let message = statusMessages[status] || `Erro da API: ${status}`;
   let code = status === 401 ? 'unauthorized' : 'request_failed';
   let requestId = requestIdFrom(response);
   let details: unknown;
@@ -207,6 +218,10 @@ function buildApiError(response: Response, payload: unknown) {
     message = readString(payload) ?? message;
   }
 
+  if (message === 'Internal Server Error') message = 'Erro interno no servidor.';
+  if (message === 'Bad Gateway') message = 'Serviço temporariamente indisponível.';
+  if (message === 'Service Unavailable') message = 'Serviço temporariamente indisponível.';
+
   return new ApiError({
     message,
     status,
@@ -227,7 +242,7 @@ function normalizeFetchError(
 
   if (error instanceof DOMException && error.name === 'AbortError') {
     return new ApiError({
-      message: timedOut ? 'Request timed out. Please try again.' : 'Request cancelled.',
+      message: timedOut ? 'A solicitação demorou demais. Tente novamente.' : 'Solicitação cancelada.',
       code: timedOut ? 'timeout' : 'cancelled',
       retryable: timedOut && isIdempotentRequest(options),
       cause: error,
@@ -236,7 +251,7 @@ function normalizeFetchError(
 
   if (error instanceof TypeError) {
     return new ApiError({
-      message: 'Network connection failed. Check your connection and try again.',
+      message: 'Falha de conexão. Verifique sua internet e tente novamente.',
       code: 'network_error',
       retryable: isIdempotentRequest(options),
       cause: error,
@@ -306,7 +321,7 @@ export async function apiFetch(
 
         setSessionToken(null);
         const authError = new ApiError({
-          message: 'Session expired. Please reopen the app.',
+          message: 'Sessão expirada. Reabra a MiniApp.',
           status: 401,
           code: 'session_expired',
           requestId: requestIdFrom(response),

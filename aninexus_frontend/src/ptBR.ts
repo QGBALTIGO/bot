@@ -64,7 +64,6 @@ const EXACT: Record<string, string> = {
   'Characters rotate daily — stock resets with the timer': 'Os personagens mudam diariamente — o estoque reinicia com o contador',
   'Reset In': 'Reinicia em',
   'Available': 'Disponíveis',
-  'Ready': 'Prontos',
   'READY': 'PRONTOS',
   'Nexus Offline': 'AniNexus indisponível',
   'No characters available in the current rotation.': 'Nenhum personagem disponível na rotação atual.',
@@ -212,6 +211,25 @@ const EXACT: Record<string, string> = {
   'Page not found': 'Página não encontrada',
   'Back': 'Voltar',
   'Loading': 'Carregando',
+  'Internal Server Error': 'Erro interno no servidor.',
+  'INTERNAL SERVER ERROR': 'ERRO INTERNO NO SERVIDOR',
+  'Incubation started.': 'Incubação iniciada.',
+  'INCUBATION STARTED.': 'INCUBAÇÃO INICIADA.',
+  'Your collection': 'Sua coleção',
+  'YOUR COLLECTION': 'SUA COLEÇÃO',
+  "Every waifu you've collected": 'Todos os personagens que você já coletou',
+  "EVERY WAIFU YOU'VE COLLECTED": 'TODOS OS PERSONAGENS QUE VOCÊ JÁ COLETOU',
+  'Search characters...': 'Buscar personagens...',
+  'ALL RARITIES': 'TODAS AS RARIDADES',
+  'Refresh collection': 'Atualizar coleção',
+  'Filter by rarity': 'Filtrar por raridade',
+  'Nothing here yet': 'Nada por aqui ainda',
+  'Hatch some eggs to start your collection.': 'Use o Dado, jogos e ovos para aumentar sua coleção.',
+  'Egg sold.': 'Ovo vendido.',
+  'Egg purified.': 'Ovo purificado.',
+  'Eggs fused.': 'Ovos fundidos.',
+  'Ready': 'Prontos',
+  'hidden': 'ocultos',
 };
 
 const patterns: Array<[RegExp, string]> = [
@@ -226,12 +244,16 @@ const patterns: Array<[RegExp, string]> = [
 ];
 
 function translate(value: string): string {
-  let out = EXACT[value] ?? value;
-  for (const [from, to] of Object.entries(EXACT).sort((a, b) => b[0].length - a[0].length)) {
-    if (out.includes(from)) out = out.split(from).join(to);
+  const match = value.match(/^(\s*)(.*?)(\s*)$/s);
+  const prefix = match?.[1] ?? '';
+  const core = match?.[2] ?? value;
+  const suffix = match?.[3] ?? '';
+
+  let out = EXACT[core] ?? core;
+  if (out === core) {
+    for (const [pattern, replacement] of patterns) out = out.replace(pattern, replacement);
   }
-  for (const [pattern, replacement] of patterns) out = out.replace(pattern, replacement);
-  return out;
+  return `${prefix}${out}${suffix}`;
 }
 
 function translateElement(root: ParentNode) {
