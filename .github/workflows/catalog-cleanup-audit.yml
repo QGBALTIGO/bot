@@ -8,9 +8,11 @@ on:
       - 'scripts/audit_character_catalog.py'
       - 'scripts/refine_catalog_cleanup_audit.py'
       - 'scripts/resolve_catalog_reviews.py'
+      - 'scripts/resolve_catalog_reviews_final.py'
       - 'scripts/audit_franchise_gaps.py'
       - 'scripts/ensure_franchise_must_haves.py'
       - 'scripts/build_catalog_cleanup_overrides.py'
+      - 'scripts/build_catalog_impact_manifest.py'
       - 'scripts/finalize_catalog_cleanup_plan.py'
       - 'scripts/materialize_final_catalog_overrides.py'
       - 'scripts/apply_catalog_retirements.py'
@@ -21,6 +23,8 @@ on:
       - 'tests/test_franchise_must_haves.py'
       - 'tests/test_catalog_identity_display.py'
       - 'tests/test_catalog_review_resolution.py'
+      - 'tests/test_catalog_review_resolution_final.py'
+      - 'tests/test_build_catalog_impact_manifest.py'
       - 'tests/test_finalize_catalog_cleanup_plan.py'
       - 'tests/test_materialize_final_catalog_overrides.py'
       - 'tests/test_catalog_apply_safety.py'
@@ -54,6 +58,8 @@ jobs:
           tests/test_franchise_must_haves.py
           tests/test_catalog_identity_display.py
           tests/test_catalog_review_resolution.py
+          tests/test_catalog_review_resolution_final.py
+          tests/test_build_catalog_impact_manifest.py
           tests/test_finalize_catalog_cleanup_plan.py
           tests/test_materialize_final_catalog_overrides.py
           tests/test_catalog_apply_safety.py
@@ -65,7 +71,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-catalog-audit]')
     needs: tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -88,7 +94,18 @@ jobs:
         run: |
           python scripts/resolve_catalog_reviews.py \
             --input /tmp/catalog_cleanup_audit_refined.json \
+            --output /tmp/catalog_cleanup_audit_second.json
+      - name: Resolve final REVIEW cases with recurring protection
+        run: |
+          python scripts/resolve_catalog_reviews_final.py \
+            --input /tmp/catalog_cleanup_audit_second.json \
             --output /tmp/catalog_cleanup_audit.json
+      - name: Build compact read-only impact manifest
+        run: |
+          python scripts/build_catalog_impact_manifest.py \
+            --audit /tmp/catalog_cleanup_audit.json \
+            --output /tmp/catalog_cleanup_retire_candidates.v1.json \
+            --snapshot "$(date -u +%F)"
       - name: Audit franchises and missing sequel characters
         run: |
           python scripts/audit_franchise_gaps.py \
@@ -111,31 +128,27 @@ jobs:
           p=json.load(open('/tmp/catalog_cleanup_audit.json', encoding='utf-8'))
           f=json.load(open('/tmp/catalog_franchise_gaps.json', encoding='utf-8'))
           o=json.load(open('/tmp/cards_overrides.cleanup_proposal.json', encoding='utf-8'))
-          print('GLOBAL_RESOLVED', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
-          print('REVIEW_RESOLUTION', json.dumps(p.get('review_resolution') or {}, ensure_ascii=False, sort_keys=True))
+          m=json.load(open('/tmp/catalog_cleanup_retire_candidates.v1.json', encoding='utf-8'))
+          print('GLOBAL_FINAL', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('SECOND_PASS', json.dumps(p.get('review_resolution') or {}, ensure_ascii=False, sort_keys=True))
+          print('THIRD_PASS', json.dumps(p.get('final_review_resolution') or {}, ensure_ascii=False, sort_keys=True))
+          print('MANIFEST', json.dumps({'count':m.get('candidate_count'),'sha256':m.get('candidate_ids_sha256')}, sort_keys=True))
           reports=p.get('anime_reports') or {}
           for aid in ('21','269','6702','527','113415'):
               row=reports.get(aid) or {}
-              print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'recommended=', row.get('recommended_total_after_review_resolution', row.get('recommended_total_after_review')))
+              print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'recommended=', row.get('recommended_total_after_final_review', row.get('recommended_total_after_review_resolution')))
           print('FRANCHISE_GLOBAL', json.dumps(f.get('summary') or {}, ensure_ascii=False, sort_keys=True))
           print('PROPOSAL_COUNTS', 'deleted=', len(o.get('deleted_characters') or []), 'custom_animes=', len(o.get('custom_animes') or []), 'custom_characters=', len(o.get('custom_characters') or []))
           print('NARUTO_MUST_HAVES', json.dumps(f.get('must_have_insertions') or [], ensure_ascii=False))
           print('IDENTITY_ALIASES', json.dumps(f.get('identity_aliases') or {}, ensure_ascii=False, sort_keys=True))
           print('IDENTITY_DISPLAY', json.dumps(f.get('identity_display_overrides') or {}, ensure_ascii=False, sort_keys=True))
-          print('MISSING_FRANCHISES')
-          for row in (f.get('missing_franchises') or [])[:40]:
-              media=row.get('missing_popular_media') or []
-              best=media[0] if media else {}
-              print(row.get('target_anime_id'), row.get('target_anime'), 'rank=', best.get('popularity_rank'), 'pop=', best.get('popularity'))
-          print('TOP_CHARACTER_ADDS')
-          for row in (f.get('character_add_candidates') or [])[:80]:
-              print(row.get('id'), row.get('name'), '/', row.get('target_anime'), 'role=', row.get('role'), 'fav=', row.get('favourites'))
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: catalog-cleanup-audit
           path: |
             /tmp/catalog_cleanup_audit.json
+            /tmp/catalog_cleanup_retire_candidates.v1.json
             /tmp/catalog_franchise_gaps.json
             /tmp/cards_overrides.cleanup_proposal.json
           retention-days: 14
