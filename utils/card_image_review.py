@@ -657,6 +657,8 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
 
 
 async def dispatch_next_character(application, preferred_anime_id: int | None = None) -> bool:
+    if preferred_anime_id is None:
+        preferred_anime_id = application.bot_data.get("card_image_review_preferred_anime_id")
     lock = application.bot_data.get("card_image_review_dispatch_lock")
     if lock is None:
         lock = asyncio.Lock()
@@ -891,7 +893,7 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
         await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n✅ <b>APROVADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
         context.application.create_task(
-            dispatch_next_character(context.application, int(row["anime_id"])),
+            dispatch_next_character(context.application),
             name="next-card-image-review",
         )
         sibling_message_ids = await asyncio.to_thread(
@@ -910,7 +912,7 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n❌ <b>REJEITADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
     if round_finished:
         context.application.create_task(
-            dispatch_next_character(context.application, int(row["anime_id"])),
+            dispatch_next_character(context.application),
             name="retry-card-image-review",
         )
 
@@ -961,8 +963,9 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
         f"aprovadas: {counts.get('approved', 0)} · preservadas: {result['protected']}\n"
         f"Retomadas agora: {sum(resumed.values())} · total da obra: {result['total']}"
     )
+    context.application.bot_data["card_image_review_preferred_anime_id"] = int(anime["anime_id"])
     context.application.create_task(
-        dispatch_next_character(context.application, int(anime["anime_id"])),
+        dispatch_next_character(context.application),
         name="start-card-image-review",
     )
 
