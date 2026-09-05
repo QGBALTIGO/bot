@@ -255,6 +255,15 @@ def _count_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
         """,
         (retired_ids,),
     )
+    buyback_sales = _count_one(
+        cur,
+        """
+        SELECT COUNT(*) AS total
+        FROM shop_card_sales
+        WHERE character_id = ANY(%s)
+        """,
+        (retired_ids,),
+    )
     profile_favorites = _count_one(
         cur,
         """
@@ -279,6 +288,7 @@ def _count_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
         "active_spawns_to_expire": active_spawns,
         "open_purchase_offers_to_expire": open_purchase_offers,
         "legacy_active_spawns_to_remove": legacy_active_spawns,
+        "buyback_sales_to_invalidate": buyback_sales,
         "profile_favorites_to_clear": profile_favorites,
         "collection_favorites_to_clear": collection_favorites,
     }
@@ -299,7 +309,7 @@ def dry_run(retired_ids: list[int]) -> dict[str, Any]:
 
 def _lock_catalog_mutation_tables(cur) -> None:
     # Uma migração é rara e curta. Bloquear writes nessas tabelas evita que
-    # coleção/troca/spawn/favorito mude entre a rechecagem e o COMMIT.
+    # coleção/troca/spawn/favorito/recompra mude entre a rechecagem e o COMMIT.
     cur.execute(
         """
         LOCK TABLE
@@ -307,6 +317,7 @@ def _lock_catalog_mutation_tables(cur) -> None:
             card_trades,
             capture_spawns,
             active_group_spawns,
+            shop_card_sales,
             user_profile_settings,
             user_collection_profile
         IN SHARE ROW EXCLUSIVE MODE
@@ -412,11 +423,24 @@ def _close_pending_refs(cur, retired_ids: list[int]) -> dict[str, int]:
     )
     legacy_spawns_removed = int(cur.rowcount or 0)
 
+    # A recompra antiga busca shop_card_sales diretamente e pode devolver uma
+    # carta à coleção. Removemos todos os tickets de recompra dos IDs aposentados
+    # no mesmo lock/transação para impedir reentrada pós-compensação.
+    cur.execute(
+        """
+        DELETE FROM shop_card_sales
+        WHERE character_id = ANY(%s)
+        """,
+        (retired_ids,),
+    )
+    buyback_sales_invalidated = int(cur.rowcount or 0)
+
     return {
         "pending_trades_cancelled": trades_cancelled,
         "active_spawns_expired": spawns_expired,
         "open_purchase_offers_expired": offers_expired,
         "legacy_active_spawns_removed": legacy_spawns_removed,
+        "buyback_sales_invalidated": buyback_sales_invalidated,
     }
 
 
