@@ -12,6 +12,7 @@ consolidate = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(consolidate)
 
+# This assertion suite also serves as the deliberate canonical full-audit trigger.
 
 def proposal():
     return {
