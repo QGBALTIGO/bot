@@ -78,3 +78,33 @@ def score_zerochan_post(post: dict[str, Any]) -> float | None:
     if "simple background" in tags:
         score -= 1.5
     return score
+
+
+def score_danbooru_post(post: dict[str, Any]) -> float | None:
+    raw_tags = " ".join(
+        str(post.get(key) or "")
+        for key in (
+            "tag_string_general",
+            "tag_string_character",
+            "tag_string_meta",
+        )
+    )
+    tags = {tag.replace("_", " ").lower() for tag in raw_tags.split()}
+    width = int(post.get("image_width") or 0)
+    height = int(post.get("image_height") or 0)
+    if str(post.get("rating") or "").lower() != "g" or "solo" not in tags:
+        return None
+    if tags & SEXUAL_TAGS or tags & BAD_TAGS:
+        return None
+    if width < 900 or height < 1200:
+        return None
+    ratio = width / max(1, height)
+    if ratio < 0.55 or ratio > 0.80:
+        return None
+
+    score = min(width * height / 1_000_000, 8.0)
+    score += max(0.0, 4.0 - abs(ratio - (2 / 3)) * 8.0)
+    score += min(max(0, int(post.get("score") or 0)) / 35.0, 10.0)
+    score += min(max(0, int(post.get("fav_count") or 0)) / 15.0, 8.0)
+    score += 2.0 * len(tags & ACTION_TAGS)
+    return score

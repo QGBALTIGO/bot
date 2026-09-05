@@ -1,4 +1,4 @@
-from utils.card_image_review_rules import score_zerochan_post, zerochan_queries
+from utils.card_image_review_rules import score_danbooru_post, score_zerochan_post, zerochan_queries
 
 
 def _post(tags, width=1600, height=2400):
@@ -25,3 +25,19 @@ def test_zerochan_query_uses_family_name_first():
     assert zerochan_queries("Kakashi Hatake")[0] == "Hatake Kakashi"
     assert "Uchiha Sasuke" in zerochan_queries("Sasuke Uchiha")
     assert zerochan_queries("Anko Mitarashi")[0] == "Mitarashi Anko"
+
+
+def test_danbooru_candidate_requires_general_rating_and_portrait():
+    post = {
+        "rating": "g",
+        "tag_string_general": "solo looking_at_viewer",
+        "tag_string_character": "uzumaki_naruto",
+        "tag_string_meta": "",
+        "image_width": 1200,
+        "image_height": 1800,
+        "score": 100,
+        "fav_count": 25,
+    }
+    assert score_danbooru_post(post) is not None
+    assert score_danbooru_post({**post, "rating": "s"}) is None
+    assert score_danbooru_post({**post, "tag_string_general": "solo bikini"}) is None
