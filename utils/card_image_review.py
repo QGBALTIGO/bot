@@ -21,6 +21,7 @@ from telegram.ext import ContextTypes
 from cards_service import build_cards_final_data, find_anime, override_set_character_image
 from database import get_all_global_character_images, pool
 from utils.aninexus_admin import is_admin
+from utils.aninexus_media import upload_portrait_asset
 from utils.card_image_review_rules import (
     score_danbooru_post,
     score_zerochan_post,
@@ -577,7 +578,7 @@ def _candidate(candidate_id: int) -> dict[str, Any] | None:
             return dict(row) if row else None
 
 
-def _approve(candidate_id: int, admin_id: int) -> dict[str, Any] | None:
+def _approve(candidate_id: int, admin_id: int, durable_image_url: str) -> dict[str, Any] | None:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -609,7 +610,7 @@ def _approve(candidate_id: int, admin_id: int) -> dict[str, Any] | None:
             )
             override_set_character_image(
                 int(row["character_id"]),
-                str(row["image_url"]),
+                str(durable_image_url),
                 updated_by=int(admin_id),
             )
         conn.commit()
@@ -690,11 +691,40 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
     action, raw_id = match.groups()
     candidate_id = int(raw_id)
     if action == "a":
-        row = await asyncio.to_thread(_approve, candidate_id, int(user.id))
-        if not row:
+        pending_row = await asyncio.to_thread(_candidate, candidate_id)
+        if not pending_row or pending_row["status"] != "pending" or pending_row["queue_status"] != "reviewing":
             await query.answer("Essa opção já foi avaliada.", show_alert=True)
             return
-        await query.answer("Foto aprovada e aplicada.")
+
+        await query.answer("Salvando a foto aprovada...")
+        try:
+            photos = list(getattr(query.message, "photo", None) or [])
+            if not photos:
+                raise ValueError("review_message_has_no_photo")
+            telegram_file = await photos[-1].get_file()
+            approved_bytes = bytes(await telegram_file.download_as_bytearray())
+            durable_image_url = await upload_portrait_asset(
+                approved_bytes,
+                filename=f"character-{int(pending_row['character_id'])}.jpg",
+            )
+        except Exception:
+            logger.exception("Could not persist approved image candidate_id=%s", candidate_id)
+            original_caption = query.message.caption_html or query.message.caption or ""
+            await query.edit_message_caption(
+                caption=original_caption + "\n\n⚠️ <b>Não foi possível salvar agora. Tente novamente.</b>",
+                parse_mode="HTML",
+                reply_markup=_keyboard(candidate_id),
+            )
+            return
+
+        row = await asyncio.to_thread(
+            _approve,
+            candidate_id,
+            int(user.id),
+            durable_image_url,
+        )
+        if not row:
+            return
         await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n✅ <b>APROVADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
         context.application.create_task(
             dispatch_next_character(context.application),

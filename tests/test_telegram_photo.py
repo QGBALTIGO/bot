@@ -4,6 +4,7 @@ import pytest
 from PIL import Image
 
 from utils import telegram_photo
+from utils.image_proxy import ImageProxyError
 
 
 def _jpeg() -> bytes:
@@ -49,3 +50,9 @@ async def test_remote_photo_is_uploaded_once_then_reuses_telegram_file_id(monkey
     assert calls == 1
     assert isinstance(message.photos[0], io.BytesIO)
     assert message.photos[1] == "telegram-file-id"
+
+
+def test_image_proxy_error_accepts_traceback_assignment():
+    error = ImageProxyError("image_source_unavailable", 502)
+    error.__traceback__ = None
+    assert str(error) == "image_source_unavailable"

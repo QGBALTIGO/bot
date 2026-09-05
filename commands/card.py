@@ -1,8 +1,9 @@
+import logging
 import os
 import re
 import unicodedata
-import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -18,6 +19,7 @@ from database import (
 
 from cards_service import (
     build_cards_final_data,
+    get_character_base_image,
     get_character_by_id,
     search_characters,
 )
@@ -254,16 +256,35 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if image:
-            try:
-                await reply_photo_from_url(
-                    update.message,
-                    image,
-                    caption=caption,
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
-            except Exception:
-                logger.exception("Could not deliver /card image character_id=%s", char_id)
+            fallback_image = get_character_base_image(char_id)
+            image_sources = [image, fallback_image, f"https://img.anili.st/character/{char_id}"]
+            delivered = False
+            seen_sources = set()
+            for source in image_sources:
+                source = str(source or "").strip()
+                if not source or source in seen_sources:
+                    continue
+                seen_sources.add(source)
+                try:
+                    await reply_photo_from_url(
+                        update.message,
+                        source,
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_markup=keyboard,
+                    )
+                    delivered = True
+                    break
+                except Exception as exc:
+                    host = (urlparse(source).hostname or "unknown").lower()
+                    logger.warning(
+                        "Card image source failed character_id=%s host=%s error=%s",
+                        char_id,
+                        host,
+                        type(exc).__name__,
+                    )
+
+            if not delivered:
                 await update.message.reply_html(
                     caption + "\n\n⚠️ <i>Imagem temporariamente indisponível.</i>",
                     reply_markup=keyboard,
