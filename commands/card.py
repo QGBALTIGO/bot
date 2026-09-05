@@ -1,12 +1,14 @@
 import os
 import re
 import unicodedata
+import logging
 from typing import Any, Dict, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from utils.runtime_guard import lock_manager, rate_limiter
+from utils.telegram_photo import reply_photo_from_url
 
 from database import (
     get_card_owner_count,
@@ -26,6 +28,7 @@ CARD_CALLBACK_RATE_WINDOW_SECONDS = float(
 )
 
 _chars_cache: Optional[Dict[int, Dict[str, Any]]] = None
+logger = logging.getLogger(__name__)
 
 
 def get_dup_emoji(qty: int) -> str:
@@ -251,12 +254,20 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if image:
-            await update.message.reply_photo(
-                photo=image,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=keyboard,
-            )
+            try:
+                await reply_photo_from_url(
+                    update.message,
+                    image,
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+            except Exception:
+                logger.exception("Could not deliver /card image character_id=%s", char_id)
+                await update.message.reply_html(
+                    caption + "\n\n⚠️ <i>Imagem temporariamente indisponível.</i>",
+                    reply_markup=keyboard,
+                )
         else:
             await update.message.reply_html(
                 caption,
