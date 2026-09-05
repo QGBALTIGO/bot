@@ -29,7 +29,7 @@ jobs:
       - name: Install smoke dependency
         run: python -m pip install httpx
 
-      - name: Wait for Source production health
+      - name: Wait for Source production health and safe catalog
         env:
           SOURCE_PRODUCTION_URL: "https://bot-production-1980.up.railway.app"
           EXPECTED_SHA: ${{ github.sha }}
@@ -43,10 +43,39 @@ jobs:
           expected = os.environ.get("EXPECTED_SHA", "")[:12]
           last_error = "not-started"
 
+          def require_catalog(client):
+              expected_animes = {
+                  "Naruto": (20, 82),
+                  "Witch Hat Atelier": (147105, 14),
+              }
+              for query, (expected_id, expected_total) in expected_animes.items():
+                  found_response = client.get(base + "/api/cards/find-anime", params={"q": query})
+                  if found_response.status_code != 200:
+                      raise RuntimeError(f"find_anime_{expected_id}_http_{found_response.status_code}")
+                  found = found_response.json()
+                  anime = found.get("anime") or {}
+                  anime_id = int(anime.get("anime_id") or 0)
+                  if found.get("ok") is not True or anime_id != expected_id:
+                      raise RuntimeError(f"find_anime_{expected_id}_missing:{found}")
+
+                  chars_response = client.get(
+                      base + "/api/cards/characters",
+                      params={"anime_id": expected_id, "limit": 5000},
+                  )
+                  if chars_response.status_code != 200:
+                      raise RuntimeError(f"characters_{expected_id}_http_{chars_response.status_code}")
+                  chars = chars_response.json()
+                  total = int(chars.get("total") or 0)
+                  if chars.get("ok") is not True or total != expected_total:
+                      raise RuntimeError(
+                          f"characters_{expected_id}_count:{total}!={expected_total}"
+                      )
+                  print(f"catalog_ok anime={query!r} id={expected_id} characters={total}")
+
           with httpx.Client(
               timeout=15.0,
               follow_redirects=True,
-              headers={"User-Agent": "SourceBaltigo-Production-Smoke/2.0"},
+              headers={"User-Agent": "SourceBaltigo-Production-Smoke/3.0"},
           ) as client:
               for attempt in range(1, 25):
                   try:
@@ -65,6 +94,7 @@ jobs:
                           root = client.get(base + "/")
                           if root.status_code != 200:
                               raise RuntimeError(f"root_http_{root.status_code}")
+                          require_catalog(client)
                           print("Production smoke passed")
                           raise SystemExit(0)
 
