@@ -9,8 +9,8 @@ interface EmptyStateProps {
 
 export const EmptyState = ({
   icon: Icon = PackageOpen,
-  title = 'Empty Sector',
-  message = 'No records found in this sector.',
+  title = 'Nada por aqui',
+  message = 'Nenhum registro encontrado.',
 }: EmptyStateProps) => (
   <div className="py-12 px-6 text-center flex flex-col items-center select-none">
     <div className="w-12 h-12 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center mb-4">

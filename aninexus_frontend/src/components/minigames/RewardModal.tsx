@@ -3,7 +3,7 @@ import { Lock, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { haptics } from '../../utils';
+import { cleanRarityLabel, haptics } from '../../utils';
 import type { Reward } from './types';
 
 export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: () => void }) => {
@@ -50,10 +50,10 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
 
             <div className="text-center space-y-2">
               <h3 className="text-xl font-bold text-white uppercase tracking-[0.3em]">
-                Mystery Prize
+                Prêmio misterioso
               </h3>
               <p className="text-[9px] text-zinc-500 uppercase tracking-widest">
-                Tap to reveal what you won
+                Toque para revelar o que você ganhou
               </p>
             </div>
 
@@ -64,7 +64,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
               }}
               className="w-64 bg-white text-black font-bold uppercase tracking-widest text-[10px] py-4 rounded-xl"
             >
-              Reveal Prize
+              Revelar prêmio
             </Button>
           </m.div>
         ) : (
@@ -82,10 +82,10 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
                   </div>
                 </div>
                 <h3 className="text-xl font-bold text-zinc-100 uppercase tracking-wider">
-                  You won!
+                  Você ganhou!
                 </h3>
                 <p className="text-[10px] text-zinc-500 uppercase tracking-[0.2em]">
-                  Operational rewards allocated
+                  Recompensa adicionada à sua conta
                 </p>
               </div>
 
@@ -107,7 +107,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
                     <div className="absolute bottom-0 left-0 w-full p-4 text-left">
                       <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 mb-2 uppercase tracking-widest text-[8px]">
-                        {rewards.character.rarity}
+                        {cleanRarityLabel(rewards.character.rarity).toUpperCase()}
                       </Badge>
                       <div className="text-lg font-bold text-white leading-tight">
                         {rewards.character.name}
@@ -131,7 +131,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
                 </div>
                 <div className="p-4 rounded-2xl bg-zinc-900/50 border border-white/[0.05] flex flex-col items-center gap-1">
                   <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
-                    Exp
+                    XP
                   </span>
                   <span className="text-2xl font-mono font-bold text-zinc-100">+{rewards.xp}</span>
                 </div>
@@ -141,7 +141,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
                 onClick={onClose}
                 className="w-full bg-zinc-100 text-zinc-950 font-bold uppercase tracking-widest text-[10px] py-4 rounded-xl"
               >
-                Confirm & Close
+                Confirmar e fechar
               </Button>
             </div>
           </m.div>

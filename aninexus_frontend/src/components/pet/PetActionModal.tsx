@@ -135,7 +135,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
               size="sm"
               onClick={() => setSelectedPet(null)}
               className="w-8 h-8 p-0 rounded-full bg-black/20 backdrop-blur-md border border-white/5 hover:bg-black/40"
-              aria-label="Close"
+              aria-label="Fechar"
             >
               <X size={16} />
             </Button>
@@ -166,11 +166,11 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
 
             <div className="absolute bottom-4 left-4 z-20 flex gap-2">
               <Badge variant="primary" size="sm">
-                {selectedPet.rarity?.toUpperCase() || 'STANDARD'}
+                {selectedPet.rarity?.toUpperCase() || 'PADRÃO'}
               </Badge>
               {isActive && (
                 <Badge variant="success" size="sm">
-                  ACTIVE
+                  ATIVO
                 </Badge>
               )}
             </div>
@@ -278,18 +278,18 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
                   isLoading={actionStage === 'loading'}
                   leftIcon={isActive ? <ShieldCheck size={18} /> : <History size={18} />}
                 >
-                  {isActive ? 'Active Sync' : 'Activate Companion'}
+                  {isActive ? 'Companheiro ativo' : 'Ativar companheiro'}
                 </Button>
               ) : (
                 <div className="bg-zinc-900 border border-white/5 p-4 rounded-md flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Zap size={16} className="text-zinc-600" />
                     <span className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
-                      Visit Breeder
+                      Visite a Loja de Companheiros
                     </span>
                   </div>
                   <Badge variant="secondary" size="sm">
-                    LOCKED
+                    BLOQUEADO
                   </Badge>
                 </div>
               )}

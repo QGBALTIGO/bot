@@ -119,6 +119,26 @@ def _dado_reward_photo(character_id: int, web_image: str) -> str:
     return str(os.getenv("DADO_BANNER_URL", "") or "").strip()
 
 
+def _telegram_bot_call(token: str, method: str, payload: dict[str, Any]) -> bool:
+    if not token:
+        return False
+    try:
+        with httpx.Client(timeout=6.0) as client:
+            response = client.post(
+                f"https://api.telegram.org/bot{token}/{method}",
+                json=payload,
+            )
+            response.raise_for_status()
+            body = response.json()
+            return bool(isinstance(body, dict) and body.get("ok"))
+    except Exception as exc:
+        print(
+            f"[dado] entrega direta {method} falhou: {type(exc).__name__}",
+            flush=True,
+        )
+        return False
+
+
 def _deliver_dado_reward(user_id: int, roll_id: int, character: dict[str, Any]) -> None:
     character_id = int(character.get("id") or 0)
     if character_id <= 0:
@@ -126,14 +146,46 @@ def _deliver_dado_reward(user_id: int, roll_id: int, character: dict[str, Any]) 
 
     name = escape(str(character.get("name") or "Personagem"))
     anime_title = escape(str(character.get("anime_title") or "Anime"))
+    tier = escape(str(character.get("tier") or ""))
     photo = _dado_reward_photo(character_id, str(character.get("image") or ""))
     caption = (
         "🎁 <b>VOCÊ GANHOU!</b>\n\n"
         f"🧧 <code>{character_id}</code>. <b>{name}</b>\n"
-        f"<i>{anime_title}</i>\n\n"
-        "📦 <b>Adicionado à sua coleção!</b>"
+        f"<i>{anime_title}</i>\n"
+        + (f"⭐ <b>{tier}</b>\n" if tier else "")
+        + "\n📦 <b>Adicionado à sua coleção!</b>"
     )
 
+    token = str(os.getenv("BOT_TOKEN", "") or "").strip()
+    delivered = False
+    if token and photo:
+        delivered = _telegram_bot_call(
+            token,
+            "sendPhoto",
+            {
+                "chat_id": int(user_id),
+                "photo": photo,
+                "caption": caption,
+                "parse_mode": "HTML",
+            },
+        )
+    if token and not delivered:
+        delivered = _telegram_bot_call(
+            token,
+            "sendMessage",
+            {
+                "chat_id": int(user_id),
+                "text": caption,
+                "parse_mode": "HTML",
+            },
+        )
+    if delivered:
+        return
+
+    # Persistência de último recurso. Se o processo do bot estiver ativo, o
+    # worker consome essa fila; a experiência normal não depende mais dele.
+    if not photo:
+        return
     try:
         from utils.telegram_outbox import enqueue_photo
 
@@ -144,36 +196,9 @@ def _deliver_dado_reward(user_id: int, roll_id: int, character: dict[str, Any]) 
             caption=caption,
             parse_mode="HTML",
         )
-        return
     except Exception as exc:
         print(f"[dado] falha ao enfileirar entrega no chat: {type(exc).__name__}", flush=True)
 
-    token = str(os.getenv("BOT_TOKEN", "") or "").strip()
-    if not token:
-        return
-    try:
-        with httpx.Client(timeout=8.0) as client:
-            if photo:
-                client.post(
-                    f"https://api.telegram.org/bot{token}/sendPhoto",
-                    json={
-                        "chat_id": int(user_id),
-                        "photo": photo,
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                    },
-                )
-            else:
-                client.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={
-                        "chat_id": int(user_id),
-                        "text": caption,
-                        "parse_mode": "HTML",
-                    },
-                )
-    except Exception as exc:
-        print(f"[dado] falha no fallback de entrega: {type(exc).__name__}", flush=True)
 
 def build_aninexus_dado_router() -> APIRouter:
     router = APIRouter(prefix=API_PREFIX, tags=["aninexus-dado"])
@@ -324,7 +349,11 @@ def build_aninexus_dado_router() -> APIRouter:
             int(character.get("id") or 0),
         )
         if not already_done:
-            _deliver_dado_reward(user_id, roll_id, character)
+            _deliver_dado_reward(
+                user_id,
+                roll_id,
+                {**character, "tier": tier["tier"], "stars": tier["stars"]},
+            )
         return JSONResponse(
             {
                 "ok": True,

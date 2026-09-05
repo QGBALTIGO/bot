@@ -10,9 +10,9 @@ interface ErrorStateProps {
 }
 
 export const ErrorState = ({
-  title = 'Connection failed',
-  message = 'Could not reach the ANINEXUS server. Check your connection and retry.',
-  actionLabel = 'Try again',
+  title = 'Falha na conexão',
+  message = 'Não foi possível acessar o AniNexus. Verifique sua conexão e tente novamente.',
+  actionLabel = 'Tentar novamente',
   onAction,
 }: ErrorStateProps) => (
   <div className="py-10 px-6 bg-red-500/5 border border-red-500/10 rounded-md text-center flex flex-col items-center">

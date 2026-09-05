@@ -2,7 +2,7 @@ import { AnimatePresence, m } from 'framer-motion';
 import { Gem, Info, Package, ShieldCheck, Target, Terminal, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Character } from '../../context/UserContext';
-import { cn, FALLBACK_IMAGE, formatNumber } from '../../utils';
+import { cleanRarityLabel, cn, FALLBACK_IMAGE, formatNumber } from '../../utils';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -61,13 +61,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
 
   if (!character) return null;
 
-  const rarityLabel = character.rarity
-    .replace(
-      /[\u2700-\u27bf]|[\u2190-\u21ff]|[\u2000-\u206f]|[\u2600-\u26ff]|[\u2b00-\u2bff]|[\u00a0-\u00bf]|\u2013|\u2014/g,
-      '',
-    )
-    .trim()
-    .toUpperCase();
+  const rarityLabel = cleanRarityLabel(character.rarity).toUpperCase();
   const stockLimit = typeof character.stock_limit === 'number' ? character.stock_limit : null;
   const stockRemaining =
     typeof character.stock_remaining === 'number'
@@ -132,7 +126,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
               size="sm"
               onClick={onClose}
               className="w-8 h-8 p-0 rounded-full bg-black/20 backdrop-blur-md border border-white/5 hover:bg-black/40"
-              aria-label="Close"
+              aria-label="Fechar"
             >
               <X size={16} />
             </Button>
@@ -155,11 +149,11 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
 
             <div className="absolute bottom-4 left-4 z-20 flex gap-2">
               <Badge variant={rarityVariant} size="sm">
-                {rarityLabel || 'STANDARD'}
+                {rarityLabel || 'PADRÃO'}
               </Badge>
               {character.owned && (
                 <Badge variant="success" size="sm">
-                  OWNED
+                  POSSUÍDO
                 </Badge>
               )}
             </div>
@@ -190,24 +184,24 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
                 {
                   icon: ShieldCheck,
                   label: 'STATUS',
-                  value: character.owned ? 'OWNED' : 'NOT OWNED',
+                  value: character.owned ? 'POSSUÍDO' : 'NÃO POSSUÍDO',
                   variant: character.owned ? 'success' : 'secondary',
                 },
                 {
                   icon: Package,
-                  label: 'SUPPLY',
+                  label: 'ESTOQUE',
                   value: hasStock
                     ? soldOut
-                      ? 'DEPLETED'
+                      ? 'ESGOTADO'
                       : `${stockRemaining}/${stockLimit}`
                     : character.count > 0
                       ? `x${character.count}`
-                      : 'UNLIMITED',
+                      : 'ILIMITADO',
                   variant: soldOut ? 'danger' : 'default',
                 },
                 {
                   icon: Gem,
-                  label: 'PRICE',
+                  label: 'PREÇO',
                   value: hasPrice ? formatNumber(character.zenith_price) : '0',
                   variant: 'primary',
                 },
@@ -257,7 +251,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
             <div className="flex items-center justify-center gap-2 py-0 opacity-20">
               <Terminal size={10} className="text-brand-accent" />
               <span className="text-[8px] font-bold uppercase text-zinc-100 tracking-widest">
-                End of Data
+                Fim dos dados
               </span>
             </div>
           </div>

@@ -135,7 +135,7 @@ export const CipherMatch = ({
         <div className="flex items-center gap-6">
           <div className="relative">
             <span className="block text-[7px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-1">
-              Grid Sync
+              Pares encontrados
             </span>
             <div className="flex items-center gap-2">
               <Activity size={10} className="text-brand-accent animate-pulse" />
@@ -147,7 +147,7 @@ export const CipherMatch = ({
           <div className="w-px h-6 bg-white/5" />
           <div className="relative">
             <span className="block text-[7px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-1">
-              Sync Capacity
+              Jogadas restantes
             </span>
             <div className="flex items-center gap-2">
               <ShieldAlert
@@ -161,7 +161,7 @@ export const CipherMatch = ({
                 )}
               >
                 {MAX_MOVES - moves}
-                <span className="text-zinc-600 text-xs"> Left</span>
+                <span className="text-zinc-600 text-xs"> restantes</span>
               </span>
             </div>
           </div>
@@ -172,7 +172,7 @@ export const CipherMatch = ({
           onClick={onCancel}
           className="text-[9px] font-bold uppercase tracking-widest text-zinc-600 hover:text-red-400"
         >
-          Abort
+          Sair
         </Button>
       </div>
 
@@ -227,20 +227,20 @@ export const CipherMatch = ({
         >
           <ShieldAlert size={48} className="text-red-500 mb-4" />
           <h3 className="text-xl font-bold text-white uppercase tracking-tighter mb-2">
-            Sync Failure
+            Tentativa encerrada
           </h3>
           <p className="text-xs text-zinc-500 uppercase tracking-widest mb-6">
-            Operational capacity exceeded
+            Você atingiu o limite de jogadas
           </p>
           <div className="flex gap-3 w-full">
             <Button onClick={onCancel} variant="ghost" className="flex-1 text-zinc-400">
-              Exit
+              Sair
             </Button>
             <Button
               onClick={() => onComplete(matches)}
               className="flex-1 bg-red-500 hover:bg-red-600 text-white"
             >
-              Submit Progress
+              Finalizar partida
             </Button>
           </div>
         </m.div>

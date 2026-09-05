@@ -51,31 +51,31 @@ const validateEditForm = (
   const errors: EditErrors = {};
 
   const name = form.name.trim();
-  if (!name) errors.name = 'Name is required.';
-  else if (name.length > EDIT_TEXT_MAX) errors.name = `Max ${EDIT_TEXT_MAX} characters.`;
-  else if (CONTROL_CHAR_RE.test(name)) errors.name = 'Invalid control characters.';
+  if (!name) errors.name = 'O nome é obrigatório.';
+  else if (name.length > EDIT_TEXT_MAX) errors.name = `Máximo de ${EDIT_TEXT_MAX} caracteres.`;
+  else if (CONTROL_CHAR_RE.test(name)) errors.name = 'Caracteres inválidos.';
 
   const anime = form.anime.trim();
-  if (!anime) errors.anime = 'Source is required.';
-  else if (anime.length > EDIT_TEXT_MAX) errors.anime = `Max ${EDIT_TEXT_MAX} characters.`;
-  else if (CONTROL_CHAR_RE.test(anime)) errors.anime = 'Invalid control characters.';
+  if (!anime) errors.anime = 'A obra é obrigatória.';
+  else if (anime.length > EDIT_TEXT_MAX) errors.anime = `Máximo de ${EDIT_TEXT_MAX} caracteres.`;
+  else if (CONTROL_CHAR_RE.test(anime)) errors.anime = 'Caracteres inválidos.';
 
   const rarity = form.rarity.trim();
-  if (!rarity) errors.rarity = 'Rarity is required.';
+  if (!rarity) errors.rarity = 'A raridade é obrigatória.';
   else if (rarityOptions.length > 0 && !rarityOptions.some((o) => o.label === rarity))
-    errors.rarity = 'Unknown rarity class.';
+    errors.rarity = 'Raridade desconhecida.';
 
   const img_url = form.img_url.trim();
-  if (!img_url) errors.img_url = 'Image URL is required.';
-  else if (img_url.length > EDIT_URL_MAX) errors.img_url = 'URL too long.';
+  if (!img_url) errors.img_url = 'A URL da imagem é obrigatória.';
+  else if (img_url.length > EDIT_URL_MAX) errors.img_url = 'URL muito longa.';
   else {
     try {
       const parsed = new URL(img_url);
-      if (parsed.protocol !== 'https:') errors.img_url = 'Must be an https:// URL.';
-      else if (!parsed.hostname) errors.img_url = 'Missing hostname.';
-      else if (parsed.username || parsed.password) errors.img_url = 'Credentials not allowed.';
+      if (parsed.protocol !== 'https:') errors.img_url = 'Use uma URL https://.';
+      else if (!parsed.hostname) errors.img_url = 'Domínio ausente.';
+      else if (parsed.username || parsed.password) errors.img_url = 'Credenciais não são permitidas.';
     } catch {
-      errors.img_url = 'Invalid URL.';
+      errors.img_url = 'URL inválida.';
     }
   }
 
@@ -123,7 +123,7 @@ const CharacterEditPanel = ({
       <div className="space-y-3">
         <div className="space-y-1">
           <span className="text-[9px] font-bold uppercase text-zinc-600 tracking-widest pl-0.5">
-            Character Name
+            Nome do personagem
           </span>
           <Input
             value={form.name}
@@ -131,12 +131,12 @@ const CharacterEditPanel = ({
             disabled={saving}
             maxLength={EDIT_TEXT_MAX}
             error={errors.name}
-            placeholder="Name..."
+            placeholder="Nome..."
           />
         </div>
         <div className="space-y-1">
           <span className="text-[9px] font-bold uppercase text-zinc-600 tracking-widest pl-0.5">
-            Source
+            Anime / obra
           </span>
           <Input
             value={form.anime}
@@ -144,16 +144,16 @@ const CharacterEditPanel = ({
             disabled={saving}
             maxLength={EDIT_TEXT_MAX}
             error={errors.anime}
-            placeholder="Source..."
+            placeholder="Anime ou obra..."
           />
         </div>
         <div className="space-y-1">
           <span className="text-[9px] font-bold uppercase text-zinc-600 tracking-widest pl-0.5">
-            Rarity Class
+            Raridade
           </span>
           <div className="relative group">
             <select
-              aria-label="Rarity class"
+              aria-label="Raridade"
               value={form.rarity}
               onChange={(event) => updateField('rarity', event.target.value)}
               disabled={saving}
@@ -164,7 +164,7 @@ const CharacterEditPanel = ({
               )}
               {rarityOptions.map((option) => (
                 <option key={option.value} value={option.label}>
-                  Tier {option.value}: {option.label.toUpperCase()}
+                  Nível {option.value}: {option.label.toUpperCase()}
                 </option>
               ))}
             </select>
@@ -177,7 +177,7 @@ const CharacterEditPanel = ({
         </div>
         <div className="space-y-1">
           <span className="text-[9px] font-bold uppercase text-zinc-600 tracking-widest pl-0.5">
-            Visual Manifest
+            Imagem
           </span>
           <Input
             icon={ImageIcon}
@@ -186,14 +186,14 @@ const CharacterEditPanel = ({
             disabled={saving}
             maxLength={EDIT_URL_MAX}
             error={errors.img_url}
-            placeholder="Image URL..."
+            placeholder="URL da imagem..."
           />
         </div>
       </div>
 
       <div className="flex gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={saving} className="flex-1">
-          Cancel
+          Cancelar
         </Button>
         <Button
           onClick={submit}
@@ -202,7 +202,7 @@ const CharacterEditPanel = ({
           isLoading={saving}
           className="flex-[1.5]"
         >
-          Update Character
+          Salvar personagem
         </Button>
       </div>
     </m.div>
@@ -293,7 +293,7 @@ export const CharActionModal = ({
 
       setSelectedChar(updatedChar);
       setEditMode(false);
-      addToast('Registry updated.', 'success');
+      addToast('Personagem atualizado.', 'success');
       triggerRefresh();
       invalidateQueries(['/gallery', '/harem', '/shop/characters', '/shop/hub']);
     } catch (err: any) {
@@ -325,7 +325,7 @@ export const CharActionModal = ({
         method: 'POST',
         body: JSON.stringify([selectedChar.id]),
       });
-      addToast(`Character recycled: +${res.reward} Coins`, 'success');
+      addToast(`Personagem reciclado: +${res.reward} Coins`, 'success');
       triggerRefresh();
       setSelectedChar(null);
     } catch (err: any) {
@@ -339,7 +339,7 @@ export const CharActionModal = ({
     setSellStage('selling');
     try {
       const res = await apiFetch(`/character/sell/${selectedChar.id}`, { method: 'POST' });
-      addToast(`Character sold: +${res.reward} Coins`, 'success');
+      addToast(`Personagem vendido: +${res.reward} Coins`, 'success');
       triggerRefresh();
       setSelectedChar(null);
     } catch (err: any) {
@@ -376,7 +376,7 @@ export const CharActionModal = ({
       });
       askConfirm(
         'recycle',
-        `Recycle ${selectedChar.name.toUpperCase()} for ${preview.reward} Coins?`,
+        `Reciclar ${selectedChar.name.toUpperCase()} por ${preview.reward} Coins?`,
       );
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -386,7 +386,7 @@ export const CharActionModal = ({
 
   const handleSell = () => {
     setSellStage('selling');
-    askConfirm('sell', `Sell ${selectedChar.name.toUpperCase()} for Coins?`);
+    askConfirm('sell', `Vender ${selectedChar.name.toUpperCase()} por Coins?`);
   };
 
   const actions = (
@@ -413,7 +413,7 @@ export const CharActionModal = ({
                 />
               }
             >
-              Modify Records
+              Editar personagem
             </Button>
           )}
         </div>
@@ -427,7 +427,7 @@ export const CharActionModal = ({
               icon={Lock}
               className="w-full py-4 rounded-md justify-center font-bold border-none bg-red-500/10 text-red-500"
             >
-              DEPLETED
+              ESGOTADO
             </Badge>
           ) : !canAfford ? (
             <div className="flex flex-col gap-2">
@@ -436,10 +436,10 @@ export const CharActionModal = ({
                 icon={Gem}
                 className="w-full py-4 rounded-md justify-center font-bold border-white/5 opacity-50"
               >
-                {formatNumber(price - zenithBalance)} Prisms Needed
+                {formatNumber(price - zenithBalance)} Dados necessários
               </Badge>
               <p className="text-[8px] font-bold text-center text-zinc-700 uppercase tracking-widest">
-                Insufficient funds
+                Saldo insuficiente
               </p>
             </div>
           ) : purchaseStage === 'idle' ? (
@@ -448,7 +448,7 @@ export const CharActionModal = ({
               variant="accent"
               className="w-full h-11"
             >
-              Summon Character ({formatNumber(price)} Prisms)
+              Comprar personagem ({formatNumber(price)} Dados)
             </Button>
           ) : (
             <m.div
@@ -461,7 +461,7 @@ export const CharActionModal = ({
                 onClick={() => setPurchaseStage('idle')}
                 className="flex-1 h-11"
               >
-                Abort
+                Cancelar
               </Button>
               <Button
                 variant="accent"
@@ -469,7 +469,7 @@ export const CharActionModal = ({
                 isLoading={purchaseStage === 'buying'}
                 className="flex-[2] h-11"
               >
-                Confirm Summon
+                Confirmar compra
               </Button>
             </m.div>
           )}
@@ -491,7 +491,7 @@ export const CharActionModal = ({
               )
             }
           >
-            Recycle
+            Reciclar
           </Button>
 
           <Button
@@ -507,7 +507,7 @@ export const CharActionModal = ({
               )
             }
           >
-            Liquidate
+            Vender
           </Button>
         </div>
       )}
@@ -538,7 +538,7 @@ export const CharActionModal = ({
               isLoading={sellStage === 'selling'}
               className="flex-[2] h-11"
             >
-              Confirm
+              Confirmar
             </Button>
           </div>
         </m.div>
