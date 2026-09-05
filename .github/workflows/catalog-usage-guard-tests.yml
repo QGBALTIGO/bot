@@ -1,0 +1,30 @@
+name: Catalog usage guard tests
+
+on:
+  push:
+    branches:
+      - catalog-cleanup-v1
+    paths:
+      - 'scripts/guard_catalog_retirements_by_usage.py'
+      - 'scripts/run_catalog_impact_readonly.py'
+      - 'utils/catalog_impact_manifest.py'
+      - 'commands/health.py'
+      - 'data/catalog_cleanup_retire_candidates.v1.json'
+      - 'tests/test_catalog_usage_guard.py'
+      - '.github/workflows/catalog-usage-guard-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check 'psycopg[binary]' pytest
+      - run: pytest -q tests/test_catalog_usage_guard.py

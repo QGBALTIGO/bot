@@ -1,0 +1,85 @@
+name: Franchise gap audit
+
+on:
+  push:
+    branches:
+      - catalog-cleanup-v1
+    paths:
+      - 'scripts/audit_franchise_gaps.py'
+      - 'scripts/ensure_franchise_must_haves.py'
+      - 'scripts/normalize_must_have_targets.py'
+      - 'tests/test_franchise_must_haves.py'
+      - 'tests/test_normalize_must_have_targets.py'
+      - '.github/workflows/franchise-gap-audit.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: franchise-gap-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx pytest
+      - name: Test franchise must-haves
+        run: pytest -q tests/test_franchise_must_haves.py tests/test_normalize_must_have_targets.py
+      - name: Audit franchise gaps deeply
+        run: |
+          python scripts/audit_franchise_gaps.py --output /tmp/catalog_franchise_gaps.raw.json
+      - name: Ensure must-have franchise characters
+        run: |
+          python scripts/ensure_franchise_must_haves.py \
+            --input /tmp/catalog_franchise_gaps.raw.json \
+            --output /tmp/catalog_franchise_gaps.must_haves.json
+      - name: Normalize canonical franchise targets
+        run: |
+          python scripts/normalize_must_have_targets.py \
+            --input /tmp/catalog_franchise_gaps.must_haves.json \
+            --output /tmp/catalog_franchise_gaps.json
+      - name: Validate Naruto and Witch Hat coverage
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/catalog_franchise_gaps.json', encoding='utf-8'))
+          adds=p.get('character_add_candidates') or []
+          naruto=[x for x in adds if int(x.get('target_anime_id') or 0)==20]
+          witch=[x for x in adds if int(x.get('target_anime_id') or 0)==147105]
+          naruto_names={str(x.get('name') or '').casefold() for x in naruto}
+          naruto_ids={int(x.get('id') or 0) for x in naruto}
+          witch_ids={int(x.get('id') or 0) for x in witch}
+          aliases=p.get('identity_aliases') or {}
+          missing=p.get('missing_franchises') or []
+
+          print('FRANCHISE_SUMMARY', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('NARUTO_ADD_COUNT', len(naruto))
+          for name in ['madara uchiha','hashirama senju','tobirama senju']:
+              assert name in naruto_names, name
+          assert 53901 in naruto_ids, 'Madara AniList ID 53901 ausente'
+          assert 'Obito Uchiha' in (aliases.get('3149') or []), 'alias Obito/Tobi ausente'
+          assert 'Nagato' in (aliases.get('3180') or []), 'alias Nagato/Pain ausente'
+
+          expected_witch={129840,129841,129842,129839,129838,137972}
+          print('WITCH_HAT_ADD_COUNT', len(witch), sorted(witch_ids))
+          assert expected_witch.issubset(witch_ids), f'Witch Hat incompleto: {sorted(expected_witch-witch_ids)}'
+          witch_plan=next((x for x in missing if int(x.get('target_anime_id') or 0)==147105), None)
+          assert witch_plan and witch_plan.get('force_auto_add') is True, 'Witch Hat não foi forçado como franquia canônica'
+          normalization=p.get('canonical_target_normalization') or {}
+          assert expected_witch.issubset(set(normalization.get('remapped_ids') or []) | witch_ids)
+
+          print('NARUTO_ALIAS', 3149, aliases.get('3149'))
+          print('NARUTO_ALIAS', 3180, aliases.get('3180'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: franchise-gap-audit
+          path: /tmp/catalog_franchise_gaps.json
+          retention-days: 14

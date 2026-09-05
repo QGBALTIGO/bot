@@ -4,7 +4,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppI
 from telegram.ext import ContextTypes
 
 from database import create_or_get_user, get_dado_state, get_next_dado_recharge_info
+from utils.dado_catalog_runtime import configure_dado_catalog_pool
 from utils.gatekeeper import gatekeeper
+
+
+# O webapp legado do Dado lê CARDS_LOCAL_PATH diretamente. Materializamos esse
+# arquivo antes de o webapp ser importado, aplicando deleted/custom/name/image
+# overrides para o gacha usar exatamente o mesmo conjunto de personagens.
+_DADO_CATALOG_BOOTSTRAP = configure_dado_catalog_pool()
 
 
 BASE_URL = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
