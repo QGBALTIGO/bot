@@ -30,10 +30,16 @@ _BROWSER_HEADERS = {
 def _source_url(image_url: str) -> tuple[str, bool]:
     """Avoid a slow self-request when the stored URL points at our image proxy."""
     value = str(image_url or "").strip()
-    if not is_own_image_proxy_url(value):
+    parsed = urlparse(value)
+    is_stale_public_proxy = (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and parsed.path == "/api/image-proxy"
+    )
+    if not is_own_image_proxy_url(value) and not is_stale_public_proxy:
         return value, False
 
-    params = parse_qs(urlparse(value).query)
+    params = parse_qs(parsed.query)
     source = str((params.get("url") or [""])[0]).strip()
     if not source.startswith(("http://", "https://")):
         return value, False
@@ -117,4 +123,3 @@ async def reply_photo_from_url(message: Any, image_url: str, **kwargs: Any) -> A
     if photos:
         _cache_put(value, str(photos[-1].file_id))
     return sent
-
