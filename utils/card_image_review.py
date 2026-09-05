@@ -21,7 +21,7 @@ from telegram.ext import ContextTypes
 from cards_service import build_cards_final_data, find_anime, override_set_character_image
 from database import get_all_global_character_images, pool
 from utils.aninexus_admin import is_admin
-from utils.aninexus_media import upload_portrait_asset
+from utils.aninexus_media import AniNexusMediaError, upload_portrait_asset
 from utils.card_image_review_rules import (
     score_danbooru_post,
     score_zerochan_post,
@@ -602,6 +602,12 @@ async def _migrate_approved_stale_proxy_images() -> None:
                 int(row.get("updated_by") or 0),
             )
             logger.info("Migrated approved image to durable storage character_id=%s", character_id)
+        except AniNexusMediaError as exc:
+            logger.warning(
+                "Durable image storage unavailable; stale-proxy migration paused error=%s",
+                exc.code,
+            )
+            break
         except Exception:
             logger.exception("Could not migrate approved image character_id=%s", character_id)
         await asyncio.sleep(0.5)
@@ -746,19 +752,33 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 raise ValueError("review_message_has_no_photo")
             telegram_file = await photos[-1].get_file()
             approved_bytes = bytes(await telegram_file.download_as_bytearray())
-            durable_image_url = await upload_portrait_asset(
-                approved_bytes,
-                filename=f"character-{int(pending_row['character_id'])}.jpg",
-            )
         except Exception:
-            logger.exception("Could not persist approved image candidate_id=%s", candidate_id)
+            logger.exception("Could not download approved Telegram image candidate_id=%s", candidate_id)
             original_caption = query.message.caption_html or query.message.caption or ""
             await query.edit_message_caption(
-                caption=original_caption + "\n\n⚠️ <b>Não foi possível salvar agora. Tente novamente.</b>",
+                caption=original_caption + "\n\n⚠️ <b>Não foi possível ler a foto agora. Tente novamente.</b>",
                 parse_mode="HTML",
                 reply_markup=_keyboard(candidate_id),
             )
             return
+
+        durable_image_url = str(pending_row["image_url"])
+        try:
+            durable_image_url = await upload_portrait_asset(
+                approved_bytes,
+                filename=f"character-{int(pending_row['character_id'])}.jpg",
+            )
+        except AniNexusMediaError as exc:
+            logger.warning(
+                "Using reviewed proxy URL because durable storage is unavailable candidate_id=%s error=%s",
+                candidate_id,
+                exc.code,
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected durable storage failure; using reviewed proxy candidate_id=%s",
+                candidate_id,
+            )
 
         row = await asyncio.to_thread(
             _approve,
