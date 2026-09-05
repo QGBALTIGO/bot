@@ -1,0 +1,66 @@
+name: Catalog cleanup audit
+
+on:
+  push:
+    branches:
+      - catalog-cleanup-v1
+    paths:
+      - 'scripts/audit_character_catalog.py'
+      - 'scripts/apply_catalog_retirements.py'
+      - 'tests/test_catalog_cleanup.py'
+      - '.github/workflows/catalog-cleanup-audit.yml'
+      - 'data/personagens_anilist.txt'
+      - 'data/cards_overrides.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx 'psycopg[binary]' pytest
+      - name: Catalog cleanup unit tests
+        run: pytest -q tests/test_catalog_cleanup.py
+
+  full-audit:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx
+      - name: Audit all current anime and characters
+        env:
+          CATALOG_AUDIT_REQUEST_DELAY: '2.10'
+        run: |
+          python scripts/audit_character_catalog.py \
+            --output /tmp/catalog_cleanup_audit.json
+      - name: Print One Piece and Naruto summary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/catalog_cleanup_audit.json', encoding='utf-8'))
+          print('GLOBAL', json.dumps(p.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          reports=p.get('anime_reports') or {}
+          for aid in ('21','20','1735'):
+              row=reports.get(aid) or {}
+              print('FOCUS', aid, row.get('anime'), 'current=', row.get('current_count'), 'target=', row.get('target_size'), 'counts=', json.dumps(row.get('counts') or {}, ensure_ascii=False, sort_keys=True), 'missing=', len(row.get('missing_candidates') or []))
+          print('TOP_MISSING')
+          for row in (p.get('add_candidates') or [])[:50]:
+              print(row.get('id'), row.get('name'), '/', row.get('anime'), 'role=', row.get('role'), 'fav=', row.get('favourites'), 'rank=', row.get('relevance_rank'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-cleanup-audit
+          path: /tmp/catalog_cleanup_audit.json
+          retention-days: 14
