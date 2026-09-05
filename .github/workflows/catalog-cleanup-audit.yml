@@ -59,10 +59,10 @@ jobs:
           tests/test_catalog_apply_safety.py
           tests/test_dado_catalog_runtime.py
 
-  # Full external audit is intentionally manual. Re-running it on every commit
-  # wastes AniList quota and can make two catalog snapshots compete.
+  # A varredura externa continua manual por padrão. O marcador de commit abaixo
+  # serve somente para refreshes deliberados do snapshot da branch de limpeza.
   full-audit:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-catalog-audit]')
     needs: tests
     runs-on: ubuntu-24.04
     timeout-minutes: 35
