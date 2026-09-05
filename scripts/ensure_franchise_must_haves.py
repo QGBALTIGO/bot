@@ -36,6 +36,13 @@ IDENTITY_ALIASES = {
     "3180": ["Pain", "Nagato"],
 }
 
+# Nome de exibição único e pesquisável para a proposta final. Assim continuamos
+# com um único ID, mas o usuário encontra a carta pelos dois nomes conhecidos.
+IDENTITY_DISPLAY_OVERRIDES = {
+    "3149": "Obito Uchiha (Tobi)",
+    "3180": "Nagato (Pain)",
+}
+
 
 def load_json(path: Path) -> dict[str, Any]:
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -109,6 +116,7 @@ def apply_must_haves(payload: dict[str, Any], fetched: dict[int, dict[str, Any]]
     out["character_add_candidates"] = additions
     out["review_character_add_candidates"] = reviews
     out["identity_aliases"] = IDENTITY_ALIASES
+    out["identity_display_overrides"] = IDENTITY_DISPLAY_OVERRIDES
 
     summary = dict(out.get("summary") or {})
     summary["must_have_characters_inserted"] = len(inserted)
@@ -118,6 +126,7 @@ def apply_must_haves(payload: dict[str, Any], fetched: dict[int, dict[str, Any]]
     out["must_have_policy"] = {
         "manual_list_is_small_and_explicit": True,
         "aliases_do_not_create_duplicate_character_ids": True,
+        "consolidated_names_remain_searchable": True,
         "anilist_images_are_reference_only": True,
     }
     return out, {"inserted": len(inserted), "ids": [int(x["id"]) for x in inserted]}
