@@ -40,8 +40,8 @@ jobs:
           path = Path('scripts/hotfix_aninexus_ui_chat.py')
           text = path.read_text(encoding='utf-8')
           text = text.replace(
-              '(\") Prisms)\", \"\) Dados)\")',
-              '(\" Prisms)\", \" Dados)\")',
+              '    (") Prisms)", ") Dados)"),',
+              '    (" Prisms)", " Dados)"),',
           )
           path.write_text(text, encoding='utf-8')
           PY
