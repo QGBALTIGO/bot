@@ -1,0 +1,92 @@
+name: Catalog cleanup full refresh once
+
+on:
+  push:
+    branches:
+      - catalog-cleanup-v1
+    paths:
+      - '.github/workflows/catalog-cleanup-full-refresh-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx 'psycopg[binary]' pytest
+      - name: Safety unit tests
+        run: >-
+          pytest -q
+          tests/test_catalog_cleanup.py
+          tests/test_catalog_review_resolution.py
+          tests/test_catalog_review_resolution_final.py
+          tests/test_franchise_must_haves.py
+          tests/test_catalog_identity_display.py
+          tests/test_finalize_catalog_cleanup_plan.py
+          tests/test_materialize_final_catalog_overrides.py
+          tests/test_catalog_apply_safety.py
+          tests/test_dado_catalog_runtime.py
+      - name: Audit all current anime and characters
+        env:
+          CATALOG_AUDIT_REQUEST_DELAY: '2.20'
+        run: |
+          python scripts/audit_character_catalog.py \
+            --request-delay 2.20 \
+            --output /tmp/catalog_cleanup_audit_raw.json
+      - name: First refinement
+        run: |
+          python scripts/refine_catalog_cleanup_audit.py \
+            --input /tmp/catalog_cleanup_audit_raw.json \
+            --output /tmp/catalog_cleanup_audit_refined.json
+      - name: Second conservative pass
+        run: |
+          python scripts/resolve_catalog_reviews.py \
+            --input /tmp/catalog_cleanup_audit_refined.json \
+            --output /tmp/catalog_cleanup_audit_second.json
+      - name: Third conservative pass with recurring protection
+        run: |
+          python scripts/resolve_catalog_reviews_final.py \
+            --input /tmp/catalog_cleanup_audit_second.json \
+            --output /tmp/catalog_cleanup_audit.json
+      - name: Audit franchises
+        run: python scripts/audit_franchise_gaps.py --output /tmp/catalog_franchise_gaps.raw.json
+      - name: Ensure franchise must-haves
+        run: |
+          python scripts/ensure_franchise_must_haves.py \
+            --input /tmp/catalog_franchise_gaps.raw.json \
+            --output /tmp/catalog_franchise_gaps.json
+      - name: Build proposal
+        run: |
+          python scripts/build_catalog_cleanup_overrides.py \
+            --audit /tmp/catalog_cleanup_audit.json \
+            --franchise /tmp/catalog_franchise_gaps.json \
+            --output /tmp/cards_overrides.cleanup_proposal.json
+      - name: Print final numbers
+        run: |
+          python - <<'PY'
+          import json
+          a=json.load(open('/tmp/catalog_cleanup_audit.json', encoding='utf-8'))
+          f=json.load(open('/tmp/catalog_franchise_gaps.json', encoding='utf-8'))
+          o=json.load(open('/tmp/cards_overrides.cleanup_proposal.json', encoding='utf-8'))
+          print('FINAL_SUMMARY', json.dumps(a.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('FINAL_REVIEW', json.dumps(a.get('final_review_resolution') or {}, ensure_ascii=False, sort_keys=True))
+          print('FRANCHISE_SUMMARY', json.dumps(f.get('summary') or {}, ensure_ascii=False, sort_keys=True))
+          print('PROPOSAL', json.dumps({'deleted':len(o.get('deleted_characters') or []),'custom_animes':len(o.get('custom_animes') or []),'custom_characters':len(o.get('custom_characters') or [])}, sort_keys=True))
+          for aid in ('21','269','6702','527','113415'):
+              r=(a.get('anime_reports') or {}).get(aid) or {}
+              print('FOCUS', aid, r.get('anime'), json.dumps(r.get('counts') or {}, ensure_ascii=False, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-cleanup-full-refresh-final
+          path: |
+            /tmp/catalog_cleanup_audit.json
+            /tmp/catalog_franchise_gaps.json
+            /tmp/cards_overrides.cleanup_proposal.json
+          retention-days: 14
