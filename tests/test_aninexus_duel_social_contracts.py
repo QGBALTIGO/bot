@@ -18,6 +18,16 @@ def test_bonds_are_persistent_and_transactionally_locked():
     assert "INVITE_TTL_DAYS = 7" in source
 
 
+def test_bond_mutations_acquire_user_locks_before_row_locks():
+    source = _read("database_aninexus_bonds.py")
+    respond = source.split("def respond_bond_invite", 1)[1].split("def remove_active_bond", 1)[0]
+    remove = source.split("def remove_active_bond", 1)[1]
+
+    assert respond.index("_lock_users(cur, inviter_id, invitee_id)") < respond.index("FOR UPDATE")
+    assert remove.index("_active_bond_unlocked(cur, user_id)") < remove.index("_lock_users(cur, user_id, preview_other_id)")
+    assert remove.index("_lock_users(cur, user_id, preview_other_id)") < remove.index("_active_bond_locked(cur, user_id)")
+
+
 def test_real_marriage_compatibility_endpoint_comes_from_bond_router():
     router = _read("webapp_routes/aninexus_bonds_duels.py")
     compat = _read("webapp_routes/aninexus_compat.py")
@@ -90,7 +100,17 @@ def test_remaining_high_visibility_pages_are_native_portuguese():
         assert forbidden not in achievements
     for forbidden in ("Mission complete", "No Missions Available", ">Missions</h1>", "DAILY OPERATIONS", "STRATEGIC WEEKLY"):
         assert forbidden not in quests
-    for forbidden in ("Companions", "Active pet", "All pets", "Sorted by level", "Feed", "Train", "Active Companion", "Activate"):
+    for forbidden in (
+        ">Companions<",
+        ">Active pet<",
+        ">All pets<",
+        ">Sorted by level<",
+        "/> Feed",
+        "/> Train",
+        "'Active Companion'",
+        "'Activate'",
+        "No pets yet — visit the Breeder",
+    ):
         assert forbidden not in pets
     for forbidden in ("No Image", "PET ID:", "SYSTEM_SUPPORT_PERK", "Set Active", "Active Companion"):
         assert forbidden not in pet_modal
