@@ -16,6 +16,8 @@ def load_module(name: str, relative_path: str):
 
 audit = load_module("audit_character_catalog", "scripts/audit_character_catalog.py")
 retire = load_module("apply_catalog_retirements", "scripts/apply_catalog_retirements.py")
+refine = load_module("refine_catalog_cleanup_audit", "scripts/refine_catalog_cleanup_audit.py")
+franchise = load_module("audit_franchise_gaps", "scripts/audit_franchise_gaps.py")
 
 
 def test_main_character_is_kept_even_with_zero_favourites():
@@ -83,3 +85,46 @@ def test_compensation_is_one_coin_per_removed_copy():
 
 def test_retirement_hash_is_order_independent():
     assert retire.audit_hash([3, 1, 2]) == retire.audit_hash([2, 3, 1])
+
+
+def test_refined_policy_keeps_known_one_piece_supporting_character():
+    decision, _ = refine.decision_for_character(
+        name="Queen",
+        role="SUPPORTING",
+        favourites=89,
+        relevance_rank=583,
+        media_popularity=747_774,
+        protected=False,
+        metadata_available=True,
+    )
+    assert decision == "KEEP"
+
+
+def test_refined_policy_retires_unknown_one_piece_extra():
+    decision, _ = refine.decision_for_character(
+        name="Random Pirate",
+        role="SUPPORTING",
+        favourites=1,
+        relevance_rank=650,
+        media_popularity=747_774,
+        protected=False,
+        metadata_available=True,
+    )
+    assert decision == "RETIRE"
+
+
+def test_generic_character_is_not_collectible():
+    assert refine.is_generic_character_name("Narrator") is True
+    assert refine.is_generic_character_name("Waiter B") is True
+    assert franchise.character_add_decision({"name": "Narrator", "role": "MAIN", "favourites": 9999, "rank_in_media": 1}) is None
+
+
+def test_franchise_key_collapses_seasons_and_years():
+    assert franchise.franchise_key("OSHI NO KO Season 2") == franchise.franchise_key("OSHI NO KO")
+    assert franchise.franchise_key("Hunter x Hunter (2011)") == franchise.franchise_key("Hunter x Hunter")
+
+
+def test_franchise_character_add_requires_real_interest():
+    assert franchise.character_add_decision({"name": "Important", "role": "MAIN", "favourites": 0, "rank_in_media": 1}) == "ADD"
+    assert franchise.character_add_decision({"name": "Known Side", "role": "SUPPORTING", "favourites": 150, "rank_in_media": 40}) == "ADD"
+    assert franchise.character_add_decision({"name": "Tiny Extra", "role": "BACKGROUND", "favourites": 0, "rank_in_media": 50}) is None
