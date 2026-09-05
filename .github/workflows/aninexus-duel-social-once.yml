@@ -33,6 +33,47 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Normalize compatibility marker
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/prepare_aninexus_duel_social.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''entry = replace_once(
+              entry,
+              "        \\\"/api/v1_7b82/social/marriage\\\",\\n",
+              "",
+              "remove marriage compat path",
+          )'''
+          # Keep this defensive edit tolerant to the exact indentation stored in the script.
+          generic = '''entry = replace_once(
+              entry,
+              "        \\\"/api/v1_7b82/social/marriage\\\",\\n",
+              "",
+              "remove marriage compat path",
+          )'''
+          specific = '''entry = replace_once(
+              entry,
+              """    aninexus_compat_paths = {\n        "/api/v1_7b82/secure_init",\n        "/api/v1_7b82/harem",\n        "/api/v1_7b82/rarities",\n        "/api/v1_7b82/social/marriage",\n    }\n""",
+              """    aninexus_compat_paths = {\n        "/api/v1_7b82/secure_init",\n        "/api/v1_7b82/harem",\n        "/api/v1_7b82/rarities",\n    }\n""",
+              "remove marriage compat path",
+          )'''
+          if generic in text:
+              text = text.replace(generic, specific, 1)
+          else:
+              target = '''entry = replace_once(
+              entry,
+              "        \\"/api/v1_7b82/social/marriage\\",\\n",
+              "",
+              "remove marriage compat path",
+          )'''
+              if target not in text:
+                  raise SystemExit('Generic marriage removal block not found')
+              text = text.replace(target, specific, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Apply duel and social patch
         run: python scripts/prepare_aninexus_duel_social.py
 
