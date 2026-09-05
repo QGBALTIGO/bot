@@ -162,7 +162,80 @@ def build_proposal(
         new_anime_ids.add(target_id)
 
     added_char_ids: set[int] = set()
+    audit_added_ids: set[int] = set()
+    franchise_added_ids: set[int] = set()
     skipped_chars: list[dict[str, Any]] = []
+
+    def add_character(
+        *,
+        cid: int,
+        aid: int,
+        name: str,
+        anime: str,
+        image: str,
+        role: str,
+        favourites: int,
+        catalog_source: str,
+        missing_target_reason: str,
+    ) -> bool:
+        if cid <= 0 or aid <= 0 or cid in current_character_ids:
+            return False
+        if aid not in current_anime_ids:
+            skipped_chars.append({
+                "id": cid,
+                "name": name or str(cid),
+                "target_anime_id": aid,
+                "source": catalog_source,
+                "reason": missing_target_reason,
+            })
+            return False
+
+        clean_name = str(name or f"Personagem {cid}").strip()
+        clean_image = str(image or "").strip()
+        existing_custom_chars[cid] = {
+            "id": cid,
+            "anime_id": aid,
+            "anime": str(anime or f"Anime {aid}").strip(),
+            "name": clean_name,
+            # Temporário: o Image Curator substituirá. AniList não é a fonte final.
+            "image": clean_image,
+            "_catalog_source": catalog_source,
+            "_image_status": "temporary_anilist_reference" if clean_image else "missing_image_pending_curator",
+            "_role": str(role or ""),
+            "_favourites": int(favourites or 0),
+        }
+        current_character_ids.add(cid)
+        added_char_ids.add(cid)
+        # Um personagem que estamos adicionando nunca pode permanecer aposentado.
+        deleted.discard(cid)
+        return True
+
+    # 1) Lacunas detectadas dentro das próprias obras já existentes.
+    # Antes esta lista era ignorada pelo builder, fazendo personagens óbvios
+    # (Mikasa, Misa Amane, Askeladd etc.) continuarem ausentes mesmo após a auditoria.
+    for row in audit.get("add_candidates") or []:
+        if not isinstance(row, dict) or str(row.get("decision") or "") != "ADD":
+            continue
+        try:
+            cid = int(row.get("id") or 0)
+            aid = int(row.get("anime_id") or 0)
+        except Exception:
+            continue
+        if add_character(
+            cid=cid,
+            aid=aid,
+            name=str(row.get("name") or cid),
+            anime=str(row.get("anime") or f"Anime {aid}"),
+            image=str(row.get("anilist_image") or ""),
+            role=str(row.get("role") or ""),
+            favourites=int(row.get("favourites") or 0),
+            catalog_source="current_anime_audit_v1",
+            missing_target_reason="audit_target_anime_missing",
+        ):
+            audit_added_ids.add(cid)
+
+    # 2) Lacunas encontradas em sequências/remakes/franquias e na nova categoria Naruto.
+    # IDs já adicionados acima são ignorados automaticamente, evitando duplicação.
     for row in franchise.get("character_add_candidates") or []:
         if not isinstance(row, dict) or str(row.get("decision") or "") != "ADD":
             continue
@@ -171,46 +244,38 @@ def build_proposal(
             aid = int(row.get("target_anime_id") or 0)
         except Exception:
             continue
-        if cid <= 0 or aid <= 0:
-            continue
-        if cid in current_character_ids:
-            continue
-        if aid not in current_anime_ids:
-            skipped_chars.append({
-                "id": cid,
-                "name": str(row.get("name") or cid),
-                "target_anime_id": aid,
-                "reason": "target_anime_not_auto_added",
-            })
-            continue
-        name = str(row.get("name") or f"Personagem {cid}").strip()
-        image = str(row.get("anilist_image_reference") or "").strip()
-        existing_custom_chars[cid] = {
-            "id": cid,
-            "anime_id": aid,
-            "anime": str(row.get("target_anime") or f"Anime {aid}").strip(),
-            "name": name,
-            # Temporário: o Image Curator substituirá. AniList não é a fonte final.
-            "image": image,
-            "_catalog_source": "franchise_cleanup_v1",
-            "_image_status": "temporary_anilist_reference" if image else "missing_image_pending_curator",
-            "_role": str(row.get("role") or ""),
-            "_favourites": int(row.get("favourites") or 0),
-        }
-        current_character_ids.add(cid)
-        added_char_ids.add(cid)
-        # Um personagem que estamos adicionando nunca pode permanecer aposentado.
-        deleted.discard(cid)
+        if add_character(
+            cid=cid,
+            aid=aid,
+            name=str(row.get("name") or cid),
+            anime=str(row.get("target_anime") or f"Anime {aid}"),
+            image=str(row.get("anilist_image_reference") or ""),
+            role=str(row.get("role") or ""),
+            favourites=int(row.get("favourites") or 0),
+            catalog_source="franchise_cleanup_v1",
+            missing_target_reason="target_anime_not_auto_added",
+        ):
+            franchise_added_ids.add(cid)
 
     proposal["deleted_characters"] = sorted(deleted)
-    proposal["custom_animes"] = sorted(existing_custom_animes.values(), key=lambda row: (str(row.get("anime") or "").casefold(), int(row.get("anime_id") or 0)))
-    proposal["custom_characters"] = sorted(existing_custom_chars.values(), key=lambda row: (int(row.get("anime_id") or 0), str(row.get("name") or "").casefold(), int(row.get("id") or 0)))
+    proposal["custom_animes"] = sorted(
+        existing_custom_animes.values(),
+        key=lambda row: (str(row.get("anime") or "").casefold(), int(row.get("anime_id") or 0)),
+    )
+    proposal["custom_characters"] = sorted(
+        existing_custom_chars.values(),
+        key=lambda row: (int(row.get("anime_id") or 0), str(row.get("name") or "").casefold(), int(row.get("id") or 0)),
+    )
 
     stats = {
         "refined_retire_candidates": len(refined_retire),
         "total_deleted_characters_after_merge": len(deleted),
         "new_anime_ids": sorted(new_anime_ids),
         "new_animes_added": len(new_anime_ids),
+        "audit_character_ids_added": sorted(audit_added_ids),
+        "audit_characters_added": len(audit_added_ids),
+        "franchise_character_ids_added": sorted(franchise_added_ids),
+        "franchise_characters_added": len(franchise_added_ids),
         "new_character_ids": sorted(added_char_ids),
         "new_characters_added": len(added_char_ids),
         "missing_animes_left_for_review": skipped_missing_animes,
@@ -221,7 +286,9 @@ def build_proposal(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Monta proposta de cards_overrides com aposentadorias refinadas e lacunas de franquia, sem alterar produção.")
+    parser = argparse.ArgumentParser(
+        description="Monta proposta de cards_overrides com aposentadorias refinadas e lacunas de personagem/franquia, sem alterar produção."
+    )
     parser.add_argument("--overrides", default=str(DEFAULT_OVERRIDES))
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET))
     parser.add_argument("--audit", default=str(DEFAULT_AUDIT))
