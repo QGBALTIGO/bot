@@ -23,8 +23,12 @@ builder = load_module(
     "scripts/build_catalog_cleanup_overrides.py",
 )
 
+WITCH_IDS = [129840, 129841, 129842, 129839, 129838, 137972]
+
 
 def _payload():
+    # Os IDs de Witch Hat ficam em REVIEW neste fixture apenas para os testes de
+    # Naruto não contarem os must-haves da outra franquia como novas inserções.
     return {
         "summary": {"definite_character_add_candidates": 2},
         "character_add_candidates": [
@@ -45,7 +49,8 @@ def _payload():
                 "favourites": 3_000,
             },
         ],
-        "review_character_add_candidates": [],
+        "review_character_add_candidates": [{"id": cid} for cid in WITCH_IDS],
+        "missing_franchises": [],
     }
 
 
@@ -80,7 +85,9 @@ def test_madara_is_inserted_when_missing():
     assert int(madara["target_anime_id"]) == 20
     assert madara["decision"] == "ADD"
     assert madara["catalog_reason"] == "must_have_major_character"
-    assert stats == {"inserted": 1, "ids": [53901]}
+    assert stats["inserted"] == 1
+    assert stats["ids"] == [53901]
+    assert stats["forced_franchises"] == [147105]
 
 
 def test_madara_is_not_duplicated_if_already_present():
@@ -98,7 +105,8 @@ def test_madara_is_not_duplicated_if_already_present():
     out, stats = must_haves.apply_must_haves(payload, {})
     madaras = [row for row in out["character_add_candidates"] if int(row.get("id") or 0) == 53901]
     assert len(madaras) == 1
-    assert stats == {"inserted": 0, "ids": []}
+    assert stats["inserted"] == 0
+    assert stats["ids"] == []
 
 
 def test_obito_and_nagato_are_aliases_not_duplicate_ids():
@@ -106,10 +114,56 @@ def test_obito_and_nagato_are_aliases_not_duplicate_ids():
     aliases = out["identity_aliases"]
     assert "Obito Uchiha" in aliases["3149"]
     assert "Nagato" in aliases["3180"]
-    assert all(int(row.get("id") or 0) not in {0} for row in out["character_add_candidates"])
-    # A política representa Obito pelo ID 3149 (Tobi) e Nagato/Pain pelo 3180;
-    # não cria um segundo ID artificial para nenhum deles.
+    assert all(int(row.get("id") or 0) > 0 for row in out["character_add_candidates"])
     assert len({int(row["id"]) for row in out["character_add_candidates"]}) == len(out["character_add_candidates"])
+
+
+def test_witch_hat_atelier_is_forced_with_only_core_cast():
+    payload = _payload()
+    payload["review_character_add_candidates"] = []
+    fetched = {
+        129840: {"id": 129840, "favourites": 5000, "name": {"full": "Coco"}, "image": {"large": "coco.jpg"}},
+        129841: {"id": 129841, "favourites": 3400, "name": {"full": "Qifrey"}, "image": {"large": "qifrey.jpg"}},
+        129842: {"id": 129842, "favourites": 1500, "name": {"full": "Agott Arkrome"}, "image": {"large": "agott.jpg"}},
+        129839: {"id": 129839, "favourites": 1000, "name": {"full": "Tetia"}, "image": {"large": "tetia.jpg"}},
+        129838: {"id": 129838, "favourites": 1300, "name": {"full": "Richeh"}, "image": {"large": "richeh.jpg"}},
+        137972: {"id": 137972, "favourites": 1100, "name": {"full": "Olruggio"}, "image": {"large": "olruggio.jpg"}},
+    }
+    fetched_media = {
+        147105: {
+            "id": 147105,
+            "popularity": 222234,
+            "favourites": 11174,
+            "title": {"english": "Witch Hat Atelier"},
+            "coverImage": {"extraLarge": "witch-cover.jpg"},
+            "bannerImage": "witch-banner.jpg",
+        }
+    }
+    out, stats = must_haves.apply_must_haves(payload, fetched, fetched_media)
+    plan = next(row for row in out["missing_franchises"] if int(row.get("target_anime_id") or 0) == 147105)
+    assert plan["force_auto_add"] is True
+    assert plan["cover_image"] == "witch-cover.jpg"
+    inserted_witch = {
+        int(row["id"])
+        for row in out["character_add_candidates"]
+        if int(row.get("target_anime_id") or 0) == 147105
+    }
+    assert inserted_witch == set(WITCH_IDS)
+    assert stats["forced_franchises"] == [147105]
+
+    proposal, build_stats = builder.build_proposal(
+        _empty_overrides(),
+        {"retire_ids": [], "add_candidates": []},
+        out,
+        base_anime_ids={20},
+        base_character_ids={17, 3149},
+    )
+    witch = next(row for row in proposal["custom_animes"] if int(row["anime_id"]) == 147105)
+    assert witch["anime"] == "Witch Hat Atelier"
+    assert witch["cover_image"] == "witch-cover.jpg"
+    assert build_stats["forced_new_anime_ids"] == [147105]
+    witch_chars = [row for row in proposal["custom_characters"] if int(row.get("anime_id") or 0) == 147105]
+    assert {int(row["id"]) for row in witch_chars} == set(WITCH_IDS)
 
 
 def test_builder_adds_important_character_missing_from_existing_anime():
