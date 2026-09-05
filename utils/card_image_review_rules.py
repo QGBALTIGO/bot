@@ -35,7 +35,7 @@ def zerochan_queries(name: str) -> list[str]:
     parts = clean.split()
     variants = [clean]
     if len(parts) >= 2:
-        variants.append(" ".join(parts[-1:] + parts[:-1]))
+        variants.insert(0, " ".join(parts[-1:] + parts[:-1]))
     aliases = {
         "Minato Namikaze": "Namikaze Minato",
         "Kakashi Hatake": "Hatake Kakashi",
