@@ -33,6 +33,19 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Normalize translation dictionary
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('aninexus_frontend/src/ptBR.ts')
+          text = path.read_text(encoding='utf-8')
+          duplicate = "  'Ready': 'Prontos',\n"
+          if text.count(duplicate) != 1:
+              raise SystemExit(f'Expected one pre-existing Ready translation, found {text.count(duplicate)}')
+          path.write_text(text.replace(duplicate, '', 1), encoding='utf-8')
+          PY
+
       - name: Apply live polish patch
         run: python scripts/fix_aninexus_live_polish.py
 
