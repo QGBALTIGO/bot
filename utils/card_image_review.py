@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from psycopg.rows import dict_row
@@ -21,7 +21,11 @@ from telegram.ext import ContextTypes
 from cards_service import build_cards_final_data, find_anime, override_set_character_image
 from database import get_all_global_character_images, pool
 from utils.aninexus_admin import is_admin
-from utils.card_image_review_rules import score_zerochan_post, zerochan_queries
+from utils.card_image_review_rules import (
+    score_danbooru_post,
+    score_zerochan_post,
+    zerochan_queries,
+)
 from utils.portrait_image import crop_portrait_bytes
 from utils.public_character_image import public_origin
 
@@ -43,6 +47,7 @@ AUTO_ANIME_IDS = tuple(
 )
 _ZEROCHAN_RATE_LOCK = threading.Lock()
 _ZEROCHAN_NEXT_REQUEST_AT = 0.0
+_ZEROCHAN_DISABLED_UNTIL = 0.0
 
 @dataclass(frozen=True)
 class Candidate:
@@ -136,12 +141,14 @@ def _fetch_json(url: str) -> Any:
 
 
 def _telegram_photo(source_url: str, post_id: int) -> io.BytesIO:
+    hostname = (urlparse(str(source_url)).hostname or "").lower()
+    referer = "https://danbooru.donmai.us/" if hostname.endswith("donmai.us") else "https://www.zerochan.net/"
     request = Request(
         str(source_url),
         headers={
             "User-Agent": ZEROCHAN_AGENT,
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-            "Referer": "https://www.zerochan.net/",
+            "Referer": referer,
         },
     )
     with urlopen(request, timeout=45) as response:
@@ -209,6 +216,105 @@ def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int
         except Exception as exc:
             logger.warning("Zerochan detail failed id=%s error=%s", post_id, type(exc).__name__)
     return results
+
+
+def _danbooru_queries(name: str, anime_title: str) -> list[str]:
+    queries: list[str] = []
+    franchise = "naruto" if "naruto" in anime_title.casefold() or "boruto" in anime_title.casefold() else ""
+    for variant in zerochan_queries(name):
+        tag = re.sub(r"[^a-z0-9]+", "_", variant.casefold()).strip("_")
+        if not tag:
+            continue
+        queries.append(tag)
+        if franchise and "_" not in tag:
+            queries.append(f"{tag}_({franchise})")
+    return list(dict.fromkeys(queries))
+
+
+def fetch_danbooru_candidates(
+    name: str,
+    anime_title: str,
+    excluded_post_ids: set[int],
+    limit: int,
+) -> list[Candidate]:
+    ranked: dict[int, tuple[float, dict[str, Any]]] = {}
+    successful_searches = 0
+    for character_tag in _danbooru_queries(name, anime_title):
+        url = "https://danbooru.donmai.us/posts.json?" + urlencode(
+            {"tags": f"{character_tag} rating:g", "limit": "100"}
+        )
+        try:
+            payload = _fetch_json(url)
+            successful_searches += 1
+        except Exception as exc:
+            logger.warning("Danbooru search failed query=%s error=%s", character_tag, type(exc).__name__)
+            continue
+        rows = payload if isinstance(payload, list) else []
+        for post in rows:
+            raw_post_id = int(post.get("id") or 0)
+            stored_post_id = -raw_post_id
+            if raw_post_id <= 0 or stored_post_id in excluded_post_ids:
+                continue
+            source_url = str(post.get("large_file_url") or post.get("file_url") or "").strip()
+            if not source_url.startswith("https://") or not re.search(r"\.(?:jpe?g|png|webp)(?:\?|$)", source_url, re.I):
+                continue
+            score = score_danbooru_post(post)
+            if score is not None and (raw_post_id not in ranked or score > ranked[raw_post_id][0]):
+                ranked[raw_post_id] = (score, post)
+        if len(ranked) >= limit * 2:
+            break
+    if successful_searches == 0:
+        raise RuntimeError("danbooru_unavailable")
+
+    results: list[Candidate] = []
+    for raw_post_id, (score, post) in sorted(ranked.items(), key=lambda item: item[1][0], reverse=True):
+        if len(results) >= limit:
+            break
+        source_url = str(post.get("large_file_url") or post.get("file_url") or "").strip()
+        image_url = source_url
+        if PUBLIC_BASE_URL:
+            image_url = f"{PUBLIC_BASE_URL}/api/image-proxy?{urlencode({'crop': 'portrait', 'url': source_url})}"
+        results.append(Candidate(
+            post_id=-raw_post_id,
+            source_page=f"https://danbooru.donmai.us/posts/{raw_post_id}",
+            source_url=source_url,
+            image_url=image_url,
+            width=int(post.get("image_width") or 0),
+            height=int(post.get("image_height") or 0),
+            score=score,
+            artist=str(post.get("tag_string_artist") or "").split(" ")[0],
+        ))
+    return results
+
+
+def fetch_review_candidates(
+    name: str,
+    anime_title: str,
+    excluded_post_ids: set[int],
+    limit: int,
+) -> list[Candidate]:
+    global _ZEROCHAN_DISABLED_UNTIL
+    results: list[Candidate] = []
+    if time.monotonic() >= _ZEROCHAN_DISABLED_UNTIL:
+        try:
+            results = fetch_zerochan_candidates(name, excluded_post_ids, limit)
+        except RuntimeError:
+            _ZEROCHAN_DISABLED_UNTIL = time.monotonic() + 900
+            logger.warning("Zerochan temporarily disabled; using Danbooru fallback")
+    if len(results) < limit:
+        try:
+            results.extend(
+                fetch_danbooru_candidates(
+                    name,
+                    anime_title,
+                    excluded_post_ids,
+                    limit - len(results),
+                )
+            )
+        except RuntimeError:
+            if not results:
+                raise
+    return results[:limit]
 
 
 def seed_anime_review(anime_id: int) -> dict[str, int]:
@@ -392,7 +498,13 @@ async def _dispatch_next_character(application) -> bool:
         await asyncio.to_thread(_mark_protected, int(row["character_id"]))
         return False
     excluded = await asyncio.to_thread(_existing_posts, int(row["character_id"]))
-    candidates = await asyncio.to_thread(fetch_zerochan_candidates, str(row["character_name"]), excluded, OPTIONS_PER_CHARACTER)
+    candidates = await asyncio.to_thread(
+        fetch_review_candidates,
+        str(row["character_name"]),
+        str(row["anime_title"]),
+        excluded,
+        OPTIONS_PER_CHARACTER,
+    )
     if not candidates:
         await asyncio.to_thread(_mark_no_candidates, int(row["character_id"]))
         application.create_task(
