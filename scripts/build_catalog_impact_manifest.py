@@ -3,14 +3,18 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import sys
 import zlib
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from utils.catalog_impact_manifest import SUPPORTED_ENCODING, candidate_ids_hash
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = ROOT / "data" / "catalog_cleanup_audit.final.json"
 DEFAULT_OUTPUT = ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
 
