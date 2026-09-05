@@ -15,10 +15,23 @@ assert spec.loader is not None
 spec.loader.exec_module(materialize)
 
 
-def plan(retire_ids: list[int] | None = None, moved_ids: list[int] | None = None):
+def plan(
+    retire_ids: list[int] | None = None,
+    moved_ids: list[int] | None = None,
+    moved_rows: list[dict] | None = None,
+):
     ids = retire_ids or [1, 3]
     moved = [2] if moved_ids is None else moved_ids
-    source_candidates = set(ids) | set(moved)
+    rows = moved_rows or [
+        {"character_id": cid, "owners": 12, "copies": 12}
+        for cid in moved
+    ]
+    moved_from_rows = {
+        int(row.get("character_id") or 0)
+        for row in rows
+        if int(row.get("character_id") or 0) > 0
+    }
+    source_candidates = set(ids) | moved_from_rows
     return {
         "schema": materialize.FINAL_PLAN_SCHEMA,
         "apply_ready": False,
@@ -26,10 +39,7 @@ def plan(retire_ids: list[int] | None = None, moved_ids: list[int] | None = None
         "source_candidate_ids_sha256": materialize.ids_hash(source_candidates),
         "final_retire_ids_sha256": materialize.ids_hash(ids),
         "retire_ids": ids,
-        "moved_to_review_by_collection_impact": [
-            {"character_id": cid, "owners": 12, "copies": 12}
-            for cid in moved
-        ],
+        "moved_to_review_by_collection_impact": rows,
         "usage_guard": {"applied": True, "candidate_count": len(source_candidates)},
         "safety": {
             "usage_guard_applied": True,
@@ -61,6 +71,119 @@ def test_materialization_preserves_manual_deletions_and_restores_usage_saved_ids
     assert out["_catalog_cleanup"]["final_retire_ids_sha256"] == materialize.ids_hash([1, 3])
     assert out["_catalog_cleanup"]["source_candidate_ids_sha256"] == materialize.ids_hash([1, 2, 3])
     assert out["_catalog_cleanup"]["requires_explicit_operator_approval"] is True
+
+
+def test_usage_saved_character_restores_category_that_was_only_empty():
+    base = {"deleted_characters": [], "deleted_animes": []}
+    proposal = {
+        "deleted_characters": [1, 2, 3],
+        "deleted_animes": [104157],
+        "custom_characters": [],
+    }
+    moved = [{
+        "character_id": 2,
+        "anime_id": 104157,
+        "name": "Ryouko Hanawa",
+        "owners": 26,
+        "copies": 33,
+    }]
+    dataset = {
+        "items": [{
+            "anime_id": 104157,
+            "anime": "Rascal Does Not Dream of a Dreaming Girl",
+            "characters": [{"id": 2, "name": "Ryouko Hanawa", "image": "ryouko.jpg"}],
+        }]
+    }
+    out, stats = materialize.build_final_overrides(
+        base,
+        proposal,
+        plan(moved_rows=moved),
+        dataset,
+    )
+    assert 2 not in out["deleted_characters"]
+    assert 104157 not in out["deleted_animes"]
+    assert stats["restored_empty_anime_ids"] == [104157]
+    assert stats["restored_empty_animes"] == 1
+    assert out["_catalog_cleanup"]["restored_empty_anime_ids"] == [104157]
+
+
+def test_usage_saved_character_from_consolidated_anime_moves_to_canonical_category():
+    base = {"deleted_characters": [], "deleted_animes": []}
+    proposal = {
+        "deleted_characters": [1, 2, 3],
+        "deleted_animes": [10087],
+        "custom_characters": [{
+            "id": 10,
+            "anime_id": 356,
+            "anime": "Fate",
+            "name": "Existing moved character",
+            "image": "existing.jpg",
+            "_consolidated_from_anime_id": 10087,
+        }],
+    }
+    moved = [{
+        "character_id": 2,
+        "anime_id": 10087,
+        "name": "Saved Fate Zero Character",
+        "owners": 12,
+        "copies": 12,
+    }]
+    dataset = {
+        "items": [{
+            "anime_id": 10087,
+            "anime": "Fate/Zero",
+            "characters": [{
+                "id": 2,
+                "name": "Saved Fate Zero Character",
+                "image": "saved.jpg",
+            }],
+        }]
+    }
+    out, stats = materialize.build_final_overrides(
+        base,
+        proposal,
+        plan(moved_rows=moved),
+        dataset,
+    )
+    assert 10087 in out["deleted_animes"]
+    saved = next(row for row in out["custom_characters"] if int(row["id"]) == 2)
+    assert saved["anime_id"] == 356
+    assert saved["anime"] == "Fate"
+    assert saved["image"] == "saved.jpg"
+    assert saved["_consolidated_from_anime_id"] == 10087
+    assert saved["_restored_by_collection_impact"] is True
+    assert stats["relocated_saved_character_ids"] == [2]
+
+
+def test_manual_deleted_anime_is_not_reopened_by_usage_guard():
+    base = {"deleted_characters": [], "deleted_animes": [104157]}
+    proposal = {
+        "deleted_characters": [1, 2, 3],
+        "deleted_animes": [104157],
+        "custom_characters": [],
+    }
+    moved = [{
+        "character_id": 2,
+        "anime_id": 104157,
+        "name": "Ryouko Hanawa",
+        "owners": 26,
+        "copies": 33,
+    }]
+    dataset = {
+        "items": [{
+            "anime_id": 104157,
+            "anime": "Rascal Does Not Dream of a Dreaming Girl",
+            "characters": [{"id": 2, "name": "Ryouko Hanawa", "image": "ryouko.jpg"}],
+        }]
+    }
+    out, stats = materialize.build_final_overrides(
+        base,
+        proposal,
+        plan(moved_rows=moved),
+        dataset,
+    )
+    assert 104157 in out["deleted_animes"]
+    assert stats["manual_deleted_anime_ids_preserved"] == [104157]
 
 
 def test_manual_deleted_character_stays_deleted_even_if_usage_guard_saved_it():
