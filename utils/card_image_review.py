@@ -564,6 +564,49 @@ async def dispatch_next_character(application) -> bool:
         return await _dispatch_next_character(application)
 
 
+def _approved_stale_proxy_rows() -> list[dict[str, Any]]:
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT c.character_id, c.source_url, c.zerochan_post_id, g.updated_by
+                FROM card_image_review_candidates c
+                JOIN global_character_images g ON g.character_id=c.character_id
+                WHERE c.status='approved'
+                  AND g.image_url LIKE %s
+                ORDER BY c.character_id
+                """,
+                ("%/api/image-proxy?%",),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+async def _migrate_approved_stale_proxy_images() -> None:
+    rows = await asyncio.to_thread(_approved_stale_proxy_rows)
+    for row in rows:
+        character_id = int(row["character_id"])
+        try:
+            photo = await asyncio.to_thread(
+                _telegram_photo,
+                str(row["source_url"]),
+                int(row["zerochan_post_id"]),
+            )
+            durable_url = await upload_portrait_asset(
+                photo.getvalue(),
+                filename=f"character-{character_id}.jpg",
+            )
+            await asyncio.to_thread(
+                override_set_character_image,
+                character_id,
+                durable_url,
+                int(row.get("updated_by") or 0),
+            )
+            logger.info("Migrated approved image to durable storage character_id=%s", character_id)
+        except Exception:
+            logger.exception("Could not migrate approved image character_id=%s", character_id)
+        await asyncio.sleep(0.5)
+
+
 def _candidate(candidate_id: int) -> dict[str, Any] | None:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -795,6 +838,7 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def card_image_review_worker(application) -> None:
     ensure_review_tables()
+    await _migrate_approved_stale_proxy_images()
     for anime_id in AUTO_ANIME_IDS:
         try:
             recovered = await asyncio.to_thread(_recover_failed_deliveries, anime_id)
