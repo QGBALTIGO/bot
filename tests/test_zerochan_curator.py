@@ -11,7 +11,13 @@ spec.loader.exec_module(mod)
 
 
 def character(name="Makima", anime="Chainsaw Man", tag="Makima"):
-    return {"id": 137080, "name": name, "anime": anime, "zerochan_tag": tag}
+    return {
+        "id": 137080,
+        "name": name,
+        "anime": anime,
+        "zerochan_tag": tag,
+        "zerochan_tags": [tag],
+    }
 
 
 def detail(**updates):
@@ -45,6 +51,22 @@ def test_group_is_rejected_even_if_tags_match():
     )
     assert candidate is None
     assert status.startswith("hard_tag:")
+
+
+def test_low_quality_tag_is_rejected():
+    candidate, status = mod.evaluate_candidate(
+        detail(tags=["Makima", "Chainsaw Man", "Solo", "Official Art", "Low Quality"]), character()
+    )
+    assert candidate is None
+    assert status == "hard_tag:low quality"
+
+
+def test_sexualized_tag_is_rejected():
+    candidate, status = mod.evaluate_candidate(
+        detail(tags=["Makima", "Chainsaw Man", "Solo", "Breast Hold"]), character()
+    )
+    assert candidate is None
+    assert status == "hard_tag:breast hold"
 
 
 def test_wrong_primary_character_is_rejected():
@@ -82,3 +104,52 @@ def test_portrait_with_too_much_crop_loss_is_rejected():
     candidate, status = mod.evaluate_candidate(detail(width=1800, height=2108), character())
     assert candidate is None
     assert status == "crop_loss"
+
+
+def test_search_metadata_is_merged_into_detail_before_scoring():
+    class FakeClient:
+        def search(self, tag, limit=30):
+            return [{"id": 123, "width": 1800, "height": 2700, "fav": 777}]
+
+        def detail(self, entry_id):
+            payload = detail()
+            payload.pop("fav", None)
+            return payload
+
+    result = mod.curate_character(FakeClient(), character(), detail_limit=1)
+    selected = result.get("selected") or {}
+    assert selected.get("zerochan_id") == 123
+    assert selected.get("favorites") == 777
+
+
+def test_fallback_tag_variant_is_used_when_first_tag_has_no_results():
+    power = {
+        "id": 137079,
+        "name": "Power",
+        "anime": "Chainsaw Man",
+        "zerochan_tag": "Power",
+        "zerochan_tags": ["Power", "Power (Chainsaw Man)"],
+    }
+
+    class FakeClient:
+        def search(self, tag, limit=30):
+            if tag == "Power":
+                return []
+            return [{"id": 321, "width": 1600, "height": 2400, "fav": 99}]
+
+        def detail(self, entry_id):
+            return {
+                "id": 321,
+                "primary": "Power (Chainsaw Man)",
+                "tags": ["Power (Chainsaw Man)", "Chainsaw Man", "Solo", "Official Art"],
+                "anime": "Chainsaw Man",
+                "width": 1600,
+                "height": 2400,
+                "full": "https://static.zerochan.net/Power.full.321.png",
+            }
+
+    result = mod.curate_character(FakeClient(), power, detail_limit=1)
+    selected = result.get("selected") or {}
+    assert selected.get("zerochan_id") == 321
+    assert result.get("search_tag") == "Power (Chainsaw Man)"
+    assert len(result.get("search_attempts") or []) == 2
