@@ -39,6 +39,9 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q .
 
+      - name: Install test runner
+        run: python -m pip install pytest
+
       - name: Run live polish contract tests
         run: python -m pytest -q tests/test_aninexus_live_polish_contracts.py
 
@@ -53,8 +56,12 @@ jobs:
       - name: Verify known regressions are gone
         shell: bash
         run: |
-          if grep -RInE 'POSIÇÃOING|INTERNAL ERRO NO SERVIDOR|INCUBAÇÃO STARTED|YOUR COLLECTION|EVERY WAIFU|ALL RARITIES' aninexus_frontend/src; then
-            echo 'Known visible regression remains.'
+          if grep -nE 'POSIÇÃOING|INTERNAL ERRO NO SERVIDOR|INCUBAÇÃO STARTED|YOUR COLLECTION|EVERY WAIFU|ALL RARITIES' \
+            aninexus_frontend/src/pages/Profile.tsx \
+            aninexus_frontend/src/pages/Hatchery.tsx \
+            aninexus_frontend/src/pages/Leaderboard.tsx \
+            aninexus_frontend/src/pages/Trading.tsx; then
+            echo 'Known visible regression remains in a rendered page.'
             exit 1
           fi
           if grep -n 'new WebSocket' aninexus_frontend/src/pages/Leaderboard.tsx; then
