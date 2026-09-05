@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from scripts.build_catalog_cleanup_overrides import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.build_catalog_cleanup_overrides import (  # noqa: E402
     DEFAULT_DATASET,
     DEFAULT_FRANCHISE,
     DEFAULT_OVERRIDES,
@@ -16,7 +21,6 @@ from scripts.build_catalog_cleanup_overrides import (
     load_json,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUDIT = ROOT / "data" / "catalog_cleanup_audit.json"
 DEFAULT_FINAL_PLAN = ROOT / "data" / "catalog_cleanup_final_plan.json"
 DEFAULT_OUTPUT = ROOT / "data" / "cards_overrides.cleanup_final.json"
