@@ -60,6 +60,8 @@ def build_final_overrides(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if str(plan.get("schema") or "") != FINAL_PLAN_SCHEMA:
         raise ValueError("plano precisa ser source.catalog-cleanup.final-plan.v1")
+    if plan.get("apply_ready") is not False:
+        raise ValueError("plano final precisa continuar apply_ready=false")
     if plan.get("requires_explicit_operator_approval") is not True:
         raise ValueError("plano não declara aprovação explícita")
 
@@ -67,18 +69,43 @@ def build_final_overrides(
     usage_guard = plan.get("usage_guard") or {}
     if safety.get("usage_guard_applied") is not True or usage_guard.get("applied") is not True:
         raise ValueError("plano não confirma usage guard")
+    if safety.get("database_mutated") is not False or safety.get("catalog_mutated") is not False:
+        raise ValueError("plano final não está em estado pré-aplicação")
 
     final_retire = int_set(plan.get("retire_ids"))
     if not final_retire:
         raise ValueError("plano final sem retire_ids")
-    declared_hash = str(plan.get("final_retire_ids_sha256") or "").strip().lower()
-    actual_hash = ids_hash(final_retire)
-    if not declared_hash or declared_hash != actual_hash:
+    final_hash = str(plan.get("final_retire_ids_sha256") or "").strip().lower()
+    actual_final_hash = ids_hash(final_retire)
+    if not final_hash or final_hash != actual_final_hash:
         raise ValueError("hash final dos retire_ids não confere")
+
+    moved_to_review = _moved_to_review_ids(plan)
+    if final_retire & moved_to_review:
+        raise ValueError("plano sobrepõe RETIRE final e REVIEW por impacto")
+
+    source_candidates = final_retire | moved_to_review
+    declared_source_hash = str(plan.get("source_candidate_ids_sha256") or "").strip().lower()
+    actual_source_hash = ids_hash(source_candidates)
+    if not declared_source_hash or declared_source_hash != actual_source_hash:
+        raise ValueError("hash dos candidatos pré-usage-guard não confere")
+
+    candidate_count = int(usage_guard.get("candidate_count") or len(source_candidates))
+    if candidate_count != len(source_candidates):
+        raise ValueError("candidate_count do usage guard não corresponde à partição final")
 
     base_deleted = int_set(base.get("deleted_characters"))
     proposal_deleted = int_set(proposal.get("deleted_characters"))
-    moved_to_review = _moved_to_review_ids(plan)
+
+    # Todo candidato do relatório live deve existir na proposta pré-live ou já
+    # estar manualmente desativado no arquivo-base. Isso amarra as três etapas:
+    # proposta -> usage guard -> materialização final.
+    unknown_source = source_candidates - (proposal_deleted | base_deleted)
+    if unknown_source:
+        raise ValueError(
+            "plano live contém candidatos fora da proposta/base: "
+            f"{sorted(unknown_source)[:20]}"
+        )
 
     # Todo RETIRE final deve ter vindo da proposta de limpeza ou já estar
     # manualmente desativado no arquivo-base. Um ID estranho aborta a geração.
@@ -91,19 +118,33 @@ def build_final_overrides(
     # exceto se já eram uma deleção manual anterior.
     final_deleted = base_deleted | final_retire
     restored_by_usage_guard = (proposal_deleted - final_retire) - base_deleted
+    expected_restored = moved_to_review - base_deleted
+    if restored_by_usage_guard != expected_restored:
+        raise ValueError(
+            "IDs restaurados do preview não correspondem exatamente ao REVIEW por impacto"
+        )
+
+    protected_review_still_deleted = (moved_to_review & final_deleted) - base_deleted
+    if protected_review_still_deleted:
+        raise ValueError(
+            "usage guard salvou personagens que continuam desabilitados: "
+            f"{sorted(protected_review_still_deleted)[:20]}"
+        )
 
     out = deepcopy(proposal)
     out["deleted_characters"] = sorted(final_deleted)
     out["_catalog_cleanup"] = {
         "schema": "source.catalog-cleanup.overrides-materialization.v1",
         "source_final_plan_schema": FINAL_PLAN_SCHEMA,
-        "source_candidate_ids_sha256": str(plan.get("source_candidate_ids_sha256") or ""),
-        "final_retire_ids_sha256": actual_hash,
+        "source_candidate_ids_sha256": actual_source_hash,
+        "source_candidate_count": len(source_candidates),
+        "final_retire_ids_sha256": actual_final_hash,
         "final_retire_count": len(final_retire),
         "moved_to_review_by_collection_impact_count": len(moved_to_review),
         "restored_from_proposal_by_usage_guard_count": len(restored_by_usage_guard),
         "base_manual_deleted_preserved": len(base_deleted),
         "ready_to_disable_final_retirements": True,
+        "requires_explicit_operator_approval": True,
         "database_mutated": False,
         "coins_awarded": False,
     }
@@ -111,13 +152,15 @@ def build_final_overrides(
     stats = {
         "base_deleted_preserved": len(base_deleted),
         "proposal_deleted_before_usage_guard": len(proposal_deleted),
+        "source_candidates_before_usage_guard": len(source_candidates),
         "final_retire": len(final_retire),
         "final_deleted_total": len(final_deleted),
         "moved_to_review_by_collection_impact": len(moved_to_review),
         "restored_from_proposal_by_usage_guard": len(restored_by_usage_guard),
         "custom_animes": len(out.get("custom_animes") or []),
         "custom_characters": len(out.get("custom_characters") or []),
-        "final_retire_ids_sha256": actual_hash,
+        "source_candidate_ids_sha256": actual_source_hash,
+        "final_retire_ids_sha256": actual_final_hash,
     }
     return out, stats
 
