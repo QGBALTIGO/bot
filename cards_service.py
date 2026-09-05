@@ -8,7 +8,6 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from utils.public_character_image import character_portrait_url
-from utils.reviewed_character_portraits import load_reviewed_portraits, apply_reviewed_portrait
 
 from database import (
     delete_global_character_image,
@@ -422,10 +421,6 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             current = [x for x in current if int(x["id"]) != cid]
             current.append(char_obj)
             characters_by_anime[anime_id] = current
-
-        reviewed_portraits = load_reviewed_portraits()
-        for character in characters_by_id.values():
-            apply_reviewed_portrait(character, reviewed_portraits)
 
         animes_list: List[Dict[str, Any]] = []
         animes_by_name: Dict[str, Dict[str, Any]] = {}
