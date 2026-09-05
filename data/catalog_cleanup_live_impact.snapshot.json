@@ -1,0 +1,43 @@
+{
+  "schema": "source.catalog-cleanup.live-impact-snapshot.v1",
+  "generated_at": "2026-09-05T12:49:43Z",
+  "source_pr": 40,
+  "read_only": true,
+  "contains_user_ids": false,
+  "database_mutated": false,
+  "manifest": {
+    "candidate_count": 4311,
+    "candidate_ids_sha256": "597fbd838e4ba01be19209c663408d992ccb9dc5b3a947fd69752804d7895dbe",
+    "owner_review_threshold": 10,
+    "copy_review_threshold": 20
+  },
+  "before_guard": {
+    "affected_users": 88,
+    "copies": 5755
+  },
+  "after_guard": {
+    "affected_users": 88,
+    "copies": 5722
+  },
+  "moved_to_review": [
+    {
+      "character_id": 285128,
+      "name": "Ryouko Hanawa",
+      "anime": "Seishun Buta Yarou wa Yumemiru Shoujo no Yume wo Minai",
+      "owners": 26,
+      "copies": 33,
+      "decision": "REVIEW_BY_COLLECTION_IMPACT"
+    }
+  ],
+  "moved_to_review_count": 1,
+  "final_retire_count": 4310,
+  "coins_required_after_guard": 5722,
+  "coins_per_removed_copy": 1,
+  "projected_catalog_characters_after_cleanup_and_adds": 9168,
+  "notes": [
+    "Snapshot obtido por consulta agregada read-only no PostgreSQL via source-v2-staging.",
+    "Nenhum user_id foi exportado.",
+    "Nenhuma coleção, Coin, trade, spawn ou override foi alterado durante esta auditoria.",
+    "Antes da aplicação, o executor deve revalidar owners/copies sob lock e abortar se o estado tiver mudado."
+  ]
+}
