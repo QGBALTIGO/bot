@@ -7,13 +7,14 @@ on:
     paths:
       - 'scripts/plan_character_catalog.py'
       - 'scripts/plan_missing_important_anime.py'
+      - 'scripts/build_character_catalog_override.py'
       - 'scripts/apply_character_catalog_retirement.py'
       - '.github/workflows/character-catalog-curation.yml'
       - 'data/personagens_anilist.txt'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   pilot-plan:
@@ -30,6 +31,7 @@ jobs:
           python -m py_compile \
             scripts/plan_character_catalog.py \
             scripts/plan_missing_important_anime.py \
+            scripts/build_character_catalog_override.py \
             scripts/apply_character_catalog_retirement.py
       - name: Build existing-catalog cleanup plan
         run: |
@@ -45,6 +47,43 @@ jobs:
             --anime 'Naruto: Shippuden:100' \
             --write \
             --output /tmp/missing_important_anime_plan.json
+      - name: Build reversible curated overrides
+        run: |
+          python scripts/build_character_catalog_override.py \
+            --cleanup-plan /tmp/character_catalog_plan.json \
+            --missing-anime-plan /tmp/missing_important_anime_plan.json \
+            --overrides data/cards_overrides.json \
+            --retirement-manifest data/character_catalog_retirements_v1.json \
+            --batch-key catalog-curation-pilot-v1 \
+            --skip-character-id 36309 \
+            --skip-character-id 6865
+      - name: Validate generated catalog data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          o=json.loads(Path('data/cards_overrides.json').read_text(encoding='utf-8'))
+          r=json.loads(Path('data/character_catalog_retirements_v1.json').read_text(encoding='utf-8'))
+          deleted={int(x) for x in o.get('deleted_characters',[])}
+          custom=o.get('custom_characters',[])
+          custom_animes=o.get('custom_animes',[])
+          custom_ids={int(x['id']) for x in custom}
+          assert len(r.get('retired_character_ids',[])) == 626, len(r.get('retired_character_ids',[]))
+          assert 36309 not in custom_ids, 'Narrator must not be collectible'
+          assert 6865 not in custom_ids, 'Pandaman was intentionally skipped from pilot additions'
+          assert {20,1735}.issubset({int(x['anime_id']) for x in custom_animes}), 'Naruto anime entries missing'
+          assert deleted.isdisjoint(custom_ids), 'same character cannot be deleted and custom-added'
+          assert any(int(x['id']) == 17 for x in custom), 'Naruto Uzumaki missing from generated overrides'
+          assert any(int(x['id']) == 40 for x in custom) is False, 'Luffy should remain raw, not duplicated as custom'
+          print('GENERATED_VALIDATION', json.dumps({
+              'deleted_characters':len(deleted),
+              'custom_animes':len(custom_animes),
+              'custom_character_associations':len(custom),
+              'unique_custom_characters':len(custom_ids),
+              'retirement_batch':r.get('batch_key'),
+          }, ensure_ascii=False, sort_keys=True))
+          PY
       - name: Print pilot details
         run: |
           python - <<'PY'
@@ -82,10 +121,23 @@ jobs:
                   'error':a.get('error'),
               }, ensure_ascii=False, sort_keys=True))
           PY
+      - name: Commit generated pilot data to feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/cards_overrides.json data/character_catalog_retirements_v1.json
+          if git diff --cached --quiet; then
+            echo 'Generated catalog data already up to date.'
+          else
+            git commit -m 'data: generate curated One Piece and Naruto pilot catalog'
+            git push
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: character-catalog-pilot-plan
           path: |
             /tmp/character_catalog_plan.json
             /tmp/missing_important_anime_plan.json
+            data/cards_overrides.json
+            data/character_catalog_retirements_v1.json
           retention-days: 14
