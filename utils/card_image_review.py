@@ -504,13 +504,16 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
         await query.answer("Foto aprovada e aplicada.")
         await query.edit_message_caption(caption=(query.message.caption_html or query.message.caption or "") + f"\n\n✅ <b>APROVADA</b> por {html.escape(user.full_name)}", parse_mode="HTML")
+        context.application.create_task(
+            dispatch_next_character(context.application),
+            name="next-card-image-review",
+        )
         sibling_message_ids = await asyncio.to_thread(
             _candidate_message_ids,
             int(row["character_id"]),
             candidate_id,
         )
         await _disable_superseded_buttons(context, sibling_message_ids)
-        context.application.create_task(dispatch_next_character(context.application), name="next-card-image-review")
         return
 
     row, round_finished = await asyncio.to_thread(_reject, candidate_id, int(user.id))
