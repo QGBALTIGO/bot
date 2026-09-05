@@ -3,14 +3,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+
+import httpx
 
 from curate_zerochan_characters import (
-    ZerochanClient,
+    HTTP_RETRIES,
+    RETRY_BACKOFF_SECONDS,
+    ZEROCHAN_BASE_URL,
+    ZerochanClient as BaseZerochanClient,
     curate_character,
     load_characters,
     load_wallhaven,
@@ -20,10 +27,117 @@ from curate_zerochan_characters import (
 ROOT = Path(__file__).resolve().parents[1]
 CANDIDATES_PATH = ROOT / "data" / "zerochan_character_candidates.json"
 STATE_PATH = ROOT / "data" / "zerochan_curation_state.json"
+REDIRECT_CODES = {301, 302, 303, 307, 308}
+MAX_CANONICAL_REDIRECTS = 5
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _merge_query(url: str, params: dict[str, Any]) -> str:
+    parts = urlsplit(str(url))
+    existing = dict(parse_qsl(parts.query, keep_blank_values=True))
+    for key, value in params.items():
+        existing[str(key)] = str(value)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(existing), parts.fragment))
+
+
+class ZerochanClient(BaseZerochanClient):
+    """Zerochan client that preserves ?json across canonical tag redirects.
+
+    Zerochan frequently redirects western-name ordering to its canonical tag
+    (e.g. "Akari Kawamoto" -> "Kawamoto Akari"). Its redirect target can drop
+    the query string, which silently turns an API request into HTML. The base
+    smoke client follows redirects automatically; the catalog client follows
+    them manually and re-applies the API query on every hop.
+    """
+
+    def __init__(self, username: str, *, delay: float = 1.20, timeout: float = 20.0) -> None:
+        super().__init__(username, delay=delay, timeout=timeout)
+        self.client.close()
+        self.client = httpx.Client(
+            timeout=timeout,
+            follow_redirects=False,
+            headers={
+                "User-Agent": f"SourceBaltigo-Zerochan-Curator/0.3 - {self.username}",
+                "Accept": "application/json,text/plain;q=0.9,*/*;q=0.1",
+            },
+        )
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        query = dict(params or {})
+        query["json"] = ""
+        last_error = ""
+
+        for attempt in range(1, HTTP_RETRIES + 1):
+            target = f"{ZEROCHAN_BASE_URL}{path}"
+            retry_request = False
+
+            for _redirect in range(MAX_CANONICAL_REDIRECTS + 1):
+                self._throttle()
+                try:
+                    response = self.client.get(_merge_query(target, query))
+                    self._last_request = time.monotonic()
+                except httpx.RequestError as exc:
+                    last_error = f"{type(exc).__name__}:{exc}"
+                    retry_request = True
+                    break
+
+                if response.status_code in REDIRECT_CODES:
+                    location = str(response.headers.get("location") or "").strip()
+                    if not location:
+                        last_error = "redirect_without_location"
+                        retry_request = True
+                        break
+                    target = urljoin(str(response.url), location)
+                    continue
+
+                # A tag that does not exist is a normal search miss, not a
+                # transport failure. Returning an empty payload lets the
+                # curator try the next tag/name variant.
+                if response.status_code == 404:
+                    return {}
+
+                if response.status_code == 429:
+                    raw_retry = str(response.headers.get("Retry-After") or "5").strip()
+                    try:
+                        retry_after = max(2.0, min(30.0, float(raw_retry)))
+                    except ValueError:
+                        retry_after = 5.0
+                    last_error = f"rate_limited:{retry_after}"
+                    if attempt >= HTTP_RETRIES:
+                        raise RuntimeError(f"zerochan_rate_limited:{retry_after}")
+                    time.sleep(retry_after)
+                    retry_request = True
+                    break
+
+                if response.status_code >= 500:
+                    last_error = f"http_{response.status_code}"
+                    retry_request = True
+                    break
+
+                response.raise_for_status()
+                try:
+                    return response.json()
+                except ValueError as exc:
+                    content_type = str(response.headers.get("content-type") or "").split(";", 1)[0]
+                    preview = re.sub(r"\s+", " ", response.text[:120]).strip()
+                    last_error = f"non_json:{response.status_code}:{content_type}:{preview}"
+                    if attempt >= HTTP_RETRIES:
+                        raise RuntimeError(f"zerochan_non_json:{last_error}") from exc
+                    retry_request = True
+                    break
+            else:
+                last_error = "too_many_redirects"
+                retry_request = True
+
+            if not retry_request:
+                break
+            if attempt < HTTP_RETRIES:
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+        raise RuntimeError(f"zerochan_request_failed:{last_error or 'unknown'}")
 
 
 def _load_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
