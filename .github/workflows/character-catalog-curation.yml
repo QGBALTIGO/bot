@@ -1,0 +1,63 @@
+name: Character catalog curation pilot
+
+on:
+  push:
+    branches:
+      - feature/character-catalog-curation
+    paths:
+      - 'scripts/plan_character_catalog.py'
+      - 'scripts/apply_character_catalog_retirement.py'
+      - '.github/workflows/character-catalog-curation.yml'
+      - 'data/personagens_anilist.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pilot-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check httpx
+      - name: Syntax check
+        run: python -m py_compile scripts/plan_character_catalog.py scripts/apply_character_catalog_retirement.py
+      - name: Build One Piece + Naruto curation plan
+        run: |
+          python scripts/plan_character_catalog.py \
+            --target 'One Piece:120' \
+            --target 'Naruto:80' \
+            --write \
+            --output /tmp/character_catalog_plan.json
+      - name: Print pilot details
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/character_catalog_plan.json',encoding='utf-8'))
+          print('PILOT_SUMMARY', json.dumps(p.get('summary',{}), ensure_ascii=False, sort_keys=True))
+          for a in p.get('animes',[]):
+              print('PILOT_ANIME', json.dumps({
+                  'anime_id':a.get('anime_id'),
+                  'anime':a.get('anime'),
+                  'current':a.get('current_count'),
+                  'kept':a.get('kept_count'),
+                  'retire':a.get('retire_count'),
+                  'missing':a.get('missing_important_count'),
+                  'error':a.get('error'),
+              }, ensure_ascii=False, sort_keys=True))
+              top_keep=(a.get('keep') or [])[:20]
+              if top_keep:
+                  print('TOP_KEEP', a.get('anime'), ' | '.join(f"{x.get('name')}[{x.get('role')},{x.get('favourites')}★]" for x in top_keep))
+              missing=(a.get('missing_important') or [])[:20]
+              if missing:
+                  print('TOP_MISSING', a.get('anime'), ' | '.join(f"{x.get('name')}[{x.get('role')},{x.get('favourites')}★]" for x in missing))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: character-catalog-pilot-plan
+          path: /tmp/character_catalog_plan.json
+          retention-days: 14
