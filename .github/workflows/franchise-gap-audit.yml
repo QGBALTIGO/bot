@@ -50,3 +50,5 @@ jobs:
           name: franchise-gap-audit
           path: /tmp/catalog_franchise_gaps.json
           retention-days: 14
+
+# deep-scan trigger
