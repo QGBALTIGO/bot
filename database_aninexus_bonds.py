@@ -131,23 +131,33 @@ def _active_bond_locked(cur, user_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def _active_bond_unlocked(cur, user_id: int) -> dict[str, Any] | None:
+    cur.execute(
+        """
+        SELECT bond_id, user_low_id, user_high_id, created_by, status, created_at, ended_at
+        FROM aninexus_bonds
+        WHERE status = 'active'
+          AND (user_low_id = %s OR user_high_id = %s)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (int(user_id), int(user_id)),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _other_user_id(bond: dict[str, Any], user_id: int) -> int:
+    low_id = int(bond.get("user_low_id") or 0)
+    high_id = int(bond.get("user_high_id") or 0)
+    return high_id if low_id == int(user_id) else low_id
+
+
 def get_active_bond(user_id: int) -> dict[str, Any] | None:
     _ensure_tables()
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                SELECT bond_id, user_low_id, user_high_id, created_by, status, created_at, ended_at
-                FROM aninexus_bonds
-                WHERE status = 'active'
-                  AND (user_low_id = %s OR user_high_id = %s)
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (int(user_id), int(user_id)),
-            )
-            row = cur.fetchone()
-    return dict(row) if row else None
+            return _active_bond_unlocked(cur, int(user_id))
 
 
 def list_bond_invites(user_id: int, limit: int = 30) -> list[dict[str, Any]]:
@@ -260,6 +270,27 @@ def respond_bond_invite(user_id: int, invite_id: int, action: str) -> dict[str, 
         with conn.cursor(row_factory=dict_row) as cur:
             try:
                 cur.execute("BEGIN")
+
+                # Primeiro descobre o par sem segurar a linha do convite. Assim
+                # nunca esperamos advisory locks enquanto mantemos outro convite
+                # bloqueado, evitando deadlocks em aceitações simultâneas.
+                cur.execute(
+                    """
+                    SELECT inviter_id, invitee_id
+                    FROM aninexus_bond_invites
+                    WHERE invite_id = %s
+                    """,
+                    (int(invite_id),),
+                )
+                preview = cur.fetchone()
+                if not preview:
+                    conn.rollback()
+                    return {"ok": False, "error": "invite_not_found"}
+
+                inviter_id = int(preview.get("inviter_id") or 0)
+                invitee_id = int(preview.get("invitee_id") or 0)
+                _lock_users(cur, inviter_id, invitee_id)
+
                 cur.execute(
                     """
                     SELECT * FROM aninexus_bond_invites
@@ -291,10 +322,6 @@ def respond_bond_invite(user_id: int, invite_id: int, action: str) -> dict[str, 
                     )
                     conn.commit()
                     return {"ok": False, "error": "invite_expired"}
-
-                inviter_id = int(invite.get("inviter_id") or 0)
-                invitee_id = int(invite.get("invitee_id") or 0)
-                _lock_users(cur, inviter_id, invitee_id)
 
                 if action == "reject":
                     cur.execute(
@@ -353,31 +380,46 @@ def respond_bond_invite(user_id: int, invite_id: int, action: str) -> dict[str, 
 
 def remove_active_bond(user_id: int) -> dict[str, Any]:
     _ensure_tables()
-    with pool.connection() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            try:
-                cur.execute("BEGIN")
-                _lock_users(cur, int(user_id))
-                bond = _active_bond_locked(cur, int(user_id))
-                if not bond:
+    user_id = int(user_id)
+
+    # O par é consultado sem lock apenas para descobrirmos os dois IDs. Depois
+    # os advisory locks são sempre adquiridos em ordem crescente. Se o vínculo
+    # mudar entre as duas etapas, reiniciamos em vez de quebrar a ordem de lock.
+    for _attempt in range(2):
+        with pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                try:
+                    cur.execute("BEGIN")
+                    preview = _active_bond_unlocked(cur, user_id)
+                    if not preview:
+                        conn.rollback()
+                        return {"ok": False, "error": "bond_not_found"}
+
+                    preview_other_id = _other_user_id(preview, user_id)
+                    _lock_users(cur, user_id, preview_other_id)
+
+                    bond = _active_bond_locked(cur, user_id)
+                    if not bond:
+                        conn.rollback()
+                        return {"ok": False, "error": "bond_not_found"}
+
+                    other_id = _other_user_id(bond, user_id)
+                    if other_id != preview_other_id:
+                        conn.rollback()
+                        continue
+
+                    cur.execute(
+                        """
+                        UPDATE aninexus_bonds
+                        SET status = 'ended', ended_at = NOW()
+                        WHERE bond_id = %s AND status = 'active'
+                        """,
+                        (int(bond.get("bond_id") or 0),),
+                    )
+                    conn.commit()
+                    return {"ok": True, "status": "ended", "partner_id": other_id}
+                except Exception:
                     conn.rollback()
-                    return {"ok": False, "error": "bond_not_found"}
-                other_id = (
-                    int(bond.get("user_high_id") or 0)
-                    if int(bond.get("user_low_id") or 0) == int(user_id)
-                    else int(bond.get("user_low_id") or 0)
-                )
-                _lock_users(cur, other_id)
-                cur.execute(
-                    """
-                    UPDATE aninexus_bonds
-                    SET status = 'ended', ended_at = NOW()
-                    WHERE bond_id = %s AND status = 'active'
-                    """,
-                    (int(bond.get("bond_id") or 0),),
-                )
-                conn.commit()
-                return {"ok": True, "status": "ended", "partner_id": other_id}
-            except Exception:
-                conn.rollback()
-                raise
+                    raise
+
+    return {"ok": False, "error": "bond_changed_retry"}
