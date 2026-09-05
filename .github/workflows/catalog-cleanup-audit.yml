@@ -13,6 +13,7 @@ on:
       - 'scripts/apply_catalog_retirements.py'
       - 'tests/test_catalog_cleanup.py'
       - 'tests/test_franchise_must_haves.py'
+      - 'tests/test_catalog_identity_display.py'
       - '.github/workflows/catalog-cleanup-audit.yml'
       - 'data/personagens_anilist.txt'
       - 'data/cards_overrides.json'
@@ -36,7 +37,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install --disable-pip-version-check httpx 'psycopg[binary]' pytest
       - name: Catalog cleanup unit tests
-        run: pytest -q tests/test_catalog_cleanup.py tests/test_franchise_must_haves.py
+        run: pytest -q tests/test_catalog_cleanup.py tests/test_franchise_must_haves.py tests/test_catalog_identity_display.py
 
   # Full external audit is intentionally manual. Re-running it on every commit
   # wastes AniList quota and can make two catalog snapshots compete.
@@ -94,6 +95,7 @@ jobs:
           print('PROPOSAL_COUNTS', 'deleted=', len(o.get('deleted_characters') or []), 'custom_animes=', len(o.get('custom_animes') or []), 'custom_characters=', len(o.get('custom_characters') or []))
           print('NARUTO_MUST_HAVES', json.dumps(f.get('must_have_insertions') or [], ensure_ascii=False))
           print('IDENTITY_ALIASES', json.dumps(f.get('identity_aliases') or {}, ensure_ascii=False, sort_keys=True))
+          print('IDENTITY_DISPLAY', json.dumps(f.get('identity_display_overrides') or {}, ensure_ascii=False, sort_keys=True))
           print('MISSING_FRANCHISES')
           for row in (f.get('missing_franchises') or [])[:40]:
               media=row.get('missing_popular_media') or []
