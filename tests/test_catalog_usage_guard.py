@@ -82,15 +82,17 @@ def test_compact_candidate_manifest_is_integrity_checked():
     manifest = manifest_loader.load_candidate_manifest(
         ROOT / "data" / "catalog_cleanup_retire_candidates.v1.json"
     )
-    assert manifest["candidate_count"] == 4136
-    assert len(manifest["candidate_ids"]) == 4136
+    assert manifest["schema_version"] == 3
+    assert manifest["source_audit_version"] == 5
+    assert manifest["candidate_count"] == 4311
+    assert len(manifest["candidate_ids"]) == 4311
     assert manifest["candidate_ids_sha256"] == (
-        "2e34dffdf6aae9cc4ae4b22aab0f724fbe5540b75b92737dd7d1ae94b5348533"
+        "597fbd838e4ba01be19209c663408d992ccb9dc5b3a947fd69752804d7895dbe"
     )
     assert manifest_loader.candidate_ids_hash(manifest["candidate_ids"]) == manifest["candidate_ids_sha256"]
     assert manifest["candidate_ids"] == sorted(set(manifest["candidate_ids"]))
-    assert manifest["review_resolution"]["review_to_retire"] == 515
-    assert manifest["review_resolution"]["never_auto_retire_favourites_gte"] == 10
+    assert manifest["policy"]["owner_review_threshold"] == 10
+    assert manifest["policy"]["copy_review_threshold"] == 20
 
 
 def test_manifest_hash_tampering_is_rejected():
@@ -149,12 +151,12 @@ def test_one_shot_runner_keeps_manifest_payload_private_and_summary_aggregate_on
     public = runner.public_manifest(manifest)
     assert "candidate_ids" not in public
     assert "candidate_ids_payload_chunks" not in public
-    assert public["candidate_count"] == 4136
+    assert public["candidate_count"] == 4311
 
     report = {
-        "candidate_count": 4136,
+        "candidate_count": 4311,
         "moved_to_review_count": 12,
-        "final_retire_count": 4124,
+        "final_retire_count": 4299,
         "before_guard": {"affected_users": 30, "copies": 100},
         "after_guard": {"affected_users": 20, "copies": 60},
         "coins_required_after_guard": 60,
