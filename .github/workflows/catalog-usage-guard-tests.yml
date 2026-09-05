@@ -6,6 +6,8 @@ on:
       - catalog-cleanup-v1
     paths:
       - 'scripts/guard_catalog_retirements_by_usage.py'
+      - 'commands/health.py'
+      - 'data/catalog_cleanup_retire_candidates.v1.json'
       - 'tests/test_catalog_usage_guard.py'
       - '.github/workflows/catalog-usage-guard-tests.yml'
   workflow_dispatch:
