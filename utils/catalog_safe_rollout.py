@@ -38,6 +38,10 @@ def _positive_int(value: Any) -> int:
     return number if number > 0 else 0
 
 
+def _flag_enabled(name: str) -> bool:
+    return str(os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_safe_additions(manifest_path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
     manifest = _load_object(manifest_path)
     if manifest.get("enabled") is not True:
@@ -165,9 +169,44 @@ def merge_safe_additions(base: dict[str, Any], safe: dict[str, Any]) -> dict[str
     out["_safe_catalog_rollout"] = {
         "phase": "additions_only",
         "character_count": int(safe.get("character_count") or 0),
-        "retirements_applied": 0,
+        "retirements_disabled": 0,
         "coins_awarded": 0,
     }
+    return out
+
+
+def apply_final_retirement_disables(merged: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    out = deepcopy(merged)
+    existing = {
+        _positive_int(value)
+        for value in (out.get("deleted_characters") or [])
+        if _positive_int(value) > 0
+    }
+    retired_ids = {
+        _positive_int(value)
+        for value in (plan.get("retired_ids") or [])
+        if _positive_int(value) > 0
+    }
+    saved_ids = {
+        _positive_int(value)
+        for value in (plan.get("saved_ids") or [])
+        if _positive_int(value) > 0
+    }
+    if not retired_ids or retired_ids & saved_ids:
+        raise ValueError("plano final de aposentadoria inválido para materialização")
+
+    out["deleted_characters"] = sorted(existing | retired_ids)
+    metadata = dict(out.get("_safe_catalog_rollout") or {})
+    metadata.update(
+        {
+            "phase": "additions_plus_final_catalog_disabled",
+            "retirements_disabled": len(retired_ids),
+            "retirement_final_hash": str(plan.get("actual_final_retire_ids_sha256") or ""),
+            "saved_by_collection_count": len(saved_ids),
+            "coins_awarded": 0,
+        }
+    )
+    out["_safe_catalog_rollout"] = metadata
     return out
 
 
@@ -185,6 +224,14 @@ def prepare_runtime_safe_catalog() -> bool:
     base = _load_object(base_path)
     merged = merge_safe_additions(base, safe)
 
+    retired_count = 0
+    if _flag_enabled("SOURCE_CATALOG_RETIREMENTS_ENABLED"):
+        from utils.catalog_retirement_plan import load_final_retirement_plan
+
+        plan = load_final_retirement_plan()
+        merged = apply_final_retirement_disables(merged, plan)
+        retired_count = len(plan["retired_ids"])
+
     output_path = _resolve_path(
         os.getenv("CATALOG_SAFE_RUNTIME_OVERRIDES_PATH"),
         DEFAULT_RUNTIME_OVERRIDES,
@@ -201,7 +248,8 @@ def prepare_runtime_safe_catalog() -> bool:
 
     os.environ["CARDS_OVERRIDES_PATH"] = str(output_path)
     print(
-        f"CATALOG_SAFE_ROLLOUT active characters={safe['character_count']} animes={len(safe['custom_animes'])}",
+        f"CATALOG_SAFE_ROLLOUT active characters={safe['character_count']} "
+        f"animes={len(safe['custom_animes'])} retirements_disabled={retired_count}",
         flush=True,
     )
     return True
