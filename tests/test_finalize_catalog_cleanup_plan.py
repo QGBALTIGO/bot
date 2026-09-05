@@ -27,6 +27,9 @@ def live_report():
     return {
         "read_only": True,
         "candidate_count": 3,
+        "owner_review_threshold": 10,
+        "copy_review_threshold": 20,
+        "generated_at": "2026-09-05T10:00:00+00:00",
         "final_retire_ids": [3],
         "moved_to_review": [
             {"character_id": 1, "owners": 12, "copies": 12},
@@ -46,6 +49,9 @@ def test_final_plan_is_fail_closed_and_keeps_one_coin_per_copy():
     assert plan["compensation"]["removed_copies"] == 4
     assert plan["compensation"]["coins_required"] == 4
     assert plan["safety"]["database_mutated"] is False
+    assert plan["usage_guard"]["applied"] is True
+    assert plan["usage_guard"]["owner_review_threshold"] == 10
+    assert plan["usage_guard"]["copy_review_threshold"] == 20
 
 
 def test_final_plan_rejects_incomplete_partition():
