@@ -90,7 +90,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
     try {
       await apiFetch(`/pets/set_active/${encodeURIComponent(petRef)}`, { method: 'POST' });
       await triggerRefresh();
-      addToast(`${selectedPet.name} activated.`, 'success');
+      addToast(`${selectedPet.name} foi ativado.`, 'success');
       setSelectedPet(null);
     } catch (err: any) {
       addToast(getErrorMessage(err), 'error');
@@ -159,7 +159,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
               <div className="flex flex-col items-center gap-3 opacity-20">
                 <PawPrint size={48} className="text-zinc-500" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  No Image
+                  Sem imagem
                 </span>
               </div>
             )}
@@ -182,7 +182,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
               <div className="flex items-center gap-1.5">
                 <Target size={11} className="text-zinc-500" />
                 <span className="text-[9px] font-mono font-bold uppercase text-zinc-500 tracking-widest">
-                  PET ID: {String(selectedPet.petid || selectedPet.id || 'TEMP').toUpperCase()}
+                  ID DO COMPANHEIRO: {String(selectedPet.petid || selectedPet.id || 'TEMP').toUpperCase()}
                 </span>
               </div>
               <h2 className="text-2xl font-bold text-zinc-100 uppercase tracking-tight">
@@ -191,7 +191,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
               <div className="flex items-center gap-1.5">
                 <Zap size={12} className="text-brand-accent" />
                 <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
-                  {selectedPet.ability || 'SYSTEM_SUPPORT_PERK'}
+                  {selectedPet.ability || 'SEM HABILIDADE ESPECIAL'}
                 </p>
               </div>
             </div>
@@ -208,25 +208,25 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
               {[
                 {
                   icon: Heart,
-                  label: 'Vitality',
+                  label: 'Vitalidade',
                   value: selectedPet.hp ?? 0,
                   color: 'text-emerald-500',
                 },
                 {
                   icon: Swords,
-                  label: 'Strike',
+                  label: 'Ataque',
                   value: selectedPet.atk ?? 0,
                   color: 'text-red-500',
                 },
                 {
                   icon: Wind,
-                  label: 'Velocity',
+                  label: 'Velocidade',
                   value: selectedPet.spd ?? 0,
                   color: 'text-brand-accent',
                 },
                 {
                   icon: Clover,
-                  label: 'Luck',
+                  label: 'Sorte',
                   value: `${Math.round(Number(selectedPet.luck || 0) * 100)}%`,
                   color: 'text-amber-500',
                 },
@@ -253,7 +253,7 @@ export const PetActionModal = ({ selectedPet, setSelectedPet, user }: PetActionM
                   <div className="flex items-center gap-2">
                     <TrendingUp size={12} className="text-zinc-600" />
                     <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                      Progress
+                      Progresso
                     </span>
                   </div>
                   <Badge variant="secondary" size="xs" className="font-mono">

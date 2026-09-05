@@ -14,6 +14,7 @@ import {
   Repeat2,
   Satellite,
   Store,
+  Swords,
   Terminal,
   Ticket,
   UserPlus,
@@ -68,6 +69,8 @@ const SECTIONS: NavSection[] = [
   {
     title: 'SOCIAL',
     items: [
+      { id: 'duels', label: 'Duelos', icon: Swords },
+      { id: 'bonds', label: 'Vínculos', icon: Heart },
       { id: 'trading', label: 'Trocas', icon: ArrowLeftRight },
       { id: 'referrals', label: 'Indicações', icon: UserPlus },
       { id: 'quests', label: 'Missões', icon: ListChecks },

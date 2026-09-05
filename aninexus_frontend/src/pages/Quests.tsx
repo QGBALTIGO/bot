@@ -88,7 +88,7 @@ const QuestItem = ({ quest, onClaim, claiming }: QuestItemProps) => {
               current={quest.progress}
               total={quest.target}
               compact
-              label="Progress"
+              label="Progresso"
               variant={quest.claimed ? 'success' : 'default'}
             />
           </div>
@@ -107,7 +107,7 @@ const QuestItem = ({ quest, onClaim, claiming }: QuestItemProps) => {
                 className="h-9 px-4"
                 isLoading={isClaiming}
               >
-                {isComplete ? 'Claim' : <Lock size={14} />}
+                {isComplete ? 'Resgatar' : <Lock size={14} />}
               </Button>
             )}
           </div>
@@ -140,7 +140,7 @@ export const Quests = () => {
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     try {
       const res = await apiFetch(`/quests/claim/${questId}`, { method: 'POST' });
-      addToast(`Mission complete: +${res.reward_shards} Coins`, 'success');
+      addToast(`Missão concluída: +${res.reward_shards} Coins`, 'success');
       triggerRefresh();
       fetchQuests().catch(() => undefined);
     } catch (err: any) {
@@ -187,7 +187,7 @@ export const Quests = () => {
       ) : (
         <div className="py-12 border border-dashed border-white/5 rounded-lg bg-zinc-950/50 text-center flex flex-col items-center justify-center space-y-2">
           <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">
-            No Missions Available
+            Nenhuma missão disponível
           </p>
         </div>
       )}
@@ -199,17 +199,17 @@ export const Quests = () => {
       <header className="space-y-1">
         <div className="flex items-center gap-2.5">
           <ClipboardList className="text-brand-accent" size={20} />
-          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Missions</h1>
+          <h1 className="text-xl font-bold text-zinc-100 uppercase tracking-tight">Missões</h1>
         </div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-          Operational objectives & bounties
+          Objetivos diários e semanais do AniNexus
         </p>
       </header>
 
       <div className="space-y-10">
-        {renderQuestSection('DAILY OPERATIONS', questsData?.daily || [])}
-        {renderQuestSection('STRATEGIC WEEKLY', questsData?.weekly || [])}
-        {renderQuestSection('PASS CLEARANCE', questsData?.pass || [])}
+        {renderQuestSection('MISSÕES DIÁRIAS', questsData?.daily || [])}
+        {renderQuestSection('MISSÕES SEMANAIS', questsData?.weekly || [])}
+        {renderQuestSection('TEMPORADA', questsData?.pass || [])}
       </div>
     </div>
   );

@@ -35,6 +35,8 @@ const Staff = lazy(() => import('./pages/Staff').then((m) => ({ default: m.Staff
 const Minigames = lazy(() => import('./pages/Minigames').then((m) => ({ default: m.Minigames })));
 const Trading = lazy(() => import('./pages/Trading').then((m) => ({ default: m.Trading })));
 const Dado = lazy(() => import('./pages/Dado').then((m) => ({ default: m.Dado })));
+const Duels = lazy(() => import('./pages/Duels').then((m) => ({ default: m.Duels })));
+const Bonds = lazy(() => import('./pages/Bonds').then((m) => ({ default: m.Bonds })));
 
 const VALID_TABS = [
   'profile',
@@ -54,6 +56,8 @@ const VALID_TABS = [
   'staff',
   'minigames',
   'trading',
+  'duels',
+  'bonds',
 ];
 const TAB_ALIASES: Record<string, string> = {
   profile: 'profile',
@@ -130,6 +134,17 @@ const TAB_ALIASES: Record<string, string> = {
   trade: 'trading',
   trades: 'trading',
   swap: 'trading',
+  duel: 'duels',
+  duels: 'duels',
+  battle: 'duels',
+  combat: 'duels',
+  bond: 'bonds',
+  bonds: 'bonds',
+  relationship: 'bonds',
+  relationships: 'bonds',
+  marriage: 'bonds',
+  vinculo: 'bonds',
+  vinculos: 'bonds',
 };
 
 interface RouteTarget {
@@ -398,6 +413,8 @@ const AppContent = () => {
             {activeTab === 'mypets' && <MyPets onPetClick={setSelectedPet} />}
             {activeTab === 'minigames' && <Minigames />}
             {activeTab === 'trading' && <Trading />}
+            {activeTab === 'duels' && <Duels />}
+            {activeTab === 'bonds' && <Bonds />}
             {activeTab === 'upload' && canViewUpload && <Upload />}
             {activeTab === 'staff' && canViewStaff && <Staff />}
 

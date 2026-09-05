@@ -15,6 +15,7 @@ from utils.request_observability import RequestObservabilityMiddleware
 from utils.webapp_identity import resolve_webapp_user
 from webapp_routes.account import router as account_router
 from webapp_routes.aninexus_admin_media import build_aninexus_admin_media_router
+from webapp_routes.aninexus_bonds_duels import build_aninexus_bonds_duels_router
 from webapp_routes.aninexus_dado import build_aninexus_dado_router
 from webapp_routes.aninexus_games import build_aninexus_games_router
 from webapp_routes.aninexus_me import build_aninexus_me_router
@@ -65,6 +66,7 @@ terms_router = build_terms_router(
 )
 source_v2_router = build_source_v2_router(banner_url=TOP_BANNER_URL)
 aninexus_admin_media_router = build_aninexus_admin_media_router()
+aninexus_bonds_duels_router = build_aninexus_bonds_duels_router()
 aninexus_dado_router = build_aninexus_dado_router()
 aninexus_games_router = build_aninexus_games_router()
 aninexus_me_router = build_aninexus_me_router()
@@ -156,6 +158,18 @@ def _install_runtime_routes() -> None:
         app.include_router(aninexus_social_router)
         registered_paths.update(aninexus_social_paths)
 
+    aninexus_bonds_duels_paths = {
+        "/api/v1_7b82/social/marriage",
+        "/api/v1_7b82/social/bond",
+        "/api/v1_7b82/social/bond/invites",
+        "/api/v1_7b82/social/bond/invite",
+        "/api/v1_7b82/social/bond/invites/{invite_id}/respond",
+        "/api/v1_7b82/duels/history",
+    }
+    if not aninexus_bonds_duels_paths.issubset(registered_paths):
+        app.include_router(aninexus_bonds_duels_router)
+        registered_paths.update(aninexus_bonds_duels_paths)
+
     aninexus_pets_paths = {
         "/api/v1_7b82/shop/pets",
         "/api/v1_7b82/shop/buy/pet/{pet_ref}",
@@ -189,7 +203,6 @@ def _install_runtime_routes() -> None:
         "/api/v1_7b82/secure_init",
         "/api/v1_7b82/harem",
         "/api/v1_7b82/rarities",
-        "/api/v1_7b82/social/marriage",
     }
     if not aninexus_compat_paths.issubset(registered_paths):
         app.include_router(aninexus_compat_router)
