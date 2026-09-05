@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
-      ZEROCHAN_USERNAME: ${{ inputs.zerochan_username || vars.ZEROCHAN_USERNAME }}
+      ZEROCHAN_USERNAME: ${{ inputs.zerochan_username || vars.ZEROCHAN_USERNAME || 'RyuOni767' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
