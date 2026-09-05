@@ -486,26 +486,45 @@ def _recover_failed_deliveries(anime_id: int) -> int:
     return recovered
 
 
-def _resume_anime_review(anime_id: int) -> dict[str, int]:
+def _resume_anime_review(anime_id: int, restart_active: bool = False) -> dict[str, int]:
     """Reopen recoverable rows without touching approved or protected images."""
     recovered = _recover_failed_deliveries(anime_id)
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE card_image_review_queue q
-                SET status='queued', updated_at=NOW()
-                WHERE q.anime_id=%s
-                  AND q.status='reviewing'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM card_image_review_candidates c
-                      WHERE c.character_id=q.character_id
-                        AND c.status='pending'
-                        AND c.channel_message_id IS NOT NULL
-                  )
-                """,
-                (int(anime_id),),
-            )
+            if restart_active:
+                cur.execute(
+                    """
+                    UPDATE card_image_review_candidates c
+                    SET status='superseded', reviewed_at=NOW()
+                    FROM card_image_review_queue q
+                    WHERE c.character_id=q.character_id
+                      AND q.status='reviewing'
+                      AND c.status='pending'
+                    """
+                )
+                cur.execute(
+                    """
+                    UPDATE card_image_review_queue
+                    SET status='queued', round_no=0, updated_at=NOW()
+                    WHERE status='reviewing'
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE card_image_review_queue q
+                    SET status='queued', updated_at=NOW()
+                    WHERE q.anime_id=%s
+                      AND q.status='reviewing'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM card_image_review_candidates c
+                          WHERE c.character_id=q.character_id
+                            AND c.status='pending'
+                            AND c.channel_message_id IS NOT NULL
+                      )
+                    """,
+                    (int(anime_id),),
+                )
             stale = int(cur.rowcount or 0)
             cur.execute(
                 """
@@ -991,13 +1010,14 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
         await message.reply_text("❌ Obra não encontrada nos cards.")
         return
     result = await asyncio.to_thread(seed_anime_review, int(anime["anime_id"]))
-    resumed = await asyncio.to_thread(_resume_anime_review, int(anime["anime_id"]))
+    resumed = await asyncio.to_thread(_resume_anime_review, int(anime["anime_id"]), True)
     counts = await asyncio.to_thread(_anime_review_counts, int(anime["anime_id"]))
     await message.reply_text(
         f"✅ Fotos de {anime['anime']} iniciadas/retomadas.\n"
         f"Na fila: {counts.get('queued', 0)} · em avaliação: {counts.get('reviewing', 0)} · "
         f"aprovadas: {counts.get('approved', 0)} · preservadas: {result['protected']}\n"
-        f"Retomadas agora: {sum(resumed.values())} · total da obra: {result['total']}"
+        f"Retomadas agora: {sum(resumed.values())} · lotes destravados: {resumed['stale']} · "
+        f"total da obra: {result['total']}"
     )
     context.application.bot_data["card_image_review_preferred_anime_id"] = int(anime["anime_id"])
     context.application.create_task(
