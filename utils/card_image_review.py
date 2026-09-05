@@ -42,6 +42,10 @@ ZEROCHAN_USER = os.getenv("ZEROCHAN_USER", "kaykys468").strip() or "kaykys468"
 ZEROCHAN_AGENT = f"SourceBaltigo-Curation - {ZEROCHAN_USER}"
 OPTIONS_PER_CHARACTER = max(3, min(10, int(os.getenv("CARD_IMAGE_REVIEW_OPTIONS", "10"))))
 MAX_ROUNDS = max(1, min(5, int(os.getenv("CARD_IMAGE_REVIEW_MAX_ROUNDS", "3"))))
+SOURCE_SEARCH_BUDGET_SECONDS = max(
+    10.0,
+    min(45.0, float(os.getenv("CARD_IMAGE_SOURCE_SEARCH_BUDGET", "22"))),
+)
 AUTO_ANIME_IDS = tuple(
     int(part.strip())
     for part in os.getenv("CARD_IMAGE_REVIEW_AUTO_ANIME_IDS", "").split(",")
@@ -127,19 +131,18 @@ def _throttle_zerochan() -> None:
         _ZEROCHAN_NEXT_REQUEST_AT = time.monotonic() + 1.15
 
 
-def _fetch_json(url: str) -> Any:
-    last_error: Exception | None = None
-    for attempt in range(3):
-        _throttle_zerochan()
-        request = Request(url, headers={"User-Agent": ZEROCHAN_AGENT, "Accept": "application/json"})
-        try:
-            with urlopen(request, timeout=25) as response:
-                return json.load(response)
-        except Exception as exc:
-            last_error = exc
-            if attempt < 2:
-                time.sleep(3 * (attempt + 1))
-    raise RuntimeError("zerochan_request_failed") from last_error
+def _fetch_json(url: str, timeout: float = 8.0) -> Any:
+    _throttle_zerochan()
+    request = Request(url, headers={"User-Agent": ZEROCHAN_AGENT, "Accept": "application/json"})
+    try:
+        with urlopen(request, timeout=max(2.0, float(timeout))) as response:
+            return json.load(response)
+    except Exception as exc:
+        raise RuntimeError("image_source_request_failed") from exc
+
+
+def _source_timeout(deadline: float) -> float:
+    return min(8.0, max(2.0, deadline - time.monotonic()))
 
 
 def _telegram_photo(source_url: str, post_id: int) -> io.BytesIO:
@@ -166,11 +169,14 @@ def _telegram_photo(source_url: str, post_id: int) -> io.BytesIO:
 def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int) -> list[Candidate]:
     ranked: dict[int, tuple[float, dict[str, Any]]] = {}
     successful_searches = 0
+    deadline = time.monotonic() + SOURCE_SEARCH_BUDGET_SECONDS
     for query in zerochan_queries(name):
+        if time.monotonic() >= deadline:
+            break
         encoded_query = quote(query.replace(" ", "+"), safe="+")
         url = f"https://www.zerochan.net/{encoded_query}?json&strict&s=fav&t=0&l=100"
         try:
-            payload = _fetch_json(url)
+            payload = _fetch_json(url, _source_timeout(deadline))
             successful_searches += 1
         except Exception as exc:
             logger.warning("Zerochan search failed query=%s error=%s", query, type(exc).__name__)
@@ -191,10 +197,13 @@ def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int
 
     results: list[Candidate] = []
     for post_id, (score, post) in sorted(ranked.items(), key=lambda item: item[1][0], reverse=True):
-        if len(results) >= limit:
+        if len(results) >= limit or time.monotonic() >= deadline:
             break
         try:
-            detail = _fetch_json(f"https://www.zerochan.net/{post_id}?json")
+            detail = _fetch_json(
+                f"https://www.zerochan.net/{post_id}?json",
+                _source_timeout(deadline),
+            )
             source_url = str(detail.get("full") or "").strip()
             if not source_url.startswith("https://"):
                 continue
@@ -241,12 +250,15 @@ def fetch_danbooru_candidates(
 ) -> list[Candidate]:
     ranked: dict[int, tuple[float, dict[str, Any]]] = {}
     successful_searches = 0
+    deadline = time.monotonic() + SOURCE_SEARCH_BUDGET_SECONDS
     for character_tag in _danbooru_queries(name, anime_title):
+        if time.monotonic() >= deadline:
+            break
         url = "https://danbooru.donmai.us/posts.json?" + urlencode(
             {"tags": f"{character_tag} rating:g", "limit": "100"}
         )
         try:
-            payload = _fetch_json(url)
+            payload = _fetch_json(url, _source_timeout(deadline))
             successful_searches += 1
         except Exception as exc:
             logger.warning("Danbooru search failed query=%s error=%s", character_tag, type(exc).__name__)
@@ -586,6 +598,8 @@ def _keyboard(candidate_id: int) -> InlineKeyboardMarkup:
 async def _dispatch_next_character(application, preferred_anime_id: int | None = None) -> bool:
     if not REVIEW_CHANNEL:
         return False
+    if time.monotonic() < float(application.bot_data.get("card_image_review_source_blocked_until", 0.0)):
+        return False
     row = await asyncio.to_thread(_next_queue_row, preferred_anime_id)
     if not row:
         return False
@@ -598,14 +612,28 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
         )
         return False
     excluded = await asyncio.to_thread(_existing_posts, int(row["character_id"]))
-    candidates = await asyncio.to_thread(
-        fetch_review_candidates,
-        str(row["character_name"]),
-        str(row["anime_title"]),
-        excluded,
-        OPTIONS_PER_CHARACTER,
-    )
+    try:
+        candidates = await asyncio.to_thread(
+            fetch_review_candidates,
+            str(row["character_name"]),
+            str(row["anime_title"]),
+            excluded,
+            OPTIONS_PER_CHARACTER,
+        )
+    except RuntimeError:
+        application.bot_data["card_image_review_source_blocked_until"] = time.monotonic() + 60.0
+        logger.warning(
+            "Image review sources unavailable; retrying later character_id=%s name=%s",
+            row["character_id"],
+            row["character_name"],
+        )
+        return False
     if not candidates:
+        logger.info(
+            "No new image review candidates character_id=%s name=%s; skipping",
+            row["character_id"],
+            row["character_name"],
+        )
         await asyncio.to_thread(_mark_no_candidates, int(row["character_id"]))
         application.create_task(
             dispatch_next_character(application, preferred_anime_id),
@@ -652,7 +680,15 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
                     "UPDATE card_image_review_queue SET status='queued', updated_at=NOW() WHERE character_id=%s AND status='reviewing'",
                     (int(row["character_id"]),),
                 )
-            conn.commit()
+                conn.commit()
+    else:
+        logger.info(
+            "Published image review batch character_id=%s name=%s sent=%s total=%s",
+            row["character_id"],
+            row["character_name"],
+            sent,
+            len(stored),
+        )
     return sent > 0
 
 
