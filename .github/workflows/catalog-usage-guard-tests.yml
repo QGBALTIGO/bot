@@ -6,6 +6,7 @@ on:
       - catalog-cleanup-v1
     paths:
       - 'scripts/guard_catalog_retirements_by_usage.py'
+      - 'utils/catalog_impact_manifest.py'
       - 'commands/health.py'
       - 'data/catalog_cleanup_retire_candidates.v1.json'
       - 'tests/test_catalog_usage_guard.py'
