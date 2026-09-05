@@ -13,8 +13,6 @@ DEFAULT_FRANCHISE = ROOT / "data" / "catalog_franchise_gaps.json"
 DEFAULT_PROPOSAL = ROOT / "data" / "cards_overrides.cleanup_proposal.json"
 DEFAULT_OUTPUT = ROOT / "data" / "cards_overrides.cleanup_consolidated.json"
 
-# Nome final de categorias que deixam de representar uma temporada/obra isolada
-# e passam a representar toda a franquia consolidada.
 CANONICAL_FRANCHISE_NAMES: dict[int, str] = {
     356: "Fate",
     113415: "Jujutsu Kaisen",
@@ -60,23 +58,41 @@ def dataset_index(dataset: Any) -> tuple[dict[int, dict[str, Any]], dict[int, di
     return anime_by_id, char_by_id
 
 
-def retained_character_ids_for_anime(audit: dict[str, Any], anime_id: int) -> list[int]:
-    report = (audit.get("anime_reports") or {}).get(str(int(anime_id))) or {}
-    out: list[int] = []
-    for row in report.get("current_characters") or []:
-        if not isinstance(row, dict):
-            continue
-        cid = _positive_int(row.get("id"))
-        decision = str(row.get("decision") or "REVIEW").upper()
-        if cid > 0 and decision in {"KEEP", "REVIEW"}:
-            out.append(cid)
-    return sorted(set(out))
+def reliable_audit_rows(audit: dict[str, Any], anime_id: int) -> list[dict[str, Any]] | None:
+    report = (audit.get("anime_reports") or {}).get(str(int(anime_id)))
+    if not isinstance(report, dict):
+        return None
+    rows = [row for row in (report.get("current_characters") or []) if isinstance(row, dict)]
+    current_count = max(0, int(report.get("current_count") or 0))
+    if current_count <= 0 or not rows:
+        return None
+    row_ids = {_positive_int(row.get("id")) for row in rows if _positive_int(row.get("id")) > 0}
+    # Uma resposta parcial do provedor nunca pode autorizar apagar/consolidar.
+    if len(row_ids) < current_count:
+        return None
+    if any(str(row.get("decision") or "").upper() not in {"KEEP", "REVIEW", "RETIRE"} for row in rows):
+        return None
+    return rows
 
 
-def projected_retained_count(audit: dict[str, Any], anime_id: int) -> int:
-    report = (audit.get("anime_reports") or {}).get(str(int(anime_id))) or {}
-    counts = report.get("counts") or {}
-    return max(0, int(counts.get("KEEP") or 0)) + max(0, int(counts.get("REVIEW") or 0))
+def retained_character_ids_for_anime(audit: dict[str, Any], anime_id: int) -> list[int] | None:
+    rows = reliable_audit_rows(audit, anime_id)
+    if rows is None:
+        return None
+    out = {
+        _positive_int(row.get("id"))
+        for row in rows
+        if str(row.get("decision") or "").upper() in {"KEEP", "REVIEW"}
+        and _positive_int(row.get("id")) > 0
+    }
+    return sorted(out)
+
+
+def is_reliably_empty_after_audit(audit: dict[str, Any], anime_id: int) -> bool:
+    rows = reliable_audit_rows(audit, anime_id)
+    if rows is None:
+        return False
+    return bool(rows) and all(str(row.get("decision") or "").upper() == "RETIRE" for row in rows)
 
 
 def consolidate(
@@ -111,6 +127,7 @@ def consolidate(
 
     moved_ids: set[int] = set()
     deleted_duplicate_animes: set[int] = set()
+    skipped_duplicate_animes: set[int] = set()
     consolidation_rows: list[dict[str, Any]] = []
 
     for plan in franchise.get("duplicate_current_franchises") or []:
@@ -126,14 +143,26 @@ def consolidate(
             target_id,
             str(plan.get("target_anime") or target_anime.get("anime") or f"Anime {target_id}").strip(),
         )
-        if target_name:
-            out["anime_name_overrides"].setdefault(str(target_id), target_name)
 
+        # Só muda o nome da categoria se pelo menos uma origem realmente puder
+        # ser consolidada com audit confiável.
+        successful_sources: list[tuple[int, list[int]]] = []
         for source_id in current_ids:
             if source_id == target_id:
                 continue
-            source_anime = anime_by_id.get(source_id) or {}
             retained_ids = retained_character_ids_for_anime(audit, source_id)
+            if retained_ids is None:
+                skipped_duplicate_animes.add(source_id)
+                continue
+            successful_sources.append((source_id, retained_ids))
+
+        if not successful_sources:
+            continue
+        if target_name:
+            out["anime_name_overrides"].setdefault(str(target_id), target_name)
+
+        for source_id, retained_ids in successful_sources:
+            source_anime = anime_by_id.get(source_id) or {}
             source_moved: list[int] = []
             for cid in retained_ids:
                 if cid in deleted_chars:
@@ -168,8 +197,6 @@ def consolidate(
                 }
             )
 
-    # Categorias que, depois do RETIRE, ficariam sem nenhum personagem e que
-    # também não recebem nenhuma carta nova deixam de aparecer no catálogo.
     target_ids_with_custom_chars = {
         _positive_int(row.get("anime_id"))
         for row in custom_chars.values()
@@ -177,11 +204,9 @@ def consolidate(
     }
     empty_animes_deleted: set[int] = set()
     for anime_id in anime_by_id:
-        if anime_id in deleted_animes:
+        if anime_id in deleted_animes or anime_id in target_ids_with_custom_chars:
             continue
-        if projected_retained_count(audit, anime_id) > 0:
-            continue
-        if anime_id in target_ids_with_custom_chars:
+        if not is_reliably_empty_after_audit(audit, anime_id):
             continue
         deleted_animes.add(anime_id)
         empty_animes_deleted.add(anime_id)
@@ -199,12 +224,14 @@ def consolidate(
     stats = {
         "duplicate_categories_consolidated": len(deleted_duplicate_animes),
         "duplicate_anime_ids_deleted": sorted(deleted_duplicate_animes),
+        "duplicate_anime_ids_skipped_incomplete_audit": sorted(skipped_duplicate_animes),
         "retained_characters_moved": len(moved_ids),
         "retained_character_ids_moved": sorted(moved_ids),
         "empty_categories_deleted": len(empty_animes_deleted),
         "empty_anime_ids_deleted": sorted(empty_animes_deleted),
         "consolidations": consolidation_rows,
         "total_deleted_animes_after_merge": len(deleted_animes),
+        "fail_closed_on_incomplete_audit": True,
     }
     return out, stats
 
