@@ -24,6 +24,9 @@ from database import get_all_global_character_images, pool
 from utils.aninexus_admin import is_admin
 from utils.aninexus_media import AniNexusMediaError, upload_portrait_asset
 from utils.card_image_review_rules import (
+    matches_danbooru_identity,
+    work_tags,
+    identity_key,
     score_danbooru_post,
     score_zerochan_post,
     zerochan_queries,
@@ -118,7 +121,34 @@ def ensure_review_tables() -> None:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_card_image_review_candidates_character ON card_image_review_candidates(character_id, status)"
             )
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS card_image_review_selection (
+                    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+                    anime_id BIGINT NOT NULL
+                )
+            """)
         conn.commit()
+
+
+def _selected_anime() -> int | None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT anime_id FROM card_image_review_selection WHERE singleton=TRUE")
+            row = cur.fetchone()
+            return int(row[0]) if row else None
+
+
+def _select_anime(anime_id: int) -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO card_image_review_selection(singleton, anime_id)
+                VALUES (TRUE, %s) ON CONFLICT(singleton)
+                DO UPDATE SET anime_id=EXCLUDED.anime_id""", (anime_id,))
+        conn.commit()
+
+
+def _dispatch_lock(application):
+    return application.bot_data.setdefault("card_image_review_dispatch_lock", asyncio.Lock())
 
 
 def _throttle_zerochan() -> None:
@@ -231,14 +261,14 @@ def fetch_zerochan_candidates(name: str, excluded_post_ids: set[int], limit: int
 
 def _danbooru_queries(name: str, anime_title: str) -> list[str]:
     queries: list[str] = []
-    franchise = "naruto" if "naruto" in anime_title.casefold() or "boruto" in anime_title.casefold() else ""
+    franchise = sorted(work_tags(anime_title))[0]
     for variant in zerochan_queries(name):
         tag = re.sub(r"[^a-z0-9]+", "_", variant.casefold()).strip("_")
         if not tag:
             continue
-        queries.append(tag)
         if franchise and "_" not in tag:
             queries.append(f"{tag}_({franchise})")
+        queries.append(tag)
     return list(dict.fromkeys(queries))
 
 
@@ -265,6 +295,8 @@ def fetch_danbooru_candidates(
             continue
         rows = payload if isinstance(payload, list) else []
         for post in rows:
+            if not matches_danbooru_identity(post, name, anime_title):
+                continue
             raw_post_id = int(post.get("id") or 0)
             stored_post_id = -raw_post_id
             if raw_post_id <= 0 or stored_post_id in excluded_post_ids:
@@ -307,28 +339,9 @@ def fetch_review_candidates(
     excluded_post_ids: set[int],
     limit: int,
 ) -> list[Candidate]:
-    global _ZEROCHAN_DISABLED_UNTIL
-    results: list[Candidate] = []
-    if time.monotonic() >= _ZEROCHAN_DISABLED_UNTIL:
-        try:
-            results = fetch_zerochan_candidates(name, excluded_post_ids, limit)
-        except RuntimeError:
-            _ZEROCHAN_DISABLED_UNTIL = time.monotonic() + 900
-            logger.warning("Zerochan temporarily disabled; using Danbooru fallback")
-    if len(results) < limit:
-        try:
-            results.extend(
-                fetch_danbooru_candidates(
-                    name,
-                    anime_title,
-                    excluded_post_ids,
-                    limit - len(results),
-                )
-            )
-        except RuntimeError:
-            if not results:
-                raise
-    return results[:limit]
+    # Zerochan's untyped tag list cannot prove that a search word names the
+    # requested character. Only use typed character AND copyright metadata.
+    return fetch_danbooru_candidates(name, anime_title, excluded_post_ids, limit)
 
 
 def seed_anime_review(anime_id: int) -> dict[str, int]:
@@ -368,12 +381,12 @@ def _next_queue_row(preferred_anime_id: int | None = None) -> dict[str, Any] | N
                 """
                 SELECT q.* FROM card_image_review_queue q
                 WHERE q.status = 'queued' AND q.round_no < %s
+                  AND q.anime_id=%s
                   AND NOT EXISTS (
                       SELECT 1 FROM card_image_review_queue active
                       WHERE active.status = 'reviewing'
                 )
                 ORDER BY
-                    CASE WHEN q.anime_id=%s THEN 0 ELSE 1 END,
                     q.anime_id,
                     q.position
                 LIMIT 1
@@ -570,6 +583,8 @@ def _retry_after_seconds(exc: RetryAfter) -> float:
 
 async def _send_review_photo(application, photo_bytes: bytes, filename: str, **kwargs):
     for attempt in range(4):
+        if application.bot_data.get("card_image_review_switching"):
+            raise RuntimeError("review_selection_changing")
         stream = io.BytesIO(photo_bytes)
         stream.name = filename
         try:
@@ -659,9 +674,16 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
             name="skip-empty-card-image-review",
         )
         return False
+    if application.bot_data.get("card_image_review_switching"):
+        return False
     stored = await asyncio.to_thread(_store_candidates, row, candidates)
     sent = 0
     for candidate in stored:
+        if application.bot_data.get("card_image_review_switching"):
+            break
+        current = await asyncio.to_thread(_candidate, int(candidate["id"]))
+        if not current or current["status"] != "pending" or current["queue_status"] != "reviewing":
+            break
         try:
             photo = await asyncio.to_thread(
                 _telegram_photo,
@@ -712,14 +734,15 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
 
 
 async def dispatch_next_character(application, preferred_anime_id: int | None = None) -> bool:
-    if preferred_anime_id is None:
-        preferred_anime_id = application.bot_data.get("card_image_review_preferred_anime_id")
-    lock = application.bot_data.get("card_image_review_dispatch_lock")
-    if lock is None:
-        lock = asyncio.Lock()
-        application.bot_data["card_image_review_dispatch_lock"] = lock
-    async with lock:
-        return await _dispatch_next_character(application, preferred_anime_id)
+    # Read the persisted selection AFTER acquiring the lock. Scheduled tasks
+    # from a previous anime cannot capture or restore an obsolete preference.
+    async with _dispatch_lock(application):
+        if application.bot_data.get("card_image_review_switching"):
+            return False
+        selected = await asyncio.to_thread(_selected_anime)
+        if selected is None:
+            return False
+        return await _dispatch_next_character(application, selected)
 
 
 def _approved_stale_proxy_rows() -> list[dict[str, Any]]:
@@ -897,6 +920,11 @@ async def image_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
     action, raw_id = match.groups()
     candidate_id = int(raw_id)
+    selected = await asyncio.to_thread(_selected_anime)
+    candidate = await asyncio.to_thread(_candidate, candidate_id)
+    if not candidate or selected != int(candidate["anime_id"]):
+        await query.answer("Lote antigo. Use as opções do anime selecionado em /fotos.", show_alert=True)
+        return
     if action == "a":
         pending_row = await asyncio.to_thread(_candidate, candidate_id)
         if not pending_row or pending_row["status"] != "pending" or pending_row["queue_status"] != "reviewing":
@@ -1003,15 +1031,26 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
             "exhausted": "sem opção aprovada",
         }
         lines = [f"• {labels.get(status, status)}: {total}" for status, total in sorted(counts.items())]
-        await message.reply_text("📊 Revisão de fotos\n" + "\n".join(lines))
+        selected = await asyncio.to_thread(_selected_anime)
+        await message.reply_text(f"📊 Revisão de fotos · anime ativo: {selected or 'nenhum'}\n" + "\n".join(lines))
         return
-    anime = find_anime(query)
+    data = await asyncio.to_thread(build_cards_final_data)
+    matches = [a for a in data["animes_list"] if
+               str(a["anime_id"]) == query or identity_key(a["anime"]) == identity_key(query)]
+    anime = matches[0] if len(matches) == 1 else None
     if not anime:
-        await message.reply_text("❌ Obra não encontrada nos cards.")
+        await message.reply_text("❌ Informe o nome completo e exato da obra ou o ID do anime.")
         return
-    result = await asyncio.to_thread(seed_anime_review, int(anime["anime_id"]))
-    resumed = await asyncio.to_thread(_resume_anime_review, int(anime["anime_id"]), True)
-    counts = await asyncio.to_thread(_anime_review_counts, int(anime["anime_id"]))
+    context.application.bot_data["card_image_review_switching"] = True
+    await message.reply_text(f"⏳ Selecionando {anime['anime']}; aguarde a confirmação.")
+    try:
+        async with _dispatch_lock(context.application):
+            result = await asyncio.to_thread(seed_anime_review, int(anime["anime_id"]))
+            resumed = await asyncio.to_thread(_resume_anime_review, int(anime["anime_id"]), True)
+            await asyncio.to_thread(_select_anime, int(anime["anime_id"]))
+            counts = await asyncio.to_thread(_anime_review_counts, int(anime["anime_id"]))
+    finally:
+        context.application.bot_data["card_image_review_switching"] = False
     await message.reply_text(
         f"✅ Fotos de {anime['anime']} iniciadas/retomadas.\n"
         f"Na fila: {counts.get('queued', 0)} · em avaliação: {counts.get('reviewing', 0)} · "
@@ -1028,7 +1067,7 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def card_image_review_worker(application) -> None:
     ensure_review_tables()
-    await _migrate_approved_stale_proxy_images()
+    # Review startup must not wait for unrelated image-storage migration.
     for anime_id in AUTO_ANIME_IDS:
         try:
             recovered = await asyncio.to_thread(_recover_failed_deliveries, anime_id)

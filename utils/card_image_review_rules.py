@@ -108,3 +108,42 @@ def score_danbooru_post(post: dict[str, Any]) -> float | None:
     score += min(max(0, int(post.get("fav_count") or 0)) / 15.0, 8.0)
     score += 2.0 * len(tags & ACTION_TAGS)
     return score
+
+
+def identity_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _ascii(value).casefold())
+
+
+def work_tags(title: str) -> set[str]:
+    key = identity_key(title)
+    aliases = {
+        "naruto": {"naruto"},
+        "narutoshippuuden": {"naruto"},
+        "narutoshippuden": {"naruto"},
+        "chainsawman": {"chainsaw_man"},
+        "onepiece": {"one_piece"},
+        "jujutsukaisen": {"jujutsu_kaisen"},
+        "kimetsunoyaiba": {"kimetsu_no_yaiba"},
+        "demonslayer": {"kimetsu_no_yaiba"},
+    }
+    return aliases.get(key, {re.sub(r"[^a-z0-9]+", "_", _ascii(title).casefold()).strip("_")})
+
+
+def matches_danbooru_identity(post: dict[str, Any], name: str, title: str) -> bool:
+    characters = str(post.get("tag_string_character") or "").split()
+    copyrights = str(post.get("tag_string_copyright") or "").split()
+    expected_works = {identity_key(tag) for tag in work_tags(title)}
+    # Require one identified character and one matching franchise; ambiguous
+    # names and generic tags such as 'beam' must never establish identity.
+    if len(characters) != 1 or not copyrights:
+        return False
+    if not all(identity_key(tag) in expected_works for tag in copyrights):
+        return False
+    tag = characters[0]
+    match = re.fullmatch(r"(.+?)_\((.+)\)", tag)
+    if match:
+        tag, qualifier = match.groups()
+        if identity_key(qualifier) not in expected_works:
+            return False
+    names = {identity_key(variant) for variant in zerochan_queries(name)}
+    return identity_key(tag) in names
