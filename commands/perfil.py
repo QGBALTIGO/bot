@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 import database as db
 from cards_service import get_character_by_id
+from utils.card_media_type import card_media_emoji
 from utils.gatekeeper import gatekeeper
 
 
@@ -188,6 +189,8 @@ def _get_favorite_from_settings(settings_row: dict):
             "id": int(fav_id),
             "name": str(ch.get("name") or "").strip(),
             "anime": str(ch.get("anime") or "").strip(),
+            "anime_id": ch.get("anime_id"),
+            "media_type": ch.get("media_type"),
             "image": str(ch.get("image") or "").strip(),
         }
     except Exception:
@@ -284,7 +287,7 @@ def _build_private_text(user_row: dict, settings_row: dict, favorite) -> str:
         f"👤 | <i>{role}</i> <b>{display_name}</b>\n\n"
         f"🔐 | <b>{t['private_profile']}</b>\n\n"
         f"❤️ <b>{t['favorite']}:</b>\n"
-        + (f"🧧 <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
+        + (f"{card_media_emoji(favorite)} <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
     )
 
 
@@ -305,7 +308,7 @@ def _build_public_text(user_row: dict, settings_row: dict, level: int, total_col
         f"🪙 | <i>{t['coins']}:</i> <b>{coins}</b>\n"
         f"⭐️ | <i>{t['level']}:</i> <b>{level}</b>\n\n"
         f"❤️ <b>{t['favorite']}:</b>\n"
-        + (f"🧧 <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
+        + (f"{card_media_emoji(favorite)} <b>{favorite['name']}</b>" if favorite else t["none_favorite"])
     )
 
 

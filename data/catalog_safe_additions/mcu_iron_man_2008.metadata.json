@@ -1,0 +1,23 @@
+{
+  "schema": "source.mcu-collection.v1",
+  "universe": "Marvel Cinematic Universe",
+  "franchise": "Homem de Ferro",
+  "media_type": "filme",
+  "title": "Homem de Ferro",
+  "release_year": 2008,
+  "catalog_work_id": 900000001,
+  "source": {
+    "name": "MCUAPI",
+    "repository": "https://github.com/AugustoMarcelo/mcuapi",
+    "movie_id": 1
+  },
+  "characters": [
+    {"source_character_id": 1, "catalog_character_id": 910000001, "role": "heroi"},
+    {"source_character_id": 7, "catalog_character_id": 910000007, "role": "aliado"},
+    {"source_character_id": 8, "catalog_character_id": 910000008, "role": "heroi"},
+    {"source_character_id": 9, "catalog_character_id": 910000009, "role": "aliado"},
+    {"source_character_id": 10, "catalog_character_id": 910000010, "role": "aliado"},
+    {"source_character_id": 11, "catalog_character_id": 910000011, "role": "aliado"},
+    {"source_character_id": 227, "catalog_character_id": 910000227, "role": "vilao"}
+  ]
+}

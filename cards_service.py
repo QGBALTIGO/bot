@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from utils.public_character_image import character_portrait_url
+from utils.card_media_type import normalize_card_media_type
 
 from database import (
     delete_global_character_image,
@@ -300,6 +301,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             anime_obj = {
                 "anime_id": anime_id,
                 "anime": anime_name,
+                "media_type": "anime",
                 "banner_image": banner_image,
                 "cover_image": cover_image,
                 "characters": [],
@@ -334,6 +336,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                     "image": image,
                     "anime_id": anime_id,
                     "anime": anime_name,
+                    "media_type": anime_obj["media_type"],
                 }
 
                 characters_by_id[cid] = char_obj
@@ -354,6 +357,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             anime_obj = {
                 "anime_id": anime_id,
                 "anime": anime_name,
+                "media_type": normalize_card_media_type(anime.get("media_type")),
                 "banner_image": str(anime.get("banner_image") or "").strip(),
                 "cover_image": str(anime.get("cover_image") or "").strip(),
                 "characters": [],
@@ -378,6 +382,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 anime_obj = {
                     "anime_id": anime_id,
                     "anime": anime_name,
+                    "media_type": normalize_card_media_type(ch.get("media_type")),
                     "banner_image": "",
                     "cover_image": "",
                     "characters": [],
@@ -413,6 +418,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
                 "image": image,
                 "anime_id": anime_id,
                 "anime": anime_name,
+                "media_type": anime_obj["media_type"],
             }
 
             characters_by_id[cid] = char_obj
@@ -433,6 +439,7 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             anime_final = {
                 "anime_id": anime_obj["anime_id"],
                 "anime": anime_obj["anime"],
+                "media_type": anime_obj.get("media_type", "anime"),
                 "banner_image": anime_obj.get("banner_image", ""),
                 "cover_image": anime_obj.get("cover_image", ""),
                 "characters_count": len(chars),

@@ -23,6 +23,7 @@ from database import (
     resolve_dice_roll,
 )
 from utils.web_image_url import web_image_url
+from utils.card_media_type import card_media_emoji
 from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
 
 
@@ -58,6 +59,7 @@ def _anime_pool() -> list[dict[str, Any]]:
                 "cover": web_image_url(
                     (anime or {}).get("cover_image") or (anime or {}).get("banner_image")
                 ),
+                "media_type": str((anime or {}).get("media_type") or "anime"),
             }
         )
     return pool
@@ -78,6 +80,8 @@ def _character_from_anime(anime_id: int) -> Optional[dict[str, Any]]:
         "name": str(item.get("name") or "Personagem"),
         "image": web_image_url(item.get("image")),
         "anime_title": str(item.get("anime") or "Anime"),
+        "anime_id": int(item.get("anime_id") or anime_id),
+        "media_type": str(item.get("media_type") or "anime"),
         "anime_cover": web_image_url(
             ((data.get("animes_by_id") or {}).get(int(anime_id)) or {}).get("cover_image")
         ),
@@ -148,9 +152,10 @@ def _deliver_dado_reward(user_id: int, roll_id: int, character: dict[str, Any]) 
     anime_title = escape(str(character.get("anime_title") or "Anime"))
     tier = escape(str(character.get("tier") or ""))
     photo = _dado_reward_photo(character_id, str(character.get("image") or ""))
+    media_emoji = card_media_emoji(character)
     caption = (
         "🎁 <b>VOCÊ GANHOU!</b>\n\n"
-        f"🧧 <code>{character_id}</code>. <b>{name}</b>\n"
+        f"{media_emoji} <code>{character_id}</code>. <b>{name}</b>\n"
         f"<i>{anime_title}</i>\n"
         + (f"⭐ <b>{tier}</b>\n" if tier else "")
         + "\n📦 <b>Adicionado à sua coleção!</b>"
@@ -325,6 +330,8 @@ def build_aninexus_dado_router() -> APIRouter:
                 "name": str(item.get("name") or "Personagem"),
                 "image": web_image_url(item.get("image")),
                 "anime_title": str(item.get("anime") or "Anime"),
+                "anime_id": int(item.get("anime_id") or anime_id),
+                "media_type": str(item.get("media_type") or "anime"),
                 "anime_cover": "",
             }
         else:

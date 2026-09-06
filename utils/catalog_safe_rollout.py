@@ -63,6 +63,7 @@ def load_safe_additions(manifest_path: Path = DEFAULT_MANIFEST) -> dict[str, Any
             {
                 "anime_id": anime_id,
                 "anime": anime_name,
+                "media_type": str(row.get("media_type") or "anime").strip().lower(),
                 "banner_image": str(row.get("banner_image") or "").strip(),
                 "cover_image": str(row.get("cover_image") or "").strip(),
             }

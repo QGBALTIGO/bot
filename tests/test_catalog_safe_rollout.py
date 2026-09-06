@@ -18,14 +18,43 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_real_safe_rollout_manifest_is_complete_and_curated():
     safe = load_safe_additions()
-    assert safe["character_count"] == 493
-    assert {int(row["anime_id"]) for row in safe["custom_animes"]} == {20, 147105}
+    assert safe["character_count"] == 500
+    assert {int(row["anime_id"]) for row in safe["custom_animes"]} == {
+        20,
+        147105,
+        900000001,
+    }
 
     ids = {int(row["id"]) for row in safe["custom_characters"]}
     assert {17, 13, 85, 53901, 129840, 129841}.issubset(ids)
     assert 302593 not in ids
     assert 302594 not in ids
     assert 368004 not in ids
+
+
+def test_mcu_pilot_is_one_small_movie_collection_with_stable_portraits():
+    safe = load_safe_additions()
+    work = next(
+        row for row in safe["custom_animes"] if int(row["anime_id"]) == 900000001
+    )
+    characters = [
+        row
+        for row in safe["custom_characters"]
+        if int(row["anime_id"]) == 900000001
+    ]
+
+    assert {int(row["id"]) for row in characters} == {
+        910000001,
+        910000007,
+        910000008,
+        910000009,
+        910000010,
+        910000011,
+        910000227,
+    }
+    assert len(characters) == 7
+    assert work["media_type"] == "movie"
+    assert all(str(row["image"]).startswith("https://files.catbox.moe/") for row in characters)
 
 
 def test_manual_overrides_and_deletions_keep_priority_over_safe_rollout():
@@ -100,6 +129,6 @@ def test_sitecustomize_activates_rollout_when_pythonpath_and_flag_are_set(tmp_pa
         capture_output=True,
         text=True,
     )
-    assert "CATALOG_SAFE_ROLLOUT active characters=493 animes=2 retirements_disabled=0" in result.stdout
+    assert "CATALOG_SAFE_ROLLOUT active characters=500 animes=3 retirements_disabled=0" in result.stdout
     assert f"OVERRIDE={output}" in result.stdout
     assert output.exists()

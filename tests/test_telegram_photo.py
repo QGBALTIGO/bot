@@ -40,7 +40,7 @@ async def test_remote_photo_is_uploaded_once_then_reuses_telegram_file_id(monkey
         calls += 1
         return _jpeg(), "image/jpeg", url
 
-    monkeypatch.setattr(telegram_photo, "fetch_public_image", fake_fetch)
+    monkeypatch.setattr(telegram_photo, "fetch_compatible_public_image", fake_fetch)
     telegram_photo._FILE_ID_CACHE.clear()
     message = _Message()
     url = "https://images.example/card.jpg"

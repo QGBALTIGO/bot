@@ -1,0 +1,14 @@
+{
+  "schema": "source.catalog-safe-additions.part.v1",
+  "collection": "MCU • Homem de Ferro (2008)",
+  "source": "MCUAPI movie 1",
+  "characters": [
+    [910000001, 900000001, "Tony Stark (Homem de Ferro)", "https://files.catbox.moe/h41u3h.jpg"],
+    [910000007, 900000001, "Nick Fury", "https://files.catbox.moe/xi0svj.jpg"],
+    [910000008, 900000001, "James Rhodes (Máquina de Combate)", "https://files.catbox.moe/jrb6pw.jpg"],
+    [910000009, 900000001, "Pepper Potts", "https://files.catbox.moe/bho8lt.jpg"],
+    [910000010, 900000001, "Happy Hogan", "https://files.catbox.moe/jjzqtb.jpg"],
+    [910000011, 900000001, "Phil Coulson", "https://files.catbox.moe/5ch8gd.jpg"],
+    [910000227, 900000001, "Obadiah Stane (Monge de Ferro)", "https://files.catbox.moe/jmp9jt.jpg"]
+  ]
+}
