@@ -138,6 +138,25 @@ def _selected_anime() -> int | None:
             return int(row[0]) if row else None
 
 
+def _queue_diagnostic() -> dict[str, Any]:
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT anime_id FROM card_image_review_selection WHERE singleton=TRUE")
+            selection = cur.fetchone()
+            cur.execute("""SELECT q.character_id, q.character_name, q.anime_id,
+                q.round_no, q.updated_at::text,
+                COUNT(c.id) FILTER (WHERE c.status='pending' AND c.channel_message_id IS NOT NULL) AS delivered,
+                COUNT(c.id) FILTER (WHERE c.status='pending' AND c.channel_message_id IS NULL) AS undelivered
+                FROM card_image_review_queue q
+                LEFT JOIN card_image_review_candidates c ON c.character_id=q.character_id
+                WHERE q.status='reviewing'
+                GROUP BY q.character_id ORDER BY q.character_id LIMIT 10""")
+            active = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT anime_id, status, COUNT(*) AS total FROM card_image_review_queue GROUP BY anime_id, status")
+            counts = [dict(row) for row in cur.fetchall()]
+    return {"selection": dict(selection) if selection else None, "active": active, "counts": counts}
+
+
 def _select_anime(anime_id: int) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -1066,10 +1085,12 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def card_image_review_worker(application) -> None:
-    ensure_review_tables()
+    await asyncio.to_thread(ensure_review_tables)
+    print("[photo-review] startup " + json.dumps(await asyncio.to_thread(_queue_diagnostic)), flush=True)
     # Review startup must not wait for unrelated image-storage migration.
     for anime_id in AUTO_ANIME_IDS:
         try:
+            print(f"[photo-review] seeding anime={anime_id}", flush=True)
             recovered = await asyncio.to_thread(_recover_failed_deliveries, anime_id)
             if recovered:
                 logger.info("Recovered failed image review deliveries anime=%s total=%s", anime_id, recovered)
@@ -1078,6 +1099,7 @@ async def card_image_review_worker(application) -> None:
             logger.exception("Could not seed automatic card image review anime=%s", anime_id)
     while True:
         try:
+            print("[photo-review] tick " + json.dumps(await asyncio.to_thread(_queue_diagnostic)), flush=True)
             await dispatch_next_character(application)
         except asyncio.CancelledError:
             raise
