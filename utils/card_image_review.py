@@ -127,6 +127,7 @@ def ensure_review_tables() -> None:
                     anime_id BIGINT NOT NULL
                 )
             """)
+            cur.execute("ALTER TABLE card_image_review_selection ADD COLUMN IF NOT EXISTS completion_notified BOOLEAN NOT NULL DEFAULT FALSE")
         conn.commit()
 
 
@@ -162,8 +163,45 @@ def _select_anime(anime_id: int) -> None:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO card_image_review_selection(singleton, anime_id)
                 VALUES (TRUE, %s) ON CONFLICT(singleton)
-                DO UPDATE SET anime_id=EXCLUDED.anime_id""", (anime_id,))
+                DO UPDATE SET anime_id=EXCLUDED.anime_id, completion_notified=FALSE""", (anime_id,))
         conn.commit()
+
+
+def _completion_summary(anime_id: int) -> tuple[str, bool] | None:
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT completion_notified FROM card_image_review_selection WHERE singleton=TRUE AND anime_id=%s", (anime_id,))
+            selection = cur.fetchone()
+            if not selection:
+                return None
+            cur.execute("SELECT character_name, anime_title, status FROM card_image_review_queue WHERE anime_id=%s ORDER BY position", (anime_id,))
+            rows = [dict(row) for row in cur.fetchall()]
+    if any(row['status'] in ('queued', 'reviewing') for row in rows):
+        return None
+    title = rows[0]['anime_title'] if rows else str(anime_id)
+    approved = sum(row['status'] == 'approved' for row in rows)
+    missing = [row['character_name'] for row in rows if row['status'] == 'exhausted']
+    message = f"📋 Rodada de fotos encerrada: {title}\n✅ Aprovados: {approved}\n🔎 Sem nova opção aprovada: {len(missing)}"
+    if missing:
+        message += "\n\n" + "\n".join(f"• {name}" for name in missing)
+        message += "\n\nA busca não encontrou mais opções aceitas pelos filtros ou as rodadas foram rejeitadas. As fotos atuais foram mantidas."
+    message += "\n\nUse /fotos seguido do nome exato da obra para tentar outra rodada ou escolher outro anime."
+    return message[:4000], bool(selection['completion_notified'])
+
+
+def _mark_completion_notified(anime_id: int) -> None:
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE card_image_review_selection SET completion_notified=TRUE WHERE singleton=TRUE AND anime_id=%s", (anime_id,))
+        conn.commit()
+
+
+async def _notify_completion(application, anime_id: int) -> None:
+    summary = await asyncio.to_thread(_completion_summary, anime_id)
+    if summary and not summary[1]:
+        await application.bot.send_message(chat_id=REVIEW_CHANNEL, text=summary[0])
+        await asyncio.to_thread(_mark_completion_notified, anime_id)
+        print(f"[photo-review] completion notified anime={anime_id}", flush=True)
 
 
 def _dispatch_lock(application):
@@ -655,6 +693,7 @@ async def _dispatch_next_character(application, preferred_anime_id: int | None =
         return False
     row = await asyncio.to_thread(_next_queue_row, preferred_anime_id)
     if not row:
+        await _notify_completion(application, preferred_anime_id)
         return False
     current_overrides = await asyncio.to_thread(get_all_global_character_images)
     if int(row["character_id"]) in current_overrides:
@@ -1038,7 +1077,16 @@ async def review_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     if query.casefold() == "status":
-        counts = await asyncio.to_thread(_review_counts)
+        await asyncio.to_thread(ensure_review_tables)
+        selected = await asyncio.to_thread(_selected_anime)
+        if selected is None:
+            await message.reply_text("Nenhum anime selecionado. Use /fotos seguido do nome da obra.")
+            return
+        summary = await asyncio.to_thread(_completion_summary, selected)
+        if summary:
+            await message.reply_text(summary[0])
+            return
+        counts = await asyncio.to_thread(_anime_review_counts, selected)
         if not counts:
             await message.reply_text("Ainda não há nenhuma revisão preparada.")
             return
@@ -1099,7 +1147,6 @@ async def card_image_review_worker(application) -> None:
             logger.exception("Could not seed automatic card image review anime=%s", anime_id)
     while True:
         try:
-            print("[photo-review] tick " + json.dumps(await asyncio.to_thread(_queue_diagnostic)), flush=True)
             await dispatch_next_character(application)
         except asyncio.CancelledError:
             raise

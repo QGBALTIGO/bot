@@ -82,3 +82,25 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CompletionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_completion_is_sent_once(self):
+        notified = []
+        messages = []
+        async def send_message(**kwargs): messages.append(kwargs['text'])
+        fn = load_function('_notify_completion', asyncio=asyncio, REVIEW_CHANNEL='review',
+            _completion_summary=lambda anime: ('Fim: 8 aprovados, 8 sem opções', bool(notified)),
+            _mark_completion_notified=lambda anime: notified.append(anime))
+        app = SimpleNamespace(bot=SimpleNamespace(send_message=send_message))
+        await fn(app, 127230)
+        await fn(app, 127230)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(notified, [127230])
+
+    async def test_active_queue_does_not_notify(self):
+        async def send_message(**kwargs): self.fail('queue still active')
+        fn = load_function('_notify_completion', asyncio=asyncio, REVIEW_CHANNEL='review',
+            _completion_summary=lambda anime: None,
+            _mark_completion_notified=lambda anime: self.fail('must not mark'))
+        await fn(SimpleNamespace(bot=SimpleNamespace(send_message=send_message)), 20)
