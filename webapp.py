@@ -3821,29 +3821,35 @@ def baltigoflix_checkout_pending():
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>BaltigoFlix • Checkout</title>
+  <meta name="theme-color" content="#09090b"/>
+  <meta name="color-scheme" content="dark"/>
+  <title>BaltigoFlix • Checkout | AniNexus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     body{
       margin:0;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-      background:#060913;
-      color:#f4f7ff;
+      font-family:"Outfit","Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:radial-gradient(760px 360px at 92% -12%,rgba(59,130,246,.12),transparent 60%),#09090b;
+      color:#fafafa;
       display:flex;
       align-items:center;
       justify-content:center;
-      min-height:100vh;
+      min-height:100svh;
       padding:24px;
     }
     .card{
       width:100%;
       max-width:560px;
-      border:1px solid rgba(255,255,255,.10);
-      border-radius:24px;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
       padding:24px;
-      background:rgba(255,255,255,.04);
+      background:#18181b;
+      box-shadow:0 24px 70px rgba(0,0,0,.44);
     }
     h1{margin:0 0 10px;font-size:28px}
-    p{margin:0 0 12px;line-height:1.6;color:rgba(244,247,255,.75)}
+    p{margin:0 0 12px;line-height:1.6;color:#a1a1aa}
   </style>
 </head>
 <body>

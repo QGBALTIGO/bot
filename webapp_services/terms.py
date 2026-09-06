@@ -203,49 +203,60 @@ TERMS_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>__TITLE__</title>
+<meta name="theme-color" content="#09090b" />
+<meta name="color-scheme" content="dark" />
+<title>__TITLE__ | AniNexus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
-    --text: #e7eaf3;
-    --muted: rgba(231,234,243,0.75);
-    --glass: rgba(12, 16, 28, 0.62);
-    --stroke: rgba(255,255,255,0.10);
+    color-scheme:dark;
+    --text: #fafafa;
+    --muted: #a1a1aa;
+    --glass: rgba(24,24,27,0.94);
+    --stroke: rgba(255,255,255,0.08);
     --stroke2: rgba(255,255,255,0.16);
-    --okbg: #4ade80;
-    --oktxt: #052e16;
+    --accent:#3b82f6;
+    --okbg: #3b82f6;
+    --oktxt: #ffffff;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
   }
 
   body {
     margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    min-height:100svh;
+    font-family:"Outfit","Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     color:var(--text);
     background:
-      linear-gradient(180deg, rgba(0,0,0,0.62), rgba(0,0,0,0.78)),
+      linear-gradient(180deg, rgba(9,9,11,0.68), rgba(9,9,11,0.90)),
       url("__BGURL__") center/cover no-repeat fixed,
-      radial-gradient(1200px 700px at 20% 10%, rgba(59,130,246,0.16), transparent 60%),
-      radial-gradient(900px 600px at 80% 30%, rgba(168,85,247,0.14), transparent 60%),
-      radial-gradient(900px 600px at 50% 90%, rgba(16,185,129,0.10), transparent 60%),
-      #050712;
+      radial-gradient(900px 460px at 90% -10%, rgba(59,130,246,0.14), transparent 62%),
+      #09090b;
+    letter-spacing:-.011em;
+    -webkit-font-smoothing:antialiased;
   }
 
   body:before{
     content:"";
     position:fixed; inset:0;
     background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
-    background-size: 42px 42px;
-    opacity:0.18;
+    background-size: 24px 24px;
+    opacity:0.24;
     pointer-events:none;
   }
 
-  .wrap { max-width:760px; margin:0 auto; padding:18px; position:relative; z-index:1; }
+  .wrap { max-width:760px; margin:0 auto; padding:calc(14px + var(--safe-top)) 14px calc(24px + var(--safe-bottom)); position:relative; z-index:1; }
 
   .card {
     background:var(--glass);
     border:1px solid var(--stroke);
-    border-radius:22px;
+    border-radius:16px;
     overflow:hidden;
     box-shadow:0 18px 40px rgba(0,0,0,0.40);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px);
   }
 
   .banner {
@@ -267,7 +278,7 @@ TERMS_HTML = """<!doctype html>
   .top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
   .brand { display:flex; align-items:center; gap:10px; }
   .badge {
-    width:38px; height:38px; border-radius:14px;
+    width:38px; height:38px; border-radius:8px;
     background:rgba(59,130,246,0.16);
     border:1px solid rgba(59,130,246,0.26);
     display:flex; align-items:center; justify-content:center;
@@ -280,7 +291,7 @@ TERMS_HTML = """<!doctype html>
     display:flex; align-items:center; gap:10px;
     background:rgba(255,255,255,0.06);
     border:1px solid var(--stroke);
-    padding:10px 14px; border-radius:14px;
+    padding:10px 14px; border-radius:8px;
     cursor:pointer; user-select:none;
   }
   .langIcon { font-size:13px; opacity:.9; }
@@ -291,7 +302,7 @@ TERMS_HTML = """<!doctype html>
     width:56px; text-align:center;
     background:rgba(255,255,255,0.06);
     border:1px solid var(--stroke);
-    padding:10px 0; border-radius:14px;
+    padding:10px 0; border-radius:8px;
     font-size:13px; font-weight:900;
     cursor:pointer;
   }
@@ -300,22 +311,22 @@ TERMS_HTML = """<!doctype html>
   .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
 
   .section {
-    background:rgba(255,255,255,0.04);
+    background:#0c0c0e;
     border:1px solid rgba(255,255,255,0.08);
-    border-radius:18px;
+    border-radius:12px;
     padding:14px;
     margin:12px 0;
   }
-  .sectionTitle { font-weight:900; letter-spacing:.5px; font-size:14px; margin-bottom:8px; }
-  .sectionText { color:rgba(231,234,243,0.86); line-height:1.48; font-size:13.5px; }
+  .sectionTitle { font-weight:900; letter-spacing:.08em; font-size:12px; margin-bottom:8px; text-transform:uppercase; }
+  .sectionText { color:#d4d4d8; line-height:1.48; font-size:13.5px; }
 
   .divider { height:1px; background:rgba(255,255,255,0.10); margin:14px 0; }
 
   label { display:flex; gap:12px; align-items:flex-start; font-size:14px; margin:12px 0; color:rgba(231,234,243,0.92); }
-  input[type="checkbox"] { margin-top:3px; transform:scale(1.15); }
+  input[type="checkbox"] { margin-top:3px; transform:scale(1.15); accent-color:var(--accent); }
 
   .actions { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
-  button { border:0; border-radius:18px; padding:14px 12px; font-weight:900; cursor:pointer; letter-spacing:.6px; }
+  button { border:0; border-radius:8px; padding:14px 12px; font-weight:900; cursor:pointer; letter-spacing:.08em; text-transform:uppercase; }
 
   .accept { background:var(--okbg); color:var(--oktxt); opacity:0.45; cursor:not-allowed; }
   .decline { background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--stroke2); }
@@ -323,19 +334,19 @@ TERMS_HTML = """<!doctype html>
   .msg { margin-top:10px; font-size:14px; color:rgba(231,234,243,0.92); min-height:18px; }
 
   .colBlock {
-    background: rgba(255,255,255,0.04);
+    background: #0c0c0e;
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px;
+    border-radius: 12px;
     padding: 14px;
     margin: 12px 0;
   }
   .colTitle { font-weight: 900; letter-spacing: .5px; font-size: 14px; margin-bottom: 8px; }
-  .colText { color: rgba(231,234,243,0.86); line-height: 1.48; font-size: 13.5px; margin-bottom: 12px; }
+  .colText { color: #d4d4d8; line-height: 1.48; font-size: 13.5px; margin-bottom: 12px; }
   .rowBtns { display:flex; gap: 10px; flex-wrap: wrap; }
 
   .smallBtn {
     border: 0;
-    border-radius: 16px;
+    border-radius: 8px;
     padding: 12px 14px;
     font-weight: 900;
     cursor: pointer;
@@ -349,8 +360,9 @@ TERMS_HTML = """<!doctype html>
     justify-content:center;
   }
   .smallBtnPrimary {
-    background: rgba(74,222,128,0.18);
-    border: 1px solid rgba(74,222,128,0.35);
+    background: rgba(59,130,246,0.16);
+    border: 1px solid rgba(59,130,246,0.34);
+    color:#dbeafe;
   }
   .smallBtnOk {
     background: rgba(74,222,128,0.24);
@@ -423,7 +435,14 @@ TERMS_HTML = """<!doctype html>
   let channel_ok = false;
 
   const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-  if (tg) { try { tg.ready(); } catch (e) {} }
+  if (tg) {
+    try {
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor("#09090b");
+      tg.setBackgroundColor("#09090b");
+    } catch (e) {}
+  }
 
   const langPill = document.getElementById("langPill");
   const langMenu = document.getElementById("langMenu");
