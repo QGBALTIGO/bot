@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 
 from utils.runtime_guard import lock_manager, rate_limiter
 from utils.telegram_photo import reply_photo_from_url
+from utils.card_media_type import card_media_emoji
 
 from database import (
     get_card_owner_count,
@@ -155,6 +156,8 @@ def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
                 "name": str(ch.get("name") or "Sem nome"),
                 "image": ch.get("image"),
                 "anime": str(anime_name),
+                "anime_id": ch.get("anime_id"),
+                "media_type": ch.get("media_type"),
             }
 
     if query.isdigit():
@@ -166,6 +169,8 @@ def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
                 "name": str(ch.get("name") or "Sem nome"),
                 "image": ch.get("image"),
                 "anime": str(anime_name),
+                "anime_id": ch.get("anime_id"),
+                "media_type": ch.get("media_type"),
             }
 
     results = search_characters(query, limit=25)
@@ -182,6 +187,8 @@ def _pick_best_character(query: str) -> Optional[Dict[str, Any]]:
             "name": str(item.get("name") or "Sem nome"),
             "image": item.get("image"),
             "anime": str(anime_name),
+            "anime_id": item.get("anime_id"),
+            "media_type": item.get("media_type"),
         })
 
     def score(item: Dict[str, Any]):
@@ -234,6 +241,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = str(char.get("name") or "Sem nome")
         anime = str(char.get("anime") or "Obra desconhecida")
         image = str(char.get("image") or "").strip()
+        card_emoji = card_media_emoji(char)
 
         qty = int(get_user_card_quantity(user_id, char_id) or 0)
         emoji = get_dup_emoji(qty)
@@ -243,7 +251,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_copies = int(get_card_total_copies(char_id) or 0)
 
         caption = (
-            f"╭─ 🧧 Card <code>#{char_id}</code>\n"
+            f"╭─ {card_emoji} Card <code>#{char_id}</code>\n"
             f"│\n"
             f"│ 👤 <b>{name}{emoji}</b>\n"
             f"│ 🎬 {anime}\n"

@@ -13,6 +13,7 @@ from telegram.ext import ContextTypes
 
 import database as db
 from cards_service import build_cards_final_data, find_anime
+from utils.card_media_type import card_media_emoji
 
 
 # =========================================================
@@ -146,6 +147,7 @@ def get_user_cards(uid: int):
                 "name": ch.get("name", "Sem nome"),
                 "anime": ch.get("anime", "Obra desconhecida"),
                 "anime_id": ch.get("anime_id"),
+                "media_type": ch.get("media_type"),
                 "image": ch.get("image"),
             }
         )
@@ -262,7 +264,7 @@ def build_collection_text(uid, cards, page):
         emoji = duplicate_emoji(c["quantity"])
 
         text += (
-            f"🧧 <code>{cid}</code>. "
+            f"{card_media_emoji(c)} <code>{cid}</code>. "
             f"<b>{c['name']}</b>{emoji} — "
             f"<i>{c['anime']}</i>\n"
         )
@@ -391,7 +393,7 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False, 
     for c in items:
         emoji = duplicate_emoji(c["quantity"])
         text += (
-            f"🧧 <code>{c['character_id']}</code>. "
+            f"{card_media_emoji(c, anime_id=anime_id)} <code>{c['character_id']}</code>. "
             f"<b>{c['name']}</b>{emoji}\n"
         )
 
@@ -547,7 +549,7 @@ async def send_collection_gallery(update, context, anime, index, edit=False, tar
     owned_total = sum(1 for c in chars if int(c.get("id") or 0) in owned)
 
     emoji = duplicate_emoji(qty)
-    prefix = "🧧" if qty else "❔"
+    prefix = card_media_emoji(ch, anime_id=anime_id) if qty else "❔"
 
     caption = (
         f"🖼 <b>{anime['anime']}</b>\n\n"

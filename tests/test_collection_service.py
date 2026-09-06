@@ -95,6 +95,8 @@ def test_collection_cards_preserve_quantity_metadata_and_sorting() -> None:
         "name": "Alpha",
         "anime_id": 10,
         "anime": "Anime A",
+        "media_type": "anime",
+        "media_emoji": "🧧",
         "image": "https://img.anili.st/character/2",
         "subcategory": "Support",
     }

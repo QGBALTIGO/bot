@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.web_image_url import web_image_url
+from utils.card_media_type import card_media_emoji
 from webapp_services.profile_overview import build_menu_user_payload
 
 CollectionLoader = Callable[[int], List[Dict[str, Any]]]
@@ -77,6 +78,8 @@ def collection_cards_from_snapshot(
             "name": str(meta.get("name") or f"Personagem {cid}"),
             "anime_id": int(meta.get("anime_id") or 0),
             "anime": str(meta.get("anime") or "Obra desconhecida"),
+            "media_type": str(meta.get("media_type") or "anime"),
+            "media_emoji": card_media_emoji(meta),
             "image": web_image_url(meta.get("image")),
             "subcategory": str(subcategory_map.get(int(cid)) or "").strip(),
         })
@@ -118,6 +121,8 @@ def collection_animes_from_snapshot(
         items.append({
             "anime_id": int(anime_id),
             "anime": anime_name,
+            "media_type": str(anime_meta.get("media_type") or "anime"),
+            "media_emoji": card_media_emoji(anime_meta, anime_id=anime_id),
             "owned_count": int(owned_count),
             "total_count": int(total_count),
             "missing_count": int(missing_count),
@@ -161,6 +166,8 @@ def collection_detail_from_snapshot(
             "name": str(meta.get("name") or f"Personagem {cid}"),
             "anime_id": anime_id,
             "anime": anime_name,
+            "media_type": str(meta.get("media_type") or anime_meta.get("media_type") or "anime"),
+            "media_emoji": card_media_emoji(meta, anime_id=anime_id),
             "image": web_image_url(meta.get("image")),
             "subcategory": str(subcategory_map.get(cid) or "").strip(),
             "quantity": qty,
@@ -190,6 +197,8 @@ def collection_detail_from_snapshot(
         "anime": {
             "anime_id": anime_id,
             "anime": anime_name,
+            "media_type": str(anime_meta.get("media_type") or "anime"),
+            "media_emoji": card_media_emoji(anime_meta, anime_id=anime_id),
             "cover_image": web_image_url(anime_meta.get("cover_image") or anime_meta.get("banner_image")),
             "banner_image": web_image_url(anime_meta.get("banner_image") or anime_meta.get("cover_image")),
         },

@@ -34,6 +34,9 @@ def test_real_safe_rollout_manifest_is_complete_and_curated():
 
 def test_mcu_pilot_is_one_small_movie_collection_with_stable_portraits():
     safe = load_safe_additions()
+    work = next(
+        row for row in safe["custom_animes"] if int(row["anime_id"]) == 900000001
+    )
     characters = [
         row
         for row in safe["custom_characters"]
@@ -50,6 +53,7 @@ def test_mcu_pilot_is_one_small_movie_collection_with_stable_portraits():
         910000227,
     }
     assert len(characters) == 7
+    assert work["media_type"] == "movie"
     assert all(str(row["image"]).startswith("https://files.catbox.moe/") for row in characters)
 
 

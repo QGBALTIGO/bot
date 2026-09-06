@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from utils.telegram_webapp_auth import TelegramWebAppAuthError, validate_telegram_init_data
 from utils.web_image_url import web_image_url
+from utils.card_media_type import card_media_emoji
 from webapp_services.collection import (
     collection_cards_from_snapshot,
     collection_snapshot,
@@ -147,6 +148,8 @@ def _character_payload(meta: dict[str, Any], quantity: int = 0) -> dict[str, Any
         "id": str(cid),
         "name": str(meta.get("name") or f"Character {cid}"),
         "anime": str(meta.get("anime") or "Unknown"),
+        "media_type": str(meta.get("media_type") or "anime"),
+        "media_emoji": card_media_emoji(meta),
         "rarity": rarity,
         "img_url": image,
         "zenith_price": int(meta.get("zenith_price") or 0),

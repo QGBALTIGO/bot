@@ -30,6 +30,7 @@
     {
       "anime_id": 900000001,
       "anime": "MCU • Homem de Ferro (2008)",
+      "media_type": "movie",
       "banner_image": "https://files.catbox.moe/m4cbz3.jpg",
       "cover_image": "https://files.catbox.moe/fdpthy.jpg",
       "_catalog_source": "mcuapi_movie_1_pilot_v1"
