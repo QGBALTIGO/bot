@@ -15,7 +15,7 @@ def _font_links() -> str:
     return """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 """
 
 
@@ -866,6 +866,423 @@ button{ appearance:none; -webkit-tap-highlight-color:transparent; }
     )
 
 
+def _aninexus_theme_css() -> str:
+    """Shared visual contract used by every legacy WebApp route.
+
+    The React MiniApp mounted at ``/menu`` is the source of truth.  These
+    overrides intentionally sit after each page's local CSS so catalogues,
+    shop, requests and utility pages cannot drift back to the old pink/blue
+    presentation.
+    """
+
+    return r"""
+:root{
+  --bg:#09090b;
+  --bg-2:#0c0c0e;
+  --surface:rgba(24,24,27,.94);
+  --surface-2:rgba(39,39,42,.82);
+  --surface-soft:rgba(255,255,255,.035);
+  --border:rgba(255,255,255,.08);
+  --border-strong:rgba(255,255,255,.16);
+  --text:#fafafa;
+  --muted:#71717a;
+  --muted-strong:#a1a1aa;
+  --accent:#3b82f6;
+  --accent-cool:#60a5fa;
+  --ok:#10b981;
+  --danger:#ef4444;
+  --shadow-lg:0 24px 70px rgba(0,0,0,.44);
+  --shadow-md:0 12px 30px rgba(0,0,0,.24);
+  --radius-xl:16px;
+  --radius-lg:12px;
+  --radius-md:8px;
+  --nx-header-height:56px;
+}
+html{ background:#09090b; color-scheme:dark; }
+body{
+  min-height:100svh;
+  color:var(--text);
+  font-family:"Outfit","Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(760px 360px at 92% -12%,rgba(59,130,246,.12),transparent 60%),
+    radial-gradient(620px 340px at -12% 32%,rgba(59,130,246,.055),transparent 62%),
+    #09090b;
+  letter-spacing:-.011em;
+}
+body::before{
+  background-image:radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);
+  background-size:24px 24px;
+  opacity:.34;
+  mask-image:linear-gradient(180deg,rgba(0,0,0,.88),transparent 88%);
+}
+body::after{ background:linear-gradient(180deg,rgba(9,9,11,.02),rgba(9,9,11,.30)); }
+body.nx-drawer-open{ overflow:hidden; }
+.app-shell{
+  width:min(1120px,100%);
+  padding:20px 20px calc(28px + var(--safe-bottom));
+}
+.hero-card,
+.hero-card.hero-card--compact{
+  min-height:224px;
+  border-radius:16px;
+  border-color:var(--border);
+  background:linear-gradient(180deg,rgba(24,24,27,.86),rgba(12,12,14,.96));
+  box-shadow:var(--shadow-lg);
+}
+.hero-overlay{
+  background:
+    linear-gradient(180deg,rgba(9,9,11,.16),rgba(9,9,11,.90)),
+    linear-gradient(115deg,rgba(9,9,11,.48),transparent 45%,rgba(59,130,246,.14));
+}
+.hero-content{ padding:20px; }
+.hero-title,
+.section-title,
+.card-title,
+.profile-name,
+.sheet-title,
+.hub-title,
+.hero-value{
+  font-family:"Outfit","Inter",system-ui,sans-serif;
+}
+.hero-title{ font-weight:800; letter-spacing:-.035em; }
+.hero-subtitle{ color:#d4d4d8; }
+.eyebrow-chip{
+  min-height:30px;
+  padding:7px 10px;
+  border-color:rgba(59,130,246,.24);
+  border-radius:8px;
+  background:rgba(9,9,11,.72);
+  color:#bfdbfe;
+  font-size:9px;
+  letter-spacing:.14em;
+}
+.metric-card{
+  border-color:var(--border);
+  border-radius:12px;
+  background:rgba(24,24,27,.76);
+}
+.metric-value,.stat-value{ font-family:"JetBrains Mono",monospace; }
+.panel,
+.panel.panel--soft{
+  border-radius:12px;
+  border-color:var(--border);
+  background:rgba(24,24,27,.78);
+  box-shadow:var(--shadow-md);
+}
+.panel.panel--soft{ background:rgba(12,12,14,.84); }
+.section-kicker{ color:var(--accent-cool); font-size:9px; letter-spacing:.16em; }
+.section-title{ font-size:22px; font-weight:800; text-transform:uppercase; letter-spacing:-.025em; }
+.section-meta{ color:var(--muted-strong); }
+.action-btn,
+.control-btn,
+.loadmore-btn,
+.segmented-btn{
+  border-radius:8px;
+  border-color:var(--border);
+  background:#18181b;
+  box-shadow:none;
+  font-size:11px;
+}
+.action-btn:hover,
+.control-btn:hover,
+.loadmore-btn:hover,
+.segmented-btn:hover{ border-color:var(--border-strong); background:#27272a; }
+.action-btn--primary,
+.control-btn--accent,
+.segmented-btn.active{
+  border-color:rgba(59,130,246,.34)!important;
+  background:rgba(59,130,246,.16)!important;
+  color:#dbeafe!important;
+  box-shadow:0 4px 16px rgba(59,130,246,.12)!important;
+}
+.action-btn--cool,
+.chip.active,
+.chip:hover{
+  border-color:rgba(59,130,246,.30)!important;
+  background:rgba(59,130,246,.10)!important;
+  color:#bfdbfe!important;
+}
+.searchbar,
+.field{
+  min-height:48px;
+  border-radius:8px;
+  border-color:var(--border);
+  background:#0c0c0e;
+}
+.searchbar:focus-within,
+.field:focus-within{ border-color:rgba(59,130,246,.58); box-shadow:0 0 0 3px rgba(59,130,246,.09); }
+.chip,
+.soft-pill{
+  border-radius:6px;
+  border-color:var(--border);
+  background:rgba(255,255,255,.035);
+}
+.chip--accent,
+.soft-pill--accent,
+.soft-pill--cool{
+  border-color:rgba(59,130,246,.24)!important;
+  background:rgba(59,130,246,.10)!important;
+  color:#bfdbfe!important;
+}
+.media-card,
+.hub-tile,
+.buy-tile,
+.setting-row,
+.stat-tile,
+.dice-mini-card{
+  border-radius:12px!important;
+  border-color:var(--border)!important;
+  background:linear-gradient(180deg,rgba(24,24,27,.94),rgba(12,12,14,.98))!important;
+  box-shadow:var(--shadow-md)!important;
+}
+.media-card:hover,
+.hub-tile:hover{ border-color:var(--border-strong)!important; }
+.media-cover{ background:linear-gradient(180deg,#18181b,#0c0c0e); }
+.media-badge,
+.media-count{
+  border-radius:6px;
+  border-color:rgba(255,255,255,.12);
+  background:rgba(9,9,11,.76);
+}
+.media-badge--accent,
+.media-badge--cool{
+  border-color:rgba(59,130,246,.26);
+  background:rgba(59,130,246,.15);
+}
+.profile-avatar{
+  border-radius:12px;
+  background:linear-gradient(145deg,rgba(59,130,246,.28),rgba(24,24,27,.92));
+}
+.sheet-backdrop{ background:rgba(0,0,0,.72); }
+.sheet{
+  border-radius:16px;
+  border-color:var(--border);
+  background:#18181b;
+}
+.empty-state,
+.floating-note,
+.skeleton-card{
+  border-radius:12px;
+  border-color:var(--border);
+  background:rgba(24,24,27,.66);
+}
+.footer-note{ color:#52525b; }
+.nx-app-header{
+  position:sticky;
+  top:0;
+  z-index:9000;
+  height:calc(var(--nx-header-height) + var(--safe-top));
+  padding-top:var(--safe-top);
+  border-bottom:1px solid rgba(255,255,255,.055);
+  background:rgba(9,9,11,.92);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+}
+.nx-app-header__inner{
+  width:min(1120px,100%);
+  height:var(--nx-header-height);
+  margin:0 auto;
+  padding:0 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.nx-app-brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+.nx-app-brand__mark{
+  width:32px;
+  height:32px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border:1px solid rgba(59,130,246,.24);
+  border-radius:8px;
+  color:#dbeafe;
+  background:rgba(59,130,246,.12);
+  font:800 15px/1 "Outfit",sans-serif;
+}
+.nx-app-brand__copy{ display:grid; min-width:0; line-height:1; }
+.nx-app-brand__name{ color:#fafafa; font-size:11px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+.nx-app-brand__sub{ margin-top:4px; color:#71717a; font:700 8px/1 "JetBrains Mono",monospace; letter-spacing:.11em; text-transform:uppercase; }
+.nx-app-header__actions{ display:flex; align-items:center; gap:8px; }
+.nx-app-status{
+  height:32px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:0 10px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#18181b;
+  color:#a1a1aa;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.nx-app-status::before{ content:""; width:5px; height:5px; border-radius:50%; background:#10b981; }
+.nx-menu-button,
+.nx-drawer-close{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#18181b;
+  cursor:pointer;
+}
+.nx-menu-button:hover,.nx-drawer-close:hover{ background:#27272a; border-color:var(--border-strong); }
+.nx-menu-icon,.nx-menu-icon::before,.nx-menu-icon::after{
+  width:15px;
+  height:1.5px;
+  display:block;
+  border-radius:2px;
+  background:#d4d4d8;
+}
+.nx-menu-icon{ position:relative; }
+.nx-menu-icon::before,.nx-menu-icon::after{ content:""; position:absolute; left:0; }
+.nx-menu-icon::before{ top:-5px; }.nx-menu-icon::after{ top:5px; }
+.nx-drawer-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  border:0;
+  padding:0;
+  background:rgba(0,0,0,.64);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s ease;
+}
+.nx-drawer{
+  position:fixed;
+  top:0;
+  right:0;
+  z-index:10010;
+  width:min(300px,86vw);
+  height:100svh;
+  display:flex;
+  flex-direction:column;
+  border-left:1px solid var(--border);
+  background:#09090b;
+  box-shadow:-24px 0 60px rgba(0,0,0,.48);
+  transform:translateX(102%);
+  transition:transform .22s cubic-bezier(.16,1,.3,1);
+}
+body.nx-drawer-open .nx-drawer-backdrop{ opacity:1; pointer-events:auto; }
+body.nx-drawer-open .nx-drawer{ transform:translateX(0); }
+.nx-drawer__head{
+  min-height:76px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:calc(14px + var(--safe-top)) 18px 14px;
+  border-bottom:1px solid var(--border);
+}
+.nx-drawer__title{ margin:0; color:#fafafa; font-size:11px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }
+.nx-drawer__version{ margin:5px 0 0; color:#52525b; font:700 8px/1 "JetBrains Mono",monospace; letter-spacing:.10em; text-transform:uppercase; }
+.nx-drawer__body{ flex:1; overflow-y:auto; padding:18px 14px calc(20px + var(--safe-bottom)); }
+.nx-nav-section + .nx-nav-section{ margin-top:22px; }
+.nx-nav-section__label{ margin:0 8px 8px; color:#52525b; font-size:8px; font-weight:900; letter-spacing:.18em; text-transform:uppercase; }
+.nx-nav-list{ display:grid; gap:3px; }
+.nx-nav-link{
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:0 10px;
+  border:1px solid transparent;
+  border-radius:8px;
+  color:#71717a;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.09em;
+  text-transform:uppercase;
+}
+.nx-nav-link:hover{ color:#d4d4d8; background:rgba(255,255,255,.035); }
+.nx-nav-link[aria-current="page"]{ color:#60a5fa; border-color:rgba(59,130,246,.16); background:rgba(59,130,246,.09); }
+.nx-nav-link__glyph{
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:6px;
+  background:#18181b;
+  color:#a1a1aa;
+  font:700 8px/1 "JetBrains Mono",monospace;
+}
+.nx-nav-link[aria-current="page"] .nx-nav-link__glyph{ color:#93c5fd; border-color:rgba(59,130,246,.20); background:rgba(59,130,246,.10); }
+@media(max-width:430px){
+  .app-shell,.nx-app-header__inner{ padding-left:14px; padding-right:14px; }
+  .nx-app-status span{ display:none; }
+  .nx-app-status{ width:32px; padding:0; justify-content:center; }
+}
+@media(min-width:740px){
+  .app-shell,.nx-app-header__inner{ padding-left:20px; padding-right:20px; }
+}
+"""
+
+
+def _app_chrome_html() -> str:
+    return r"""
+<header class="nx-app-header">
+  <div class="nx-app-header__inner">
+    <a class="nx-app-brand" href="/menu" data-preserve-uid aria-label="Abrir painel AniNexus">
+      <span class="nx-app-brand__mark">A</span>
+      <span class="nx-app-brand__copy">
+        <strong class="nx-app-brand__name">AniNexus</strong>
+        <span class="nx-app-brand__sub">Source Baltigo · V2.4</span>
+      </span>
+    </a>
+    <div class="nx-app-header__actions">
+      <span class="nx-app-status"><span>Online</span></span>
+      <button class="nx-menu-button" id="nxMenuButton" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="nxDrawer">
+        <span class="nx-menu-icon" aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+</header>
+<button class="nx-drawer-backdrop" id="nxDrawerBackdrop" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+<aside class="nx-drawer" id="nxDrawer" aria-label="Navegação" aria-hidden="true">
+  <div class="nx-drawer__head">
+    <div><p class="nx-drawer__title">Navegação</p><p class="nx-drawer__version">AniNexus · V2.4</p></div>
+    <button class="nx-drawer-close" id="nxDrawerClose" type="button" aria-label="Fechar menu">×</button>
+  </div>
+  <div class="nx-drawer__body">
+    <section class="nx-nav-section">
+      <p class="nx-nav-section__label">Principal</p>
+      <nav class="nx-nav-list">
+        <a class="nx-nav-link" href="/menu" data-preserve-uid data-routes="/menu,/aninexus"><span class="nx-nav-link__glyph">PN</span>Painel</a>
+        <a class="nx-nav-link" href="/dado" data-preserve-uid data-routes="/dado"><span class="nx-nav-link__glyph">D6</span>Dado</a>
+        <a class="nx-nav-link" href="/shop" data-preserve-uid data-routes="/shop,/loja"><span class="nx-nav-link__glyph">LJ</span>Loja</a>
+        <a class="nx-nav-link" href="/cccolecao" data-preserve-uid data-routes="/cccolecao"><span class="nx-nav-link__glyph">CL</span>Coleção</a>
+      </nav>
+    </section>
+    <section class="nx-nav-section">
+      <p class="nx-nav-section__label">Catálogos</p>
+      <nav class="nx-nav-list">
+        <a class="nx-nav-link" href="/catalogo" data-routes="/catalogo"><span class="nx-nav-link__glyph">AN</span>Animes</a>
+        <a class="nx-nav-link" href="/mangas" data-routes="/mangas"><span class="nx-nav-link__glyph">MG</span>Mangás</a>
+        <a class="nx-nav-link" href="/cards" data-routes="/cards,/cards/anime,/cards/subcategory,/cards/search"><span class="nx-nav-link__glyph">CD</span>Cards</a>
+      </nav>
+    </section>
+    <section class="nx-nav-section">
+      <p class="nx-nav-section__label">Recursos</p>
+      <nav class="nx-nav-list">
+        <a class="nx-nav-link" href="/pedido" data-preserve-uid data-routes="/pedido"><span class="nx-nav-link__glyph">PD</span>Pedidos</a>
+        <a class="nx-nav-link" href="/memoria" data-preserve-uid data-routes="/memoria,/memory"><span class="nx-nav-link__glyph">MM</span>Memória</a>
+        <a class="nx-nav-link" href="/baltigoflix" data-preserve-uid data-routes="/baltigoflix"><span class="nx-nav-link__glyph">BF</span>BaltigoFlix</a>
+      </nav>
+    </section>
+  </div>
+</aside>
+"""
+
+
 def _page_template(
     title: str,
     body: str,
@@ -880,12 +1297,15 @@ def _page_template(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{_h(title)}</title>
+  <meta name="theme-color" content="#09090b">
+  <meta name="color-scheme" content="dark">
+  <title>{_h(title)} | AniNexus</title>
   {_font_links()}
   {tg_script}
-  <style>{_base_css()}{extra_css}</style>
+  <style>{_base_css()}{extra_css}{_aninexus_theme_css()}</style>
 </head>
 <body>
+  {_app_chrome_html()}
   <main class="app-shell">
     {body}
   </main>
@@ -938,7 +1358,7 @@ function setImageFallback(img, label){
     if (parent.querySelector(".media-fallback")) return;
     const div = document.createElement("div");
     div.className = "media-fallback";
-    div.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);background:linear-gradient(180deg, rgba(18,28,52,.92), rgba(12,18,34,.96));";
+    div.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);background:linear-gradient(180deg,#18181b,#0c0c0e);";
     div.textContent = label || "NO IMAGE";
     parent.appendChild(div);
     img.remove();
@@ -1056,6 +1476,70 @@ function openExternalLink(url){
   }catch(err){}
   window.open(url, "_blank", "noopener,noreferrer");
 }
+
+function setupAppChrome(){
+  const body = document.body;
+  const button = document.getElementById("nxMenuButton");
+  const closeButton = document.getElementById("nxDrawerClose");
+  const backdrop = document.getElementById("nxDrawerBackdrop");
+  const drawer = document.getElementById("nxDrawer");
+  if (!body || !button || !closeButton || !backdrop || !drawer) return;
+
+  function setDrawerOpen(open){
+    body.classList.toggle("nx-drawer-open", !!open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    drawer.setAttribute("aria-hidden", open ? "false" : "true");
+    if (open) closeButton.focus();
+    else button.focus();
+  }
+
+  button.addEventListener("click", function(){
+    try{ getTelegramWebApp()?.HapticFeedback?.selectionChanged?.(); }catch(err){}
+    setDrawerOpen(true);
+  });
+  closeButton.addEventListener("click", function(){ setDrawerOpen(false); });
+  backdrop.addEventListener("click", function(){ setDrawerOpen(false); });
+  document.addEventListener("keydown", function(event){
+    if (event.key === "Escape" && body.classList.contains("nx-drawer-open")){
+      setDrawerOpen(false);
+    }
+  });
+
+  const tg = getTelegramWebApp();
+  try{
+    tg?.ready?.();
+    tg?.expand?.();
+    tg?.setHeaderColor?.("#09090b");
+    tg?.setBackgroundColor?.("#09090b");
+  }catch(err){}
+
+  let uid = resolveWebappUid(0);
+  try{
+    if (!uid) uid = Number(tg?.initDataUnsafe?.user?.id || 0);
+  }catch(err){}
+
+  document.querySelectorAll("[data-preserve-uid]").forEach(function(link){
+    if (!uid || !link.getAttribute("href")) return;
+    try{
+      const target = new URL(link.getAttribute("href"), window.location.origin);
+      target.searchParams.set("uid", String(uid));
+      link.setAttribute("href", target.pathname + target.search + target.hash);
+    }catch(err){}
+  });
+
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  document.querySelectorAll(".nx-nav-link[data-routes]").forEach(function(link){
+    const routes = String(link.getAttribute("data-routes") || "").split(",");
+    const active = routes.some(function(route){ return route === path; });
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+    link.addEventListener("click", function(){
+      try{ tg?.HapticFeedback?.selectionChanged?.(); }catch(err){}
+    });
+  });
+}
+
+setupAppChrome();
 """
 
 
