@@ -1,5 +1,4 @@
-import asyncio
-from typing import Dict
+import html
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -7,32 +6,21 @@ from telegram.ext import ContextTypes
 from database import (
     add_progress_xp,
     create_or_get_user,
+    get_level_progress_values,
     get_progress_row,
     get_user_level_rank,
-    get_level_progress_values,
 )
 from level_system import (
     build_progress_bar,
     format_rank_position,
     get_level_theme,
 )
-
-_level_locks: Dict[int, asyncio.Lock] = {}
-
-
-def _get_level_lock(user_id: int) -> asyncio.Lock:
-    lock = _level_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _level_locks[user_id] = lock
-    return lock
+from utils.runtime_guard import lock_manager
 
 
 async def register_progress(update: Update, xp_gain: int = 3):
-    """
-    Chame isso nos comandos que você quiser que contem para evolução.
-    Não mostra para o usuário que é por comando.
-    """
+    """Register XP for an allowed user action without breaking the main command."""
+
     user = update.effective_user
     if not user:
         return
@@ -40,37 +28,49 @@ async def register_progress(update: Update, xp_gain: int = 3):
     user_id = user.id
     create_or_get_user(user_id)
 
-    lock = _get_level_lock(user_id)
-    async with lock:
+    lock = await lock_manager.acquire(f"level-progress:{user_id}")
+    try:
         data = add_progress_xp(user_id, xp_gain)
+    finally:
+        lock.release()
 
     old_level = int(data["old_level"])
     new_level = int(data["new_level"])
 
-    if new_level > old_level and update.message:
+    if new_level > old_level and update.effective_message:
         theme = get_level_theme(new_level)
+        safe_name = html.escape(user.first_name or "Navegante", quote=False)
 
-        msg = (
+        message = (
             "🎉 <b>EVOLUÇÃO!</b>\n\n"
-            f"👤 <b>{user.first_name}</b>\n"
+            f"👤 <b>{safe_name}</b>\n"
             f"{theme['icon']} <b>{theme['tag']}</b>\n\n"
             f"⬆️ Você alcançou o <b>Nível {new_level}</b>!"
         )
-        await update.message.reply_html(msg)
+        await update.effective_message.reply_html(message)
 
 
 async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
+    message = update.effective_message
+    user = update.effective_user
+    if not user or not message:
         return
 
-    user = update.effective_user
-    user_id = user.id
+    # Import local avoids a circular import: gatekeeper imports register_progress.
+    from utils.gatekeeper import gatekeeper
 
+    ok, blocked_message = await gatekeeper(update, context)
+    if not ok:
+        if blocked_message:
+            await message.reply_html(blocked_message)
+        return
+
+    user_id = user.id
     create_or_get_user(user_id)
 
     row = get_progress_row(user_id)
     if not row:
-        await update.message.reply_text("❌ Não consegui carregar seu progresso.")
+        await message.reply_text("❌ Não consegui carregar seu progresso.")
         return
 
     xp = int(row["xp"] or 0)
@@ -85,10 +85,11 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bar = build_progress_bar(current, total, size=10)
     theme = get_level_theme(level)
+    safe_name = html.escape(user.first_name or "Navegante", quote=False)
 
-    msg = (
+    text = (
         "🏆 <b>SEU PROGRESSO</b>\n\n"
-        f"👤 <b>{user.first_name}</b>\n"
+        f"👤 <b>{safe_name}</b>\n"
         f"{theme['icon']} <b>{theme['tag']}</b>\n\n"
         f"⭐ <b>Nível:</b> {level}\n"
         f"🏅 <b>Ranking:</b> {format_rank_position(rank_pos)}\n\n"
@@ -97,4 +98,4 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Faltam <b>{remaining}</b> para o próximo nível."
     )
 
-    await update.message.reply_html(msg)
+    await message.reply_html(text)

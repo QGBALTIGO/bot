@@ -1,53 +1,59 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+import os
 
-from config import BOT_BRAND
-from utils.gatekeeper import ensure_channel_membership
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
+from telegram.ext import ContextTypes
+
+from utils.gatekeeper import gatekeeper
+
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+if not BASE_URL:
+    raise RuntimeError("BASE_URL não configurado.")
+
+BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
+BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
+
+BALTIGOFLIX_BANNER_URL = os.getenv(
+    "BALTIGOFLIX_BANNER_URL",
+    "https://i.imgur.com/8Km9tLL.png",
+).strip()
 
 
-def _is_group(update) -> bool:
+def _is_group(update: Update) -> bool:
     chat = update.effective_chat
     return bool(chat and chat.type in ("group", "supergroup"))
 
 
-async def baltigoflix(update, context):
-    if not await ensure_channel_membership(update, context):
-        return
-
+async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg:
         return
 
-    # 🔥 LINK DO SEU MINI APP
-    webapp_url = "https://bot-production-1980.up.railway.app/baltigoflix"
-
-    # 🔥 SEU BOT (pra grupo → privado)
-    bot_private_url = "https://t.me/SourceBaltigo_Bot"
-
-    # 🔥 BANNER (pode trocar depois)
-    banner_url = "https://i.imgur.com/8Km9tLL.png"
-
-    # 📌 Se for grupo → manda pro privado
     if _is_group(update):
         texto = (
-            f"🔥 <b>{BOT_BRAND} Flix</b>\n\n"
-            "Esse comando funciona apenas no <b>privado</b>.\n\n"
-            "👇 Toque abaixo para abrir:"
+            "🎬 <b>BaltigoFlix</b>\n\n"
+            "Esse comando funciona no <b>chat privado</b>.\n\n"
+            "👇 Toque abaixo para abrir o bot:"
         )
-
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎬 Abrir no privado", url=bot_private_url)]
+            [InlineKeyboardButton("🎬 Abrir no privado", url=BOT_PRIVATE_URL)]
         ])
-
-        await msg.reply_text(texto, parse_mode="HTML", reply_markup=kb)
+        await msg.reply_html(texto, reply_markup=kb)
         return
 
-    # 🎬 Mensagem principal
+    ok, bloqueio = await gatekeeper(update, context)
+    if not ok:
+        if bloqueio:
+            await msg.reply_html(bloqueio)
+        return
+
+    webapp_url = f"{BASE_URL}/baltigoflix"
+
     texto = (
-        f"🎬 <b>{BOT_BRAND} Flix</b>\n\n"
-        "Acesse a área premium com planos exclusivos.\n\n"
-        "✨ Visual moderno\n"
-        "⚡ Processo rápido\n"
-        "📱 Tudo direto pelo bot\n\n"
+        "🎬 <b>BaltigoFlix</b>\n\n"
+        "Acesse a área BaltigoFlix direto pelo Mini App.\n\n"
+        "✨ Experiência integrada\n"
+        "⚡ Acesso rápido\n"
+        "📱 Tudo dentro do Telegram\n\n"
         "👇 Toque abaixo para continuar:"
     )
 
@@ -55,9 +61,12 @@ async def baltigoflix(update, context):
         [InlineKeyboardButton("🚀 Abrir BaltigoFlix", web_app=WebAppInfo(url=webapp_url))]
     ])
 
-    await msg.reply_photo(
-        photo=banner_url,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    if BALTIGOFLIX_BANNER_URL:
+        await msg.reply_photo(
+            photo=BALTIGOFLIX_BANNER_URL,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    else:
+        await msg.reply_html(texto, reply_markup=kb)
