@@ -1,3 +1,4 @@
+import asyncio
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
@@ -29,7 +30,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     direct_query = " ".join(context.args).strip()
 
     if direct_query:
-        anime = find_anime(direct_query)
+        anime = await asyncio.to_thread(find_anime, direct_query)
 
         if anime:
             url = f"{BASE_URL}/cards/anime?anime_id={anime['anime_id']}"
