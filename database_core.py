@@ -10,11 +10,24 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")
 
+DATABASE_POOL_MIN_SIZE = max(
+    1,
+    int(os.getenv("DATABASE_POOL_MIN_SIZE", "2")),
+)
+DATABASE_POOL_MAX_SIZE = max(
+    DATABASE_POOL_MIN_SIZE,
+    int(os.getenv("DATABASE_POOL_MAX_SIZE", "16")),
+)
+DATABASE_POOL_TIMEOUT_SECONDS = max(
+    1.0,
+    float(os.getenv("DATABASE_POOL_TIMEOUT_SECONDS", "10")),
+)
+
 pool = ConnectionPool(
     conninfo=DATABASE_URL,
-    min_size=1,
-    max_size=10,
-    timeout=10,
+    min_size=DATABASE_POOL_MIN_SIZE,
+    max_size=DATABASE_POOL_MAX_SIZE,
+    timeout=DATABASE_POOL_TIMEOUT_SECONDS,
 )
 
 
