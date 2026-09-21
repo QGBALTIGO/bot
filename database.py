@@ -1469,6 +1469,26 @@ def get_card_owner_count(character_id: int) -> int:
     return int((row or {}).get("total") or 0)
 
 
+def get_card_stats(character_id: int) -> Dict[str, int]:
+    """Return owner count and total copies in a single database roundtrip."""
+
+    row = _run(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE quantity > 0) AS owners,
+            COALESCE(SUM(quantity), 0) AS total_copies
+        FROM user_card_collection
+        WHERE character_id = %s
+        """,
+        (int(character_id),),
+        fetch="one"
+    ) or {}
+    return {
+        "owners": int(row.get("owners") or 0),
+        "total_copies": int(row.get("total_copies") or 0),
+    }
+
+
 def get_user_card_collection(user_id: int) -> List[Dict[str, Any]]:
     rows = _run(
         """
@@ -1693,28 +1713,48 @@ def get_level_progress_values(xp: int) -> Dict[str, int]:
 
 
 def add_progress_xp(user_id: int, amount: int = 3) -> Dict[str, Any]:
-    ensure_progress_row(user_id)
+    """Add XP atomically with one row-locking upsert transaction.
 
-    row = get_progress_row(user_id)
-    old_xp = int((row or {}).get("xp") or 0)
-    old_level = int((row or {}).get("level") or 1)
-    old_actions = int((row or {}).get("total_actions") or 0)
+    This keeps the existing return contract while avoiding the previous
+    INSERT + INSERT + SELECT + UPDATE roundtrip sequence on every command.
+    """
 
-    new_xp = old_xp + max(0, int(amount))
-    new_level = xp_to_level(new_xp)
-    new_actions = old_actions + 1
+    uid = int(user_id)
+    gain = max(0, int(amount))
 
-    _run(
-        """
-        UPDATE user_progress
-        SET xp = %s,
-            level = %s,
-            total_actions = %s,
-            updated_at = NOW()
-        WHERE user_id = %s
-        """,
-        (new_xp, new_level, new_actions, int(user_id))
-    )
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                INSERT INTO user_progress (user_id, xp, level, total_actions, updated_at)
+                VALUES (%s, %s, 1, 1, NOW())
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    xp = user_progress.xp + EXCLUDED.xp,
+                    total_actions = user_progress.total_actions + 1,
+                    updated_at = NOW()
+                RETURNING xp, level, total_actions
+                """,
+                (uid, gain),
+            )
+            row = cur.fetchone() or {}
+
+            new_xp = int(row.get("xp") or 0)
+            old_level = int(row.get("level") or 1)
+            new_actions = int(row.get("total_actions") or 0)
+            new_level = xp_to_level(new_xp)
+
+            if new_level != old_level:
+                cur.execute(
+                    """
+                    UPDATE user_progress
+                    SET level = %s, updated_at = NOW()
+                    WHERE user_id = %s
+                    """,
+                    (new_level, uid),
+                )
+
+        conn.commit()
 
     return {
         "old_level": old_level,
