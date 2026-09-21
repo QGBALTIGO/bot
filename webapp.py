@@ -2150,11 +2150,11 @@ async def api_dado_roll(
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
 
     try:
-        expire_stale_dice_rolls(refund_pending=True)
+        await asyncio.to_thread(expire_stale_dice_rolls, True)
     except Exception:
         pass
 
-    active = get_active_dice_roll(user_id)
+    active = await asyncio.to_thread(get_active_dice_roll, user_id)
     if active:
         active_options = active.get("options_json") or []
         active_dice = int(active.get("dice_value") or 0)
@@ -2173,11 +2173,22 @@ async def api_dado_roll(
                 "dice_value": active_dice,
                 "options": active_options,
                 "status": active.get("status"),
-                "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
+                "balance": int(
+                    (
+                        await asyncio.to_thread(get_dado_state, user_id)
+                        or {}
+                    ).get("balance")
+                    or 0
+                ),
             })
 
         try:
-            cancel_dice_roll(user_id, int(active["roll_id"]), refund=True)
+            await asyncio.to_thread(
+                cancel_dice_roll,
+                user_id,
+                int(active["roll_id"]),
+                True,
+            )
         except Exception:
             pass
 
@@ -2209,12 +2220,23 @@ async def api_dado_roll(
 
     dice_value = len(options)
 
-    created = create_dice_roll(user_id, dice_value, options)
+    created = await asyncio.to_thread(
+        create_dice_roll,
+        user_id,
+        dice_value,
+        options,
+    )
     if not created.get("ok"):
         return JSONResponse(created, status_code=200)
 
     roll = created["roll"]
-    balance = int((get_dado_state(user_id) or {}).get("balance") or 0)
+    balance = int(
+        (
+            await asyncio.to_thread(get_dado_state, user_id)
+            or {}
+        ).get("balance")
+        or 0
+    )
 
     response_options = created.get("options") or options or roll.get("options_json") or []
 
