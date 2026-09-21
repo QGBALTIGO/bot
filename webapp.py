@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, quote, urlparse
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Query, Body, Header, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from utils.image_proxy import ImageProxyError, fetch_public_image
@@ -74,6 +75,42 @@ from database import (
 )
 
 app = FastAPI()
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1024,
+    compresslevel=5,
+)
+
+_HTTP_CLIENT_TIMEOUT = httpx.Timeout(20.0, connect=8.0)
+_HTTP_CLIENT_LIMITS = httpx.Limits(
+    max_connections=50,
+    max_keepalive_connections=20,
+    keepalive_expiry=30.0,
+)
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    client = getattr(app.state, "http_client", None)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(
+            timeout=_HTTP_CLIENT_TIMEOUT,
+            limits=_HTTP_CLIENT_LIMITS,
+        )
+        app.state.http_client = client
+    return client
+
+
+@app.on_event("startup")
+async def _open_shared_http_client() -> None:
+    _get_http_client()
+
+
+@app.on_event("shutdown")
+async def _close_shared_http_client() -> None:
+    client = getattr(app.state, "http_client", None)
+    if client is not None and not client.is_closed:
+        await client.aclose()
+
 
 # =========================
 # CONFIG — TERMOS
@@ -1287,12 +1324,12 @@ async def _pedido_anilist_search(query_text: str, media_type: str):
 
     for attempt in range(2):
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.post(
-                    "https://graphql.anilist.co",
-                    headers=headers,
-                    json={"query": gql, "variables": variables},
-                )
+            client = _get_http_client()
+            response = await client.post(
+                "https://graphql.anilist.co",
+                headers=headers,
+                json={"query": gql, "variables": variables},
+            )
 
             if response.status_code >= 400:
                 print(
@@ -1414,31 +1451,29 @@ async def api_pedido_search(
 
 
 async def _telegram_send_message(chat_id: str, text: str):
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": "true",
-            },
-        )
-    return resp
+    client = _get_http_client()
+    return await client.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        data={
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        },
+    )
 
 
 async def _telegram_send_photo(chat_id: str, photo: str, caption: str):
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-            data={
-                "chat_id": chat_id,
-                "photo": photo,
-                "caption": caption,
-                "parse_mode": "HTML",
-            },
-        )
-    return resp
+    client = _get_http_client()
+    return await client.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+        data={
+            "chat_id": chat_id,
+            "photo": photo,
+            "caption": caption,
+            "parse_mode": "HTML",
+        },
+    )
 
 
 @app.post("/api/pedido/send")
@@ -1695,18 +1730,18 @@ def _dado_rate_limit(user_id: int, key: str, window: float = DADO_WEB_RATE_SECON
 
 async def _tg_send_photo(chat_id: int, photo: str, caption: str) -> bool:
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                json={
-                    "chat_id": int(chat_id),
-                    "photo": str(photo),
-                    "caption": str(caption),
-                    "parse_mode": "HTML",
-                },
-            )
-            data = resp.json()
-            return bool(data.get("ok"))
+        client = _get_http_client()
+        resp = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            json={
+                "chat_id": int(chat_id),
+                "photo": str(photo),
+                "caption": str(caption),
+                "parse_mode": "HTML",
+            },
+        )
+        data = resp.json()
+        return bool(data.get("ok"))
     except Exception:
         return False
 
