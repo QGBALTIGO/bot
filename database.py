@@ -2064,6 +2064,93 @@ def get_active_dice_roll(user_id: int) -> Optional[Dict[str, Any]]:
     return row
 
 
+def get_dado_snapshot(user_id: int) -> Dict[str, Any]:
+    """Return refreshed balance/recharge data and the current live roll in one transaction.
+
+    An expired active roll is closed and refunded here, avoiding the previous
+    global stale-roll scan plus multiple independent database roundtrips.
+    """
+
+    uid = int(user_id)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            try:
+                state = _refresh_dado_locked(cur, uid)
+
+                cur.execute(
+                    """
+                    SELECT
+                        roll_id,
+                        user_id,
+                        dice_value,
+                        options_json,
+                        selected_anime_id,
+                        rewarded_character_id,
+                        status,
+                        created_at,
+                        picked_at,
+                        resolved_at,
+                        expires_at
+                    FROM dice_rolls
+                    WHERE user_id = %s
+                      AND status IN ('pending', 'picked')
+                    ORDER BY roll_id DESC
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (uid,),
+                )
+                active = cur.fetchone()
+
+                if active:
+                    active["options_json"] = _coerce_roll_options(active.get("options_json"))
+
+                    if _roll_expired(active):
+                        old_status = str(active.get("status") or "")
+                        cur.execute(
+                            """
+                            UPDATE dice_rolls
+                            SET status = 'expired'
+                            WHERE roll_id = %s
+                              AND user_id = %s
+                              AND status IN ('pending', 'picked')
+                            """,
+                            (int(active["roll_id"]), uid),
+                        )
+
+                        if old_status in {"pending", "picked"}:
+                            new_balance = min(
+                                DADO_MAX_BALANCE,
+                                int(state.get("balance") or 0) + 1,
+                            )
+                            cur.execute(
+                                """
+                                UPDATE users
+                                SET dado_balance = %s,
+                                    updated_at = NOW()
+                                WHERE user_id = %s
+                                """,
+                                (new_balance, uid),
+                            )
+                            state["balance"] = new_balance
+
+                        active = None
+
+                conn.commit()
+                return {
+                    "state": dict(state or {}),
+                    "active": dict(active) if active else None,
+                }
+
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+
 def get_dice_roll(roll_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     if user_id is None:
         row = _run(
@@ -2157,13 +2244,30 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
         raise ValueError("dice_value deve ser entre 1 e 6")
 
     clean_options = _clean_roll_options(options, expected_len=dice_value)
-    create_or_get_user(user_id)
-    ensure_profile_settings_row(user_id)
+    uid = int(user_id)
+    initial_slot = _slot_number_from_dt(_now_sp())
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
-                _refresh_dado_locked(cur, user_id)
+                cur.execute(
+                    """
+                    INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
+                    VALUES (%s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (uid, DADO_INITIAL_BALANCE, initial_slot),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO user_profile_settings (user_id, created_at, updated_at)
+                    VALUES (%s, NOW(), NOW())
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (uid,),
+                )
+
+                state = _refresh_dado_locked(cur, uid)
 
                 cur.execute(
                     """
@@ -2222,6 +2326,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                             "reused": True,
                             "roll": existing,
                             "options": active["options_json"],
+                            "balance": int(state.get("balance") or 0),
                         }
 
                     else:
@@ -2323,6 +2428,7 @@ def create_dice_roll(user_id: int, dice_value: int, options: List[Dict[str, Any]
                     "reused": False,
                     "roll": created,
                     "options": clean_options,
+                    "balance": int((consumed or {}).get("dado_balance") or 0),
                 }
 
             except Exception:
