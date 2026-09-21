@@ -283,14 +283,17 @@ def get_active_spawn(chat_id: int) -> Optional[Dict[str, Any]]:
 
 
 async def _expire_active_spawn_if_needed_locked(chat_id: int, bot: Bot) -> Optional[Dict[str, Any]]:
-    spawn = get_active_capture_spawn(chat_id)
+    spawn = await asyncio.to_thread(get_active_capture_spawn, chat_id)
     if not spawn:
         return None
 
     if float(spawn.get("expires_at_ts") or 0.0) > time.time():
         return None
 
-    escaped = mark_capture_spawn_escaped(int(spawn["id"]))
+    escaped = await asyncio.to_thread(
+        mark_capture_spawn_escaped,
+        int(spawn["id"]),
+    )
     if not escaped:
         return None
 
@@ -318,19 +321,24 @@ async def _start_spawn_locked(
     chat_id = int(message.chat.id)
     await _expire_active_spawn_if_needed_locked(chat_id, bot)
 
-    if get_active_capture_spawn(chat_id):
+    if await asyncio.to_thread(get_active_capture_spawn, chat_id):
         return None
 
-    characters = _get_spawn_pool()
+    characters = await asyncio.to_thread(_get_spawn_pool)
     if not characters:
         return None
 
-    character = _pick_spawn_character(chat_id, characters)
+    character = await asyncio.to_thread(
+        _pick_spawn_character,
+        chat_id,
+        characters,
+    )
     if not character:
         return None
 
     expires_at_ts = time.time() + ESCAPE_TIME
-    spawn = create_capture_spawn(
+    spawn = await asyncio.to_thread(
+        create_capture_spawn,
         chat_id=chat_id,
         character_id=int(character["id"]),
         character_name=str(character.get("name") or "Sem nome"),
@@ -345,11 +353,16 @@ async def _start_spawn_locked(
 
     sent, has_photo = await _send_spawn_post(message, spawn["image_url"], build_spawn_caption(spawn))
     if not sent:
-        delete_capture_spawn(int(spawn["id"]))
-        set_capture_group_message_count(chat_id, SPAWN_EVERY - 1 if not manual else 0)
+        await asyncio.to_thread(delete_capture_spawn, int(spawn["id"]))
+        await asyncio.to_thread(
+            set_capture_group_message_count,
+            chat_id,
+            SPAWN_EVERY - 1 if not manual else 0,
+        )
         return None
 
-    stored = attach_capture_spawn_message(
+    stored = await asyncio.to_thread(
+        attach_capture_spawn_message,
         int(spawn["id"]),
         int(getattr(sent, "message_id", 0)),
         has_photo=bool(has_photo),
@@ -360,7 +373,11 @@ async def _start_spawn_locked(
         spawn["spawn_message_id"] = int(getattr(sent, "message_id", 0))
         spawn["spawn_has_photo"] = bool(has_photo)
 
-    reset_capture_group_message_count(chat_id, last_spawn_id=int(spawn["id"]))
+    await asyncio.to_thread(
+        reset_capture_group_message_count,
+        chat_id,
+        last_spawn_id=int(spawn["id"]),
+    )
     return spawn
 
 
@@ -409,10 +426,14 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
         if escaped:
             pass
 
-        if get_active_capture_spawn(chat_id):
+        if await asyncio.to_thread(get_active_capture_spawn, chat_id):
             return
 
-        activity = register_capture_group_activity(chat_id, SPAWN_EVERY)
+        activity = await asyncio.to_thread(
+            register_capture_group_activity,
+            chat_id,
+            SPAWN_EVERY,
+        )
         should_spawn = bool(activity.get("should_spawn"))
     finally:
         lock.release()
@@ -424,7 +445,10 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
 async def _escape_worker(spawn_id: int, application: Application) -> None:
     try:
         while True:
-            spawn = get_active_capture_spawn_by_id(spawn_id)
+            spawn = await asyncio.to_thread(
+                get_active_capture_spawn_by_id,
+                spawn_id,
+            )
             if not spawn:
                 return
 
@@ -434,14 +458,20 @@ async def _escape_worker(spawn_id: int, application: Application) -> None:
 
             lock = await lock_manager.acquire(f"capture:chat:{int(spawn['chat_id'])}")
             try:
-                fresh = get_active_capture_spawn_by_id(spawn_id)
+                fresh = await asyncio.to_thread(
+                    get_active_capture_spawn_by_id,
+                    spawn_id,
+                )
                 if not fresh:
                     return
 
                 if float(fresh.get("expires_at_ts") or 0.0) > time.time():
                     continue
 
-                escaped = mark_capture_spawn_escaped(int(spawn_id))
+                escaped = await asyncio.to_thread(
+                    mark_capture_spawn_escaped,
+                    int(spawn_id),
+                )
                 if not escaped:
                     return
             finally:
@@ -463,7 +493,8 @@ def _schedule_escape_task(spawn_id: int, application: Application) -> None:
 
 
 async def restore_capture_runtime(application: Application) -> None:
-    for spawn in list_active_capture_spawns():
+    spawns = await asyncio.to_thread(list_active_capture_spawns)
+    for spawn in spawns:
         _schedule_escape_task(int(spawn["id"]), application)
 
 
