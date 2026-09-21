@@ -104,6 +104,17 @@ def _get_http_client() -> httpx.AsyncClient:
 async def _open_shared_http_client() -> None:
     _get_http_client()
 
+    # Warm the cards cache before the first real user request. This moves the
+    # one-time JSON/DB merge cost to startup instead of making the first search
+    # after every deployment pay for it.
+    try:
+        await asyncio.to_thread(build_cards_final_data)
+    except Exception as exc:
+        print(
+            f"[cards] cache warmup failed: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+
 
 @app.on_event("shutdown")
 async def _close_shared_http_client() -> None:
