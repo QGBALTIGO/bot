@@ -1,5 +1,4 @@
 import asyncio
-from typing import Dict
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -16,16 +15,21 @@ from level_system import (
     format_rank_position,
     get_level_theme,
 )
+from utils.runtime_guard import lock_manager
 
-_level_locks: Dict[int, asyncio.Lock] = {}
+
+def _register_progress_sync(user_id: int, xp_gain: int):
+    create_or_get_user(int(user_id))
+    return add_progress_xp(int(user_id), int(xp_gain))
 
 
-def _get_level_lock(user_id: int) -> asyncio.Lock:
-    lock = _level_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _level_locks[user_id] = lock
-    return lock
+def _load_level_sync(user_id: int):
+    create_or_get_user(int(user_id))
+    row = get_progress_row(int(user_id))
+    if not row:
+        return None, 0
+    rank_pos = get_user_level_rank(int(user_id))
+    return row, rank_pos
 
 
 async def register_progress(update: Update, xp_gain: int = 3):
@@ -37,12 +41,16 @@ async def register_progress(update: Update, xp_gain: int = 3):
     if not user:
         return
 
-    user_id = user.id
-    create_or_get_user(user_id)
-
-    lock = _get_level_lock(user_id)
-    async with lock:
-        data = add_progress_xp(user_id, xp_gain)
+    user_id = int(user.id)
+    lock = await lock_manager.acquire(f"level-progress:{user_id}")
+    try:
+        data = await asyncio.to_thread(
+            _register_progress_sync,
+            user_id,
+            int(xp_gain),
+        )
+    finally:
+        lock.release()
 
     old_level = int(data["old_level"])
     new_level = int(data["new_level"])
@@ -64,11 +72,9 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
-    user_id = user.id
+    user_id = int(user.id)
 
-    create_or_get_user(user_id)
-
-    row = get_progress_row(user_id)
+    row, rank_pos = await asyncio.to_thread(_load_level_sync, user_id)
     if not row:
         await update.message.reply_text("❌ Não consegui carregar seu progresso.")
         return
@@ -77,7 +83,6 @@ async def nivel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level = int(row["level"] or 1)
 
     values = get_level_progress_values(xp)
-    rank_pos = get_user_level_rank(user_id)
 
     current = int(values["xp_current"])
     total = int(values["xp_needed"])
