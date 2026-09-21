@@ -8,7 +8,7 @@ from html import escape
 import httpx
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Body, Header
+from fastapi import APIRouter, BackgroundTasks, Body, Header
 from fastapi.responses import JSONResponse
 
 from cards_service import build_cards_final_data
@@ -17,8 +17,8 @@ from database import (
     create_dice_roll,
     expire_stale_dice_rolls,
     get_active_dice_roll,
+    get_dado_snapshot,
     get_dado_state,
-    get_next_dado_recharge_info,
     pick_dice_roll_anime,
     resolve_dice_roll,
 )
@@ -214,13 +214,11 @@ def build_aninexus_dado_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        try:
-            expire_stale_dice_rolls(refund_pending=True)
-        except Exception:
-            pass
-        dado = get_dado_state(user_id) or {}
-        recharge = get_next_dado_recharge_info(user_id) or {}
-        active = get_active_dice_roll(user_id)
+
+        snapshot = get_dado_snapshot(user_id) or {}
+        dado = dict(snapshot.get("state") or {})
+        active = snapshot.get("active")
+
         active_payload = None
         if active:
             options = _options_from_active(active)
@@ -232,13 +230,14 @@ def build_aninexus_dado_router() -> APIRouter:
                     "options": options,
                     "status": str(active.get("status") or "pending"),
                 }
+
         return JSONResponse(
             {
                 "ok": True,
                 "balance": int(dado.get("balance") or 0),
-                "max_balance": int(recharge.get("max_balance") or 24),
-                "next_recharge_hhmm": str(recharge.get("next_recharge_hhmm") or "--:--"),
-                "next_recharge_iso": recharge.get("next_recharge_iso"),
+                "max_balance": int(dado.get("max_balance") or 24),
+                "next_recharge_hhmm": str(dado.get("next_recharge_hhmm") or "--:--"),
+                "next_recharge_iso": dado.get("next_recharge_iso"),
                 "active_roll": active_payload,
             }
         )
@@ -249,40 +248,20 @@ def build_aninexus_dado_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        try:
-            expire_stale_dice_rolls(refund_pending=True)
-        except Exception:
-            pass
 
-        active = get_active_dice_roll(user_id)
-        if active:
-            options = _options_from_active(active)
-            dice_value = int(active.get("dice_value") or 0)
-            if options and len(options) == dice_value:
-                return JSONResponse(
-                    {
-                        "ok": True,
-                        "reused": True,
-                        "roll_id": int(active.get("roll_id") or 0),
-                        "dice_value": dice_value,
-                        "options": options,
-                        "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
-                    }
-                )
-            try:
-                cancel_dice_roll(user_id, int(active.get("roll_id") or 0), refund=True)
-            except Exception:
-                pass
-
+        # create_dice_roll already handles existing, stale and invalid active
+        # rolls atomically. Avoid repeating those same DB checks here.
         pool = _anime_pool()
         max_value = min(6, len(pool))
         if max_value <= 0:
             return JSONResponse({"ok": False, "error": "anime_pool_unavailable"})
+
         dice_value = random.SystemRandom().randint(1, max_value)
         options = random.SystemRandom().sample(pool, dice_value)
         created = create_dice_roll(user_id, dice_value, options)
         if not created.get("ok"):
             return JSONResponse(created)
+
         roll_row = dict(created.get("roll") or {})
         response_options = created.get("options") or options or _options_from_active(roll_row)
         return JSONResponse(
@@ -292,11 +271,12 @@ def build_aninexus_dado_router() -> APIRouter:
                 "roll_id": int(roll_row.get("roll_id") or 0),
                 "dice_value": int(roll_row.get("dice_value") or dice_value),
                 "options": response_options,
-                "balance": int((get_dado_state(user_id) or {}).get("balance") or 0),
+                "balance": int(created.get("balance") or 0),
             }
         )
 
     def pick(
+        background_tasks: BackgroundTasks,
         payload: dict = Body(default={}),
         authorization: str = Header(default=""),
     ):
@@ -356,7 +336,8 @@ def build_aninexus_dado_router() -> APIRouter:
             int(character.get("id") or 0),
         )
         if not already_done:
-            _deliver_dado_reward(
+            background_tasks.add_task(
+                _deliver_dado_reward,
                 user_id,
                 roll_id,
                 {**character, "tier": tier["tier"], "stars": tier["stars"]},
