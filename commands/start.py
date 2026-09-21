@@ -1,3 +1,4 @@
+import asyncio
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes
@@ -9,7 +10,7 @@ from database import (
     reset_welcome_sent,
     set_user_referrer,
 )
-from utils.gatekeeper import TERMS_VERSION
+from utils.gatekeeper import TERMS_VERSION, check_required_channel_membership
 
 # ====== CONFIG ======
 BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5FHTmAAKjC2sbzg9QRZjbm81ltK8VAQADAgADeQADOgQ/photo.jpg"
@@ -56,6 +57,22 @@ def _referrer_from_args(args: list[str] | tuple[str, ...] | None) -> int:
         return 0
 
 
+def _load_start_state(user_id: int, referrer_id: int) -> dict:
+    """Load/create the user in a worker thread to keep Telegram responsive."""
+
+    uid = int(user_id)
+    create_or_get_user(uid)
+
+    if referrer_id > 0 and referrer_id != uid:
+        try:
+            set_user_referrer(uid, referrer_id, ref_code=f"ref_{referrer_id}")
+        except Exception:
+            # Referral bookkeeping must never prevent /start.
+            pass
+
+    return dict(get_user_status(uid) or {})
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user else 0
@@ -81,24 +98,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Não consegui identificar seu usuário.")
         return
 
-    create_or_get_user(user_id)
-
     # O vínculo é write-once no banco: abrir outro link depois não troca quem
     # indicou o usuário e autoindicação é rejeitada pelo helper persistente.
     referrer_id = _referrer_from_args(getattr(context, "args", None))
-    if referrer_id > 0 and referrer_id != user_id:
-        try:
-            set_user_referrer(user_id, referrer_id, ref_code=f"ref_{referrer_id}")
-        except Exception:
-            # Indicação nunca pode impedir o usuário de abrir o bot.
-            pass
-
-    st = get_user_status(user_id) or {}
+    st = await asyncio.to_thread(_load_start_state, user_id, referrer_id)
     terms_ok = bool(st.get("terms_accepted")) and (st.get("terms_version") == TERMS_VERSION)
     terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
 
     if not terms_ok:
-        reset_welcome_sent(user_id)
+        await asyncio.to_thread(reset_welcome_sent, user_id)
         caption = (
             f"👋 Olá, <b>{name}</b>\n\n"
             "Antes de continuar sua jornada na <b>Source Baltigo</b> 🎴✨\n\n"
@@ -119,15 +127,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if REQUIRED_CHANNEL:
-        ok = False
-        try:
-            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-            ok = member.status in ("creator", "administrator", "member")
-        except Exception:
-            ok = False
+        # Force a fresh check on /start so a user who just joined is recognized
+        # immediately. Other commands use the short gatekeeper cache.
+        ok = await check_required_channel_membership(
+            context,
+            user_id,
+            force=True,
+        )
 
         if not ok:
-            reset_welcome_sent(user_id)
+            await asyncio.to_thread(reset_welcome_sent, user_id)
             texto = (
                 "📢 <b>Canal oficial obrigatório</b>\n\n"
                 "Para usar o <b>Source Baltigo</b>, você precisa entrar no nosso canal oficial.\n"
@@ -155,7 +164,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• 🎬 Encontrar novos animes para assistir\n\n"
             "⚔️ <b>Entre para a tripulação</b> e comece sua jornada!"
         )
-        mark_welcome_sent(user_id)
+        await asyncio.to_thread(mark_welcome_sent, user_id)
     else:
         texto = (
             f"⚓ <b>Bem-vindo de volta, {name}!</b>\n\n"
