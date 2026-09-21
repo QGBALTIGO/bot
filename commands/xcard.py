@@ -1,3 +1,4 @@
+import asyncio
 import html
 from typing import Any, Dict, List, Optional
 
@@ -176,7 +177,10 @@ async def _send_xcard_message(
     character_id = int(card.get("character_id") or 0)
     image = str(card.get("image") or "").strip()
 
-    quantity = int(get_user_xcard_quantity(user_id, card_id) or 0)
+    quantity = int(
+        await asyncio.to_thread(get_user_xcard_quantity, user_id, card_id)
+        or 0
+    )
     caption = _build_caption(card, quantity, index, len(cards))
     keyboard = _build_variant_keyboard(
         owner_id=user_id,
@@ -252,7 +256,7 @@ async def xcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args).strip()
 
     try:
-        resolved = resolve_xcard_query(query)
+        resolved = await asyncio.to_thread(resolve_xcard_query, query)
     except FileNotFoundError as exc:
         await update.message.reply_text(str(exc))
         return
@@ -266,13 +270,19 @@ async def xcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if resolved.get("type") == "card":
         card = resolved["card"]
-        cards = get_xcards_for_character(int(card.get("character_id") or 0))
+        cards = await asyncio.to_thread(
+            get_xcards_for_character,
+            int(card.get("character_id") or 0),
+        )
         index = _find_card_index(cards, int(card.get("id") or 0))
         await _send_xcard_message(update, context, cards, index, edit=False)
         return
 
     character = resolved["character"]
-    cards = get_xcards_for_character(int(character.get("id") or 0))
+    cards = await asyncio.to_thread(
+        get_xcards_for_character,
+        int(character.get("id") or 0),
+    )
     await _send_xcard_message(update, context, cards, 0, edit=False)
 
 
@@ -295,7 +305,10 @@ async def xcard_nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await q.answer("Esse xcard não é seu.", show_alert=True)
         return
 
-    cards = get_xcards_for_character(int(character_id))
+    cards = await asyncio.to_thread(
+        get_xcards_for_character,
+        int(character_id),
+    )
     if not cards:
         await q.answer("Não encontrei as variantes.", show_alert=True)
         return
@@ -316,8 +329,12 @@ async def xcard_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await q.answer()
         return
 
-    owners = int(get_xcard_owner_count(parsed_card_id) or 0)
-    total_copies = int(get_xcard_total_copies(parsed_card_id) or 0)
+    owners_raw, copies_raw = await asyncio.gather(
+        asyncio.to_thread(get_xcard_owner_count, parsed_card_id),
+        asyncio.to_thread(get_xcard_total_copies, parsed_card_id),
+    )
+    owners = int(owners_raw or 0)
+    total_copies = int(copies_raw or 0)
 
     await q.answer(
         f"📊 Usuários com esse xcard: {owners}\n"
