@@ -214,11 +214,11 @@ def _build_owned_text(cards: List[Dict[str, Any]], page: int) -> str:
 
 async def _send_owned_collection(update, context, page: int, *, edit: bool = False):
     user_id = update.effective_user.id
-    cards = get_user_xcards(user_id)
+    cards = await asyncio.to_thread(get_user_xcards, user_id)
     text = _build_owned_text(cards, page)
     _, _, total_pages, current_page = _paginate(cards, page)
     keyboard = _build_keyboard("xcolecao", user_id, current_page, total_pages)
-    cover = cards[0]["image"] if cards and cards[0].get("image") else _default_cover()
+    cover = cards[0]["image"] if cards and cards[0].get("image") else await asyncio.to_thread(_default_cover)
 
     if edit and update.callback_query:
         message = update.callback_query.message
@@ -245,10 +245,15 @@ async def _send_owned_collection(update, context, page: int, *, edit: bool = Fal
 async def _send_title_owned(update, context, title: Dict[str, Any], page: int, *, edit: bool = False):
     user_id = update.effective_user.id
     title_id = int(title["id"])
-    all_cards = get_xcards_for_title(title_id)
-    owned_cards = [item for item in get_user_xcards(user_id) if int(item["title_id"]) == title_id]
+    all_cards, user_cards = await asyncio.gather(
+        asyncio.to_thread(get_xcards_for_title, title_id),
+        asyncio.to_thread(get_user_xcards, user_id),
+    )
+    owned_cards = [item for item in user_cards if int(item["title_id"]) == title_id]
 
-    cover = str(title.get("cover_image") or title.get("logo_image") or "").strip() or _default_cover()
+    cover = str(title.get("cover_image") or title.get("logo_image") or "").strip()
+    if not cover:
+        cover = await asyncio.to_thread(_default_cover)
     if not owned_cards:
         text = f"📚 Você ainda não tem xcards de <b>{title['name']}</b>."
         if edit and update.callback_query:
@@ -310,11 +315,16 @@ async def _send_title_owned(update, context, title: Dict[str, Any], page: int, *
 async def _send_title_missing(update, context, title: Dict[str, Any], page: int, *, edit: bool = False):
     user_id = update.effective_user.id
     title_id = int(title["id"])
-    all_cards = get_xcards_for_title(title_id)
-    owned_ids = {int(item["card_id"]) for item in get_user_xcards(user_id)}
+    all_cards, user_cards = await asyncio.gather(
+        asyncio.to_thread(get_xcards_for_title, title_id),
+        asyncio.to_thread(get_user_xcards, user_id),
+    )
+    owned_ids = {int(item["card_id"]) for item in user_cards}
 
     missing = [card for card in all_cards if int(card.get("id") or 0) not in owned_ids]
-    cover = str(title.get("cover_image") or title.get("logo_image") or "").strip() or _default_cover()
+    cover = str(title.get("cover_image") or title.get("logo_image") or "").strip()
+    if not cover:
+        cover = await asyncio.to_thread(_default_cover)
 
     if not missing:
         text = f"🎉 Você completou os xcards de <b>{title['name']}</b>."
@@ -374,7 +384,7 @@ async def _send_title_missing(update, context, title: Dict[str, Any], page: int,
 async def _send_title_gallery(update, context, title: Dict[str, Any], index: int, *, edit: bool = False):
     user_id = update.effective_user.id
     title_id = int(title["id"])
-    cards = get_xcards_for_title(title_id)
+    cards = await asyncio.to_thread(get_xcards_for_title, title_id)
     if not cards:
         text = f"❌ Não encontrei xcards para <b>{title['name']}</b>."
         if edit and update.callback_query:
@@ -392,7 +402,11 @@ async def _send_title_gallery(update, context, title: Dict[str, Any], index: int
 
     index = max(0, min(index, len(cards) - 1))
     card = cards[index]
-    owned_map = {int(item["card_id"]): int(item["quantity"]) for item in get_user_xcards(user_id)}
+    user_cards = await asyncio.to_thread(get_user_xcards, user_id)
+    owned_map = {
+        int(item["card_id"]): int(item["quantity"])
+        for item in user_cards
+    }
     quantity = int(owned_map.get(int(card.get("id") or 0), 0))
     owned_total = sum(1 for item in cards if int(item.get("id") or 0) in owned_map)
     marker = _duplicate_marker(quantity)
@@ -453,7 +467,7 @@ async def xcolecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         title_query = " ".join(args[1:]).strip()
-        title = find_xtitle(title_query)
+        title = await asyncio.to_thread(find_xtitle, title_query)
         if not title:
             await update.effective_message.reply_text("❌ Obra de xcards não encontrada.")
             return
@@ -512,7 +526,7 @@ async def xcolecao_s_callback(update, context):
         await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
-    title = find_xtitle(title_id)
+    title = await asyncio.to_thread(find_xtitle, title_id)
     if not title:
         await q.answer("Obra não encontrada.", show_alert=True)
         return
@@ -540,7 +554,7 @@ async def xcolecao_f_callback(update, context):
         await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
-    title = find_xtitle(title_id)
+    title = await asyncio.to_thread(find_xtitle, title_id)
     if not title:
         await q.answer("Obra não encontrada.", show_alert=True)
         return
@@ -568,7 +582,7 @@ async def xcolecao_x_callback(update, context):
         await q.answer("Essa xcoleção não é sua.", show_alert=True)
         return
 
-    title = find_xtitle(title_id)
+    title = await asyncio.to_thread(find_xtitle, title_id)
     if not title:
         await q.answer("Obra não encontrada.", show_alert=True)
         return
