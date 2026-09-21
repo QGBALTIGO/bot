@@ -473,12 +473,28 @@ def build_cards_final_data(force_reload: bool = False) -> Dict[str, Any]:
             final_chars.sort(key=lambda x: _normalize_text(x["name"]))
             subcategories[str(subcat_name).strip()] = final_chars
 
+        anime_search_index = [
+            (_normalize_text(anime["anime"]), anime)
+            for anime in animes_list
+        ]
+        character_search_index = [
+            (
+                _normalize_text(f"{ch['name']} {ch['anime']}"),
+                _normalize_text(ch["name"]),
+                _normalize_text(ch["anime"]),
+                ch,
+            )
+            for ch in characters_by_id.values()
+        ]
+
         _CACHE = {
             "animes_list": animes_list,
             "animes_by_id": {x["anime_id"]: x for x in animes_list},
             "animes_by_name": animes_by_name,
+            "anime_search_index": anime_search_index,
             "characters_by_id": characters_by_id,
             "characters_by_anime": characters_by_anime,
+            "character_search_index": character_search_index,
             "subcategories": subcategories,
             "overrides": overrides,
         }
@@ -505,16 +521,13 @@ def find_anime(query: Any) -> Optional[Dict[str, Any]]:
         return exact
 
     candidates = []
-    for anime in data["animes_list"]:
-        name_n = _normalize_text(anime["anime"])
+    for name_n, anime in data.get("anime_search_index", []):
         if nq in name_n:
-            candidates.append(anime)
+            candidates.append((name_n, anime))
 
     if candidates:
-        candidates.sort(
-            key=lambda x: (len(_normalize_text(x["anime"])), _normalize_text(x["anime"]))
-        )
-        return candidates[0]
+        candidates.sort(key=lambda item: (len(item[0]), item[0]))
+        return candidates[0][1]
 
     return None
 
@@ -526,13 +539,12 @@ def search_characters(query: str, limit: int = 100) -> List[Dict[str, Any]]:
         return []
 
     results = []
-    for ch in data["characters_by_id"].values():
-        hay = f"{ch['name']} {ch['anime']}"
-        if q in _normalize_text(hay):
-            results.append(deepcopy(ch))
+    for hay_n, name_n, anime_n, ch in data.get("character_search_index", []):
+        if q in hay_n:
+            results.append((name_n, anime_n, ch))
 
-    results.sort(key=lambda x: (_normalize_text(x["name"]), _normalize_text(x["anime"])))
-    return results[:limit]
+    results.sort(key=lambda item: (item[0], item[1]))
+    return [deepcopy(item[2]) for item in results[:limit]]
 
 
 def list_subcategories() -> List[Dict[str, Any]]:
