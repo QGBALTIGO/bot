@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -13,8 +14,7 @@ from utils.telegram_photo import reply_photo_from_url
 from utils.card_media_type import card_media_emoji
 
 from database import (
-    get_card_owner_count,
-    get_card_total_copies,
+    get_card_stats,
     get_user_card_quantity,
 )
 
@@ -230,7 +230,7 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         query = " ".join(context.args).strip()
-        char = _pick_best_character(query)
+        char = await asyncio.to_thread(_pick_best_character, query)
 
         if not char:
             await update.message.reply_text("❌ Personagem não encontrado.")
@@ -243,12 +243,15 @@ async def card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image = str(char.get("image") or "").strip()
         card_emoji = card_media_emoji(char)
 
-        qty = int(get_user_card_quantity(user_id, char_id) or 0)
+        qty_raw, card_stats = await asyncio.gather(
+            asyncio.to_thread(get_user_card_quantity, user_id, char_id),
+            asyncio.to_thread(get_card_stats, char_id),
+        )
+        qty = int(qty_raw or 0)
         emoji = get_dup_emoji(qty)
 
-        total_rolls = 12483  # preview por enquanto
-        owners = int(get_card_owner_count(char_id) or 0)
-        total_copies = int(get_card_total_copies(char_id) or 0)
+        owners = int((card_stats or {}).get("owners") or 0)
+        total_copies = int((card_stats or {}).get("total_copies") or 0)
 
         caption = (
             f"╭─ {card_emoji} Card <code>#{char_id}</code>\n"
@@ -339,9 +342,9 @@ async def card_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         lock = await lock_manager.acquire(f"cardstats:{user.id}:{char_id}")
         try:
-            total_rolls = 12483  # preview por enquanto
-            owners = int(get_card_owner_count(char_id) or 0)
-            total_copies = int(get_card_total_copies(char_id) or 0)
+            card_stats = await asyncio.to_thread(get_card_stats, char_id)
+            owners = int((card_stats or {}).get("owners") or 0)
+            total_copies = int((card_stats or {}).get("total_copies") or 0)
 
             msg = (
                 f"👥 Usuários que possuem: {fmt_num(owners)}\n"
