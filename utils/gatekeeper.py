@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -20,6 +21,22 @@ PROGRESS_RATE_LIMIT = int(os.getenv("PROGRESS_RATE_LIMIT", "1"))
 PROGRESS_RATE_WINDOW_SECONDS = float(os.getenv("PROGRESS_RATE_WINDOW_SECONDS", "2.5"))
 GATEKEEPER_RATE_LIMIT = int(os.getenv("GATEKEEPER_RATE_LIMIT", "8"))
 GATEKEEPER_RATE_WINDOW_SECONDS = float(os.getenv("GATEKEEPER_RATE_WINDOW_SECONDS", "5"))
+
+CHANNEL_MEMBERSHIP_CACHE_SECONDS = max(
+    5.0,
+    float(os.getenv("CHANNEL_MEMBERSHIP_CACHE_SECONDS", "60")),
+)
+CHANNEL_MEMBERSHIP_NEGATIVE_CACHE_SECONDS = max(
+    1.0,
+    float(os.getenv("CHANNEL_MEMBERSHIP_NEGATIVE_CACHE_SECONDS", "8")),
+)
+CHANNEL_MEMBERSHIP_CACHE_MAX = max(
+    1000,
+    int(os.getenv("CHANNEL_MEMBERSHIP_CACHE_MAX", "50000")),
+)
+
+_channel_membership_cache: dict[int, tuple[float, bool]] = {}
+_channel_membership_cache_lock = asyncio.Lock()
 
 ADMIN_COMMANDS = {
     "/card_reload",
@@ -71,28 +88,86 @@ def _member_is_valid(member) -> bool:
     return status == "restricted" and bool(getattr(member, "is_member", False))
 
 
+async def check_required_channel_membership(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    *,
+    force: bool = False,
+) -> bool:
+    """Verify channel membership with a short bounded in-memory cache.
+
+    Normal commands reuse positive checks for a short period instead of making a
+    Telegram API roundtrip on every command. The start command can use force=True
+    so a user who just joined the channel is recognized immediately.
+    """
+
+    if not REQUIRED_CHANNEL:
+        return True
+
+    uid = int(user_id)
+    now = time.monotonic()
+
+    if not force:
+        async with _channel_membership_cache_lock:
+            cached = _channel_membership_cache.get(uid)
+            if cached is not None:
+                expires_at, cached_ok = cached
+                if now < expires_at:
+                    return bool(cached_ok)
+                _channel_membership_cache.pop(uid, None)
+
+    try:
+        member = await context.bot.get_chat_member(
+            chat_id=REQUIRED_CHANNEL,
+            user_id=uid,
+        )
+        ok = _member_is_valid(member)
+    except Exception:
+        logger.exception(
+            "Falha ao verificar canal obrigatório user_id=%s channel=%s",
+            uid,
+            REQUIRED_CHANNEL,
+        )
+        return False
+
+    ttl = (
+        CHANNEL_MEMBERSHIP_CACHE_SECONDS
+        if ok
+        else CHANNEL_MEMBERSHIP_NEGATIVE_CACHE_SECONDS
+    )
+    expires_at = time.monotonic() + ttl
+
+    async with _channel_membership_cache_lock:
+        _channel_membership_cache[uid] = (expires_at, ok)
+
+        if len(_channel_membership_cache) > CHANNEL_MEMBERSHIP_CACHE_MAX:
+            current = time.monotonic()
+            expired = [
+                key
+                for key, (expiry, _) in _channel_membership_cache.items()
+                if expiry <= current
+            ]
+            for key in expired:
+                _channel_membership_cache.pop(key, None)
+
+            if len(_channel_membership_cache) > CHANNEL_MEMBERSHIP_CACHE_MAX:
+                overflow = len(_channel_membership_cache) - CHANNEL_MEMBERSHIP_CACHE_MAX
+                oldest = sorted(
+                    _channel_membership_cache.items(),
+                    key=lambda item: item[1][0],
+                )
+                for key, _ in oldest[:overflow]:
+                    _channel_membership_cache.pop(key, None)
+
+    return ok
+
+
 async def _is_in_required_channel(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
 ) -> bool:
-    if not REQUIRED_CHANNEL:
-        return True
-
-    try:
-        member = await context.bot.get_chat_member(
-            chat_id=REQUIRED_CHANNEL,
-            user_id=user_id,
-        )
-    except Exception:
-        logger.exception(
-            "Falha ao verificar canal obrigatório user_id=%s channel=%s",
-            user_id,
-            REQUIRED_CHANNEL,
-        )
-        return False
-
-    return _member_is_valid(member)
+    return await check_required_channel_membership(context, user_id)
 
 
 async def _maybe_register_progress(update: Update, command_name: str) -> None:
