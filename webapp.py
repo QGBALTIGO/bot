@@ -3680,17 +3680,25 @@ async def baltigoflix_create_intent(request: Request):
     if telegram_user_id <= 0:
         return JSONResponse({"ok": False, "error": "telegram_user_id_invalido"}, status_code=400)
 
-    touch_user_identity(telegram_user_id, username=telegram_username, full_name=telegram_full_name)
+    await asyncio.to_thread(
+        touch_user_identity,
+        telegram_user_id,
+        telegram_username,
+        telegram_full_name,
+    )
 
     plan = BALTIGOFLIX_PLANS.get(plan_code)
     if not plan:
         return JSONResponse({"ok": False, "error": "plano_invalido"}, status_code=400)
 
-    ref = get_user_referrer(telegram_user_id) or {}
+    ref = (
+        await asyncio.to_thread(get_user_referrer, telegram_user_id)
+    ) or {}
     referrer_user_id = ref.get("referrer_user_id")
     ref_code = ref.get("ref_code") or ""
 
-    intent = create_purchase_intent(
+    intent = await asyncio.to_thread(
+        create_purchase_intent,
         telegram_user_id=telegram_user_id,
         telegram_username=telegram_username,
         telegram_full_name=telegram_full_name,
@@ -3712,7 +3720,8 @@ async def baltigoflix_create_intent(request: Request):
     separator = "&" if "?" in base_checkout_url else "?"
     checkout_url = f"{base_checkout_url}{separator}ref={intent['intent_token']}"
 
-    attach_checkout_data_to_purchase_intent(
+    await asyncio.to_thread(
+        attach_checkout_data_to_purchase_intent,
         intent_id=int(intent["id"]),
         checkout_url=checkout_url,
         raw_checkout_response={
@@ -3764,7 +3773,8 @@ async def cakto_webhook(request: Request):
 
     ids = _extract_cakto_ids(payload)
 
-    event_row = save_cakto_webhook_event(
+    event_row = await asyncio.to_thread(
+        save_cakto_webhook_event,
         event_type=event_type,
         payload=payload,
         event_id=str(payload.get("id") or payload.get("event_id") or "").strip(),
@@ -3776,16 +3786,27 @@ async def cakto_webhook(request: Request):
         intent = None
 
         if ids["order_id"]:
-            intent = get_purchase_intent_by_cakto_order_id(ids["order_id"])
+            intent = await asyncio.to_thread(
+                get_purchase_intent_by_cakto_order_id,
+                ids["order_id"],
+            )
 
         if not intent and ids["external_reference"]:
-            intent = get_purchase_intent_by_external_reference(ids["external_reference"])
+            intent = await asyncio.to_thread(
+                get_purchase_intent_by_external_reference,
+                ids["external_reference"],
+            )
 
         if not intent:
-            mark_cakto_webhook_event_error(event_row["id"], "purchase_intent_nao_encontrado")
+            await asyncio.to_thread(
+                mark_cakto_webhook_event_error,
+                event_row["id"],
+                "purchase_intent_nao_encontrado",
+            )
             return JSONResponse({"ok": True, "ignored": True, "reason": "purchase_intent_nao_encontrado"})
 
-        attach_checkout_data_to_purchase_intent(
+        await asyncio.to_thread(
+            attach_checkout_data_to_purchase_intent,
             intent_id=int(intent["id"]),
             cakto_order_id=ids["order_id"],
             cakto_subscription_id=ids["subscription_id"],
@@ -3820,7 +3841,8 @@ async def cakto_webhook(request: Request):
         }
 
         if event_type_lower in approved_events:
-            mark_purchase_intent_status(
+            await asyncio.to_thread(
+                mark_purchase_intent_status,
                 intent_id=int(intent["id"]),
                 status="paid",
                 cakto_order_id=ids["order_id"],
@@ -3829,7 +3851,8 @@ async def cakto_webhook(request: Request):
             )
 
             if intent.get("referrer_user_id"):
-                create_affiliate_commission_for_purchase(
+                await asyncio.to_thread(
+                    create_affiliate_commission_for_purchase,
                     purchase_intent_id=int(intent["id"]),
                     buyer_user_id=int(intent["telegram_user_id"]),
                     referrer_user_id=int(intent["referrer_user_id"]),
@@ -3841,7 +3864,8 @@ async def cakto_webhook(request: Request):
                 )
 
         elif event_type_lower in canceled_events:
-            mark_purchase_intent_status(
+            await asyncio.to_thread(
+                mark_purchase_intent_status,
                 intent_id=int(intent["id"]),
                 status="canceled",
                 cakto_order_id=ids["order_id"],
@@ -3850,23 +3874,25 @@ async def cakto_webhook(request: Request):
             )
 
         elif event_type_lower in refunded_events:
-            mark_purchase_intent_status(
+            await asyncio.to_thread(
+                mark_purchase_intent_status,
                 intent_id=int(intent["id"]),
                 status="refunded",
                 cakto_order_id=ids["order_id"],
                 cakto_subscription_id=ids["subscription_id"],
                 cakto_customer_id=ids["customer_id"],
             )
-            reverse_affiliate_commission_by_purchase(
+            await asyncio.to_thread(
+                reverse_affiliate_commission_by_purchase,
                 purchase_intent_id=int(intent["id"]),
                 reason=event_type,
             )
 
-        mark_cakto_webhook_event_processed(event_row["id"])
+        await asyncio.to_thread(mark_cakto_webhook_event_processed, event_row["id"])
         return JSONResponse({"ok": True})
 
     except Exception as e:
-        mark_cakto_webhook_event_error(event_row["id"], str(e))
+        await asyncio.to_thread(mark_cakto_webhook_event_error, event_row["id"], str(e))
         return JSONResponse({"ok": False, "error": "erro_processando_webhook"}, status_code=500)
 
 
