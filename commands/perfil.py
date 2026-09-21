@@ -394,10 +394,16 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with lock:
         try:
-            user_row, settings_row = _resolve_target(update, context)
+            user_row, settings_row = await asyncio.to_thread(
+                _resolve_target,
+                update,
+                context,
+            )
 
             viewer_id = int(user.id) if user else 0
-            viewer_settings = db.get_profile_settings(viewer_id) or {}
+            viewer_settings = (
+                await asyncio.to_thread(db.get_profile_settings, viewer_id)
+            ) or {}
             viewer_lang = str(viewer_settings.get("language") or "pt").strip().lower()
             viewer_texts = _lang_pack(viewer_lang)
 
@@ -410,7 +416,10 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             target_id = int(user_row["user_id"])
             private_on = bool((settings_row or {}).get("private_profile"))
-            favorite = _get_favorite_from_settings(settings_row)
+            favorite = await asyncio.to_thread(
+                _get_favorite_from_settings,
+                settings_row,
+            )
 
             # em grupo: perfil privado sempre mostra reduzido
             if _is_group(update) and private_on:
@@ -422,8 +431,10 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _send_profile_message(update, text, favorite)
                 return
 
-            level = _get_level(target_id)
-            total_collection = _get_collection_total(target_id)
+            level, total_collection = await asyncio.gather(
+                asyncio.to_thread(_get_level, target_id),
+                asyncio.to_thread(_get_collection_total, target_id),
+            )
 
             text = _build_public_text(
                 user_row=user_row,
@@ -439,7 +450,9 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # fallback final para não morrer silenciosamente em grupo
             try:
                 viewer_id = int(user.id) if user else 0
-                viewer_settings = db.get_profile_settings(viewer_id) or {}
+                viewer_settings = (
+                    await asyncio.to_thread(db.get_profile_settings, viewer_id)
+                ) or {}
                 viewer_lang = str(viewer_settings.get("language") or "pt").strip().lower()
                 viewer_texts = _lang_pack(viewer_lang)
 
