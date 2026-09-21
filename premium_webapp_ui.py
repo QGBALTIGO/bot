@@ -1988,7 +1988,7 @@ document.getElementById("charSearchInput").addEventListener("keydown", function(
 }});
 (async function(){{
   await refreshCardsHome({{ silent: false }});
-  createLiveRefresh(refreshCardsHome, 5000);
+  createLiveRefresh(refreshCardsHome, 30000);
 }})();
 """
     return _page_template("Cards - Source Baltigo", body, extra_js=js)
@@ -2096,7 +2096,7 @@ async function refreshAnimeCards(options){{
 document.getElementById("animeCharSearchInput").addEventListener("input", debounce(applyAnimeCardFilter, 180));
 (async function(){{
   await refreshAnimeCards({{ silent: false }});
-  createLiveRefresh(refreshAnimeCards, 5000);
+  createLiveRefresh(refreshAnimeCards, 30000);
 }})();
 """
     return _page_template("Cards anime", body, extra_js=js)
@@ -2185,7 +2185,7 @@ async function refreshSubcategory(options){{
 document.getElementById("subcategorySearchInput").addEventListener("input", debounce(applySubcategoryFilter, 180));
 (async function(){{
   await refreshSubcategory({{ silent: false }});
-  createLiveRefresh(refreshSubcategory, 5000);
+  createLiveRefresh(refreshSubcategory, 30000);
 }})();
 """
     return _page_template("Cards subcategory", body, extra_js=js)
