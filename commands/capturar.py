@@ -295,13 +295,30 @@ async def _reply_html(update_message, text: str) -> None:
     await update_message.reply_html(text)
 
 
+def _award_capture_user_sync(
+    user_id: int,
+    username: str,
+    display_name: str,
+) -> Dict[str, Any]:
+    create_or_get_user(int(user_id))
+    touch_user_identity(
+        int(user_id),
+        str(username or ""),
+        str(display_name or ""),
+    )
+    try:
+        return add_progress_xp(int(user_id), XP_REWARD) or {}
+    except Exception:
+        return {}
+
+
 async def _reply_for_inactive_state(message, chat_id: int, user_id: int, *, no_name: bool) -> None:
     if no_name:
         if _feedback_allowed(chat_id, user_id, "usage_idle", window=2.0):
             await _reply_html(message, _build_usage_text(active=False))
         return
 
-    latest = get_latest_capture_spawn(chat_id)
+    latest = await asyncio.to_thread(get_latest_capture_spawn, chat_id)
     if latest and _is_captured_status(str(latest.get("status") or "").strip().lower()):
         if _feedback_allowed(chat_id, user_id, "captured", window=2.0):
             await _reply_html(message, _build_captured_text(latest))
@@ -340,13 +357,16 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lock = await lock_manager.acquire(f"capture:chat:{chat_id}")
     try:
-        active = get_active_spawn(chat_id)
+        active = await asyncio.to_thread(get_active_spawn, chat_id)
         if not active:
             inactive_reply_needed = True
         else:
             expires_at_ts = float(active.get("expires_at_ts") or 0.0)
             if expires_at_ts and expires_at_ts <= time.time():
-                escaped_now = mark_capture_spawn_escaped(int(active["id"]))
+                escaped_now = await asyncio.to_thread(
+                    mark_capture_spawn_escaped,
+                    int(active["id"]),
+                )
                 if escaped_now:
                     active = None
 
@@ -369,7 +389,8 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             purchase_token = secrets.token_hex(12)
             purchase_expires_at_ts = time.time() + PURCHASE_WINDOW_SECONDS
 
-            captured = mark_capture_spawn_captured(
+            captured = await asyncio.to_thread(
+                mark_capture_spawn_captured,
                 int(active["id"]),
                 winner_user_id=user_id,
                 winner_name=winner_name,
@@ -378,7 +399,10 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 purchase_expires_at_ts=purchase_expires_at_ts,
             )
             if not captured:
-                latest = get_latest_capture_spawn(chat_id)
+                latest = await asyncio.to_thread(
+                    get_latest_capture_spawn,
+                    chat_id,
+                )
                 if latest and _is_captured_status(str(latest.get("status") or "").strip().lower()):
                     if _feedback_allowed(chat_id, user_id, "captured_race", window=1.2):
                         await _reply_html(message, _build_captured_text(latest))
@@ -408,18 +432,12 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    create_or_get_user(user_id)
-    touch_user_identity(
+    progress = await asyncio.to_thread(
+        _award_capture_user_sync,
         user_id,
         getattr(user, "username", "") or "",
         _display_name(user),
     )
-
-    progress: Dict[str, Any] = {}
-    try:
-        progress = add_progress_xp(user_id, XP_REWARD) or {}
-    except Exception:
-        progress = {}
 
     caption = _build_offer_caption(
         captured,
@@ -438,7 +456,10 @@ async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _purchase_expiry_worker(spawn_id: int, application: Application) -> None:
     try:
         while True:
-            spawn = get_capture_spawn(int(spawn_id))
+            spawn = await asyncio.to_thread(
+                get_capture_spawn,
+                int(spawn_id),
+            )
             if not spawn:
                 return
 
@@ -451,7 +472,10 @@ async def _purchase_expiry_worker(spawn_id: int, application: Application) -> No
 
             lock = await lock_manager.acquire(f"capture:chat:{int(spawn['chat_id'])}")
             try:
-                fresh = get_capture_spawn(int(spawn_id))
+                fresh = await asyncio.to_thread(
+                    get_capture_spawn,
+                    int(spawn_id),
+                )
                 if not fresh:
                     return
                 if str(fresh.get("status") or "").strip().lower() != "captured_offer_open":
@@ -459,7 +483,10 @@ async def _purchase_expiry_worker(spawn_id: int, application: Application) -> No
                 if float(fresh.get("purchase_expires_at_ts") or 0.0) > time.time():
                     continue
 
-                expired = mark_capture_purchase_expired(int(spawn_id))
+                expired = await asyncio.to_thread(
+                    mark_capture_purchase_expired,
+                    int(spawn_id),
+                )
                 if not expired:
                     return
             finally:
@@ -486,7 +513,8 @@ def _schedule_purchase_task(spawn_id: int, application: Application) -> None:
 
 
 async def restore_capture_purchase_runtime(application: Application) -> None:
-    for spawn in list_open_capture_purchase_spawns():
+    spawns = await asyncio.to_thread(list_open_capture_purchase_spawns)
+    for spawn in spawns:
         _schedule_purchase_task(int(spawn["id"]), application)
 
 
@@ -503,14 +531,21 @@ async def capture_purchase_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer()
         return
 
-    spawn = get_capture_spawn_by_purchase_token(purchase_token)
+    spawn = await asyncio.to_thread(
+        get_capture_spawn_by_purchase_token,
+        purchase_token,
+    )
     if not spawn:
         await query.answer("Essa oferta ja acabou.", show_alert=True)
         return
 
     chat_lock = await lock_manager.acquire(f"capture:chat:{int(spawn['chat_id'])}")
     try:
-        result = complete_capture_purchase(purchase_token, int(user.id))
+        result = await asyncio.to_thread(
+            complete_capture_purchase,
+            purchase_token,
+            int(user.id),
+        )
     finally:
         chat_lock.release()
 
