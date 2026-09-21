@@ -233,10 +233,11 @@ def build_keyboard(prefix, page, total_pages, uid, extra=None):
 # TEXT BUILDERS
 # =========================================================
 
-def build_collection_text(uid, cards, page):
+def build_collection_text(uid, cards, page, fav=None):
     items, total, total_pages, page = paginate(cards, page)
 
-    fav = get_favorite(uid)
+    if fav is None:
+        fav = get_favorite(uid)
 
     text = (
         "📚 <b>Minha Coleção</b>\n\n"
@@ -278,12 +279,14 @@ def build_collection_text(uid, cards, page):
 
 async def send_collection(update, context, page, edit=False, target_uid=None):
     uid = int(target_uid) if target_uid is not None else update.effective_user.id
-    cards = get_user_cards(uid)
+    cards, fav = await asyncio.gather(
+        asyncio.to_thread(get_user_cards, uid),
+        asyncio.to_thread(get_favorite, uid),
+    )
 
-    text, total_pages, page = build_collection_text(uid, cards, page)
+    text, total_pages, page = build_collection_text(uid, cards, page, fav=fav)
 
     cover = DEFAULT_COVER
-    fav = get_favorite(uid)
 
     if fav:
         for c in cards:
@@ -329,7 +332,7 @@ async def colecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         anime_name = " ".join(args[1:]).strip()
-        anime = find_anime(anime_name)
+        anime = await asyncio.to_thread(find_anime, anime_name)
 
         if not anime:
             await update.message.reply_text("Anime não encontrado.")
@@ -351,8 +354,12 @@ async def send_collection_anime_owned(update, context, anime, page, edit=False, 
     uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
-    all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
-    owned = [c for c in get_user_cards(uid) if int(c["anime_id"] or 0) == anime_id]
+    cards_catalog, user_cards = await asyncio.gather(
+        asyncio.to_thread(cards_data),
+        asyncio.to_thread(get_user_cards, uid),
+    )
+    all_chars = _extract_characters_by_anime(cards_catalog).get(anime_id, []) or []
+    owned = [c for c in user_cards if int(c["anime_id"] or 0) == anime_id]
 
     banner = anime.get("banner_image") or anime.get("cover_image") or DEFAULT_COVER
 
@@ -426,8 +433,12 @@ async def send_collection_anime_missing(update, context, anime, page, edit=False
     uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
-    all_chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
-    owned_ids = {c["character_id"] for c in get_user_cards(uid)}
+    cards_catalog, user_cards = await asyncio.gather(
+        asyncio.to_thread(cards_data),
+        asyncio.to_thread(get_user_cards, uid),
+    )
+    all_chars = _extract_characters_by_anime(cards_catalog).get(anime_id, []) or []
+    owned_ids = {c["character_id"] for c in user_cards}
 
     missing = []
 
@@ -517,8 +528,12 @@ async def send_collection_gallery(update, context, anime, index, edit=False, tar
     uid = int(target_uid) if target_uid is not None else update.effective_user.id
     anime_id = int(anime["anime_id"])
 
-    chars = _extract_characters_by_anime(cards_data()).get(anime_id, []) or []
-    owned = {c["character_id"]: c["quantity"] for c in get_user_cards(uid)}
+    cards_catalog, user_cards = await asyncio.gather(
+        asyncio.to_thread(cards_data),
+        asyncio.to_thread(get_user_cards, uid),
+    )
+    chars = _extract_characters_by_anime(cards_catalog).get(anime_id, []) or []
+    owned = {c["character_id"]: c["quantity"] for c in user_cards}
 
     total = len(chars)
     if total <= 0:
@@ -630,7 +645,7 @@ async def colecao_s_callback(update, context):
         await q.answer()
         return
 
-    anime = find_anime(anime_id)
+    anime = await asyncio.to_thread(find_anime, anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
@@ -663,7 +678,7 @@ async def colecao_f_callback(update, context):
         await q.answer()
         return
 
-    anime = find_anime(anime_id)
+    anime = await asyncio.to_thread(find_anime, anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
@@ -696,7 +711,7 @@ async def colecao_x_callback(update, context):
         await q.answer()
         return
 
-    anime = find_anime(anime_id)
+    anime = await asyncio.to_thread(find_anime, anime_id)
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
