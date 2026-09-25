@@ -1,0 +1,128 @@
+name: Source collecting integration workbench
+on:
+  push:
+    branches: [codex/source-collecting-evolution-20260925]
+    paths: ['.github/workflows/source-collecting-workbench.yml']
+permissions:
+  contents: write
+concurrency:
+  group: source-collecting-workbench
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U audit -d source_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: Apply verified application patch
+        run: |
+          python - <<'PY'
+          import base64, hashlib, lzma, subprocess
+          from pathlib import Path
+          folder=Path('.source-evolution-patch')
+          if folder.exists():
+              encoded=''.join(p.read_text().strip() for p in sorted(folder.glob('*.b64')))
+              patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+              assert hashlib.sha256(patch).hexdigest()=='33098a310ae058ce3f729e790753c864bec9b339269904019a4f885824a66d96'
+              subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+              subprocess.run(['git','apply','-'],input=patch,check=True)
+              subprocess.run(['git','rm','-r','.source-evolution-patch'],check=True)
+          PY
+      - name: Install isolated test tools
+        run: |
+          pip install -q -r requirements.txt pytest pytest-asyncio ruff playwright
+          cd aninexus_frontend && bun install --frozen-lockfile && cd ..
+          python -m playwright install --with-deps chromium >/tmp/source-browser-install.log 2>&1
+          npm install --prefix /tmp/source-browser-tools agent-browser
+      - name: Validate generated contracts and compile production frontend
+        run: |
+          mkdir -p collecting-proof
+          python scripts/generate_collecting_types.py --check
+          ruff check . --select E9,F63,F7,F82 --exclude data --exclude node_modules
+          cd aninexus_frontend && bun run build && cd ..
+          rm -rf aninexus_runtime
+          cp -a aninexus_frontend/dist aninexus_runtime
+          diff -qr aninexus_frontend/dist aninexus_runtime
+      - name: Execute every regression and preserve real results
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          root=Path('collecting-proof'); root.mkdir(exist_ok=True)
+          steps={
+            'unit':['python','-m','pytest','-q','--junitxml=collecting-proof/pytest.xml'],
+            'transactions_existing':['python','scripts/audit_transactions.py','collecting-proof/transactions-existing.json'],
+            'transactions_collecting':['python','scripts/verify_collecting_transactions.py','collecting-proof/transactions-collecting.json'],
+            'browser_collecting':['python','scripts/verify_collecting_browser.py','--output','collecting-proof/collecting'],
+            'browser_native':['python','scripts/verify_native_browser.py','--test','--output','collecting-proof/native'],
+            'browser_fullscreen':['python','scripts/verify_fullscreen_browser.py','--output','collecting-proof/fullscreen'],
+            'browser_profile':['python','scripts/verify_profile_identity_browser.py','--output','collecting-proof/profile'],
+            'browser_single':['python','scripts/verify_single_miniapp_browser.py','--output','collecting-proof/single'],
+          }
+          gates={}
+          for name,cmd in steps.items():
+              with (root/(name+'.txt')).open('w') as out:
+                  try: result=subprocess.run(cmd,stdout=out,stderr=subprocess.STDOUT,timeout=400); code=result.returncode
+                  except subprocess.TimeoutExpired: code=124; out.write('\nTIMEOUT\n')
+              gates[name]={'passed':code==0,'exit_code':code}
+              (root/'gates.json').write_text(json.dumps(gates,indent=2))
+              print(name,code,flush=True)
+          assert all(row['passed'] for row in gates.values()),gates
+          PY
+      - name: Agent-browser visual verification
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_collecting_browser.py --serve >/tmp/source-collecting-server.log 2>&1 &
+          pid=$!
+          trap 'kill $pid || true' EXIT
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8765/menu >/dev/null && break || sleep 1; done
+          AB=/tmp/source-browser-tools/node_modules/.bin/agent-browser
+          $AB --executable-path "$CHROMIUM_PATH" open http://127.0.0.1:8765/menu#collecting
+          $AB wait --load networkidle
+          $AB snapshot -i >collecting-proof/agent-collection.txt
+          $AB screenshot collecting-proof/agent-collection.png
+          $AB close
+      - name: Commit only verified application files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add aninexus_frontend aninexus_runtime source_features migrations commands bot.py database.py database_aninexus_social.py database_profile.py database_shop_safety.py webapp.py webapp_entrypoint.py webapp_routes/aninexus_social.py scripts tests
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: integrated collecting, protection, wishlist, market and community features'
+            git push origin HEAD:codex/source-collecting-evolution-20260925
+          fi
+          git rev-parse HEAD >collecting-proof/source-sha.txt
+      - name: Preserve recovery source
+        if: always()
+        run: |
+          mkdir -p collecting-proof
+          git diff --binary HEAD >collecting-proof/pending.diff
+          git diff --cached --binary >collecting-proof/staged.diff
+          tar --exclude=.git --exclude=node_modules --exclude=collecting-proof --exclude=__pycache__ --exclude=.pytest_cache --exclude=.ruff_cache --exclude=aninexus_frontend/dist -czf /tmp/source-collecting-recovery.tar.gz .
+          cp /tmp/source-collecting-recovery.tar.gz collecting-proof/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-collecting-proof
+          path: collecting-proof/
+          retention-days: 7
