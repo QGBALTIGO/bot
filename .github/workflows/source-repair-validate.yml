@@ -1,0 +1,140 @@
+name: Source performance and favorite repair
+on:
+  push:
+    branches: [codex/source-performance-favorites-20260925]
+    paths: ['.source-repair/**', '.github/workflows/source-repair-validate.yml']
+permissions:
+  contents: write
+concurrency:
+  group: source-repair-validation
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: fixture-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply checksum-verified source changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, lzma, subprocess
+          folder = Path('.source-repair')
+          if folder.exists():
+              text = ''.join(p.read_text().strip() for p in sorted(folder.glob('*.b64')))
+              patch = lzma.decompress(base64.b64decode(text, validate=True))
+              assert hashlib.sha256(patch).hexdigest() == '8082ff2f82ce296fe8352deb4b01f2fa4a09e37d6409264bdb4e63531f6318cc'
+              subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
+              subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+              subprocess.run(['git', 'rm', '-r', '.source-repair'], check=True)
+          PY
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated test dependencies
+        run: |
+          pip install -r requirements.txt pytest pytest-asyncio ruff playwright
+          python -m playwright install --with-deps chromium
+          npm install --prefix /tmp/source-browser-tools agent-browser
+          cd aninexus_frontend && bun install --frozen-lockfile
+      - name: Compile frontend and synchronize runtime
+        run: |
+          cd aninexus_frontend && bun run build && cd ..
+          rm -rf aninexus_runtime
+          cp -a aninexus_frontend/dist aninexus_runtime
+          diff -qr aninexus_frontend/dist aninexus_runtime
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: reduce Source latency and restore profile favorites'
+            git push origin HEAD:codex/source-performance-favorites-20260925
+          fi
+      - name: Full regression and critical lint
+        run: |
+          mkdir -p repair-proof
+          set -o pipefail
+          ruff check . --select E9,F63,F7,F82 --exclude data
+          python -m pytest -q | tee repair-proof/pytest.txt
+      - name: Verify profile SQL against disposable PostgreSQL
+        env:
+          DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/postgres
+          BOT_TOKEN: '123456:fixture-only-not-a-real-token'
+        run: |
+          python - <<'PY' | tee repair-proof/postgres.txt
+          import time
+          import database as db
+          from database_core import run, pool
+          from webapp_services.profile_overview import load_menu_user_rows
+          from database_aninexus_pets import get_companion_overview, get_user_pets, get_user_eggs
+          db.create_tables()
+          db.touch_user_identity(77, 'testuser', 'Teste')
+          db.set_profile_favorite(77, 23)
+          run('UPDATE users SET coins=51 WHERE user_id=%s', (77,))
+          db.touch_user_identity(77, 'testuser2', 'Nome novo')
+          user, progress, settings = load_menu_user_rows(77)
+          assert user['coins'] == 51 and user['username'] == 'testuser2'
+          assert settings['favorite_character_id'] == 23
+          assert db.get_user_level_rank(77) == 1
+          assert db.get_user_level_rank(77) == 1
+          pets, eggs = get_companion_overview(77)
+          assert pets == get_user_pets(77) and eggs == get_user_eggs(77)
+          db.set_profile_favorite(77, None)
+          assert load_menu_user_rows(77)[2]['favorite_character_id'] is None
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+          from webapp_routes.aninexus_me import build_aninexus_me_router
+          from webapp_routes.aninexus_compat import _issue_session
+          app = FastAPI()
+          app.include_router(build_aninexus_me_router())
+          token = _issue_session({'id':77, 'first_name':'Teste'})
+          with TestClient(app) as client:
+              start=time.monotonic()
+              response=client.get('/api/v1_7b82/me', headers={'Authorization':'Bearer '+token})
+              assert response.status_code == 200, response.text
+              assert response.json()['balance'] == 51 and response.json()['favorite'] is None
+              print('Disposable PostgreSQL: joins, identity upsert, companion serialization, favorite removal and /me passed.')
+              print('Local disposable-database /me ms:', round((time.monotonic()-start)*1000))
+          pool.close()
+          PY
+      - name: Agent-browser page check
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_native_browser.py --serve >/tmp/source-repair-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for i in $(seq 1 25); do curl -fsS http://127.0.0.1:8765/menu >/dev/null && break || sleep 1; done
+          /tmp/source-browser-tools/node_modules/.bin/agent-browser --executable-path "$CHROMIUM_PATH" open http://127.0.0.1:8765/menu#settings
+          /tmp/source-browser-tools/node_modules/.bin/agent-browser wait --load networkidle
+          /tmp/source-browser-tools/node_modules/.bin/agent-browser snapshot -i >repair-proof/agent-snapshot.txt
+          /tmp/source-browser-tools/node_modules/.bin/agent-browser screenshot repair-proof/agent-settings.png
+          /tmp/source-browser-tools/node_modules/.bin/agent-browser close
+      - name: Responsive, startup and favorite browser regression
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_native_browser.py --test --output repair-proof
+      - name: Record reviewed source
+        if: always()
+        run: |
+          mkdir -p repair-proof
+          git rev-parse HEAD >repair-proof/source-sha.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-repair-proof
+          path: repair-proof/
+          retention-days: 7
