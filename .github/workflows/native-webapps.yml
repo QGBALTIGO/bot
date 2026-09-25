@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
-    paths: ["aninexus_frontend/**", "aninexus_runtime/**", "webapp_routes/native_webapps.py", "webapp_entrypoint.py", "bot.py", "tests/test_native*.py", "tests/test_fullscreen_viewport.py", "scripts/verify_native_browser.py", "scripts/verify_fullscreen_browser.py", ".github/workflows/native-webapps.yml"]
+    paths: ["aninexus_frontend/**", "aninexus_runtime/**", "webapp_routes/native_webapps.py", "webapp_entrypoint.py", "bot.py", "tests/test_native*.py", "tests/test_fullscreen_viewport.py", "scripts/verify_native_browser.py", "scripts/verify_fullscreen_browser.py", "scripts/verify_profile_identity_browser.py", ".github/workflows/native-webapps.yml"]
   push:
     branches: [main]
-    paths: ["aninexus_frontend/**", "aninexus_runtime/**", "webapp_routes/native_webapps.py", "webapp_entrypoint.py", "bot.py", "tests/test_native*.py", "tests/test_fullscreen_viewport.py", "scripts/verify_native_browser.py", "scripts/verify_fullscreen_browser.py", ".github/workflows/native-webapps.yml"]
+    paths: ["aninexus_frontend/**", "aninexus_runtime/**", "webapp_routes/native_webapps.py", "webapp_entrypoint.py", "bot.py", "tests/test_native*.py", "tests/test_fullscreen_viewport.py", "scripts/verify_native_browser.py", "scripts/verify_fullscreen_browser.py", "scripts/verify_profile_identity_browser.py", ".github/workflows/native-webapps.yml"]
 permissions:
   contents: read
 concurrency:
@@ -43,6 +43,10 @@ jobs:
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_fullscreen_browser.py --output native-proof/fullscreen
+      - name: Verify the integrated profile and favorite settings
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_profile_identity_browser.py --output native-proof/profile-identity
       - uses: actions/upload-artifact@v4
         if: always()
         with:
