@@ -31,7 +31,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.14'
-      - name: Apply verified application patch
+      - name: Apply verified application changes
         run: |
           python - <<'PY'
           import base64, hashlib, lzma, subprocess
@@ -44,6 +44,13 @@ jobs:
               subprocess.run(['git','apply','--check','-'],input=patch,check=True)
               subprocess.run(['git','apply','-'],input=patch,check=True)
               subprocess.run(['git','rm','-r','.source-evolution-patch'],check=True)
+          followup=Path('.source-evolution-followup.patch')
+          if followup.exists():
+              patch=followup.read_bytes()
+              assert hashlib.sha256(patch).hexdigest()=='be838dce184ad4d3cca0fa6b328dc3acdc3b1eba05578c4b4b5961b4f1285207'
+              subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+              subprocess.run(['git','apply','-'],input=patch,check=True)
+              subprocess.run(['git','rm',str(followup)],check=True)
           PY
       - name: Install isolated test tools
         run: |
@@ -51,7 +58,7 @@ jobs:
           cd aninexus_frontend && bun install --frozen-lockfile && cd ..
           python -m playwright install --with-deps chromium >/tmp/source-browser-install.log 2>&1
           npm install --prefix /tmp/source-browser-tools agent-browser
-      - name: Validate generated contracts and compile production frontend
+      - name: Validate contracts and compile production frontend
         run: |
           mkdir -p collecting-proof
           python scripts/generate_collecting_types.py --check
@@ -108,7 +115,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add aninexus_frontend aninexus_runtime source_features migrations commands bot.py database.py database_aninexus_social.py database_profile.py database_shop_safety.py webapp.py webapp_entrypoint.py webapp_routes/aninexus_social.py scripts tests
           if ! git diff --cached --quiet; then
-            git commit -m 'feat: integrated collecting, protection, wishlist, market and community features'
+            git commit -m 'feat: integrate collecting, protection, wishlist, market and community features'
             git push origin HEAD:codex/source-collecting-evolution-20260925
           fi
           git rev-parse HEAD >collecting-proof/source-sha.txt
