@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Apply verified source changes and dialog navigation guard
+      - name: Apply verified application patch without modifying workflows
         run: |
           python - <<'PY'
           import base64, hashlib, lzma, subprocess
@@ -24,8 +24,8 @@ jobs:
               encoded = ''.join(p.read_text().strip() for p in sorted(folder.glob('*.b64')))
               patch = lzma.decompress(base64.b64decode(encoded, validate=True))
               assert hashlib.sha256(patch).hexdigest() == 'b65a0a985d75be72a7fcd2880233db54f8ca6def4c2e7af688a9a00b39e4b46d'
-              subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
-              subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+              subprocess.run(['git', 'apply', '--exclude=.github/workflows/native-webapps.yml', '--check', '-'], input=patch, check=True)
+              subprocess.run(['git', 'apply', '--exclude=.github/workflows/native-webapps.yml', '-'], input=patch, check=True)
               subprocess.run(['git', 'rm', '-r', '.source-entrypoint-patch'], check=True)
           test = Path('scripts/verify_single_miniapp_browser.py')
           text = test.read_text()
@@ -104,16 +104,17 @@ jobs:
           python scripts/verify_native_browser.py --test --output entrypoint-proof/native
           python scripts/verify_fullscreen_browser.py --output entrypoint-proof/fullscreen
           python scripts/verify_profile_identity_browser.py --output entrypoint-proof/profile
-      - name: Commit only verified source and compiled runtime to isolated branch
+      - name: Commit only verified application source and compiled runtime
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add aninexus_frontend aninexus_runtime bot.py commands utils/miniapp_links.py utils/miniapp_menu.py webapp_routes/native_webapps.py tests scripts docs/single-miniapp.md .github/workflows/native-webapps.yml
+          git add aninexus_frontend aninexus_runtime bot.py commands utils/miniapp_links.py utils/miniapp_menu.py webapp_routes/native_webapps.py tests scripts docs/single-miniapp.md
           if ! git diff --cached --quiet; then
             git commit -m 'fix: one canonical Source MiniApp, persistent menu and stale-version notice'
             git push origin HEAD:codex/source-single-miniapp-20260925
           fi
           git rev-parse HEAD >entrypoint-proof/source-sha.txt
+          cp aninexus_runtime/ui-version.json entrypoint-proof/ui-version.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
