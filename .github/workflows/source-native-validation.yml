@@ -25,8 +25,8 @@ jobs:
               encoded = ''.join(p.read_text().strip() for p in sorted(directory.glob('*.b64')))
               patch = lzma.decompress(base64.b64decode(encoded, validate=True))
               assert hashlib.sha256(patch).hexdigest() == 'cdad08d63e04f8cfcf9e65170f83ba1a83e5f942a54882af0f9b3d2d6e323b85', 'Source patch checksum mismatch'
-              subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
-              subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+              subprocess.run(['git', 'apply', '--exclude=.github/workflows/native-webapps.yml', '--check', '-'], input=patch, check=True)
+              subprocess.run(['git', 'apply', '--exclude=.github/workflows/native-webapps.yml', '-'], input=patch, check=True)
               subprocess.run(['git', 'rm', '-r', '.source-native-transport'], check=True)
           PY
       - uses: oven-sh/setup-bun@v2
@@ -57,7 +57,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add aninexus_frontend aninexus_runtime webapp_routes/native_webapps.py webapp_entrypoint.py bot.py tests scripts/verify_native_browser.py docs/native-webapps.md .github/workflows/native-webapps.yml
+          git add aninexus_frontend aninexus_runtime webapp_routes/native_webapps.py webapp_entrypoint.py bot.py tests scripts/verify_native_browser.py docs/native-webapps.md
           if ! git diff --cached --quiet; then
             git commit -m 'feat: incorporate legacy Source WebApps into the native menu'
             git push origin HEAD:codex/unify-source-webapps-20260925
@@ -90,22 +90,15 @@ jobs:
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_native_browser.py --test --output native-proof
-      - name: Remove temporary migration workflow after verified success
-        run: |
-          git rm .github/workflows/source-native-validation.yml
-          git commit -m 'ci: retain permanent native WebApp regression checks'
-          git push origin HEAD:codex/unify-source-webapps-20260925
       - name: Package review evidence and resulting source
         if: always()
         run: |
           mkdir -p native-proof
           git rev-parse HEAD >native-proof/validated-source-sha.txt
-          tar --exclude='.git' --exclude='node_modules' --exclude='data' --exclude='*.session*' --exclude='.env' --exclude='native-proof' --exclude='__pycache__' -czf /tmp/source-native-review.tar.gz aninexus_frontend aninexus_runtime webapp_routes/native_webapps.py webapp_entrypoint.py bot.py tests scripts/verify_native_browser.py docs/native-webapps.md .github/workflows
+          tar --exclude='.git' --exclude='node_modules' --exclude='data' --exclude='*.session*' --exclude='.env' --exclude='native-proof' --exclude='__pycache__' -czf native-proof/source-native-review.tar.gz aninexus_frontend aninexus_runtime webapp_routes/native_webapps.py webapp_entrypoint.py bot.py tests scripts/verify_native_browser.py docs/native-webapps.md .github/workflows
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: source-native-proof
-          path: |
-            native-proof/
-            /tmp/source-native-review.tar.gz
+          path: native-proof/
           retention-days: 3
