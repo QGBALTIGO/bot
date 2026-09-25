@@ -1,0 +1,129 @@
+name: Source collecting final compatibility
+on:
+  push:
+    branches: [codex/source-collecting-evolution-20260925]
+    paths: ['.github/workflows/source-collecting-finish.yml']
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Complete additive-schema compatibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('database.py')
+          text=p.read_text()
+          start=text.index('def delete_all_users()')
+          end=text.index('# ADMIN BROADCAST',start)
+          block=text[start:end]
+          old='                cur.execute("SELECT pg_advisory_xact_lock(%s)", (0,))'
+          new=old+'''\n                # Block new accounts/listings while checking the global reset precondition.
+                          # This path is destructive and admin-only; never bypass active escrow.
+                          cur.execute("SET LOCAL lock_timeout='5s'")
+                          cur.execute("LOCK TABLE users, source_market IN ACCESS EXCLUSIVE MODE")'''.replace('\n                          ','\n                ')
+          assert block.count(old)==1
+          block=block.replace(old,new,1)
+          old='                        capture_spawns,\n                        users'
+          assert block.count(old)==1
+          block=block.replace(old,'                        capture_spawns',1)
+          old='                conn.commit()\n                return {"ok": True}'
+          assert block.count(old)==1
+          block=block.replace(old,'''                # DELETE honors additive ON DELETE actions. Closed market history is
+                          # anonymized; wishlists, cosmetics and other owned state cascade.
+                          # TRUNCATE users would reject the new foreign keys, even when empty.
+                          cur.execute("DELETE FROM users")
+                          conn.commit()
+                          return {"ok": True}'''.replace('\n                          ','\n                '),1)
+          p.write_text(text[:start]+block+text[end:])
+          p=Path('source_features/market.py')
+          text=p.read_text()
+          old='async def settlement_worker():\n    import asyncio\n\n    while True:'
+          assert old in text
+          p.write_text(text.replace(old,'async def settlement_worker():\n    import asyncio\n\n    print("[market-settlement] worker iniciado interval=30s", flush=True)\n    while True:',1))
+          p=Path('scripts/verify_collecting_transactions.py')
+          text=p.read_text()
+          marker='\nout = Path(sys.argv[1]'
+          assert marker in text
+          extra='''
+          @check
+          def global_reset_rejects_active_escrow_without_mutating_accounts():
+              a = user(cards={C1: 3})
+              b = user(coins=100)
+              mid = listing(a, kind="auction")
+              market.act(b, mid, "bid", key(), 1, 10)
+              before = (coins(a), coins(b), qty(a, C1))
+              denied(db.delete_all_users, "active_market")
+              assert (coins(a), coins(b), qty(a, C1)) == before
+              assert record(mid)["status"] == "active"
+              assert scalar("SELECT COUNT(*) FROM source_reservations WHERE owner_id=%s", (mid,)) == 1
+
+          @check
+          def global_reset_handles_new_foreign_keys_and_preserves_closed_market_history():
+              # Destructive test ONLY in the hostname/database-guarded disposable database.
+              active = run("SELECT id FROM source_market WHERE status='active'", fetch="all")
+              total_before = scalar("SELECT COALESCE(SUM(coins),0) FROM users") + scalar("SELECT COALESCE(SUM(bid),0) FROM source_market WHERE status='active'")
+              run("UPDATE source_market SET ends_at=NOW()-INTERVAL '1 second' WHERE status='active'")
+              for row in active:
+                  market.settle(str(row['id']))
+              assert scalar("SELECT COUNT(*) FROM source_market WHERE status='active'") == 0
+              assert scalar("SELECT COALESCE(SUM(coins),0) FROM users") == total_before
+              a = user(cards={C1: 3})
+              collection.wishes(a, [C1])
+              collection.set_protection(a, C1, True)
+              collection.save_settings(a, {"share_inline": True})
+              closed = scalar("SELECT COUNT(*) FROM source_market")
+              assert closed > 0
+              assert db.delete_all_users() == {"ok": True}
+              assert scalar("SELECT COUNT(*) FROM users") == 0
+              assert scalar("SELECT COUNT(*) FROM source_market") == closed
+              assert scalar("SELECT COUNT(*) FROM source_market WHERE seller_id IS NOT NULL OR bidder_id IS NOT NULL") == 0
+              for name in ("source_reservations", "source_card_protection", "source_wishlist", "source_collecting_settings", "source_workshop_wallet", "source_cosmetics", "source_operations", "source_contributions"):
+                  assert scalar(f"SELECT COUNT(*) FROM {name}") == 0, name
+              assert db.delete_all_users() == {"ok": True}
+
+          '''
+          p.write_text(text.replace(marker,'\n'+extra+marker,1))
+          PY
+      - name: Install isolated test dependencies
+        run: pip install -q -r requirements.txt pytest pytest-asyncio ruff
+      - name: Validate syntax and all Python regressions
+        run: |
+          mkdir -p final-proof
+          python -m compileall -q -x '/(node_modules|\.git)/' .
+          ruff check . --select E9,F63,F7,F82 --exclude data
+          python -m pytest -q --junitxml=final-proof/pytest.xml
+      - name: Real PostgreSQL feature tests including safe global reset
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/verify_collecting_transactions.py final-proof/transactions.json
+      - name: Commit only verified application files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add database.py source_features/market.py scripts/verify_collecting_transactions.py
+          git diff --cached --check
+          git commit -m 'fix: preserve reset compatibility and closed market history with collecting schema'
+          git push origin HEAD:codex/source-collecting-evolution-20260925
+          git rev-parse HEAD >final-proof/source-sha.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-collecting-final-compatibility
+          path: final-proof/
+          retention-days: 7
