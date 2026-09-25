@@ -1,0 +1,32 @@
+name: Source test toolchain
+on:
+  push:
+    branches: [codex/unify-source-webapps-20260925]
+    paths: [.github/workflows/source-test-toolchain.yml]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare browser and Python tools
+        run: |
+          mkdir -p /tmp/source-tools/wheels
+          npm install --prefix /tmp/source-tools/browser agent-browser
+          python -m pip download -d /tmp/source-tools/wheels -r requirements.txt pytest pytest-asyncio ruff
+          tar -czf /tmp/source-tools.tar.gz -C /tmp/source-tools .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-test-tools
+          path: /tmp/source-tools.tar.gz
+          retention-days: 1
