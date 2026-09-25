@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
@@ -6,7 +7,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 
-BASE_URL = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL nao configurado.")
 
@@ -52,7 +53,7 @@ async def colec(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_html(bloqueio)
         return
 
-    url = f"{BASE_URL}/cccolecao?uid={user.id}"
+    url = miniapp_url('album')
     texto = (
         "<b>COLECAO BALTIGO</b>\n\n"
         "Abra sua colecao em um Mini App sincronizado com a loja, o favorito e as alteracoes mais recentes dos cards.\n\n"

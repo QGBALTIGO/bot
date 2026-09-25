@@ -76,3 +76,16 @@ export function openExternal(url: string) {
   else if (tg?.openLink) tg.openLink(parsed.href);
   else window.open(parsed.href, '_blank', 'noopener,noreferrer');
 }
+
+/** Migrate old direct URLs in-place after Telegram has parsed its signed launch data. */
+export function canonicalizeEntry() {
+  const entry = routes[path()];
+  if (!entry || path() === '/menu') return;
+  const query = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(entry.params || {}))
+    if (!query.has(key)) query.set(key, value);
+  if (!query.has('tab') && !query.has('route')) query.set('tab', entry.tab);
+  // Keep the Telegram fragment byte-for-byte. It is not a second application route.
+  const target = `/menu${query.size ? `?${query}` : ''}${window.location.hash}`;
+  window.history.replaceState(window.history.state, '', target);
+}

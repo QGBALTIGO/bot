@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 import unicodedata
 
@@ -7,7 +8,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 
-BASE_URL = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL nao configurado.")
 
@@ -59,7 +60,7 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
     requested_level = _normalize_level(" ".join(context.args).strip()) if context.args else "medium"
     level_label = _LEVEL_LABELS.get(requested_level, "Médio")
     user_id = int(update.effective_user.id) if update.effective_user else 0
-    url = f"{BASE_URL}/memoria?level={requested_level}&uid={user_id}"
+    url = miniapp_url('memory', level=requested_level)
 
     texto = (
         "🧠 <b>JOGO DA MEMORIA ANIME</b>\n\n"

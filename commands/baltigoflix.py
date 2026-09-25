@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url
 import os
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
@@ -6,12 +7,6 @@ from telegram.ext import ContextTypes
 
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
-WEBAPP_BASE = (
-    os.getenv("BASE_URL", "").strip()
-    or os.getenv("WEBAPP_URL", "").strip()
-    or "https://bot-production-1980.up.railway.app"
-).rstrip("/")
-MINI_APP_URL = f"{WEBAPP_BASE}/baltigoflix"
 BALTIGOFLIX_BANNER_URL = os.getenv(
     "BALTIGOFLIX_BANNER_URL",
     "https://photo.chelpbot.me/AgACAgEAAxkBaDfI-2m66g4WQ-Jj6FZRPjNKhpCO_4kNAAIXrzEbj2ehRbC9NWdU_qoOAQADAgADeQADOgQ/photo.jpg",
@@ -48,7 +43,7 @@ async def baltigoflix(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Mais de 2.000 canais, streaming, suporte dedicado e checkout rapido.\n\n"
         "Toque abaixo e comece agora."
     )
-    url = f"{MINI_APP_URL}?uid={user.id}"
+    url = miniapp_url('subscription')
     kb = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Abrir BaltigoFlix", web_app=WebAppInfo(url=url))]]
     )

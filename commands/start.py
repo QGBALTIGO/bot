@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import asyncio
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -17,7 +18,7 @@ BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzNiyWmpfGqHBancNR9gbzHUCcN5
 
 WELCOME_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBZzjh9mmp41BscIh8CXt94vL4xYJb_x4kAALKC2sbeI3gRIgS39Orz7ePAQADAgADeQADOgQ/photo.jpg"
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
@@ -103,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     referrer_id = _referrer_from_args(getattr(context, "args", None))
     st = await asyncio.to_thread(_load_start_state, user_id, referrer_id)
     terms_ok = bool(st.get("terms_accepted")) and (st.get("terms_version") == TERMS_VERSION)
-    terms_url = f"{BASE_URL}/terms?uid={user_id}&lang={tg_lang}"
+    terms_url = miniapp_url('terms', lang=tg_lang)
 
     if not terms_ok:
         await asyncio.to_thread(reset_welcome_sent, user_id)

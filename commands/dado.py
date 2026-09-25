@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
@@ -7,7 +8,7 @@ from database import create_or_get_user, get_dado_state, get_next_dado_recharge_
 from utils.gatekeeper import gatekeeper
 
 
-BASE_URL = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL nao configurado.")
 
@@ -64,7 +65,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         saldo = 0
         prox_hora = "--:--"
 
-    url = f"{BASE_URL}/menu?tab=dado&uid={user.id}"
+    url = miniapp_url('dado')
     texto = (
         "<b>SISTEMA DE DADOS</b>\n\n"
         "Aqui voce podera usar seus dados para descobrir animes e obter personagens para a sua colecao.\n\n"

@@ -233,7 +233,8 @@ export function Dialog({
     const previous = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     window.dispatchEvent(new CustomEvent('source:dialog', { detail: true }));
-    const close = () => {
+    const close = (event?: Event) => {
+      event?.preventDefault();
       if (!busyRef.current) closeRef.current();
     };
     const key = (e: KeyboardEvent) => {

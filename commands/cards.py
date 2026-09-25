@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import asyncio
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -7,7 +8,7 @@ from utils.gatekeeper import gatekeeper
 from cards_service import find_anime
 
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 CARDS_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZxImgmmnL7d9nYjTFd0KNTThxz9KJ6uCAAK7C2sbxrE5RXkd0eZ9Eoc4AQADAgADeQADOgQ/photo.jpg"
 
 
@@ -33,7 +34,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         anime = await asyncio.to_thread(find_anime, direct_query)
 
         if anime:
-            url = f"{BASE_URL}/cards/anime?anime_id={anime['anime_id']}"
+            url = miniapp_url('cards', anime_id=anime['anime_id'])
             texto = (
                 f"🃏 <b>{anime['anime']}</b>\n\n"
                 "Abrindo direto a obra encontrada nos cards."
@@ -41,7 +42,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             botao = "🃏 Abrir Obra"
 
         else:
-            url = f"{BASE_URL}/cards"
+            url = miniapp_url('cards')
             texto = (
                 "🃏 <b>COLEÇÃO DE PERSONAGENS</b>\n\n"
                 f"Não achei uma obra exata para: <b>{direct_query}</b>\n"
@@ -50,7 +51,7 @@ async def cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             botao = "🃏 Abrir Cards"
 
     else:
-        url = f"{BASE_URL}/cards"
+        url = miniapp_url('cards')
         texto = (
             "🃏 <b>COLEÇÃO DE PERSONAGENS</b>\n\n"
             "Explore todos os personagens disponíveis no sistema de cards.\n\n"

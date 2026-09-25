@@ -28,6 +28,7 @@ create_tables()
 
 from commands.start import start
 from commands.menu import menu
+from utils.miniapp_menu import start_menu_sync, refresh_private_menu
 from commands.perfil import perfil
 from commands.health import health
 from commands.reset_users import reset_user, reset_all
@@ -334,6 +335,7 @@ def register_messages(app: Application):
 
 def build_application():
     async def post_init(app: Application):
+        start_menu_sync(app)
         await restore_capture_runtime(app)
         await restore_capture_purchase_runtime(app)
         await restore_duel_runtime(app)
@@ -385,6 +387,9 @@ def build_application():
             )
 
     async def post_shutdown(app: Application):
+        menu_sync = app.bot_data.pop("miniapp_menu_sync", None)
+        if menu_sync:
+            await menu_sync.close()
         tasks = [
             app.bot_data.pop("terms_channel_worker", None),
             app.bot_data.pop("telegram_outbox_worker", None),
@@ -412,6 +417,7 @@ def build_application():
         .build()
     )
 
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, refresh_private_menu), group=-100)
     register_commands(app)
     register_callbacks(app)
     register_messages(app)

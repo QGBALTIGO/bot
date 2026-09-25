@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from urllib.parse import parse_qsl, urlencode
 from utils.webapp_identity import resolve_webapp_user
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,12 +150,29 @@ def install_native_webapps(app: FastAPI) -> None:
         if not path.startswith("/") or path.startswith(("/api", "/assets", "//")):
             raise RuntimeError("O manifesto deve conter apenas rotas HTML explícitas.")
 
-    def native_entry():
-        return FileResponse(
-            index,
-            media_type="text/html",
-            headers={"Cache-Control": "no-cache", "X-Source-UI": "native"},
-        )
+    version_file = RUNTIME / 'ui-version.json'
+    version = (json.loads(version_file.read_text()).get('version') if version_file.is_file()
+               else hashlib.sha256(index.read_bytes()).hexdigest()[:16])
+    headers = {'Cache-Control': 'no-store, max-age=0', 'X-Source-UI': 'native',
+               'X-Source-UI-Version': version, 'Link': '</menu>; rel="canonical"'}
+
+    def native_entry(request: Request):
+        path = request.url.path.rstrip('/') or '/'
+        if path != '/menu':
+            entry = routes[path]
+            pairs = list(parse_qsl(request.url.query, keep_blank_values=True))
+            keys = {key for key, _ in pairs}
+            defaults = dict(entry.get('params') or {})
+            if not keys.intersection({'tab', 'route', 'startapp', 'tgWebAppStartParam'}):
+                defaults['tab'] = entry['tab']
+            pairs = [(k, v) for k, v in defaults.items() if k not in keys] + pairs
+            # No fragment in Location: browser preserves Telegram's signed fragment.
+            return RedirectResponse('/menu' + ('?' + urlencode(pairs) if pairs else ''),
+                                    status_code=307, headers=headers)
+        return FileResponse(index, media_type='text/html', headers=headers)
+
+    def native_version():
+        return JSONResponse({'version': version, 'entrypoint': '/menu'}, headers=headers)
 
     # Install last. Remove legacy GET handlers instead of shadowing them or using an iframe.
     app.router.routes[:] = [
@@ -165,8 +184,10 @@ def install_native_webapps(app: FastAPI) -> None:
         )
     ]
     for path in routes:
-        app.add_api_route(path, native_entry, methods=["GET"], include_in_schema=False)
+        app.add_api_route(path, native_entry, methods=["GET", "HEAD"], include_in_schema=False)
     existing = {getattr(route, "path", "") for route in app.routes}
+    if "/api/native/version" not in existing:
+        app.add_api_route("/api/native/version", native_version, methods=["GET"], include_in_schema=False)
     if "/api/native/config" not in existing:
         app.add_api_route("/api/native/config", native_config, methods=["GET"])
     if "/api/native/nickname" not in existing:

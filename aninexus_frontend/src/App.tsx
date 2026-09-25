@@ -12,6 +12,7 @@ import { Loader2 } from 'lucide-react';
 import React, { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { CharActionModal } from './components/character/CharActionModal';
 import { Header } from './components/Header';
+import { AppVersionNotice } from './components/AppVersionNotice';
 import { IntroLoading, type IntroStatus } from './components/IntroLoading';
 import { NavigationDrawer } from './components/NavigationDrawer';
 import { PetActionModal } from './components/pet/PetActionModal';
@@ -351,8 +352,11 @@ const AppContent = () => {
     }
     const hasDialog = Boolean(selectedChar || selectedPet || isMenuOpen || nativeDialog);
     const handleBack = () => {
-      if (nativeDialog) window.dispatchEvent(new Event('source:back'));
-      else if (selectedChar || selectedPet || isMenuOpen) {
+      // A mounted dialog consumes Back synchronously before state effects settle.
+      const backEvent = new Event('source:back', { cancelable: true });
+      if (!window.dispatchEvent(backEvent)) return;
+      if (nativeDialog) return;
+      if (selectedChar || selectedPet || isMenuOpen) {
         setSelectedChar(null);
         setSelectedPet(null);
         setIsMenuOpen(false);
@@ -417,6 +421,7 @@ const AppContent = () => {
       {!accountDeleted && (
         <div inert={nativeDialog || isMenuOpen}>
           <Header onMenuClick={() => setIsMenuOpen(true)} onNavigate={handleNavigate} />
+          <AppVersionNotice />
         </div>
       )}
 
