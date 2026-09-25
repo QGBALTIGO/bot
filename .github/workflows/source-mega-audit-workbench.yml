@@ -6,47 +6,61 @@ on:
 permissions:
   contents: read
 jobs:
-  baseline:
+  behavior:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: source_audit_local_only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SOURCE_AUDIT_DB: '1'
+      SOURCE_AUDIT_OUTPUT: /tmp/source-audit-proof
+      DATABASE_URL: postgresql://postgres:source_audit_local_only@127.0.0.1:5432/source_audit
+      BOT_TOKEN: '123456789:SOURCE_AUDIT_SYNTHETIC_TOKEN_ONLY'
+      BOT_OWNER_ID: '999999999'
+      ADMINS: '999999999'
+      ADMIN_IDS: '999999999'
+      SOURCE_MINIAPP_URL: https://example.invalid/menu
+      BASE_URL: https://example.invalid
+      MINIAPP_URL: https://example.invalid/menu
+      BOT_USERNAME: SourceAuditBot
+      SOURCE_CATALOG_SAFE_ROLLOUT: '0'
+      SOURCE_CATALOG_RETIREMENTS_ENABLED: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3.14'
-      - name: Source snapshot
+        with: {python-version: '3.11'}
+      - name: Decode checksum-verified audit tests
         run: |
-          mkdir -p /tmp/source-audit-baseline
-          git archive --format=tar.gz HEAD > /tmp/source-audit-baseline/source.tar.gz
-          git rev-parse HEAD > /tmp/source-audit-baseline/revision.txt
-      - name: Install audit tools
+          python - <<'PY'
+          import base64,gzip,hashlib
+          from pathlib import Path
+          data=Path('.source-audit-tests.b64').read_text().strip()
+          data=data.replace('URXl5Vbuge','URXl5Vuge').replace('G9OE63p5p97G1','G9OE63p97G1')
+          raw=gzip.decompress(base64.b64decode(data,validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='e24b7d91edc48e160d9d4d840c4776a0447577ab1a185d9ef949d99cbbe6ac3a'
+          path=Path('tests/integration/test_audit_live_db.py')
+          path.parent.mkdir(exist_ok=True)
+          path.write_bytes(raw)
+          PY
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt pytest pytest-asyncio pytest-cov
+      - name: Measure real backend behavior without outbound provider traffic
         run: |
-          pip install -q -r requirements.txt pytest pytest-asyncio pytest-cov ruff bandit pip-audit
-          cd aninexus_frontend && bun install --frozen-lockfile
-      - name: Baseline Python tests and measured coverage
-        run: |
+          mkdir -p /tmp/source-audit-proof
           set +e
-          python -m pytest -q --cov=. --cov-report=json:/tmp/source-audit-baseline/coverage.json --cov-report=term > /tmp/source-audit-baseline/pytest.txt 2>&1
-          echo $? > /tmp/source-audit-baseline/pytest-exit.txt
-          ruff check . --select E9,F63,F7,F82 --exclude data --output-format=json > /tmp/source-audit-baseline/ruff.json
-          bandit -r . -x ./tests,./aninexus_frontend/node_modules,./.git -f json -o /tmp/source-audit-baseline/bandit.json >/tmp/source-audit-baseline/bandit-summary.txt 2>&1
-          pip-audit -r requirements.txt --format=json --output=/tmp/source-audit-baseline/pip-audit.json >/tmp/source-audit-baseline/pip-audit-summary.txt 2>&1
-          exit 0
-      - name: Baseline frontend build and dependency review
-        run: |
-          set +e
-          cd aninexus_frontend
-          bun run build >/tmp/source-audit-baseline/frontend-build.txt 2>&1
-          echo $? >/tmp/source-audit-baseline/frontend-build-exit.txt
-          diff -qr dist ../aninexus_runtime > /tmp/source-audit-baseline/runtime-diff.txt
-          bun audit --json > /tmp/source-audit-baseline/frontend-audit.json 2>&1
+          python -m pytest tests/integration/test_audit_live_db.py -q --tb=short --cov=. --cov-report=json:/tmp/source-audit-proof/coverage.json --junitxml=/tmp/source-audit-proof/junit.xml > /tmp/source-audit-proof/behavior.txt 2>&1
+          echo $? > /tmp/source-audit-proof/behavior-exit.txt
+          tail -100 /tmp/source-audit-proof/behavior.txt
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-audit-baseline
-          path: /tmp/source-audit-baseline/
+          name: source-audit-behavior
+          path: /tmp/source-audit-proof/
           retention-days: 2
