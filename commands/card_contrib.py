@@ -1,10 +1,11 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.ext import ContextTypes
 
 
-WEBAPP_URL = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
+WEBAPP_URL = miniapp_entrypoint().removesuffix('/menu')
 
 
 async def sugerircard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,7 +32,7 @@ async def sugerircard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    url = f"{WEBAPP_URL}/cards/contrib?uid={user.id}"
+    url = miniapp_url('contribute')
 
     await message.reply_text(
         "<b>Central de Contribuicoes dos Cards</b>\n\n"

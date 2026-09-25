@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
 from telegram import (
@@ -11,7 +12,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 
-BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado.")
 
@@ -24,7 +25,6 @@ MENU_BANNER_URL = os.getenv(
     "https://carder.top/imagens/1773141172659-711153369.jpg",
 ).strip()
 
-MENU_WEBAPP_URL = f"{BASE_URL}/menu"
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
 
 
@@ -70,7 +70,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =========================
     # MINIAPP MENU
     # =========================
-    url = f"{MENU_WEBAPP_URL}?uid={user.id}"
+    url = miniapp_url('profile')
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("⚙️ Abrir Menu", web_app=WebAppInfo(url=url))]

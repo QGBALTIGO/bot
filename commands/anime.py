@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 # commands/anime.py
 
 import os
@@ -6,7 +7,7 @@ from telegram.ext import ContextTypes
 
 from utils.gatekeeper import gatekeeper
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot")
 
 if not BASE_URL:
@@ -63,7 +64,7 @@ async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Abrir MiniApp catálogo
     # =========================
 
-    url = f"{BASE_URL}/catalogo"
+    url = miniapp_url('catalog_anime')
 
     teclado = InlineKeyboardMarkup([
         [

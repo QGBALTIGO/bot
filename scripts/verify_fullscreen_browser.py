@@ -98,7 +98,7 @@ def run(output):
             page.get_by_role('textbox',name='Buscar personagem favorito').fill('02');page.get_by_role('button',name='Favoritar Personagem 02',exact=True).click();page.get_by_role('dialog').wait_for(state='hidden')
             assert base.STATE['favorite']['id']==2
             bounds(page,'.source-toast-viewport');page.screenshot(path=str(output/'favorito-seguro.png'))
-            page.get_by_role('button',name='Alterar favorito',exact=True).click();page.get_by_role('dialog').wait_for();page.evaluate('for(const f of __backHandlers)f()');page.get_by_role('dialog').wait_for(state='hidden')
+            page.get_by_role('button',name='Alterar favorito',exact=True).click();page.get_by_role('dialog').wait_for();page.evaluate('for(const f of Array.from(__backHandlers))f()');page.get_by_role('dialog').wait_for(state='hidden');assert page.evaluate('location.hash')=='#settings';page.get_by_role('button',name='Alterar favorito',exact=True).wait_for()
             report['checks'].append('favorite persists; picker/toast safe; native Back closes dialog')
             page.get_by_role('button',name='Alterar favorito',exact=True).click();page.set_viewport_size({'width':844,'height':390});page.evaluate('__rotate()');page.wait_for_timeout(150)
             bounds(page,'[role="dialog"]');bounds(page,'[role="dialog"] button[aria-label="Fechar"]');page.screenshot(path=str(output/'favoritos-horizontal.png'))

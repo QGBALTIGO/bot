@@ -42,10 +42,19 @@ def test_every_legacy_html_path_delivers_same_react_app(tmp_path, monkeypatch, p
     )
     assert response.status_code == 200
     assert response.headers["x-source-ui"] == "native"
-    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["cache-control"] == "no-store, max-age=0"
     assert response.content == client.get("/menu").content
     assert "legacy" not in response.text
-    assert not response.history
+    assert response.url.path == '/menu'
+    assert len(response.history) == (0 if path == '/menu' else 1)
+    assert response.headers['x-source-ui-version'] == client.get('/api/native/version').json()['version']
+    if path != '/menu':
+        assert response.history[0].status_code == 307
+        assert response.url.params['tab'] == MANIFEST[path]['tab']
+        assert response.url.params['uid'] == '123'
+        assert response.url.params['q'] == 'One Piece'
+        for key, value in MANIFEST[path].get('params', {}).items():
+            assert response.url.params[key] == value
 
 
 def test_installation_is_idempotent_and_preserves_api(tmp_path, monkeypatch):
@@ -160,3 +169,17 @@ def test_runtime_manifest_matches_source_when_built():
     compiled = ROOT / "aninexus_runtime/native-routes.json"
     assert compiled.is_file()
     assert json.loads(compiled.read_text()) == MANIFEST
+
+
+def test_old_links_preserve_init_data_without_redirecting_apis(tmp_path, monkeypatch):
+    app = build_app(tmp_path, monkeypatch)
+    client = TestClient(app)
+    response = client.get('/cards/search?uid=42&q=A%26B&tgWebAppData=user%3Dabc%26hash%3Ddef', follow_redirects=False)
+    assert response.status_code == 307
+    assert '#' not in response.headers['location']
+    from urllib.parse import urlsplit, parse_qs
+    query = parse_qs(urlsplit(response.headers['location']).query)
+    assert query['tgWebAppData'] == ['user=abc&hash=def']
+    assert query['q'] == ['A&B'] and query['view'] == ['characters']
+    assert client.head('/menu').status_code == 200
+    assert client.get('/api/untouched').json() == {'api': True}

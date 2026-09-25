@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 # commands/manga.py
 
 import os
@@ -7,7 +8,7 @@ from telegram.ext import ContextTypes
 from utils.gatekeeper import gatekeeper
 
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
     raise RuntimeError("BASE_URL não configurado no Railway.")
 
@@ -58,7 +59,7 @@ async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =========================
     # Abre o MiniApp do catálogo de mangás
     # =========================
-    url = f"{BASE_URL}/mangas"
+    url = miniapp_url('catalog_manga')
 
     texto = (
         "📚 <b>Catálogo de Mangás &amp; Manhwas</b>\n\n"

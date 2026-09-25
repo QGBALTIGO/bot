@@ -10,7 +10,7 @@ def _read(path: str) -> str:
 
 def test_dado_command_opens_aninexus_module():
     source = _read("commands/dado.py")
-    assert '/menu?tab=dado&uid=' in source
+    assert "miniapp_url('dado')" in source
     assert 'WebAppInfo(url=url)' in source
 
 

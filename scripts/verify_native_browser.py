@@ -142,6 +142,9 @@ window.Telegram={WebApp:{initData:'fixture-signed-data',initDataUnsafe:{user:{id
 def fixture(path, query, method, body):
     if method == "GET":
         STATE["gets"].append(path)
+        if path == "/api/native/version":
+            version_file = DIST / "ui-version.json"
+            return json.loads(version_file.read_text()) if version_file.is_file() else {}
     if method == "POST":
         STATE["posts"].append({"path": path, "body": body})
         if path.endswith("/secure_init"):

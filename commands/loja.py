@@ -1,3 +1,4 @@
+from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
@@ -21,12 +22,12 @@ async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    webapp_base = (os.getenv("BASE_URL", "").strip() or os.getenv("WEBAPP_URL", "").strip()).rstrip("/")
+    webapp_base = miniapp_entrypoint().removesuffix('/menu')
     if not webapp_base:
         await update.message.reply_html("WEBAPP_URL/BASE_URL nao configurada.")
         return
 
-    url = f"{webapp_base}/shop?uid={update.effective_user.id}"
+    url = miniapp_url('shop')
     texto = (
         "<b>LOJA BALTIGO</b>\n\n"
         "Venda personagens e compre recursos direto aqui no Telegram."
