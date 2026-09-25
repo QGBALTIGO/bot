@@ -226,7 +226,7 @@ export const NavigationDrawer = ({
 
       <div
         className={cn(
-          'fixed top-0 right-0 z-[120] h-full w-[min(280px,85vw)] bg-zinc-950 border-l border-white/5 flex flex-col shadow-2xl transition-transform duration-200 ease-out',
+          'source-navigation-drawer fixed top-0 right-0 z-[120] h-full w-[min(280px,85vw)] bg-zinc-950 border-l border-white/5 flex flex-col shadow-2xl transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full',
         )}
         ref={panelRef}
@@ -236,7 +236,7 @@ export const NavigationDrawer = ({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="p-6 flex items-center justify-between border-b border-white/[0.04]">
+        <div className="shrink-0 p-6 flex items-center justify-between border-b border-white/[0.04]">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <Terminal size={14} className="text-zinc-500" />
@@ -258,7 +258,7 @@ export const NavigationDrawer = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 space-y-8">
           {sections.map((section) => (
             <div key={section.title} className="space-y-3">
               <h3 className="px-2 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
@@ -351,7 +351,7 @@ export const NavigationDrawer = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-white/[0.04] bg-white/[0.01]">
+        <div className="source-drawer-footer shrink-0 p-6 border-t border-white/[0.04] bg-white/[0.01]">
           <div className="flex items-center gap-3 p-3 rounded-md bg-zinc-900 border border-white/5 mb-5">
             <div className="w-8 h-8 rounded bg-brand-accent/10 flex items-center justify-center shrink-0 border border-brand-accent/20">
               <Heart size={14} className="text-brand-accent" fill="currentColor" />

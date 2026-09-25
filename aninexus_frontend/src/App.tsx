@@ -364,37 +364,14 @@ const AppContent = () => {
       tg.BackButton?.show?.();
       tg.BackButton?.onClick?.(handleBack);
     } else tg.BackButton?.hide?.();
-    if (hasDialog) tg.disableVerticalSwipes?.();
-    else tg.enableVerticalSwipes?.();
-    tg.expand?.();
+    if (!tg.isVersionAtLeast || tg.isVersionAtLeast('7.7')) {
+      if (hasDialog) tg.disableVerticalSwipes?.();
+      else tg.enableVerticalSwipes?.();
+    }
     return () => {
       tg.BackButton?.offClick?.(handleBack);
     };
   }, [selectedChar, selectedPet, isMenuOpen, nativeDialog, depth, activeTab, accountDeleted]);
-
-  // Harmonize the Telegram chrome (header bar + overscroll area) and the
-  // native control scheme with the user's Telegram theme instead of forcing
-  // a hardcoded dark palette. Re-applies when the user switches themes.
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-    if (!tg) return;
-
-    tg.ready?.();
-
-    const applyTheme = () => {
-      const params = tg.themeParams || {};
-      const bg = params.bg_color || params.secondary_bg_color || '#09090b';
-      tg.setHeaderColor?.(bg);
-      tg.setBackgroundColor?.(bg);
-      document.documentElement.style.colorScheme = tg.colorScheme === 'light' ? 'light' : 'dark';
-    };
-
-    applyTheme();
-    tg.onEvent?.('themeChanged', applyTheme);
-    return () => {
-      tg.offEvent?.('themeChanged', applyTheme);
-    };
-  }, []);
 
   const handleNavigate = useCallback((tab: string) => {
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();

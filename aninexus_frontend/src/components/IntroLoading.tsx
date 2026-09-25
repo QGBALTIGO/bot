@@ -56,7 +56,7 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[999] flex flex-col items-center justify-center bg-zinc-950 px-8 select-none transition-opacity duration-300',
+        'source-intro-overlay source-safe-overlay fixed inset-0 z-[999] flex flex-col items-center justify-center bg-zinc-950 px-8 select-none transition-opacity duration-300',
         fading ? 'opacity-0' : 'opacity-100',
       )}
     >      <div className="w-full max-w-xs space-y-16 relative z-10">

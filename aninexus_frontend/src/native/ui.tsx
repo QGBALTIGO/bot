@@ -276,7 +276,7 @@ export function Dialog({
   }, []);
   return createPortal(
     <div
-      className="fixed inset-0 z-[150] bg-black/70 flex items-end sm:items-center justify-center p-3 sm:p-6 native-dialog-backdrop"
+      className="source-safe-overlay fixed inset-0 z-[150] bg-black/70 flex items-end sm:items-center justify-center p-3 sm:p-6 native-dialog-backdrop"
       onClick={() => {
         if (!busy) onClose();
       }}
@@ -288,7 +288,7 @@ export function Dialog({
         aria-labelledby={id}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg max-h-[85vh] supports-[height:100dvh]:max-h-[85dvh] overflow-y-auto bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-5 shadow-2xl outline-none"
+        className="source-safe-panel w-full max-w-lg max-h-[85vh] supports-[height:100dvh]:max-h-[85dvh] overflow-y-auto bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-5 shadow-2xl outline-none"
       >
         <div className="flex items-start justify-between gap-3">
           <h2 id={id} className="min-w-0 break-words text-sm font-bold text-zinc-100 uppercase tracking-tight">
