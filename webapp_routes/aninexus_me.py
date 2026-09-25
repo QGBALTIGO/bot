@@ -4,7 +4,7 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
 from database import get_dado_state, get_user_level_rank
-from database_aninexus_pets import get_active_pet, get_user_eggs, get_user_pets
+from database_aninexus_pets import get_companion_overview
 from level_system import get_rank_tag
 from utils.aninexus_admin import is_admin, is_owner
 from webapp_routes.aninexus_compat import (
@@ -31,9 +31,8 @@ def build_aninexus_me_router() -> APIRouter:
         dado_balance = int(dado_state.get("balance") or 0)
         level = int(stats.get("level") or 1)
 
-        pets = get_user_pets(user_id)
-        active_pet = get_active_pet(user_id)
-        eggs = get_user_eggs(user_id)
+        pets, eggs = get_companion_overview(user_id)
+        active_pet = next((pet for pet in pets if pet.get("is_active")), pets[0] if pets else None)
         active_incubations = sum(
             1 for egg in eggs if str(egg.get("status") or "") == "incubating"
         )

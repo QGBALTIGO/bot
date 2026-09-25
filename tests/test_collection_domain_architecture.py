@@ -55,7 +55,7 @@ def test_collection_routes_keep_signed_identity_and_touch() -> None:
     assert "def _touch_identity(" in route
     assert "touch_user_identity(" in route
     assert route.count("_resolve_webapp_user(") == 4
-    assert route.count("_touch_identity(user_id, ctx)") == 4
+    assert route.count("_touch_identity(user_id, ctx)") == 0
     assert 'anime_id: int = Query(..., ge=1)' in route
     assert 'mode: str = Query(default="owned")' in route
     assert '"Obra nao encontrada."' in route
@@ -79,6 +79,7 @@ def test_collection_service_reuses_shared_profile_and_image_services() -> None:
 
     assert "from utils.web_image_url import web_image_url" in service
     assert "from webapp_services.profile_overview import build_menu_user_payload" in service
-    assert "collection_snapshot=collection_snapshot" in service
+    assert "snapshot=None" in service
+    assert "lambda _uid: snapshot" in service
     assert "collection_cards_from_snapshot=collection_cards_from_snapshot" in service
     assert 'mode_key not in {"owned", "missing", "gallery"}' in service

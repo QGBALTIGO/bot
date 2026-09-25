@@ -203,8 +203,6 @@ def _ensure_viewer_user(update: Update) -> Optional[int]:
         return None
 
     user_id = int(user.id)
-    db.create_or_get_user(user_id)
-
     try:
         db.touch_user_identity(
             user_id,
@@ -212,12 +210,7 @@ def _ensure_viewer_user(update: Update) -> Optional[int]:
             user.full_name or "",
         )
     except Exception:
-        pass
-
-    try:
-        db.ensure_profile_settings_row(user_id)
-    except Exception:
-        pass
+        db.create_or_get_user(user_id)
 
     return user_id
 
@@ -401,7 +394,7 @@ async def perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             viewer_id = int(user.id) if user else 0
-            viewer_settings = (
+            viewer_settings = settings_row if user_row and int(user_row["user_id"]) == viewer_id else (
                 await asyncio.to_thread(db.get_profile_settings, viewer_id)
             ) or {}
             viewer_lang = str(viewer_settings.get("language") or "pt").strip().lower()

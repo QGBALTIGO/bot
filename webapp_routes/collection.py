@@ -48,12 +48,11 @@ def build_collection_router(*, banner_url: str) -> APIRouter:
             x_webapp_uid=x_webapp_uid,
         )
         user_id = int(ctx["user_id"])
-        _touch_identity(user_id, ctx)
 
         data, qty_by_char, subcategory_map = collection_snapshot(user_id)
         cards_items = collection_cards_from_snapshot(data, qty_by_char, subcategory_map)
         anime_items = collection_animes_from_snapshot(data, qty_by_char)
-        profile = collection_profile_payload(user_id, ctx=ctx)
+        profile = collection_profile_payload(user_id, ctx=ctx, snapshot=(data, qty_by_char, subcategory_map))
         profile["collection_total"] = len(cards_items)
 
         return JSONResponse({
@@ -86,7 +85,6 @@ def build_collection_router(*, banner_url: str) -> APIRouter:
             x_webapp_uid=x_webapp_uid,
         )
         user_id = int(ctx["user_id"])
-        _touch_identity(user_id, ctx)
 
         data, qty_by_char, subcategory_map = collection_snapshot(user_id)
         return JSONResponse({
@@ -106,7 +104,6 @@ def build_collection_router(*, banner_url: str) -> APIRouter:
             x_webapp_uid=x_webapp_uid,
         )
         user_id = int(ctx["user_id"])
-        _touch_identity(user_id, ctx)
 
         data, qty_by_char, _ = collection_snapshot(user_id)
         return JSONResponse({
@@ -128,7 +125,6 @@ def build_collection_router(*, banner_url: str) -> APIRouter:
             x_webapp_uid=x_webapp_uid,
         )
         user_id = int(ctx["user_id"])
-        _touch_identity(user_id, ctx)
 
         data, qty_by_char, subcategory_map = collection_snapshot(user_id)
         payload = collection_detail_from_snapshot(

@@ -7,8 +7,6 @@ export type IntroStatus = 'loading' | 'ready' | 'error';
 // Steps map to the real boot phases: secure_init → token verify → /me fetch.
 const LOADING_STEPS = ['INICIANDO', 'VERIFICANDO TELEGRAM', 'CARREGANDO PERFIL'];
 
-// Minimum time the intro stays visible so it never flashes on fast networks.
-const MIN_DISPLAY_MS = 900;
 
 interface IntroLoadingProps {
   status: IntroStatus;
@@ -18,8 +16,6 @@ interface IntroLoadingProps {
 export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
   const [progress, setProgress] = useState(0);
   const [fading, setFading] = useState(false);
-  const startedAt = useRef(Date.now());
-  const finishedRef = useRef(false);
   const onFinishRef = useRef(onFinish);
   onFinishRef.current = onFinish;
 
@@ -36,23 +32,14 @@ export const IntroLoading = ({ status, onFinish }: IntroLoadingProps) => {
     return () => clearInterval(timer);
   }, [status]);
 
-  // Once complete: haptic tick, hold the end state briefly, fade out, unmount.
+  // Real readiness ends the intro; never wait for the decorative progress timer.
   useEffect(() => {
-    if (status === 'loading' || progress < 100 || finishedRef.current) return;
-    finishedRef.current = true;
-
-    if (status === 'ready') {
-      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.('success');
-    }
-
-    const hold = Math.max(0, MIN_DISPLAY_MS - (Date.now() - startedAt.current)) + 400;
-    const t1 = setTimeout(() => setFading(true), hold);
-    const t2 = setTimeout(() => onFinishRef.current(), hold + 300);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [progress, status]);
+    if (status !== 'ready') return;
+    setProgress(100);
+    setFading(true);
+    const timer = window.setTimeout(() => onFinishRef.current(), 120);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   const failed = status === 'error';
 

@@ -75,13 +75,15 @@ export const Dado = () => {
 
   const roll = async () => {
     if (rolling || (state?.balance || 0) <= 0) return;
+    const started = performance.now();
     setRolling(true);
     haptics.heavy();
     const ticker = window.setInterval(() => setDisplayValue(1 + Math.floor(Math.random() * 6)), 90);
     try {
       const data = await apiFetch('/dado/roll', { method: 'POST' });
       if (!data?.ok) throw new Error(data?.error || 'Não foi possível rolar o dado.');
-      await new Promise((resolve) => window.setTimeout(resolve, 900));
+      const remainingAnimation = Math.max(0, 900 - (performance.now() - started));
+      if (remainingAnimation) await new Promise((resolve) => window.setTimeout(resolve, remainingAnimation));
       setDisplayValue(Number(data.dice_value || 1));
       setActiveRoll({
         roll_id: Number(data.roll_id),

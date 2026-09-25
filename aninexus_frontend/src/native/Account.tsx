@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, BookOpen, Settings2, Shield, Trash2 } from 'lucide-react';
+import { Bell, Settings2, Shield, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { getErrorMessage, setSessionToken } from '../api/client';
 import { Button } from '../components/ui/Button';
@@ -9,6 +9,7 @@ import { useToast } from '../components/ui/Toast';
 import { sourcePost, useSourceAction, useSourceQuery } from './api';
 import { navigateNative } from './navigation';
 import { Dialog, Field, fieldClass, NativePage, QueryFeedback } from './ui';
+import { FavoriteSettings } from './FavoriteSettings';
 import { NicknameForm } from './ShopExtras';
 
 export function Settings() {
@@ -75,6 +76,7 @@ export function Settings() {
             )}
           </Card>
           {!profile.nickname && <NicknameForm />}
+          <FavoriteSettings current={profile.favorite} />
           <Card className="p-5 space-y-5">
             <Field label="País">
               <select
@@ -120,7 +122,7 @@ export function Settings() {
                 icon: Bell,
               },
             ].map(({ key, label, value, icon: Icon }) => (
-              <div className="flex items-center justify-between gap-4" key={key}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3" key={key}>
                 <span className="text-xs text-zinc-300 flex items-center gap-2">
                   <Icon size={14} />
                   {label}
@@ -139,19 +141,6 @@ export function Settings() {
                 </Button>
               </div>
             ))}
-          </Card>
-          <Card className="p-5 space-y-3">
-            <h2 className="text-xs font-bold uppercase text-zinc-100">Personagem favorito</h2>
-            <p className="text-sm text-zinc-400">
-              {profile.favorite?.name || 'Nenhum favorito definido'}
-            </p>
-            <Button
-              variant="secondary"
-              leftIcon={<BookOpen size={14} />}
-              onClick={() => navigateNative('album')}
-            >
-              Escolher no meu álbum
-            </Button>
           </Card>
           <Button variant="secondary" onClick={() => navigateNative('terms')}>
             Termos de uso e privacidade

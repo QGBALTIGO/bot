@@ -55,7 +55,8 @@ export const useApi = <T = any>(
 
   return {
     data: query.data ?? null,
-    loading: query.isPending || query.isFetching,
+    loading: query.isPending,
+    refreshing: query.isFetching,
     error: query.error ? getErrorMessage(query.error) : null,
     execute,
     setData,

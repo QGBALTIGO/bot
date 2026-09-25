@@ -77,8 +77,11 @@ def _extract_command(text: str) -> str:
 def _load_user_status(user_id: int) -> dict:
     """Run blocking database access outside Telegram's event loop."""
 
-    create_or_get_user(int(user_id))
-    return dict(get_user_status(int(user_id)) or {})
+    status = get_user_status(int(user_id))
+    if status is None:
+        create_or_get_user(int(user_id))
+        status = get_user_status(int(user_id))
+    return dict(status or {})
 
 
 def _member_is_valid(member) -> bool:
@@ -287,6 +290,12 @@ async def gatekeeper(
     # PROGRESSO
     # -------------------
     if command_name:
-        await _maybe_register_progress(update, command_name)
+        # XP must not delay opening a menu. PTB tracks failures and awaits tasks
+        # at shutdown; the existing per-user lock and rate limiter still apply.
+        application = getattr(context, "application", None)
+        if application is not None:
+            application.create_task(_maybe_register_progress(update, command_name), update=update)
+        else:
+            await _maybe_register_progress(update, command_name)
 
     return True, ""

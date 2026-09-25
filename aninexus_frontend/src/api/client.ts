@@ -77,6 +77,14 @@ interface RefreshSubscriber {
   retries: number;
 }
 
+let bootstrapPromise: Promise<string | null> | null = null;
+export function ensureSession(): Promise<string | null> {
+  if (sessionToken) return Promise.resolve(sessionToken);
+  if (!getTg()?.initData) return Promise.resolve(null);
+  if (!bootstrapPromise) bootstrapPromise = secureInit().finally(() => { bootstrapPromise = null; });
+  return bootstrapPromise;
+}
+
 let isRefreshing = false;
 let refreshSubscribers: RefreshSubscriber[] = [];
 

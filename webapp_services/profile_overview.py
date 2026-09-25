@@ -14,6 +14,36 @@ CharacterLoader = Callable[[int], dict[str, Any] | None]
 ImageNormalizer = Callable[[Any], str]
 
 
+def load_menu_user_rows(uid: int) -> tuple[dict, dict, dict]:
+    """One database roundtrip for identity, progress and preferences.
+
+    Keep mutable account data uncached. Only a missing account is initialized;
+    ordinary reads must not INSERT into three tables on every navigation.
+    """
+    from database_core import run
+    from database import create_or_get_user
+
+    sql = """
+        SELECT u.user_id, u.username, u.full_name, u.coins, u.dado_balance,
+               u.dado_slot, p.xp, p.level, p.total_actions,
+               s.nickname, s.favorite_character_id, s.country_code, s.language,
+               s.private_profile, s.notifications_enabled
+        FROM users u
+        LEFT JOIN user_progress p ON p.user_id=u.user_id
+        LEFT JOIN user_profile_settings s ON s.user_id=u.user_id
+        WHERE u.user_id=%s
+    """
+    row = run(sql, (int(uid),), fetch="one")
+    if row is None:
+        create_or_get_user(int(uid))
+        row = run(sql, (int(uid),), fetch="one")
+    row = dict(row or {})
+    settings = dict(row)
+    if settings.get("notifications_enabled") is None:
+        settings["notifications_enabled"] = True
+    return row, row, settings
+
+
 def build_menu_user_payload(
     uid: int,
     *,
@@ -28,33 +58,31 @@ def build_menu_user_payload(
 ) -> dict[str, Any]:
     """Monta o payload completo do Perfil sem acoplar o serviço ao entrypoint HTTP."""
 
-    if create_user is None:
-        from database import create_or_get_user
-
-        create_user = create_or_get_user
-    if get_user is None:
-        from database import get_user_status
-
-        get_user = get_user_status
-    if get_progress is None:
-        from database import get_progress_row
-
-        get_progress = get_progress_row
-    if get_settings is None:
-        from database_profile import get_profile_settings
-
-        get_settings = get_profile_settings
+    uid = int(uid)
+    # Injected loaders remain supported for unit tests and alternate stores.
+    if all(loader is None for loader in (create_user, get_user, get_progress, get_settings)):
+        user, progress, settings = load_menu_user_rows(uid)
+    else:
+        if create_user is None:
+            from database import create_or_get_user
+            create_user = create_or_get_user
+        if get_user is None:
+            from database import get_user_status
+            get_user = get_user_status
+        if get_progress is None:
+            from database import get_progress_row
+            get_progress = get_progress_row
+        if get_settings is None:
+            from database_profile import get_profile_settings
+            get_settings = get_profile_settings
+        create_user(uid)
+        user = get_user(uid) or {}
+        progress = get_progress(uid) or {}
+        settings = get_settings(uid) or {}
     if get_character is None:
         from cards_service import get_character_by_id
-
         get_character = get_character_by_id
 
-    uid = int(uid)
-    create_user(uid)
-
-    user = get_user(uid) or {}
-    progress = get_progress(uid) or {}
-    settings = get_settings(uid) or {}
     cards_data, qty_by_char, subcategory_map = collection_snapshot(uid)
     cards = collection_cards_from_snapshot(cards_data, qty_by_char, subcategory_map)
 

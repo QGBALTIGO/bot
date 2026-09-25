@@ -161,7 +161,7 @@ export function Poster({
   children?: ReactNode;
 }) {
   return (
-    <Card hover={Boolean(onClick)} className="min-w-0">
+    <Card hover={Boolean(onClick)} className="min-w-0 h-full flex flex-col">
       <button
         type="button"
         onClick={onClick}
@@ -170,7 +170,7 @@ export function Poster({
         className="block w-full text-left focus-visible:outline-2 focus-visible:outline-brand-accent"
       >
         <Cover src={src} name={title} />
-        <div className="p-3 space-y-1">
+        <div className="p-3 space-y-1 min-h-[76px]">
           <h3 className="text-xs font-bold text-zinc-100 leading-snug line-clamp-2">{title}</h3>
           {subtitle && (
             <p className="text-[9px] text-zinc-500 uppercase tracking-wider line-clamp-2">
@@ -179,7 +179,7 @@ export function Poster({
           )}
         </div>
       </button>
-      {children && <div className="p-3 pt-0">{children}</div>}
+      {children && <div className="p-3 pt-0 mt-auto">{children}</div>}
     </Card>
   );
 }
@@ -276,7 +276,7 @@ export function Dialog({
   }, []);
   return createPortal(
     <div
-      className="fixed inset-0 z-[150] bg-black/70 flex items-end sm:items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[150] bg-black/70 flex items-end sm:items-center justify-center p-3 sm:p-6 native-dialog-backdrop"
       onClick={() => {
         if (!busy) onClose();
       }}
@@ -288,10 +288,10 @@ export function Dialog({
         aria-labelledby={id}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg max-h-[85dvh] overflow-y-auto bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-5 shadow-2xl outline-none"
+        className="w-full max-w-lg max-h-[85vh] supports-[height:100dvh]:max-h-[85dvh] overflow-y-auto bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-5 shadow-2xl outline-none"
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 id={id} className="text-sm font-bold text-zinc-100 uppercase tracking-tight">
+          <h2 id={id} className="min-w-0 break-words text-sm font-bold text-zinc-100 uppercase tracking-tight">
             {title}
           </h2>
           <Button

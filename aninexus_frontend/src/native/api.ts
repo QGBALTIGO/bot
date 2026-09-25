@@ -59,7 +59,7 @@ export function useSourceAction() {
   const [pending, setPending] = useState<string | null>(null);
   const locked = useRef(false);
   const { addToast } = useToast();
-  const { refreshUser } = useUser();
+  const { refreshUser, patchUser, user } = useUser();
   const cache = useQueryClient();
   const run = useCallback(
     async <T>(key: string, action: () => Promise<T>, success?: string): Promise<T | undefined> => {
@@ -69,9 +69,31 @@ export function useSourceAction() {
       try {
         const result = await action();
         if (success) addToast(success, 'success');
-        await cache.invalidateQueries({ queryKey: ['source'] });
-        invalidateQueries(['/source-shop', '/harem', '/gallery', '/me', '/dado/state']);
-        await refreshUser();
+        if (key === 'favorite' && result && typeof result === 'object' && 'favorite' in result) {
+          const favorite = (result as { favorite: any }).favorite;
+          patchUser({ favorite });
+          cache.setQueryData(['source', user?.id || 0, '/api/menu/profile'], (old: any) =>
+            old ? { ...old, profile: { ...old.profile, favorite } } : old);
+        }
+        const preference = ['favorite', 'country', 'language', 'privacy', 'notifications'].includes(key);
+        const profileEndpoints = ['/api/menu/profile', '/api/collection/state'];
+        const affected = preference || key === 'nickname'
+          ? profileEndpoints
+          : key === 'sell'
+            ? [...profileEndpoints, '/api/shop/sell/', '/api/collection/']
+            : key.startsWith('request') || key.startsWith('submit')
+              ? ['/api/pedido/', '/api/cards/contrib/']
+              : [];
+        // Updating a preference must not wait for a full /me, album and shop reload.
+        // Exact user keys keep one person's private cache isolated from another.
+        void cache.invalidateQueries({
+          predicate: (query) => query.queryKey[0] === 'source' && query.queryKey[1] === (user?.id || 0)
+            && affected.some((prefix) => String(query.queryKey[2]).startsWith(prefix)),
+        });
+        if (['sell', 'nickname', 'buy', 'buy-dado'].includes(key)) {
+          invalidateQueries(['/source-shop', '/harem', '/gallery', '/dado/state']);
+          void refreshUser();
+        }
         return result;
       } catch (error) {
         addToast(getErrorMessage(error), 'error');
@@ -81,7 +103,7 @@ export function useSourceAction() {
         setPending(null);
       }
     },
-    [addToast, cache, refreshUser],
+    [addToast, cache, refreshUser, patchUser, user?.id],
   );
   return { pending, run };
 }

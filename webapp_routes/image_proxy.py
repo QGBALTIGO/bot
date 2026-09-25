@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from urllib.parse import urlparse
 
 import httpx
@@ -68,7 +69,7 @@ async def api_image_proxy(
     applied_crop = False
     if crop_mode == "portrait":
         try:
-            content, _crop_meta = crop_portrait_bytes(content)
+            content, _crop_meta = await asyncio.to_thread(crop_portrait_bytes, content)
             media_type = "image/jpeg"
             applied_crop = True
         except PortraitCropError as exc:

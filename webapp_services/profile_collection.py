@@ -25,9 +25,10 @@ def menu_collection_characters(
         get_collection = get_user_card_collection
 
     if get_character is None:
-        from cards_service import get_character_by_id
+        from cards_service import build_cards_final_data
 
-        get_character = get_character_by_id
+        characters = build_cards_final_data().get("characters_by_id") or {}
+        get_character = lambda cid: characters.get(int(cid))
 
     rows = get_collection(int(uid)) or []
     out: list[dict[str, Any]] = []
