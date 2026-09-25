@@ -58,10 +58,10 @@ def run_tests(output: Path) -> None:
                     assert "LVL 8" in card.inner_text()
                     assert "PASSE GRÁTIS" in card.inner_text()
                     assert "EXPERIÊNCIA" in card.inner_text()
-                    assert fixtures.USER["titles"]["current"] in card.inner_text()
+                    assert fixtures.USER["titles"]["current"] in (card.text_content() or "")
                     assert page.locator("[data-profile-favorite]").count() == (1 if selected else 0)
                     if selected:
-                        assert card.locator("[data-profile-work]").inner_text() == selected["anime"]
+                        assert (card.locator("[data-profile-work]").text_content() or "").strip() == selected["anime"]
                         if selected["image"]:
                             img = card.locator("[data-profile-avatar] img")
                             assert img.get_attribute("src") == selected["image"]
