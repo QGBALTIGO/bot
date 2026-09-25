@@ -3,7 +3,6 @@ import {
   BookOpen,
   ChevronDown,
   Coins,
-  Crown,
   Egg,
   Gem,
   Heart,
@@ -12,13 +11,11 @@ import {
   RefreshCw,
   Search,
   Swords,
-  Ticket,
   Trophy,
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { navigateNative } from '../native/navigation';
-import { Button } from '../components/ui/Button';
+import { ProfileIdentity } from '../components/ProfileIdentity';
 import { useApi } from '../hooks/useApi';
 import { Avatar } from '../components/Avatar';
 import { Card as CharacterCard } from '../components/character/Card';
@@ -119,8 +116,6 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
   if (!user) return null;
 
   const stats = user.stats;
-  const passType = stats?.pass_type || 'free';
-  const passLabel = passType === 'free' ? 'PASSE GRÁTIS' : passType === 'premium' ? 'PASSE PREMIUM' : 'PASSE ELITE';
   const collectionOwned = stats?.unique_characters ?? stats?.total_characters ?? 0;
   const collectionTotal = stats?.total_available_characters || Math.max(collectionOwned, 1);
   const collectionPercent =
@@ -131,85 +126,13 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
     typeof stats?.percentile === 'number' && stats.percentile > 0
       ? `TOP ${stats.percentile}%`
       : 'SEM POSIÇÃO';
-  const currentTitle = user.titles?.current || 'USUÁRIO';
   const activePet = user.current_pet;
-  const usernameLabel = user.username ? `@${user.username}` : `ID ${user.id}`;
 
   return (
     <div className="pt-6 max-w-5xl mx-auto adaptive-px space-y-6">
-      {user.favorite && (
-        <Card className="grid grid-cols-[64px_minmax(0,1fr)] sm:flex items-center gap-x-4 gap-y-3 p-4" data-profile-favorite>
-          {user.favorite.image && <img src={user.favorite.image} alt={user.favorite.name}
-            className="w-16 aspect-[2/3] object-cover rounded-md shrink-0" decoding="async" referrerPolicy="no-referrer" />}
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Personagem favorito</p>
-            <h2 className="font-bold text-zinc-100 break-words">{user.favorite.name}</h2>
-            <p className="text-xs text-zinc-400 break-words">{user.favorite.anime}</p>
-          </div>
-          <Button size="sm" variant="secondary" className="col-start-2 justify-self-start sm:shrink-0" aria-label="Alterar personagem favorito"
-            onClick={() => navigateNative('settings', { section: 'favorite' })}>Alterar</Button>
-        </Card>
-      )}
       {/* Profile & Registry Summary */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* User Profile Card */}
-        <Card
-          variant="surface"
-          className="md:col-span-2 flex flex-col sm:flex-row items-center gap-6 p-6"
-        >
-          <div className="relative shrink-0">
-            <Avatar
-              src={user.avatar}
-              alt="User"
-              className="w-24 h-24 rounded-md border border-white/10 object-cover shadow-lg"
-            />
-            <div className="absolute -bottom-2 -right-2">
-              <Badge
-                variant="secondary"
-                size="xs"
-                className="bg-zinc-950 border-white/10 shadow-lg px-2 py-1"
-              >
-                LVL {stats?.level || 1}
-              </Badge>
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0 space-y-3 text-center sm:text-left">
-            <div>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-1">
-                <h1 className="text-xl font-bold text-zinc-100 tracking-tight uppercase truncate">
-                  {user.nickname || [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuário'}
-                </h1>
-                {user.role_tag && (
-                  <Badge variant="primary" size="xs" className="font-bold">
-                    {user.role_tag}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-[10px] font-mono font-medium text-zinc-500 uppercase tracking-widest">
-                {usernameLabel}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <Badge variant="epic" size="xs" icon={Crown} className="font-bold">
-                {currentTitle}
-              </Badge>
-              <Badge variant="secondary" size="xs" icon={Ticket} className="font-bold">
-                {passLabel}
-              </Badge>
-            </div>
-
-            <div className="pt-2 w-full max-w-[280px] mx-auto sm:mx-0">
-              <ProgressBar
-                current={stats?.xp_current || 0}
-                total={Math.max(1, stats?.xp_needed || 1000)}
-                label="EXPERIÊNCIA"
-                compact
-              />
-            </div>
-          </div>
-        </Card>
+        <ProfileIdentity user={user} />
 
         {/* Collection Summary Card */}
         <Card variant="surface" className="p-6 flex flex-col justify-between">
