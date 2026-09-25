@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from utils.dado_catalog_runtime import configure_dado_catalog_pool
+
+# Precisa acontecer antes de importar webapp: o bloco legado do Dado lê
+# CARDS_LOCAL_PATH durante a importação do módulo.
+_DADO_CATALOG_BOOTSTRAP = configure_dado_catalog_pool()
+
 from webapp import (
     BACKGROUND_URL,
     CARDS_TOP_BANNER_URL,
