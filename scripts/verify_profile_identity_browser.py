@@ -45,7 +45,8 @@ def run_tests(output: Path) -> None:
                         fixtures.USER["titles"] = {"current": "Colecionador " + "TituloLongo" * 8}
                         fixtures.USER["role_tag"] = "ADMINISTRADOR"
                     fixtures.STATE["favorite"] = selected
-                    page.goto(f"http://127.0.0.1:{fixtures.PORT}/menu#profile")
+                    # Distinct document URLs avoid same-fragment navigation retaining the previous fixture.
+                    page.goto(f"http://127.0.0.1:{fixtures.PORT}/menu?fixture_case={case}-{width}#profile")
                     card = page.locator("[data-profile-identity]")
                     card.wait_for()
                     page.wait_for_timeout(140)
@@ -53,7 +54,8 @@ def run_tests(output: Path) -> None:
                     assert page.locator("main h1").count() == 1
                     assert card.evaluate("e => e.parentElement.firstElementChild === e")
                     expected_name = selected["name"] if selected else fixtures.STATE["nickname"]
-                    assert card.locator("h1").inner_text() == expected_name
+                    actual_name = (card.locator("h1").text_content() or "").strip()
+                    assert actual_name == expected_name, (case, width, actual_name, expected_name)
                     assert card.locator("[data-profile-username]").inner_text() == "@" + fixtures.USER["username"]
                     assert "LVL 8" in card.inner_text()
                     assert "PASSE GRÁTIS" in card.inner_text()
@@ -91,7 +93,7 @@ def run_tests(output: Path) -> None:
             fixtures.USER.update(copy.deepcopy(original_user))
             fixtures.STATE["favorite"] = dict(favorite)
             page.set_viewport_size({"width": 390, "height": 844})
-            page.goto(f"http://127.0.0.1:{fixtures.PORT}/menu#profile")
+            page.goto(f"http://127.0.0.1:{fixtures.PORT}/menu?fixture_case=interactive#profile")
             card = page.locator("[data-profile-identity]")
             card.get_by_role("button", name="Alterar personagem favorito", exact=True).click()
             page.get_by_role("button", name="Alterar favorito", exact=True).click()
@@ -116,7 +118,8 @@ def run_tests(output: Path) -> None:
             report["checks"].append("avatar opens favorite settings, changing favorite updates the same profile without another /me request, reload persists, removal restores account identity")
             assert not report["page_errors"] and not report["console_errors"], report
             report["passed"] = True
-        except Exception:
+        except Exception as error:
+            report["failure"] = repr(error)
             page.screenshot(path=str(output / "failure.png"))
             raise
         finally:
