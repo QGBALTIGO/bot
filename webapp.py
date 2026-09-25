@@ -1,3 +1,5 @@
+
+from utils.api_validation import body_integer
 import os
 import json
 import re
@@ -1599,6 +1601,8 @@ async def api_pedido_send(
             "remaining": max(0, 3 - (used + 1)),
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
         print("[pedido] falha ao enviar pedido:", repr(e), flush=True)
         traceback.print_exc()
@@ -1663,6 +1667,8 @@ async def api_pedido_report(
 
         return JSONResponse({"ok": True, "message": "Report enviado com sucesso."})
 
+    except HTTPException:
+        raise
     except Exception as e:
         print("[pedido] falha ao enviar report:", repr(e), flush=True)
         traceback.print_exc()
@@ -2287,8 +2293,8 @@ async def api_dado_pick(
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=429)
 
     try:
-        roll_id = int(payload_body.get("roll_id") or 0)
-        anime_id = int(payload_body.get("anime_id") or 0)
+        roll_id = body_integer(payload_body.get("roll_id") or 0)
+        anime_id = body_integer(payload_body.get("anime_id") or 0)
     except (TypeError, ValueError):
         roll_id = 0
         anime_id = 0
@@ -3095,7 +3101,7 @@ def api_shop_sell_confirm(
     )
     user_id = int(tg["user_id"])
 
-    char_id = int(payload.get("character_id") or 0)
+    char_id = body_integer(payload.get("character_id") or 0)
     if char_id <= 0:
         return JSONResponse({"ok": False, "error": "character_id inválido"}, status_code=400)
 
@@ -3179,7 +3185,7 @@ def api_shop_buy_nickname(
     if not _shop_rate_limit(user_id, "buy_nick", 0.9):
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=200)
 
-    result = buy_nickname_change(user_id)
+    result = buy_nickname_change(user_id, payload.get("nickname") or "")
     if not result or not result.get("ok"):
         return JSONResponse({
             "ok": False,
@@ -3450,12 +3456,15 @@ def api_cards_contrib_image_submit(
     full_name = str(ctx.get("full_name") or "").strip()
     touch_user_identity(user_id, username=username, full_name=full_name)
 
-    character_id = int((payload or {}).get("character_id") or 0)
+    character_id = body_integer((payload or {}).get("character_id", 0))
     suggested_image_url = str((payload or {}).get("suggested_image_url") or "").strip()
     note = str((payload or {}).get("note") or "").strip()[:1000]
 
-    parsed = urlparse(suggested_image_url)
-    host = str(parsed.hostname or "").strip()
+    try:
+        parsed = urlparse(suggested_image_url)
+        host = str(parsed.hostname or "").strip()
+    except ValueError:
+        return JSONResponse({"ok": False, "message": "Envie uma URL pública válida."}, status_code=400)
     if character_id <= 0 or parsed.scheme not in {"http", "https"} or not host or _is_blocked_image_host(host):
         return JSONResponse({"ok": False, "message": "Envie uma URL publica valida."}, status_code=400)
 
@@ -3757,6 +3766,8 @@ async def baltigoflix_create_intent(request: Request):
 async def cakto_webhook(request: Request):
     try:
         payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("invalid_webhook_payload")
     except Exception:
         return JSONResponse({"ok": False, "error": "json_invalido"}, status_code=400)
 

@@ -1,11 +1,12 @@
 python-telegram-bot==21.6
 psycopg[binary]
 psycopg-pool
-fastapi==0.115.0
+fastapi==0.141.1
+starlette==1.6.0
 uvicorn==0.30.6
 requests
 beautifulsoup4
 httpx
 lxml
-Pillow>=10.4,<12
-cryptography>=42,<47
+Pillow==12.3.0
+cryptography==50.0.1

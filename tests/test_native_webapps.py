@@ -183,3 +183,19 @@ def test_old_links_preserve_init_data_without_redirecting_apis(tmp_path, monkeyp
     assert query['q'] == ['A&B'] and query['view'] == ['characters']
     assert client.head('/menu').status_code == 200
     assert client.get('/api/untouched').json() == {'api': True}
+
+
+def test_native_entries_precede_legacy_included_routers(tmp_path, monkeypatch):
+    from fastapi import APIRouter
+    app = build_app(tmp_path, monkeypatch)
+    nested = APIRouter()
+    nested.add_api_route('/memoria', lambda: HTMLResponse('old included memory'), methods=['GET'])
+    nested.add_api_route('/api/inside-router', lambda: {'preserved': True}, methods=['GET'])
+    app.include_router(nested)
+    native.install_native_webapps(app)
+    client = TestClient(app)
+    response = client.get('/memoria')
+    assert response.headers['x-source-ui'] == 'native'
+    assert 'old included memory' not in response.text
+    assert response.url.path == '/menu'
+    assert client.get('/api/inside-router').json() == {'preserved': True}

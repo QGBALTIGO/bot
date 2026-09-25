@@ -1,3 +1,4 @@
+from telegram.error import TelegramError
 from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 import unicodedata
@@ -10,7 +11,7 @@ from utils.gatekeeper import gatekeeper
 
 BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
-    raise RuntimeError("BASE_URL nao configurado.")
+    raise RuntimeError("BASE_URL não configurado.")
 
 MEMORIA_BANNER_URL = os.getenv(
     "MEMORIA_BANNER_URL",
@@ -31,10 +32,10 @@ _LEVEL_MAP = {
 }
 
 _LEVEL_LABELS = {
-    "easy": "Facil",
-    "medium": "Medio",
-    "hard": "Dificil",
-    "extreme": "Muito dificil",
+    "easy": "Fácil",
+    "medium": "Médio",
+    "hard": "Difícil",
+    "extreme": "Muito difícil",
 }
 
 
@@ -63,8 +64,8 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = miniapp_url('memory', level=requested_level)
 
     texto = (
-        "🧠 <b>JOGO DA MEMORIA ANIME</b>\n\n"
-        "Forme pares usando os banners das obras que ja existem no sistema de cards.\n\n"
+        "🧠 <b>JOGO DA MEMÓRIA ANIME</b>\n\n"
+        "Forme pares usando os banners das obras que já existem no sistema de cards.\n\n"
         f"🎮 Dificuldade inicial: <b>{level_label}</b>\n\n"
         "Toque abaixo para abrir o mini app."
     )
@@ -73,9 +74,12 @@ async def memoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [[InlineKeyboardButton("🧠 Abrir Jogo da Memória", web_app=WebAppInfo(url=url))]]
     )
 
-    await msg.reply_photo(
-        photo=MEMORIA_BANNER_URL,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    try:
+        await msg.reply_photo(
+            photo=MEMORIA_BANNER_URL,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except TelegramError:
+        await msg.reply_html(texto, reply_markup=kb)

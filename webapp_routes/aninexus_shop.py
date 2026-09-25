@@ -37,60 +37,8 @@ def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
 
 
 def _buy_dado_atomic(user_id: int) -> dict[str, Any]:
-    with pool.connection() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            try:
-                cur.execute(
-                    """
-                    SELECT coins, dado_balance
-                    FROM users
-                    WHERE user_id=%s
-                    FOR UPDATE
-                    """,
-                    (int(user_id),),
-                )
-                row = cur.fetchone()
-                if not row:
-                    conn.rollback()
-                    return {"ok": False, "error": "user_not_found"}
-
-                coins = int(row.get("coins") or 0)
-                dado = int(row.get("dado_balance") or 0)
-                if dado >= DADO_MAX:
-                    conn.rollback()
-                    return {"ok": False, "error": "dado_full", "coins": coins, "dado_balance": dado}
-                if coins < DADO_PRICE:
-                    conn.rollback()
-                    return {"ok": False, "error": "no_coins", "coins": coins, "dado_balance": dado}
-
-                new_coins = coins - DADO_PRICE
-                new_dado = min(DADO_MAX, dado + 1)
-                cur.execute(
-                    """
-                    UPDATE users
-                    SET coins=%s, dado_balance=%s, updated_at=NOW()
-                    WHERE user_id=%s
-                    """,
-                    (new_coins, new_dado, int(user_id)),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO shop_transactions
-                    (user_id, type, amount, balance_after, metadata, created_at)
-                    VALUES (%s, 'aninexus_buy_dado', %s, %s, %s::jsonb, NOW())
-                    """,
-                    (
-                        int(user_id),
-                        -DADO_PRICE,
-                        new_coins,
-                        json.dumps({"dado_added": 1}, ensure_ascii=False),
-                    ),
-                )
-                conn.commit()
-                return {"ok": True, "coins": new_coins, "dado_balance": new_dado}
-            except Exception:
-                conn.rollback()
-                raise
+    from database_shop_safety import buy_dado_atomic
+    return buy_dado_atomic(user_id)
 
 
 def _offer_payload(offer: dict[str, Any], bought: bool) -> dict[str, Any]:

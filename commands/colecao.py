@@ -620,9 +620,22 @@ async def colecao_callback(update, context):
 
     try:
         _, owner, page = q.data.split(":")
+        owner = int(owner)
+        if not -(2**63) < owner < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
+
+    if int(owner) != int(q.from_user.id):
+        from database_profile import get_profile_settings
+        settings = await asyncio.to_thread(get_profile_settings, int(owner))
+        if (settings or {}).get("private_profile"):
+            await q.answer("Esse perfil é privado.", show_alert=True)
+            return
 
     await q.answer()
     await send_collection(update, context, int(page), edit=True, target_uid=int(owner))
@@ -641,6 +654,12 @@ async def colecao_s_callback(update, context):
 
     try:
         _, owner, anime_id, page = q.data.split(":")
+        owner = int(owner)
+        if not -(2**63) < owner < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -649,6 +668,13 @@ async def colecao_s_callback(update, context):
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
+
+    if int(owner) != int(q.from_user.id):
+        from database_profile import get_profile_settings
+        settings = await asyncio.to_thread(get_profile_settings, int(owner))
+        if (settings or {}).get("private_profile"):
+            await q.answer("Esse perfil é privado.", show_alert=True)
+            return
 
     await q.answer()
     await send_collection_anime_owned(
@@ -674,6 +700,12 @@ async def colecao_f_callback(update, context):
 
     try:
         _, owner, anime_id, page = q.data.split(":")
+        owner = int(owner)
+        if not -(2**63) < owner < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -682,6 +714,13 @@ async def colecao_f_callback(update, context):
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
+
+    if int(owner) != int(q.from_user.id):
+        from database_profile import get_profile_settings
+        settings = await asyncio.to_thread(get_profile_settings, int(owner))
+        if (settings or {}).get("private_profile"):
+            await q.answer("Esse perfil é privado.", show_alert=True)
+            return
 
     await q.answer()
     await send_collection_anime_missing(
@@ -707,6 +746,12 @@ async def colecao_x_callback(update, context):
 
     try:
         _, owner, anime_id, index = q.data.split(":")
+        owner = int(owner)
+        if not -(2**63) < owner < 2**63:
+            raise ValueError("callback number outside range")
+        index = int(index)
+        if not -(2**63) < index < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -715,6 +760,13 @@ async def colecao_x_callback(update, context):
     if not anime:
         await q.answer("Anime não encontrado.", show_alert=True)
         return
+
+    if int(owner) != int(q.from_user.id):
+        from database_profile import get_profile_settings
+        settings = await asyncio.to_thread(get_profile_settings, int(owner))
+        if (settings or {}).get("private_profile"):
+            await q.answer("Esse perfil é privado.", show_alert=True)
+            return
 
     await q.answer()
     await send_collection_gallery(

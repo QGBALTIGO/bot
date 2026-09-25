@@ -1,3 +1,4 @@
+from telegram.error import TelegramError
 from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
@@ -16,15 +17,15 @@ async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_chat and update.effective_chat.type != "private":
         await update.message.reply_html(
-            "SHOP\n\n"
+            "LOJA\n\n"
             "Use a loja somente no privado do bot.\n"
-            "Abra o bot no PV e use /loja."
+            "Abra o bot no privado e use /loja."
         )
         return
 
     webapp_base = miniapp_entrypoint().removesuffix('/menu')
     if not webapp_base:
-        await update.message.reply_html("WEBAPP_URL/BASE_URL nao configurada.")
+        await update.message.reply_html("WEBAPP_URL/BASE_URL não configurada.")
         return
 
     url = miniapp_url('shop')
@@ -37,9 +38,12 @@ async def loja(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [[InlineKeyboardButton("Abrir Loja", web_app=WebAppInfo(url=url))]]
     )
 
-    await update.message.reply_photo(
-        photo=SHOP_PREVIEW_IMAGE,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    try:
+        await update.message.reply_photo(
+            photo=SHOP_PREVIEW_IMAGE,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except TelegramError:
+        await update.message.reply_html(texto, reply_markup=kb)

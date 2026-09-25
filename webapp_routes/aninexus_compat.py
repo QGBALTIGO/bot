@@ -196,12 +196,12 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         else 0.0
     )
 
-    level = int(profile.get("level") or progress.get("level") or 1)
+    from database import get_level_progress_values
     xp_total = int(progress.get("xp") or progress.get("total_xp") or 0)
-    xp_current = int(progress.get("xp_current") or progress.get("current_xp") or xp_total)
-    xp_needed = int(progress.get("xp_needed") or progress.get("next_level_xp") or 1000)
-    if xp_needed <= 0:
-        xp_needed = 1000
+    level_progress = get_level_progress_values(xp_total)
+    level = level_progress["level"]
+    xp_current = level_progress["xp_current"]
+    xp_needed = level_progress["xp_needed"]
 
     first_name = str(session_user.get("first_name") or "").strip()
     last_name = str(session_user.get("last_name") or "").strip()

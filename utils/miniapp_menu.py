@@ -27,7 +27,7 @@ async def synchronize_menu(bot, chat_id: int | None = None) -> bool:
             verified = await bot.get_chat_menu_button(chat_id=chat_id, read_timeout=6, connect_timeout=4)
             if getattr(getattr(verified, 'web_app', None), 'url', None) != target:
                 raise RuntimeError('menu verification failed')
-            log.warning('[miniapp-menu] synchronized scope=%s changed_url=%s target=%s',
+            log.info('[miniapp-menu] synchronized scope=%s changed_url=%s target=%s',
                         'default' if chat_id is None else 'private', old_url != target, target)
         else:
             log.info('[miniapp-menu] verified scope=%s target=%s',
@@ -35,7 +35,7 @@ async def synchronize_menu(bot, chat_id: int | None = None) -> bool:
         return True
     except Exception as exc:
         # Exception messages may contain request URLs with credentials: do not log them.
-        log.warning('[miniapp-menu] synchronization failed: %s', type(exc).__name__)
+        log.warning('[miniapp-menu] synchronization failed scope=%s error=%s', 'default' if chat_id is None else 'private', type(exc).__name__)
         return False
 
 
@@ -91,4 +91,5 @@ async def refresh_private_menu(update, context):
     chat = update.effective_chat
     sync = context.application.bot_data.get('miniapp_menu_sync')
     if chat and chat.type == 'private' and sync:
+        sync.schedule()  # Retry a failed default synchronization after its cooldown.
         sync.schedule(chat.id)

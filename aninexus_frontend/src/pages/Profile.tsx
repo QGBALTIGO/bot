@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { navigateNative } from '../native/navigation';
 import { ProfileIdentity } from '../components/ProfileIdentity';
 import { useApi } from '../hooks/useApi';
 import { Avatar } from '../components/Avatar';
@@ -238,7 +239,17 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card
           variant="default"
-          className="flex items-center gap-4 p-4 hover:bg-zinc-900 transition-colors cursor-pointer group"
+          role="button"
+          tabIndex={0}
+          aria-label="Abrir companheiros"
+          onClick={() => navigateNative('mypets')}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              navigateNative('mypets');
+            }
+          }}
+          className="flex items-center gap-4 p-4 hover:bg-zinc-900 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
         >
           <div className="w-10 h-10 rounded bg-zinc-900 border border-white/5 flex items-center justify-center shrink-0">
             <PawPrint
@@ -263,7 +274,17 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
 
         <Card
           variant="default"
-          className="flex items-center gap-4 p-4 hover:bg-zinc-900 transition-colors cursor-pointer group"
+          role="button"
+          tabIndex={0}
+          aria-label="Abrir incubadora"
+          onClick={() => navigateNative('incubation')}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              navigateNative('incubation');
+            }
+          }}
+          className="flex items-center gap-4 p-4 hover:bg-zinc-900 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
         >
           <div className="w-10 h-10 rounded bg-zinc-900 border border-white/5 flex items-center justify-center shrink-0">
             <Egg

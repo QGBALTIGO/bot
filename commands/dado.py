@@ -1,3 +1,5 @@
+import asyncio
+from telegram.error import TelegramError
 from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
@@ -10,11 +12,11 @@ from utils.gatekeeper import gatekeeper
 
 BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
-    raise RuntimeError("BASE_URL nao configurado.")
+    raise RuntimeError("BASE_URL não configurado.")
 
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 if not BOT_USERNAME:
-    raise RuntimeError("BOT_USERNAME nao configurado.")
+    raise RuntimeError("BOT_USERNAME não configurado.")
 
 DADO_BANNER_URL = os.getenv(
     "DADO_BANNER_URL",
@@ -40,7 +42,7 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = (
             "<b>SISTEMA DE DADOS</b>\n\n"
             "Esse comando funciona apenas no privado do bot.\n\n"
-            "Abra no privado para acessar seus dados, sua rolagem e sua colecao com seguranca."
+            "Abra no privado para acessar seus dados, sua rolagem e sua coleção com segurança."
         )
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("Abrir no privado", url=BOT_PRIVATE_URL)]]
@@ -54,11 +56,9 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_html(bloqueio)
         return
 
-    create_or_get_user(user.id)
-
     try:
-        dado_state = get_dado_state(user.id)
-        recharge_info = get_next_dado_recharge_info(user.id)
+        dado_state = await asyncio.to_thread(get_dado_state, user.id)
+        recharge_info = dado_state
         saldo = int((dado_state or {}).get("balance") or 0)
         prox_hora = str((recharge_info or {}).get("next_recharge_hhmm") or "--:--")
     except Exception:
@@ -68,19 +68,22 @@ async def dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = miniapp_url('dado')
     texto = (
         "<b>SISTEMA DE DADOS</b>\n\n"
-        "Aqui voce podera usar seus dados para descobrir animes e obter personagens para a sua colecao.\n\n"
-        f"<b>Dados disponiveis:</b> <code>{saldo}</code>\n"
-        f"<b>Proximo dado:</b> <code>{prox_hora}</code>\n\n"
-        "Toque no botao abaixo para abrir a area dos dados."
+        "Aqui você poderá usar seus dados para descobrir animes e obter personagens para a sua coleção.\n\n"
+        f"<b>Dados disponíveis:</b> <code>{saldo}</code>\n"
+        f"<b>Próximo dado:</b> <code>{prox_hora}</code>\n\n"
+        "Toque no botão abaixo para abrir a área dos dados."
     )
 
     kb = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Abrir Dados", web_app=WebAppInfo(url=url))]]
     )
 
-    await msg.reply_photo(
-        photo=DADO_BANNER_URL,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    try:
+        await msg.reply_photo(
+            photo=DADO_BANNER_URL,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except TelegramError:
+        await msg.reply_html(texto, reply_markup=kb)

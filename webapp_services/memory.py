@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict
 
 MEMORY_LEVELS = frozenset({"easy", "medium", "hard", "extreme"})
@@ -7,10 +8,22 @@ MAX_MEMORY_TIME_MS = 7_200_000
 MAX_MEMORY_MOVES = 10_000
 
 
+def _strict_positive_integer(value: Any, maximum: int, message: str) -> int:
+    # Do not truncate floats, accept booleans, or expose Python conversion errors.
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(message)
+    if isinstance(value, str) and (len(value) > 20 or re.fullmatch(r"[0-9]+", value) is None):
+        raise ValueError(message)
+    number = int(value)
+    if number <= 0 or number > maximum:
+        raise ValueError(message)
+    return number
+
+
 def normalize_memory_finish_input(payload: Dict[str, Any]) -> tuple[str, int, int]:
     level = str(payload.get("level") or "").strip().lower()
-    time_ms = int(payload.get("time_ms") or 0)
-    moves = int(payload.get("moves") or 0)
+    time_ms = _strict_positive_integer(payload.get("time_ms"), MAX_MEMORY_TIME_MS, "Tempo invalido.")
+    moves = _strict_positive_integer(payload.get("moves"), MAX_MEMORY_MOVES, "Quantidade de jogadas invalida.")
 
     if level not in MEMORY_LEVELS:
         raise ValueError("Nivel invalido.")

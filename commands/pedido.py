@@ -1,3 +1,4 @@
+from telegram.error import TelegramError
 from utils.miniapp_links import miniapp_url, miniapp_entrypoint
 import os
 
@@ -9,7 +10,7 @@ from utils.gatekeeper import gatekeeper
 
 BASE_URL = miniapp_entrypoint().removesuffix('/menu')
 if not BASE_URL:
-    raise RuntimeError("BASE_URL nao configurado.")
+    raise RuntimeError("BASE_URL não configurado.")
 
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SourceBaltigo_Bot").strip().lstrip("@")
 BOT_PRIVATE_URL = f"https://t.me/{BOT_USERNAME}"
@@ -34,9 +35,9 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if _is_group(update):
         texto = (
-            "<b>Central de pedidos disponivel apenas no privado</b>\n\n"
-            "Para pedir animes, mangas ou reportar um erro, use este comando no chat privado.\n\n"
-            "Toque no botao abaixo para abrir o bot."
+            "<b>Central de pedidos disponível apenas no privado</b>\n\n"
+            "Para pedir animes, mangás ou reportar um erro, use este comando no chat privado.\n\n"
+            "Toque no botão abaixo para abrir o bot."
         )
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("Abrir no privado", url=BOT_PRIVATE_URL)]]
@@ -53,16 +54,19 @@ async def pedido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = miniapp_url('requests')
     texto = (
         "<b>Central de Pedidos</b>\n\n"
-        "Peca animes, mangas ou envie um report de erro em um so lugar.\n\n"
-        "Toque no botao abaixo para abrir o Mini App."
+        "Peça animes, mangás ou envie um relato de erro em um só lugar.\n\n"
+        "Toque no botão abaixo para abrir o Mini App."
     )
     kb = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Abrir Central de Pedidos", web_app=WebAppInfo(url=url))]]
     )
 
-    await msg.reply_photo(
-        photo=PEDIDO_BANNER_URL,
-        caption=texto,
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    try:
+        await msg.reply_photo(
+            photo=PEDIDO_BANNER_URL,
+            caption=texto,
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except TelegramError:
+        await msg.reply_html(texto, reply_markup=kb)

@@ -79,10 +79,11 @@ def test_private_sync_is_deduplicated_and_groups_are_ignored(monkeypatch):
         ctx=SimpleNamespace(application=app)
         update=SimpleNamespace(effective_chat=SimpleNamespace(type='private',id=77))
         for _ in range(20): await refresh_private_menu(update,ctx)
-        assert len(sync.tasks)==1
+        assert len(sync.tasks)==2
         await asyncio.gather(*sync.tasks)
         await refresh_private_menu(update,ctx)
         await refresh_private_menu(SimpleNamespace(effective_chat=SimpleNamespace(type='group',id=-1)),ctx)
-        assert fake.await_count==1
+        assert fake.await_count==2
+        assert {call.args[1] for call in fake.await_args_list} == {None,77}
         await sync.close()
     asyncio.run(scenario())

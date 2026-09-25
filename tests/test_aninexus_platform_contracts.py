@@ -77,7 +77,8 @@ def test_source_identity_and_economy_remain_canonical():
     progression_source = _read("webapp_routes/aninexus_progression.py")
 
     assert "get_dado_state" in me_source
-    assert "users.coins" in shop_source or "SELECT coins" in shop_source
+    assert "database_shop_safety import buy_dado_atomic" in shop_source
+    assert "SELECT coins FROM users" in _read("database_shop_safety.py")
     assert "database_aninexus_progression_source" in progression_source
     assert not (ROOT / "database_aninexus_progression.py").exists()
     assert not (ROOT / "aninexus_progression.py").exists()

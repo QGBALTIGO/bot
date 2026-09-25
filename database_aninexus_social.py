@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from psycopg.rows import dict_row
 
 from database_core import pool
+from database_shop_safety import lock_inventories
 
 
 _TABLE_LOCK = Lock()
@@ -352,6 +353,7 @@ def create_trade_offer(
                     conn.rollback()
                     return {"ok": False, "error": "receiver_not_found"}
 
+                lock_inventories(cur, sender_id, receiver_id)
                 pairs = sorted(
                     [(sender_id, sender_character_id), (receiver_id, receiver_character_id)],
                     key=lambda item: (item[0], item[1]),
@@ -483,6 +485,7 @@ def respond_trade_offer(user_id: int, trade_id: int, action: str) -> Dict[str, A
                 sender_char = int(trade.get("from_character_id") or 0)
                 receiver_char = int(trade.get("to_character_id") or 0)
 
+                lock_inventories(cur, sender_id, receiver_id)
                 pairs = sorted(
                     [(sender_id, sender_char), (receiver_id, receiver_char)],
                     key=lambda item: (item[0], item[1]),
