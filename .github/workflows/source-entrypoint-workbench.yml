@@ -1,0 +1,19 @@
+name: Source single MiniApp workbench
+on:
+  push:
+    branches: [codex/source-single-miniapp-20260925]
+    paths: ['.github/workflows/source-entrypoint-workbench.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: git archive --format=tar.gz HEAD > /tmp/source-current-entrypoints.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-current-entrypoints
+          path: /tmp/source-current-entrypoints.tar.gz
+          retention-days: 1
