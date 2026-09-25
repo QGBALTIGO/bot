@@ -18,11 +18,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: fixture-only
         ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - name: Apply reviewed final layout corrections
@@ -44,18 +40,6 @@ jobs:
             'scripts/verify_native_browser.py': [
               ('get_by_role("button", name="Alterar", exact=True).click()', 'get_by_role("button", name="Alterar personagem favorito", exact=True).click()'),
               ('            assert page.locator("[data-profile-favorite]").count() == 0', '            page.locator("[data-profile-favorite]").wait_for(state="hidden")'),
-              ('                    assert not overflow, ("overflow", path, width)', '''                    assert not overflow, ("overflow", path, width)
-                              header_overlap = page.evaluate("""() => {
-                                const header = document.querySelector('header.sticky');
-                                const brand = header.querySelector('button[aria-label="Ir para o painel"]');
-                                const stats = header.lastElementChild;
-                                const edge = stats.getBoundingClientRect().left;
-                                return Array.from(brand.querySelectorAll('span')).some(el => {
-                                  const b = el.getBoundingClientRect();
-                                  return b.width > 0 && b.right > edge + 1;
-                                });
-                              }""")
-                              assert not header_overlap, ("header overlap", path, width)'''.replace('\n          ', '\n')),
             ],
           }
           for name, pairs in changes.items():
@@ -68,6 +52,15 @@ jobs:
                   else:
                       assert new in text, (name, old)
               path.write_text(text)
+          path=Path('scripts/verify_native_browser.py')
+          text=path.read_text()
+          start=text.index('                    assert not overflow, ("overflow", path, width)')
+          end=text.index('                    report["routes"].append', start)
+          js="() => { const h=document.querySelector('header.sticky'); const b=h.querySelector('button[aria-label=\"Ir para o painel\"]'); const x=h.lastElementChild.getBoundingClientRect().left; return Array.from(b.querySelectorAll('span')).some(e => {const r=e.getBoundingClientRect(); return r.width>0 && r.right>x+1;}); }"
+          lines=['assert not overflow, ("overflow", path, width)', 'header_overlap = page.evaluate('+repr(js)+')', 'assert not header_overlap, ("header overlap", path, width)']
+          text=text[:start]+''.join(' '*20+line+'\n' for line in lines)+text[end:]
+          compile(text, str(path), 'exec')
+          path.write_text(text)
           PY
       - uses: oven-sh/setup-bun@v2
         with:
