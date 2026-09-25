@@ -152,6 +152,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_html(texto, reply_markup=kb)
             return
 
+    from commands.collecting import start_feature
+    if await start_feature(update, context, context.args[0] if context.args else ""):
+        return
+
     welcome_sent = bool(st.get("welcome_sent"))
 
     if not welcome_sent:

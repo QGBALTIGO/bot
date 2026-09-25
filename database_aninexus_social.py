@@ -308,6 +308,8 @@ def _lock_collection_row(cur, user_id: int, character_id: int) -> int:
 
 
 def _card_is_reserved_locked(cur, user_id: int, character_id: int) -> bool:
+    cur.execute("SELECT 1 FROM source_card_protection WHERE user_id=%s AND character_id=%s UNION ALL SELECT 1 FROM source_reservations WHERE user_id=%s AND character_id=%s UNION ALL SELECT 1 FROM user_profile_settings WHERE user_id=%s AND favorite_character_id=%s LIMIT 1", (user_id,character_id,user_id,character_id,user_id,character_id))
+    if cur.fetchone(): return True
     cur.execute(
         """
         SELECT 1
@@ -443,7 +445,7 @@ def _add_one_locked(cur, user_id: int, character_id: int) -> None:
     )
 
 
-def respond_trade_offer(user_id: int, trade_id: int, action: str) -> Dict[str, Any]:
+def respond_trade_offer(user_id: int, trade_id: int, action: str, expected_revision: int | None = None) -> Dict[str, Any]:
     user_id = int(user_id)
     trade_id = int(trade_id)
     action = str(action or "").strip().lower()
@@ -458,7 +460,7 @@ def respond_trade_offer(user_id: int, trade_id: int, action: str) -> Dict[str, A
                 if not trade:
                     conn.rollback()
                     return {"ok": False, "error": "trade_not_found"}
-                if int(trade.get("to_user") or 0) != user_id:
+                if user_id not in (int(trade.get("to_user") or 0), int(trade.get("from_user") or 0)):
                     conn.rollback()
                     return {"ok": False, "error": "forbidden"}
                 if str(trade.get("status") or "") != "pending":
@@ -480,6 +482,17 @@ def respond_trade_offer(user_id: int, trade_id: int, action: str) -> Dict[str, A
                     conn.commit()
                     return {"ok": True, "status": "rejected"}
 
+                revision = int(trade.get("revision") or 1)
+                # Old Telegram buttons can only accept the unmodified first proposal.
+                if (expected_revision is None and revision != 1) or (expected_revision is not None and expected_revision != revision):
+                    conn.rollback()
+                    return {"ok": False, "error": "trade_changed"}
+                confirmation_column = "from_confirmed" if int(trade["from_user"]) == user_id else "to_confirmed"
+                cur.execute(f"UPDATE card_trades SET {confirmation_column}=%s WHERE trade_id=%s", (revision,trade_id))
+                trade[confirmation_column] = revision
+                if trade.get("from_confirmed") != revision or trade.get("to_confirmed") != revision:
+                    conn.commit()
+                    return {"ok": True, "status": "pending", "awaiting_confirmation": True, "revision": revision}
                 sender_id = int(trade.get("from_user") or 0)
                 receiver_id = int(trade.get("to_user") or 0)
                 sender_char = int(trade.get("from_character_id") or 0)
@@ -501,6 +514,13 @@ def respond_trade_offer(user_id: int, trade_id: int, action: str) -> Dict[str, A
                     conn.commit()
                     return {"ok": False, "error": "card_missing"}
 
+                from source_features.common import inventory_guard, FeatureError
+                try:
+                    inventory_guard(cur,sender_id,sender_char,trade_id=trade_id)
+                    inventory_guard(cur,receiver_id,receiver_char,trade_id=trade_id)
+                except FeatureError as exc:
+                    conn.rollback()
+                    return {"ok": False, "error": exc.code}
                 _remove_one_locked(cur, sender_id, sender_char, sender_qty)
                 _remove_one_locked(cur, receiver_id, receiver_char, receiver_qty)
                 _add_one_locked(cur, sender_id, receiver_char)
@@ -570,3 +590,23 @@ def get_economy_summary(user_id: int, limit: int = 50) -> Dict[str, Any]:
         "spent": int(totals.get("spent") or 0),
         "transactions": history,
     }
+
+
+def revise_trade_offer(user_id: int, trade_id: int, character_id: int, expected_revision: int) -> dict:
+    """Replace only the caller's side. Every amendment invalidates both confirmations."""
+    from source_features.common import transaction, FeatureError, inventory_guard
+    with transaction() as cur:
+        cur.execute("SELECT *,created_at>=NOW()-INTERVAL '24 hours' AS available FROM card_trades WHERE trade_id=%s FOR UPDATE",(trade_id,))
+        row=cur.fetchone()
+        if not row: raise FeatureError("trade_not_found","Troca não encontrada.",404)
+        if user_id not in (row['from_user'],row['to_user']): raise FeatureError("forbidden","Você não participa desta troca.",403)
+        if row['status']!='pending' or not row['available']: raise FeatureError("trade_expired","Essa proposta não pode mais ser alterada.")
+        if row['revision']!=expected_revision: raise FeatureError("trade_changed","A proposta mudou. Atualize e confira novamente.")
+        sender=user_id==row['from_user']
+        other=row['to_character_id'] if sender else row['from_character_id']
+        if character_id==other: raise FeatureError("same_character","Escolha personagens diferentes.")
+        lock_inventories(cur,row['from_user'],row['to_user'])
+        inventory_guard(cur,user_id,character_id,trade_id=trade_id)
+        field='from_character_id' if sender else 'to_character_id'
+        cur.execute(f"UPDATE card_trades SET {field}=%s,revision=revision+1,from_confirmed=NULL,to_confirmed=NULL,changed_at=NOW() WHERE trade_id=%s RETURNING revision",(character_id,trade_id))
+        return {"ok":True,"revision":cur.fetchone()['revision'],"confirmations_cleared":True}

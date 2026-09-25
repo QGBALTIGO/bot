@@ -8,6 +8,7 @@ import uvicorn
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
+    InlineQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -28,6 +29,7 @@ create_tables()
 
 from commands.start import start
 from commands.menu import menu
+from commands.collecting import collecting_command, inline_showcase, ENTRIES
 from utils.miniapp_menu import start_menu_sync, refresh_private_menu
 from commands.perfil import perfil
 from commands.health import health
@@ -193,6 +195,8 @@ async def on_error(update, context):
 # =========================================================
 
 def register_commands(app: Application):
+    app.add_handler(CommandHandler(list(ENTRIES), collecting_command))
+    app.add_handler(InlineQueryHandler(inline_showcase))
     # básicos
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
@@ -336,6 +340,8 @@ def register_messages(app: Application):
 def build_application():
     async def post_init(app: Application):
         start_menu_sync(app)
+        from source_features.market import settlement_worker
+        app.bot_data["market_settlement_worker"] = asyncio.create_task(settlement_worker(), name="market-settlement")
         await restore_capture_runtime(app)
         await restore_capture_purchase_runtime(app)
         await restore_duel_runtime(app)
@@ -391,6 +397,7 @@ def build_application():
         if menu_sync:
             await menu_sync.close()
         tasks = [
+            app.bot_data.pop("market_settlement_worker", None),
             app.bot_data.pop("terms_channel_worker", None),
             app.bot_data.pop("telegram_outbox_worker", None),
             app.bot_data.pop("aninexus_news_worker", None),
@@ -443,7 +450,7 @@ def main():
 
     app.run_polling(
         drop_pending_updates=True,
-        allowed_updates=["message", "callback_query"],
+        allowed_updates=["message", "callback_query", "inline_query"],
     )
 
 

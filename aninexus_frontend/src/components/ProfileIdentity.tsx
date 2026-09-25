@@ -1,3 +1,4 @@
+import { useFeatureQuery } from '../features/collecting/api';
 import { Crown, Pencil, Ticket } from 'lucide-react';
 import type { User } from '../context/UserContext';
 import { navigateNative } from '../native/navigation';
@@ -6,8 +7,9 @@ import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { ProgressBar } from './ui/ProgressBar';
 
-/** One profile identity, derived from the existing shared favorite. No extra requests. */
+/** One profile identity; cosmetic appearance is cached separately from the account. */
 export function ProfileIdentity({ user }: { user: User }) {
+  const appearance=useFeatureQuery<{cosmetic_id?:string;label?:string;kind?:string}>('/cosmetics/profile');
   const favorite = user.favorite;
   const accountName =
     user.nickname || [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuário';
@@ -38,7 +40,7 @@ export function ProfileIdentity({ user }: { user: User }) {
           src={favorite ? favorite.image || null : user.avatar}
           alt={displayName}
           fallbackText={displayName.slice(0, 2)}
-          className={`w-full rounded-lg border border-white/10 shadow-lg ${favorite ? 'aspect-[2/3]' : 'aspect-square'}`}
+          className={`w-full rounded-lg border border-white/10 shadow-lg ${favorite ? 'aspect-[2/3]' : 'aspect-square'} ${appearance.data?.kind === 'frame' ? `ring-2 ring-offset-2 ring-offset-zinc-900 ${appearance.data.cosmetic_id === 'frame-bronze' ? 'ring-amber-700/80' : 'ring-zinc-300/80'}` : ''}`}
         />
         <span className="absolute top-1.5 right-1.5 grid w-6 h-6 place-items-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-300 group-hover:text-white" aria-hidden="true">
           <Pencil size={12} />
@@ -65,6 +67,7 @@ export function ProfileIdentity({ user }: { user: User }) {
           </p>
         </div>
 
+        {appearance.data?.label && <p className="text-[10px] text-brand-accent font-bold break-words">{appearance.data.label}</p>}
         <div data-profile-badges className="flex flex-wrap items-center gap-2 min-w-0 [&>span]:max-w-full [&>span]:whitespace-normal [&>span]:[overflow-wrap:anywhere]">
           {user.role_tag && <Badge variant="primary" size="xs">{user.role_tag}</Badge>}
           <Badge variant="epic" size="xs" icon={Crown}>

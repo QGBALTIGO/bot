@@ -1,4 +1,5 @@
 import { BookOpen, ExternalLink, Film, Search, Shapes, Star } from 'lucide-react';
+import { CharacterTools, WishWork } from '../features/collecting/CharacterActions';
 import { useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -160,6 +161,7 @@ export function CharacterDialog({
         {item.quantity !== undefined && <p>{item.quantity} cópia(s) na coleção</p>}
         {item.subcategory && <Badge variant="secondary">{item.subcategory}</Badge>}
       </div>
+      <CharacterTools id={keyOf(item)} owned={owned}/>
       {owned && (
         <Button
           className="w-full"
@@ -233,6 +235,7 @@ export function Cards() {
       icon={Shapes}
       {...(animeId || category ? { back: () => navigateNative('cards') } : {})}
     >
+      {animeId && <WishWork animeId={Number(animeId)}/>}
       {!animeId && (
         <Choices
           value={view}

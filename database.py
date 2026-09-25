@@ -248,6 +248,8 @@ def create_tables():
     create_capture_spawn_tables()
     create_referral_tables()
     create_baltigoflix_tables()
+    from source_features.schema import migrate
+    migrate()
 
     # =========================================================
 # BALTIGOFLIX / AFILIADOS / PAGAMENTOS
@@ -3430,6 +3432,12 @@ def delete_user_account(user_id: int) -> Dict[str, Any]:
                     (user_id,),
                 )
                 account_existed = bool(cur.fetchone())
+                from source_features.common import FeatureError
+                cur.execute("SELECT 1 FROM source_market WHERE status='active' AND (seller_id=%s OR bidder_id=%s) LIMIT 1", (user_id,user_id))
+                if cur.fetchone():
+                    raise FeatureError("active_market", "Encerre seus anúncios e aguarde os leilões com lances antes de excluir a conta.")
+                cur.execute("DELETE FROM source_card_protection WHERE user_id=%s", (user_id,))
+                cur.execute("UPDATE user_profile_settings SET favorite_character_id=NULL WHERE user_id=%s", (user_id,))
 
                 refunds = _refund_account_deletion_dependencies_locked(cur, user_id)
 
@@ -4469,6 +4477,8 @@ def claim_daily_reward(
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT user_id FROM users WHERE user_id=%s FOR UPDATE", (user_id,))
+                cur.fetchone()
                 cur.execute(
                     """
                     SELECT 1
@@ -4492,8 +4502,14 @@ def claim_daily_reward(
                     reward_type = "giro"
                     reward_amount = 1
 
-                    # compatível com sistema antigo
-                    add_extra_dado(user_id, 1)
+                    state = _refresh_dado_locked(cur, user_id)
+                    if int(state['balance']) < DADO_MAX_BALANCE:
+                        cur.execute("UPDATE users SET dado_balance=dado_balance+1,updated_at=NOW() WHERE user_id=%s", (user_id,))
+                    else:
+                        # A full inventory must not silently consume a daily reward.
+                        reward_type = "coins"
+                        reward_amount = coins_min
+                        cur.execute("UPDATE users SET coins=COALESCE(coins,0)+%s,updated_at=NOW() WHERE user_id=%s", (reward_amount,user_id))
                 else:
                     reward_type = "coins"
                     reward_amount = random.randint(coins_min, coins_max)
@@ -5108,6 +5124,16 @@ def delete_all_users() -> Dict[str, Any]:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
                 cur.execute("SELECT pg_advisory_xact_lock(%s)", (0,))
+                # Block new accounts/listings while checking the global reset precondition.
+                # This path is destructive and admin-only; never bypass active escrow.
+                cur.execute("SET LOCAL lock_timeout='5s'")
+                cur.execute("LOCK TABLE users, source_market IN ACCESS EXCLUSIVE MODE")
+                from source_features.common import FeatureError
+                cur.execute("SELECT 1 FROM source_market WHERE status='active' LIMIT 1")
+                if cur.fetchone():
+                    raise FeatureError("active_market", "Encerre os anúncios ativos antes de executar o reset global.")
+                cur.execute("DELETE FROM source_card_protection")
+                cur.execute("UPDATE user_profile_settings SET favorite_character_id=NULL")
 
                 if _optional_table_exists_locked(cur, "telegram_outbox"):
                     cur.execute(
@@ -5166,12 +5192,15 @@ def delete_all_users() -> Dict[str, Any]:
                         user_referrals,
                         active_group_spawns,
                         capture_group_state,
-                        capture_spawns,
-                        users
+                        capture_spawns
                     RESTART IDENTITY
                     """
                 )
 
+                # DELETE honors additive ON DELETE actions. Closed market history is
+                # anonymized; wishlists, cosmetics and other owned state cascade.
+                # TRUNCATE users would reject the new foreign keys, even when empty.
+                cur.execute("DELETE FROM users")
                 conn.commit()
                 return {"ok": True}
             except Exception:

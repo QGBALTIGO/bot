@@ -1,6 +1,7 @@
 import routeManifest from './routes.json';
 
 export const NATIVE_TABS = [
+  'collecting', 'workshop', 'marketplace', 'events', 'activity', 'help', 'identify', 'dice_info',
   'cards',
   'catalog_anime',
   'catalog_manga',
@@ -13,6 +14,7 @@ export const NATIVE_TABS = [
   'terms',
 ];
 export const NATIVE_ALIASES: Record<string, string> = {
+  cofre: 'collecting', desejos: 'collecting', mercado: 'marketplace', oficina: 'workshop', eventos: 'events', agora: 'activity', ajuda: 'help',
   cards: 'cards',
   catalogo: 'catalog_anime',
   animes: 'catalog_anime',
@@ -48,7 +50,7 @@ export function nativeRouteKey(tab: string) {
   const params = nativeParams();
   return [
     tab,
-    ...['anime_id', 'name', 'view', 'q', 'level', 'character_id', 'pending', 'section', 'lang'].map(
+    ...['anime_id', 'name', 'view', 'q', 'level', 'character_id', 'pending', 'section', 'lang', 'target_user_id'].map(
       (k) => params.get(k) || '',
     ),
   ].join(':');

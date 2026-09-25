@@ -150,13 +150,18 @@ def set_profile_nickname(user_id: int, nickname: str) -> dict:
 
 
 def set_profile_favorite(user_id: int, character_id: int | None):
-    _run(
-        """INSERT INTO user_profile_settings (user_id, favorite_character_id, created_at, updated_at)
-        VALUES (%s, %s, NOW(), NOW())
-        ON CONFLICT (user_id) DO UPDATE
-        SET favorite_character_id=EXCLUDED.favorite_character_id, updated_at=NOW()""",
-        (int(user_id), int(character_id) if character_id is not None else None),
-    )
+    from source_features.common import transaction, account, FeatureError
+    with transaction(int(user_id)) as cur:
+        account(cur,int(user_id))
+        if character_id is not None:
+            cur.execute("SELECT quantity FROM user_card_collection WHERE user_id=%s AND character_id=%s FOR UPDATE", (user_id,character_id))
+            if int((cur.fetchone() or {}).get("quantity") or 0)<1:
+                raise FeatureError("card_missing", "Esse personagem não está mais na sua coleção.")
+            cur.execute("SELECT 1 FROM source_reservations WHERE user_id=%s AND character_id=%s", (user_id,character_id))
+            if cur.fetchone(): raise FeatureError("card_reserved", "Encerre o anúncio antes de favoritar esse personagem.")
+            cur.execute("SELECT 1 FROM card_trades WHERE status='pending' AND created_at>=NOW()-INTERVAL '24 hours' AND ((from_user=%s AND from_character_id=%s) OR (to_user=%s AND to_character_id=%s)) LIMIT 1", (user_id,character_id,user_id,character_id))
+            if cur.fetchone(): raise FeatureError("card_reserved", "Encerre a troca antes de favoritar esse personagem.")
+        cur.execute("INSERT INTO user_profile_settings(user_id,favorite_character_id) VALUES(%s,%s) ON CONFLICT(user_id) DO UPDATE SET favorite_character_id=EXCLUDED.favorite_character_id,updated_at=NOW()", (user_id,character_id))
 
 
 def set_profile_country(user_id: int, country_code: str):

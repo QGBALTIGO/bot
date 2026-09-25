@@ -105,6 +105,8 @@ def _get_http_client() -> httpx.AsyncClient:
 @app.on_event("startup")
 async def _open_shared_http_client() -> None:
     _get_http_client()
+    from source_features.schema import migrate
+    await asyncio.to_thread(migrate)
 
     # Warm the cards cache before the first real user request. This moves the
     # one-time JSON/DB merge cost to startup instead of making the first search
