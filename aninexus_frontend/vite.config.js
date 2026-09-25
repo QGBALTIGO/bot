@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 
@@ -8,7 +9,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: 'native-webapp-routes',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'native-routes.json',
+          source: fs.readFileSync(path.join(__dirname, 'src/native/routes.json'), 'utf8'),
+        });
+      },
+    },
+  ],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

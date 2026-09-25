@@ -1,5 +1,13 @@
 import {
   ArrowLeftRight,
+  Brain,
+  CreditCard,
+  Film,
+  ImagePlus,
+  Send,
+  Settings2,
+  ShieldCheck,
+  Shapes,
   BadgeCheck,
   BookOpen,
   ChartNoAxesColumnIncreasing,
@@ -54,7 +62,19 @@ const SECTIONS: NavSection[] = [
       { id: 'incubation', label: 'Incubadora', icon: Egg },
       { id: 'shop', label: 'Loja', icon: Store },
       { id: 'exchange', label: 'Economia', icon: Repeat2 },
-      { id: 'gallery', label: 'Coleção', icon: BookOpen },
+      { id: 'gallery', label: 'Galeria', icon: BookOpen },
+    ],
+  },
+  {
+    title: 'CATÁLOGOS',
+    items: [
+      { id: 'cards', label: 'Cards', icon: Shapes },
+      { id: 'album', label: 'Meu álbum', icon: BookOpen },
+      { id: 'catalog_anime', label: 'Animes', icon: Film },
+      { id: 'catalog_manga', label: 'Mangás', icon: BookOpen },
+      { id: 'requests', label: 'Pedidos', icon: Send },
+      { id: 'contribute', label: 'Contribuições', icon: ImagePlus },
+      { id: 'subscription', label: 'BaltigoFlix', icon: CreditCard },
     ],
   },
   {
@@ -63,6 +83,7 @@ const SECTIONS: NavSection[] = [
       { id: 'mypets', label: 'Companheiros', icon: PawPrint },
       { id: 'pets', label: 'Loja de Companheiros', icon: Store },
       { id: 'minigames', label: 'Jogos AniNexus', icon: Gamepad2 },
+      { id: 'memory', label: 'Memória', icon: Brain },
       { id: 'achievements', label: 'Conquistas', icon: BadgeCheck },
     ],
   },
@@ -79,6 +100,14 @@ const SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+SECTIONS.push({
+  title: 'CONTA',
+  items: [
+    { id: 'settings', label: 'Configurações', icon: Settings2 },
+    { id: 'terms', label: 'Termos e privacidade', icon: ShieldCheck },
+  ],
+});
 
 const ADMIN_ITEMS: NavItem[] = [
   { id: 'upload', label: 'Artes 2:3', icon: Satellite },
@@ -154,9 +183,7 @@ export const NavigationDrawer = ({
       ? [
           {
             title: 'ADMINISTRAÇÃO',
-            items: ADMIN_ITEMS.filter((item) =>
-              item.id === 'upload' ? canUpload : canStaff,
-            ),
+            items: ADMIN_ITEMS.filter((item) => (item.id === 'upload' ? canUpload : canStaff)),
           },
         ]
       : []),
@@ -175,7 +202,7 @@ export const NavigationDrawer = ({
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     const native = window.Telegram?.WebApp?.showConfirm;
     if (native) {
-      native('Log out and clear this session?', (confirmed) => {
+      native('Sair e limpar esta sessão?', (confirmed) => {
         if (confirmed) doLogout();
       });
       return;
@@ -189,7 +216,7 @@ export const NavigationDrawer = ({
     <>
       <button
         type="button"
-        aria-label="Close navigation drawer"
+        aria-label="Fechar menu"
         onClick={onClose}
         className={cn(
           'fixed inset-0 z-[110] bg-black/60 transition-opacity duration-200',
@@ -205,181 +232,181 @@ export const NavigationDrawer = ({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Navigation"
+        aria-label="Navegação"
         tabIndex={-1}
       >
-            {/* Header */}
-            <div className="p-6 flex items-center justify-between border-b border-white/[0.04]">
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <Terminal size={14} className="text-zinc-500" />
-                  <span className="text-[11px] font-bold text-zinc-100 tracking-wider uppercase">
-                    SYSTEM
-                  </span>
-                </div>
-                <span className="text-[8px] font-mono text-zinc-500 uppercase mt-0.5">V2.4</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="w-8 h-8 p-0 rounded-md border border-white/5 bg-zinc-900"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </Button>
+        {/* Header */}
+        <div className="p-6 flex items-center justify-between border-b border-white/[0.04]">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <Terminal size={14} className="text-zinc-500" />
+              <span className="text-[11px] font-bold text-zinc-100 tracking-wider uppercase">
+                MENU
+              </span>
             </div>
+            <span className="text-[8px] font-mono text-zinc-500 uppercase mt-0.5">V2.4</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="w-8 h-8 p-0 rounded-md border border-white/5 bg-zinc-900"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </Button>
+        </div>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
-              {sections.map((section) => (
-                <div key={section.title} className="space-y-3">
-                  <h3 className="px-2 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
-                    {section.title}
-                  </h3>
-                  <div className="space-y-1">
-                    {section.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = activeTab === item.id;
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
+          {sections.map((section) => (
+            <div key={section.title} className="space-y-3">
+              <h3 className="px-2 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                {section.title}
+              </h3>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
 
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => handleItemClick(item.id)}
-                          className={cn(
-                            'group w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-all duration-200 relative',
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleItemClick(item.id)}
+                      className={cn(
+                        'group w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-all duration-200 relative',
+                        isActive
+                          ? 'bg-brand-accent/10 text-brand-accent'
+                          : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/5',
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon
+                          size={16}
+                          className={
                             isActive
-                              ? 'bg-brand-accent/10 text-brand-accent'
-                              : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/5',
+                              ? 'text-brand-accent'
+                              : 'text-zinc-500 transition-colors group-hover:text-zinc-300'
+                          }
+                        />
+                        <span
+                          className={cn(
+                            'text-[11px] font-bold uppercase tracking-wider',
+                            isActive
+                              ? 'text-brand-accent'
+                              : 'text-zinc-500 transition-colors group-hover:text-zinc-300',
                           )}
                         >
-                          <div className="flex items-center gap-3">
-                            <Icon
-                              size={16}
-                              className={
-                                isActive
-                                  ? 'text-brand-accent'
-                                  : 'text-zinc-500 transition-colors group-hover:text-zinc-300'
-                              }
-                            />
-                            <span
-                              className={cn(
-                                'text-[11px] font-bold uppercase tracking-wider',
-                                isActive
-                                  ? 'text-brand-accent'
-                                  : 'text-zinc-500 transition-colors group-hover:text-zinc-300',
-                              )}
-                            >
-                              {item.label}
-                            </span>
-                          </div>
+                          {item.label}
+                        </span>
+                      </div>
 
-                          {isActive && <div className="w-1 h-1 rounded-full bg-brand-accent" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {/* Account */}
-              <div className="space-y-3 pt-4">
-                <h3 className="px-2 text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
-                  CONTA
-                </h3>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-red-500 hover:text-red-400 hover:bg-red-500/5 transition-colors rounded-md"
-                >
-                  <LogOut size={16} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Sair</span>
-                </button>
-
-                {confirmLogout && (
-                  <div className="mt-2 p-3 rounded-md bg-red-500/5 border border-red-500/20 space-y-2">
-                    <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
-                      Log out and clear this session?
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="accent"
-                        size="sm"
-                        onClick={doLogout}
-                        className="flex-1 h-8 text-[10px]"
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmLogout(false)}
-                        className="flex-1 h-8 text-[10px]"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                      {isActive && <div className="w-1 h-1 rounded-full bg-brand-accent" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          ))}
 
-            {/* Footer */}
-            <div className="p-6 border-t border-white/[0.04] bg-white/[0.01]">
-              <div className="flex items-center gap-3 p-3 rounded-md bg-zinc-900 border border-white/5 mb-5">
-                <div className="w-8 h-8 rounded bg-brand-accent/10 flex items-center justify-center shrink-0 border border-brand-accent/20">
-                  <Heart size={14} className="text-brand-accent" fill="currentColor" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] font-bold text-zinc-100 uppercase tracking-wider truncate">
-                    {user?.role_label || user?.role_tag || 'OPERATOR'}
-                  </span>
-                  <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
-                    Conectado
-                  </span>
+          {/* Account */}
+          <div className="space-y-3 pt-4">
+            <h3 className="px-2 text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
+              CONTA
+            </h3>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-red-500 hover:text-red-400 hover:bg-red-500/5 transition-colors rounded-md"
+            >
+              <LogOut size={16} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">Sair</span>
+            </button>
+
+            {confirmLogout && (
+              <div className="mt-2 p-3 rounded-md bg-red-500/5 border border-red-500/20 space-y-2">
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
+                  Log out and clear this session?
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    onClick={doLogout}
+                    className="flex-1 h-8 text-[10px]"
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmLogout(false)}
+                    className="flex-1 h-8 text-[10px]"
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              <div className="flex items-center justify-between px-1">
-                <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Status do servidor
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                  <span className="text-[8px] font-mono text-emerald-500/80 uppercase">ONLINE</span>
-                </div>
-              </div>
-
-              {/* Legal links — Telegram requires terms + privacy for Mini Apps */}
-              <div className="flex items-center justify-center gap-3 mt-3">
-                <a
-                  href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=terms`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
-                >
-                  Terms
-                </a>
-                <span className="text-zinc-800">·</span>
-                <a
-                  href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=privacy`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
-                >
-                  Privacy
-                </a>
-                <span className="text-zinc-800">·</span>
-                <a
-                  href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=dmca`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
-                >
-                  DMCA
-                </a>
-              </div>
+        {/* Footer */}
+        <div className="p-6 border-t border-white/[0.04] bg-white/[0.01]">
+          <div className="flex items-center gap-3 p-3 rounded-md bg-zinc-900 border border-white/5 mb-5">
+            <div className="w-8 h-8 rounded bg-brand-accent/10 flex items-center justify-center shrink-0 border border-brand-accent/20">
+              <Heart size={14} className="text-brand-accent" fill="currentColor" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-bold text-zinc-100 uppercase tracking-wider truncate">
+                {user?.role_label || user?.role_tag || 'OPERATOR'}
+              </span>
+              <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
+                Conectado
+              </span>
             </div>
           </div>
+
+          <div className="flex items-center justify-between px-1">
+            <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
+              Status do servidor
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1 h-1 rounded-full bg-emerald-500" />
+              <span className="text-[8px] font-mono text-emerald-500/80 uppercase">ONLINE</span>
+            </div>
+          </div>
+
+          {/* Legal links — Telegram requires terms + privacy for Mini Apps */}
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <a
+              href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=terms`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+            >
+              Terms
+            </a>
+            <span className="text-zinc-800">·</span>
+            <a
+              href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=privacy`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+            >
+              Privacy
+            </a>
+            <span className="text-zinc-800">·</span>
+            <a
+              href={`https://t.me/${import.meta.env.VITE_BOT_USERNAME || 'SourceBaltigo_Bot'}?start=dmca`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+            >
+              DMCA
+            </a>
+          </div>
+        </div>
+      </div>
     </>
   );
 };

@@ -158,7 +158,7 @@ CONCURRENT_UPDATES = max(1, min(64, CONCURRENT_UPDATES))
 
 def run_webapp():
     try:
-        from webapp import app as web_app
+        from webapp_entrypoint import app as web_app
         from utils.health_routes import router as health_router
 
         registered_paths = {getattr(route, "path", "") for route in web_app.routes}
