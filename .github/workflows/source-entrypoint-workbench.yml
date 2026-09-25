@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Apply checksum-verified entrypoint patch and native activation handling
+      - name: Apply verified source changes and dialog navigation guard
         run: |
           python - <<'PY'
           import base64, hashlib, lzma, subprocess
@@ -43,6 +43,18 @@ jobs:
               text = text.replace('    void check();\n    document.addEventListener', "    void check();\n    const telegram = window.Telegram?.WebApp;\n    telegram?.onEvent?.('activated', resume);\n    document.addEventListener")
               text = text.replace("      controller?.abort();\n", "      controller?.abort();\n      telegram?.offEvent?.('activated', resume);\n")
           notice.write_text(text)
+          app = Path('aninexus_frontend/src/App.tsx')
+          text = app.read_text()
+          old = "    const handleBack = () => {\n      if (nativeDialog) window.dispatchEvent(new Event('source:back'));\n      else if (selectedChar || selectedPet || isMenuOpen) {"
+          new = "    const handleBack = () => {\n      // A mounted dialog consumes Back synchronously before state effects settle.\n      const backEvent = new Event('source:back', { cancelable: true });\n      if (!window.dispatchEvent(backEvent)) return;\n      if (nativeDialog) return;\n      if (selectedChar || selectedPet || isMenuOpen) {"
+          assert old in text or 'const backEvent' in text
+          app.write_text(text.replace(old, new))
+          ui = Path('aninexus_frontend/src/native/ui.tsx')
+          text = ui.read_text()
+          ui.write_text(text.replace('    const close = () => {\n      if (!busyRef.current)', '    const close = (event?: Event) => {\n      event?.preventDefault();\n      if (!busyRef.current)'))
+          test = Path('scripts/verify_fullscreen_browser.py')
+          text = test.read_text().replace("page.evaluate('for(const f of __backHandlers)f()');page.get_by_role('dialog').wait_for(state='hidden')", "page.evaluate('for(const f of Array.from(__backHandlers))f()');page.get_by_role('dialog').wait_for(state='hidden');assert page.evaluate('location.hash')=='#settings';page.get_by_role('button',name='Alterar favorito',exact=True).wait_for()")
+          test.write_text(text)
           PY
       - uses: oven-sh/setup-bun@v2
         with:
