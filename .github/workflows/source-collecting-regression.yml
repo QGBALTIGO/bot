@@ -1,0 +1,66 @@
+name: Source collecting regression
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['source_features/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
+  push:
+    branches: [main]
+    paths: ['source_features/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
+permissions:
+  contents: read
+concurrency:
+  group: source-collecting-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U audit -d source_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: Install isolated tools
+        run: |
+          pip install -q -r requirements.txt pytest pytest-asyncio ruff playwright
+          cd aninexus_frontend && bun install --frozen-lockfile && cd ..
+          python -m playwright install --with-deps chromium
+      - name: Verify contracts, compilation and committed runtime
+        run: |
+          mkdir -p collecting-proof
+          python scripts/generate_collecting_types.py --check
+          ruff check . --select E9,F63,F7,F82 --exclude data --exclude node_modules
+          cd aninexus_frontend && bun run build && cd ..
+          diff -qr aninexus_frontend/dist aninexus_runtime
+      - name: Python unit regressions
+        run: python -m pytest -q --junitxml=collecting-proof/pytest.xml
+      - name: Real PostgreSQL protection, marketplace and concurrency
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/verify_collecting_transactions.py collecting-proof/transactions.json
+      - name: Compiled collecting UI and guarded flows
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_collecting_browser.py --output collecting-proof/browser
+          python scripts/verify_collecting_extended_browser.py --output collecting-proof/extended
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-collecting-regression-proof
+          path: collecting-proof/
+          retention-days: 7
