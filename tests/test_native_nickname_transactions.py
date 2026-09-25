@@ -5,6 +5,8 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import psycopg as psycopg_driver
+import psycopg.rows as psycopg_rows
 from fastapi import HTTPException
 from psycopg import IntegrityError
 from webapp_routes.native_webapps import change_nickname_atomic
@@ -52,6 +54,10 @@ class DatabaseDouble:
 
 def configure(monkeypatch, **kwargs):
     db = DatabaseDouble(**kwargs)
+    # Older tests replace sys.modules without restoring the driver. Keep this
+    # fixture self-contained while using the real exception and row factory.
+    monkeypatch.setitem(sys.modules, "psycopg", psycopg_driver)
+    monkeypatch.setitem(sys.modules, "psycopg.rows", psycopg_rows)
     monkeypatch.setitem(sys.modules, "database_core", SimpleNamespace(pool=db))
     monkeypatch.setitem(
         sys.modules,
