@@ -93,7 +93,10 @@ async def commands():
  handlers=[]
  bot.register_commands(SimpleNamespace(add_handler=lambda handler:handlers.append(handler)))
  records=[]
+ from telegram.ext import CommandHandler
  for handler in handlers:
+  if not isinstance(handler, CommandHandler):
+   continue  # InlineQueryHandler is tested separately with consent/privacy scenarios.
   name=next(iter(handler.commands))
   # Ordinary-user no-argument checks exercise guards without destructive admin operations.
   for chat_type in ['private','supergroup']:
