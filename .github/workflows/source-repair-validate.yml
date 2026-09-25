@@ -25,19 +25,49 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@v4
-      - name: Apply checksum-verified source changes
+      - name: Apply reviewed final layout corrections
         run: |
           python - <<'PY'
           from pathlib import Path
-          import base64, hashlib, lzma, subprocess
-          folder = Path('.source-repair')
-          if folder.exists():
-              text = ''.join(p.read_text().strip() for p in sorted(folder.glob('*.b64')))
-              patch = lzma.decompress(base64.b64decode(text, validate=True))
-              assert hashlib.sha256(patch).hexdigest() == '8082ff2f82ce296fe8352deb4b01f2fa4a09e37d6409264bdb4e63531f6318cc'
-              subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
-              subprocess.run(['git', 'apply', '-'], input=patch, check=True)
-              subprocess.run(['git', 'rm', '-r', '.source-repair'], check=True)
+          changes = {
+            'aninexus_frontend/src/components/Header.tsx': [
+              ('flex items-center justify-between px-3', 'flex items-center justify-between gap-2 px-3'),
+              ('flex min-w-0 items-center gap-2 xs:gap-3', 'flex min-w-0 flex-1 items-center gap-2 xs:gap-3'),
+              ('<div className="flex flex-col justify-center">', '<div className="flex min-w-0 flex-1 flex-col justify-center">'),
+              ('<div className="flex items-center gap-1.5">', '<div className="flex min-w-0 items-center gap-1.5">'),
+              ('className="text-[8px] font-mono text-zinc-500 uppercase">V2.4', 'className="hidden sm:inline shrink-0 text-[8px] font-mono text-zinc-500 uppercase">V2.4'),
+            ],
+            'aninexus_frontend/src/pages/Profile.tsx': [
+              ('className="flex items-center gap-4 p-4" data-profile-favorite', 'className="grid grid-cols-[64px_minmax(0,1fr)] sm:flex items-center gap-x-4 gap-y-3 p-4" data-profile-favorite'),
+              ('<Button size="sm" variant="secondary" aria-label="Alterar personagem favorito"', '<Button size="sm" variant="secondary" className="col-start-2 justify-self-start sm:shrink-0" aria-label="Alterar personagem favorito"'),
+            ],
+            'scripts/verify_native_browser.py': [
+              ('get_by_role("button", name="Alterar", exact=True).click()', 'get_by_role("button", name="Alterar personagem favorito", exact=True).click()'),
+              ('            assert page.locator("[data-profile-favorite]").count() == 0', '            page.locator("[data-profile-favorite]").wait_for(state="hidden")'),
+              ('                    assert not overflow, ("overflow", path, width)', '''                    assert not overflow, ("overflow", path, width)
+                              header_overlap = page.evaluate("""() => {
+                                const header = document.querySelector('header.sticky');
+                                const brand = header.querySelector('button[aria-label="Ir para o painel"]');
+                                const stats = header.lastElementChild;
+                                const edge = stats.getBoundingClientRect().left;
+                                return Array.from(brand.querySelectorAll('span')).some(el => {
+                                  const b = el.getBoundingClientRect();
+                                  return b.width > 0 && b.right > edge + 1;
+                                });
+                              }""")
+                              assert not header_overlap, ("header overlap", path, width)'''.replace('\n          ', '\n')),
+            ],
+          }
+          for name, pairs in changes.items():
+              path=Path(name)
+              text=path.read_text()
+              for old, new in pairs:
+                  if old in text:
+                      assert text.count(old) == 1, (name, old, text.count(old))
+                      text=text.replace(old, new)
+                  else:
+                      assert new in text, (name, old)
+              path.write_text(text)
           PY
       - uses: oven-sh/setup-bun@v2
         with:
@@ -61,7 +91,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m 'fix: reduce Source latency and restore profile favorites'
+            git commit -m 'fix: align narrow headers and favorite profile controls'
             git push origin HEAD:codex/source-performance-favorites-20260925
           fi
       - name: Full regression and critical lint
@@ -75,7 +105,8 @@ jobs:
           DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/postgres
           BOT_TOKEN: '123456:fixture-only-not-a-real-token'
         run: |
-          python - <<'PY' | tee repair-proof/postgres.txt
+          set -o pipefail
+          python - <<'PY' 2>&1 | tee repair-proof/postgres.txt
           import time
           import database as db
           from database_core import run, pool
