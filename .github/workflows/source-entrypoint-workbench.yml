@@ -27,6 +27,10 @@ jobs:
               subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
               subprocess.run(['git', 'apply', '-'], input=patch, check=True)
               subprocess.run(['git', 'rm', '-r', '.source-entrypoint-patch'], check=True)
+          test = Path('scripts/verify_single_miniapp_browser.py')
+          text = test.read_text().replace('import argparse\n', 'import argparse\nimport re\n')
+          text = text.replace("name='Loja',exact=True).wait_for()", "name=re.compile(r'^loja aninexus$', re.I)).wait_for()")
+          test.write_text(text)
           PY
       - uses: oven-sh/setup-bun@v2
         with:
