@@ -26,14 +26,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.14'
-      - name: Apply checksum-verified corrections and callback follow-up
+      - name: Apply checksum-verified audit patches
         run: |
           python - <<'PY'
           import base64,lzma,hashlib,subprocess
           from pathlib import Path
           root=Path('.source-audit')
           if root.exists():
-            groups=[(sorted(root.glob('fixes-*.b64')),'d073e565c14c99f554c3fbd0144e2ed7c81e48bfc4a24d7f7c9e41b8f9b35a2a'),([root/'followup.b64'],'2cdafa58dd05e00d2a3af9a940aadadb6f18faeba526f88f8db3e4663738f4d3')]
+            groups=[(sorted(root.glob('fixes-*.b64')),'d073e565c14c99f554c3fbd0144e2ed7c81e48bfc4a24d7f7c9e41b8f9b35a2a'),([root/'followup.b64'],'2cdafa58dd05e00d2a3af9a940aadadb6f18faeba526f88f8db3e4663738f4d3'),([root/'compatibility.b64'],'e3817b30e1e5af857e91f20ee4a403a857b42c95e68cb432b7ee3cdf8ba0f4a9')]
             for files,digest in groups:
               patch=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in files),validate=True))
               assert hashlib.sha256(patch).hexdigest()==digest
@@ -41,7 +41,7 @@ jobs:
               subprocess.run(['git','apply','-'],input=patch,check=True)
             subprocess.run(['git','rm','-r','.source-audit'],check=True)
           PY
-      - name: Install updated dependencies and test tools
+      - name: Install isolated tools
         run: |
           pip install -q -r requirements.txt pytest pytest-asyncio pytest-cov ruff playwright pip-audit 'setuptools>=83'
           cd aninexus_frontend && bun install --frozen-lockfile && cd ..
@@ -55,81 +55,63 @@ jobs:
           rm -rf aninexus_runtime && cp -a aninexus_frontend/dist aninexus_runtime
           diff -qr aninexus_frontend/dist aninexus_runtime
           ruff check . --select E9,F63,F7,F82 --exclude data --exclude node_modules
-      - name: Python regressions
-        id: unit
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          python -m pytest -q --cov=. --cov-report=json:audit-proof/coverage.json --junitxml=audit-proof/pytest.xml | tee audit-proof/pytest.txt
-      - name: Real PostgreSQL transaction races and rollbacks
-        id: transactions
-        continue-on-error: true
+      - name: Execute every audit gate and retain actual outcomes
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
-        run: python scripts/audit_transactions.py audit-proof/transactions.json >audit-proof/transactions-console.txt 2>&1
-      - name: Actual route and command probes
-        id: runtime
-        continue-on-error: true
-        env:
-          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
-        run: |
-          python scripts/audit_inventory.py --output audit-proof/inventory.json
-          python scripts/audit_runtime.py audit-proof/runtime >audit-proof/runtime-console.txt 2>&1
-      - name: All registered callback entrypoints
-        id: callbacks
-        continue-on-error: true
-        env:
-          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
-        run: python scripts/audit_callbacks.py audit-proof/callbacks.json >audit-proof/callbacks-console.txt 2>&1
-      - name: Public image TLS and pinned fallback compatibility
-        id: images
-        continue-on-error: true
-        run: python scripts/audit_image_fetch.py audit-proof/images.json
-      - name: Browser regressions
-        id: browser
-        continue-on-error: true
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
-          python scripts/verify_native_browser.py --test --output audit-proof/native
-          python scripts/verify_fullscreen_browser.py --output audit-proof/fullscreen
-          python scripts/verify_profile_identity_browser.py --output audit-proof/profile
-          python scripts/verify_single_miniapp_browser.py --output audit-proof/single
+          python - <<'PY'
+          import subprocess,json
+          from pathlib import Path
+          steps={
+            'UNIT':['python','-m','pytest','-q','--cov=.','--cov-report=json:audit-proof/coverage.json','--junitxml=audit-proof/pytest.xml'],
+            'TRANSACTIONS':['python','scripts/audit_transactions.py','audit-proof/transactions.json'],
+            'INVENTORY':['python','scripts/audit_inventory.py','--output','audit-proof/inventory.json'],
+            'RUNTIME':['python','scripts/audit_runtime.py','audit-proof/runtime'],
+            'CALLBACKS':['python','scripts/audit_callbacks.py','audit-proof/callbacks.json'],
+            'IMAGES':['python','scripts/audit_image_fetch.py','audit-proof/images.json'],
+            'BROWSER_NATIVE':['python','scripts/verify_native_browser.py','--test','--output','audit-proof/native'],
+            'BROWSER_FULLSCREEN':['python','scripts/verify_fullscreen_browser.py','--output','audit-proof/fullscreen'],
+            'BROWSER_PROFILE':['python','scripts/verify_profile_identity_browser.py','--output','audit-proof/profile'],
+            'BROWSER_SINGLE':['python','scripts/verify_single_miniapp_browser.py','--output','audit-proof/single'],
+            'ADVISORIES':['pip-audit','-r','requirements.txt','--format','json','--output','audit-proof/python-advisories.json'],
+          }
+          gates={}
+          for name,cmd in steps.items():
+            with (Path('audit-proof')/(name.lower()+'.txt')).open('w') as output:
+              result=subprocess.run(cmd,stdout=output,stderr=subprocess.STDOUT,timeout=400)
+            gates[name]='success' if result.returncode==0 else 'failure'
+            print(name,gates[name],flush=True)
+            Path('audit-proof/gates.json').write_text(json.dumps(gates))
+          result=subprocess.run(['bun','audit','--json'],cwd='aninexus_frontend',capture_output=True,text=True,timeout=60)
+          Path('audit-proof/js-advisories.json').write_text(result.stdout or '{}')
+          gates['JS_ADVISORIES']='success' if result.returncode==0 else 'failure'
+          Path('audit-proof/gates.json').write_text(json.dumps(gates))
+          assert all(v=='success' for v in gates.values()),gates
+          rows=json.loads(Path('audit-proof/runtime/http.json').read_text())
+          assert not [r for r in rows if r['status']==500], 'Unhandled HTTP errors'
+          commands=json.loads(Path('audit-proof/runtime/commands.json').read_text())
+          assert not [r for r in commands if r['status']=='error'], 'Unhandled commands'
+          manifest=json.loads(Path('aninexus_runtime/native-routes.json').read_text())
+          for path in manifest:
+            samples=[r for r in rows if r['path']==path and r['method']=='GET']
+            assert samples and all(r['status']==(200 if path=='/menu' else 307) for r in samples), (path,samples)
+          PY
+      - name: Agent-browser verification
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_native_browser.py --serve >/tmp/source-browser-server.log 2>&1 &
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8765/menu >/dev/null && break || sleep 1; done
           AB=/tmp/source-browser-tools/node_modules/.bin/agent-browser
           $AB --executable-path "$CHROMIUM_PATH" open http://127.0.0.1:8765/menu
           $AB wait --load networkidle
           $AB snapshot -i >audit-proof/agent-profile.txt
           $AB screenshot audit-proof/agent-profile.png
           $AB close
-      - name: Advisory scan of application dependencies
-        id: advisories
-        continue-on-error: true
+      - name: Commit only verified application source and runtime
         run: |
-          pip-audit -r requirements.txt --format json --output audit-proof/python-advisories.json >audit-proof/python-advisories.log 2>&1
-          cd aninexus_frontend && bun audit --json >../audit-proof/js-advisories.json
-      - name: Require actual outcomes and commit only verified code
-        env:
-          UNIT: ${{ steps.unit.outcome }}
-          TRANSACTIONS: ${{ steps.transactions.outcome }}
-          RUNTIME: ${{ steps.runtime.outcome }}
-          CALLBACKS: ${{ steps.callbacks.outcome }}
-          IMAGES: ${{ steps.images.outcome }}
-          BROWSER: ${{ steps.browser.outcome }}
-          ADVISORIES: ${{ steps.advisories.outcome }}
-        run: |
-          python - <<'PY'
-          import os,json
-          from pathlib import Path
-          gates={k:os.environ[k] for k in ['UNIT','TRANSACTIONS','RUNTIME','CALLBACKS','IMAGES','BROWSER','ADVISORIES']}
-          Path('audit-proof/gates.json').write_text(json.dumps(gates))
-          assert all(v=='success' for v in gates.values()), gates
-          responses=json.loads(Path('audit-proof/runtime/http.json').read_text())
-          assert not [r for r in responses if r['status']==500], 'Unhandled route errors'
-          commands=json.loads(Path('audit-proof/runtime/commands.json').read_text())
-          assert not [r for r in commands if r['status']=='error'], 'Unhandled command errors'
-          PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add requirements.txt commands database*.py utils webapp.py webapp_routes aninexus_frontend aninexus_runtime scripts tests
