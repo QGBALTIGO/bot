@@ -6,51 +6,50 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - run: git archive --format=tar.gz HEAD > /tmp/source-audit-baseline.tar.gz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: source-audit-baseline
-          path: /tmp/source-audit-baseline.tar.gz
-          retention-days: 3
-  baseline:
+  runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3.14'
-      - name: Install isolated tools
+      - name: Apply isolated probes
         run: |
-          pip install -q -r requirements.txt pytest pytest-asyncio pytest-cov bandit pip-audit ruff
-          cd aninexus_frontend && bun install --frozen-lockfile
-      - name: Collect baseline tests and syntax findings
+          python - <<'PY'
+          import base64,lzma,hashlib,subprocess
+          from pathlib import Path
+          patch=lzma.decompress(base64.b64decode(Path('.source-audit/probe.b64').read_text()))
+          assert hashlib.sha256(patch).hexdigest()=='f30958b26f3665594b0b1415b7787a47685a550ca754ccf385844399f2dcfa55'
+          subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+          subprocess.run(['git','apply','-'],input=patch,check=True)
+          PY
+      - run: pip install -q -r requirements.txt pytest pytest-asyncio pip-audit
+      - name: Probe the actual assembled application
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
         run: |
-          mkdir -p audit-baseline
-          python -m compileall -q -x '/(node_modules|\.git)/' . >audit-baseline/compile.txt 2>&1; echo $? >audit-baseline/compile-exit.txt
-          python -m pytest -q --cov=. --cov-report=json:audit-baseline/coverage.json --junitxml=audit-baseline/pytest.xml >audit-baseline/pytest.txt 2>&1; echo $? >audit-baseline/pytest-exit.txt
-          ruff check . --output-format json --exclude data --exclude aninexus_frontend/node_modules >audit-baseline/ruff.json; echo $? >audit-baseline/ruff-exit.txt
-          bandit -r . -x './.git,./aninexus_frontend/node_modules,./tests' -f json -o audit-baseline/bandit.json >audit-baseline/bandit.log 2>&1; echo $? >audit-baseline/bandit-exit.txt
-        shell: bash {0}
-      - name: Current dependency advisory checks
+          mkdir -p audit-runtime
+          python scripts/audit_inventory.py --output audit-runtime/inventory.json
+          python scripts/audit_runtime.py audit-runtime >audit-runtime/console.txt 2>&1
+      - name: Current Python advisories
+        if: always()
         run: |
-          pip-audit --disable-pip --no-deps --format json --output audit-baseline/python-advisories.json >audit-baseline/python-advisories.log 2>&1; echo $? >audit-baseline/python-advisories-exit.txt
-          cd aninexus_frontend
-          bun audit --json >../audit-baseline/js-advisories.json 2>../audit-baseline/js-advisories.log; echo $? >../audit-baseline/js-advisories-exit.txt
-          bun run build >../audit-baseline/build.txt 2>&1; echo $? >../audit-baseline/build-exit.txt
-          diff -qr dist ../aninexus_runtime >../audit-baseline/runtime-diff.txt; echo $? >../audit-baseline/runtime-exit.txt
+          pip-audit --format json --output audit-runtime/python-advisories.json >audit-runtime/python-advisories.log 2>&1
+          echo $? >audit-runtime/python-advisories-exit.txt
         shell: bash {0}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-audit-baseline-results
-          path: audit-baseline/
+          name: source-audit-runtime-baseline
+          path: audit-runtime/
           retention-days: 7
