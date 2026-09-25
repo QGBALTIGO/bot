@@ -22,7 +22,7 @@ CALLS = []
 def trade():
     def character(i):
         return {"id": str(i), "name": f"Personagem {i:02}", "anime": "Obra de teste",
-                "img_url": f"/fixture-art/{i}.svg", "count": 3}
+                "rarity": "COMUM", "img_url": f"/fixture-art/{i}.svg", "count": 3}
     return {"id": "901", "sender_id": 88, "receiver_id": 77,
             "sender_name": "Parceiro de teste", "receiver_name": "Tester",
             "sender_char": character(1), "receiver_char": character(2),
@@ -72,6 +72,7 @@ def run(output):
     output.mkdir(parents=True, exist_ok=True)
     fixture.init()
     TRADES[:] = [trade()]
+    CALLS.clear()
     server = ThreadingHTTPServer(("127.0.0.1", fixture.base.PORT), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     report = {"scope": "Compiled application; synthetic accounts, HTTP APIs and SDK. No production operations.",
@@ -82,22 +83,27 @@ def run(output):
         page = browser.new_page(viewport={"width": 390, "height": 844}, reduced_motion="reduce")
         page.set_default_timeout(12000)
         page.on("pageerror", lambda e: report["page_errors"].append(str(e)))
+        case_number = 0
 
         def goto(tab):
-            page.goto(f"http://127.0.0.1:{fixture.base.PORT}/menu#{tab}")
+            nonlocal case_number
+            case_number += 1
+            # Changes to synthetic server state require a new document, not hash navigation.
+            page.goto(f"http://127.0.0.1:{fixture.base.PORT}/menu?test_case={case_number}#{tab}")
             page.wait_for_selector("main h1")
 
         try:
             fixture.S["market"][0].update(kind="auction", bid=0, minimum_bid=10)
             goto("marketplace")
-            page.get_by_role("button", name="Dar lance", exact=True).click()
+            page.get_by_role("button", name="Oferecer lance", exact=True).click()
             expect(page.get_by_role("dialog")).to_be_visible()
             page.get_by_role("spinbutton").fill("9")
             expect(page.get_by_role("button", name="Confirmar lance", exact=True)).to_be_disabled()
             page.get_by_role("spinbutton").fill("12")
             page.get_by_role("button", name="Confirmar lance", exact=True).click()
             page.get_by_role("dialog").wait_for(state="hidden")
-            expect(page.get_by_role("button", name="Dar outro lance", exact=True)).to_be_visible()
+            expect(page.get_by_text("Seu lance está na frente", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Oferecer lance", exact=True)).to_be_enabled()
             assert CALLS[-1]["body"]["amount"] == 12 and CALLS[-1]["body"]["version"] == 1
             UUID(CALLS[-1]["body"]["request_id"])
             page.screenshot(path=str(output / "auction-confirmed.png"))
@@ -105,7 +111,8 @@ def run(output):
 
             fixture.S["market"][0]["is_owner"] = True
             goto("marketplace")
-            expect(page.get_by_role("button", name="Cancelar anúncio", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Aguardando encerramento", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Cancelar anúncio", exact=True)).to_have_count(0)
             report["flows"].append("auction with bids cannot be cancelled in the owner interface")
 
             goto("events")
