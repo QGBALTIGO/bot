@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Verify public build and authentication boundary without transactions
+      - name: Verify actual public routes without transactions
         run: |
           python3 - <<'PY'
           import json, urllib.request, urllib.error, hashlib, pathlib
@@ -31,7 +31,7 @@ jobs:
           result={'commit':'b8e348926aaea53862f9559a723342e4b23468ca','scope':'Public GET only; no credentials, user identities, transactions or database writes','checks':rows}
           try:
               get('/health',200)
-              version=json.loads(get('/ui-version.json',200))
+              version=json.loads(get('/api/native/version',200))
               assert version=={'version':'63a180850c749b0e','entrypoint':'/menu'},version
               result['version']=version
               home=get('/menu',200)
