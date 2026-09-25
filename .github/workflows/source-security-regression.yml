@@ -1,0 +1,58 @@
+name: Source security and transaction regression
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['**.py', 'requirements.txt', '.github/workflows/source-security-regression.yml']
+  push:
+    branches: [main]
+    paths: ['**.py', 'requirements.txt', '.github/workflows/source-security-regression.yml']
+permissions:
+  contents: read
+concurrency:
+  group: source-security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated dependencies
+        run: pip install -r requirements.txt pytest pytest-asyncio ruff pip-audit 'setuptools>=83'
+      - name: Compile and test regressions
+        run: |
+          mkdir -p security-proof
+          python -m compileall -q -x '/(node_modules|\.git)/' .
+          ruff check . --select E9,F63,F7,F82 --exclude data
+          python -m pytest -q --junitxml=security-proof/pytest.xml
+      - name: Verify real transactions in disposable PostgreSQL
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/audit_transactions.py security-proof/transactions.json
+      - name: Verify HTTP and command entrypoints without external actions
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: |
+          python scripts/audit_runtime.py security-proof/runtime
+          python scripts/audit_callbacks.py security-proof/callbacks.json
+      - name: Gate known Python dependency advisories
+        run: pip-audit -r requirements.txt --format json --output security-proof/python-advisories.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-security-proof
+          path: security-proof/
+          retention-days: 7
