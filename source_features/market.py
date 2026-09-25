@@ -270,6 +270,7 @@ def settle_due():
 async def settlement_worker():
     import asyncio
 
+    print("[market-settlement] worker iniciado interval=30s", flush=True)
     while True:
         try:
             await asyncio.to_thread(settle_due)

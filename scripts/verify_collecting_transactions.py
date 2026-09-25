@@ -672,6 +672,44 @@ def active_market_prevents_account_deletion_without_destroying_escrow():
     assert scalar("SELECT COUNT(*) FROM users WHERE user_id=%s", (a,)) == 0
 
 
+
+@check
+def global_reset_rejects_active_escrow_without_mutating_accounts():
+    a = user(cards={C1: 3})
+    b = user(coins=100)
+    mid = listing(a, kind="auction")
+    market.act(b, mid, "bid", key(), 1, 10)
+    before = (coins(a), coins(b), qty(a, C1))
+    denied(db.delete_all_users, "active_market")
+    assert (coins(a), coins(b), qty(a, C1)) == before
+    assert record(mid)["status"] == "active"
+    assert scalar("SELECT COUNT(*) FROM source_reservations WHERE owner_id=%s", (mid,)) == 1
+
+@check
+def global_reset_handles_new_foreign_keys_and_preserves_closed_market_history():
+    # Destructive test ONLY in the hostname/database-guarded disposable database.
+    active = run("SELECT id FROM source_market WHERE status='active'", fetch="all")
+    total_before = scalar("SELECT COALESCE(SUM(coins),0) FROM users") + scalar("SELECT COALESCE(SUM(bid),0) FROM source_market WHERE status='active'")
+    run("UPDATE source_market SET ends_at=NOW()-INTERVAL '1 second' WHERE status='active'")
+    for row in active:
+        market.settle(str(row['id']))
+    assert scalar("SELECT COUNT(*) FROM source_market WHERE status='active'") == 0
+    assert scalar("SELECT COALESCE(SUM(coins),0) FROM users") == total_before
+    a = user(cards={C1: 3})
+    collection.wishes(a, [C1])
+    collection.set_protection(a, C1, True)
+    collection.save_settings(a, {"share_inline": True})
+    closed = scalar("SELECT COUNT(*) FROM source_market")
+    assert closed > 0
+    assert db.delete_all_users() == {"ok": True}
+    assert scalar("SELECT COUNT(*) FROM users") == 0
+    assert scalar("SELECT COUNT(*) FROM source_market") == closed
+    assert scalar("SELECT COUNT(*) FROM source_market WHERE seller_id IS NOT NULL OR bidder_id IS NOT NULL") == 0
+    for name in ("source_reservations", "source_card_protection", "source_wishlist", "source_collecting_settings", "source_workshop_wallet", "source_cosmetics", "source_operations", "source_contributions"):
+        assert scalar(f"SELECT COUNT(*) FROM {name}") == 0, name
+    assert db.delete_all_users() == {"ok": True}
+
+
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "collecting-transactions.json")
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(

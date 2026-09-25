@@ -5124,6 +5124,10 @@ def delete_all_users() -> Dict[str, Any]:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
                 cur.execute("SELECT pg_advisory_xact_lock(%s)", (0,))
+                # Block new accounts/listings while checking the global reset precondition.
+                # This path is destructive and admin-only; never bypass active escrow.
+                cur.execute("SET LOCAL lock_timeout='5s'")
+                cur.execute("LOCK TABLE users, source_market IN ACCESS EXCLUSIVE MODE")
                 from source_features.common import FeatureError
                 cur.execute("SELECT 1 FROM source_market WHERE status='active' LIMIT 1")
                 if cur.fetchone():
@@ -5188,12 +5192,15 @@ def delete_all_users() -> Dict[str, Any]:
                         user_referrals,
                         active_group_spawns,
                         capture_group_state,
-                        capture_spawns,
-                        users
+                        capture_spawns
                     RESTART IDENTITY
                     """
                 )
 
+                # DELETE honors additive ON DELETE actions. Closed market history is
+                # anonymized; wishlists, cosmetics and other owned state cascade.
+                # TRUNCATE users would reject the new foreign keys, even when empty.
+                cur.execute("DELETE FROM users")
                 conn.commit()
                 return {"ok": True}
             except Exception:
