@@ -1,4 +1,5 @@
 import {
+  CalendarDays, Hammer, Flag, HelpCircle, LockKeyhole, ScanSearch,
   ArrowLeftRight,
   Brain,
   CreditCard,
@@ -58,6 +59,7 @@ const SECTIONS: NavSection[] = [
     title: 'PRINCIPAL',
     items: [
       { id: 'profile', label: 'Painel', icon: LayoutDashboard },
+      { id: 'activity', label: 'Disponível agora', icon: CalendarDays },
       { id: 'dado', label: 'Dado', icon: Dices },
       { id: 'incubation', label: 'Incubadora', icon: Egg },
       { id: 'shop', label: 'Loja', icon: Store },
@@ -70,6 +72,8 @@ const SECTIONS: NavSection[] = [
     items: [
       { id: 'cards', label: 'Cards', icon: Shapes },
       { id: 'album', label: 'Meu álbum', icon: BookOpen },
+      { id: 'collecting', label: 'Desejos e cofre', icon: LockKeyhole },
+      { id: 'identify', label: 'Identificar anime', icon: ScanSearch },
       { id: 'catalog_anime', label: 'Animes', icon: Film },
       { id: 'catalog_manga', label: 'Mangás', icon: BookOpen },
       { id: 'requests', label: 'Pedidos', icon: Send },
@@ -85,6 +89,7 @@ const SECTIONS: NavSection[] = [
       { id: 'minigames', label: 'Jogos AniNexus', icon: Gamepad2 },
       { id: 'memory', label: 'Memória', icon: Brain },
       { id: 'achievements', label: 'Conquistas', icon: BadgeCheck },
+      { id: 'workshop', label: 'Oficina', icon: Hammer },
     ],
   },
   {
@@ -93,6 +98,8 @@ const SECTIONS: NavSection[] = [
       { id: 'duels', label: 'Duelos', icon: Swords },
       { id: 'bonds', label: 'Vínculos', icon: Heart },
       { id: 'trading', label: 'Trocas', icon: ArrowLeftRight },
+      { id: 'marketplace', label: 'Mercado', icon: Store },
+      { id: 'events', label: 'Eventos e expedições', icon: Flag },
       { id: 'referrals', label: 'Indicações', icon: UserPlus },
       { id: 'quests', label: 'Missões', icon: ListChecks },
       { id: 'pass', label: 'Temporada', icon: Ticket },
@@ -105,6 +112,7 @@ SECTIONS.push({
   title: 'CONTA',
   items: [
     { id: 'settings', label: 'Configurações', icon: Settings2 },
+    { id: 'help', label: 'Central de ajuda', icon: HelpCircle },
     { id: 'terms', label: 'Termos e privacidade', icon: ShieldCheck },
   ],
 });
@@ -251,7 +259,7 @@ export const NavigationDrawer = ({
             size="sm"
             onClick={onClose}
             className="w-8 h-8 p-0 rounded-md border border-white/5 bg-zinc-900"
-            aria-label="Close"
+            aria-label="Fechar"
           >
             <X size={16} />
           </Button>
@@ -325,7 +333,7 @@ export const NavigationDrawer = ({
             {confirmLogout && (
               <div className="mt-2 p-3 rounded-md bg-red-500/5 border border-red-500/20 space-y-2">
                 <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
-                  Log out and clear this session?
+                  Sair e limpar esta sessão?
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -334,7 +342,7 @@ export const NavigationDrawer = ({
                     onClick={doLogout}
                     className="flex-1 h-8 text-[10px]"
                   >
-                    Confirm
+                    Confirmar
                   </Button>
                   <Button
                     variant="ghost"
@@ -342,7 +350,7 @@ export const NavigationDrawer = ({
                     onClick={() => setConfirmLogout(false)}
                     className="flex-1 h-8 text-[10px]"
                   >
-                    Cancel
+                    Cancelar
                   </Button>
                 </div>
               </div>
@@ -358,7 +366,7 @@ export const NavigationDrawer = ({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="text-[10px] font-bold text-zinc-100 uppercase tracking-wider truncate">
-                {user?.role_label || user?.role_tag || 'OPERATOR'}
+                {user?.role_label || user?.role_tag || 'Colecionador'}
               </span>
               <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
                 Conectado
@@ -384,7 +392,7 @@ export const NavigationDrawer = ({
               rel="noreferrer noopener"
               className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
             >
-              Terms
+              Termos
             </a>
             <span className="text-zinc-800">·</span>
             <a
@@ -393,7 +401,7 @@ export const NavigationDrawer = ({
               rel="noreferrer noopener"
               className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
             >
-              Privacy
+              Privacidade
             </a>
             <span className="text-zinc-800">·</span>
             <a

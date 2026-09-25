@@ -270,5 +270,7 @@ def _install_runtime_middleware() -> None:
 
 
 _install_runtime_routes()
+from source_features.router import install as install_collecting
+install_collecting(app)
 install_native_webapps(app)
 _install_runtime_middleware()

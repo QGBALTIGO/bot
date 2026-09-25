@@ -55,14 +55,16 @@ export function Choices({
   items,
   onChange,
   label = 'Opções',
+  wrap = false,
 }: {
   value: string;
   items: [string, string][];
   onChange: (key: string) => void;
   label?: string;
+  wrap?: boolean;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex gap-2 overflow-x-auto pb-1 max-w-full">
+    <div role="group" aria-label={label} className={`flex gap-2 pb-1 max-w-full ${wrap ? 'flex-wrap' : 'overflow-x-auto'}`}>
       {items.map(([id, name]) => (
         <Button
           key={id}

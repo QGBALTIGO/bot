@@ -1,3 +1,4 @@
+import { CharacterTools } from '../../features/collecting/CharacterActions';
 import { m } from 'framer-motion';
 import { Coins, Gem, History, Image as ImageIcon, Loader2, Lock, Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -391,6 +392,7 @@ export const CharActionModal = ({
 
   const actions = (
     <div className="w-full space-y-4">
+      <CharacterTools id={Number(selectedChar.id)} owned={isOwned}/>
       {canEdit && (
         <div className="w-full">
           {editMode ? (

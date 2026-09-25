@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from typing import Any
+from source_features.schemas import TradeRevision
 
-from fastapi import APIRouter, Body, Header, Query
+from fastapi import APIRouter, Body, Header, Query, Depends
 from fastapi.responses import JSONResponse
 
+from source_features.schemas import TradeRespond
 from cards_service import get_character_by_id
 from database_aninexus_social import (
     claim_referral_rewards,
@@ -73,6 +75,9 @@ def _trade_payload(row: dict[str, Any]) -> dict[str, Any]:
         "sender_char": _character_payload(sender_char_id),
         "receiver_char": _character_payload(receiver_char_id),
         "status": str(row.get("status") or "pending"),
+        "revision": int(row.get("revision") or 1),
+        "sender_confirmed": row.get("from_confirmed") == int(row.get("revision") or 1),
+        "receiver_confirmed": row.get("to_confirmed") == int(row.get("revision") or 1),
     }
 
 
@@ -219,21 +224,24 @@ def build_aninexus_social_router() -> APIRouter:
     @router.post("/trade/respond/{trade_id}")
     def trade_respond(
         trade_id: int,
-        payload: dict = Body(default={}),
+        payload: TradeRespond,
         authorization: str = Header(default=""),
     ):
         user, error = _auth(authorization)
         if error:
             return error
         assert user is not None
-        action = str((payload or {}).get("action") or "").strip().lower()
-        result = respond_trade_offer(int(user.get("id") or 0), int(trade_id), action)
+        action = payload.action
+        result = respond_trade_offer(int(user.get("id") or 0), int(trade_id), action, expected_revision=payload.expected_revision)
         if result.get("ok"):
             return JSONResponse(result)
         messages = {
+            "trade_changed": "A proposta mudou. Atualize, confira os dois lados e confirme novamente.",
+            "card_protected": "Um dos personagens está protegido. Desbloqueie antes de trocar.",
+            "card_reserved": "Um dos personagens está reservado em outro recurso.",
             "invalid_action": "Ação inválida.",
             "trade_not_found": "Troca não encontrada.",
-            "forbidden": "Apenas quem recebeu a oferta pode responder.",
+            "forbidden": "Apenas os participantes podem responder a esta oferta.",
             "trade_not_pending": "Esta troca já foi encerrada.",
             "trade_expired": "Esta oferta expirou.",
             "card_missing": "Um dos personagens não está mais disponível.",
@@ -254,5 +262,12 @@ def build_aninexus_social_router() -> APIRouter:
             return error
         assert user is not None
         return JSONResponse(get_economy_summary(int(user.get("id") or 0), limit=limit))
+
+    from source_features.router import actor
+
+    @router.patch("/trade/offers/{trade_id}")
+    def trade_revise(trade_id: int,payload: TradeRevision,uid: int = Depends(actor)):
+        from database_aninexus_social import revise_trade_offer
+        return revise_trade_offer(uid,trade_id,payload.character_id,payload.expected_revision)
 
     return router

@@ -41,6 +41,11 @@ def sell_character_atomic(user_id: int, character_id: int) -> dict:
         )
         if cur.fetchone():
             return {"ok": False, "error": "card_reserved"}
+        from source_features.common import inventory_guard, FeatureError
+        try:
+            inventory_guard(cur,uid,cid)
+        except FeatureError as exc:
+            return {"ok": False, "error": exc.code}
         from database_aninexus_social import _remove_one_locked
         _remove_one_locked(cur, uid, cid, quantity)
         cur.execute("UPDATE users SET coins=COALESCE(coins,0)+1,updated_at=NOW() WHERE user_id=%s RETURNING coins", (uid,))

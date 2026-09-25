@@ -11,6 +11,9 @@ from commands.card import load_characters
 TRADE_BANNER = "https://photo.chelpbot.me/AgACAgEAAxkBZpLuKGmeMDP-GReON28AAZjZyLWbT8-JQAACLQxrG4z-8EQzVM7LZb9rOwEAAwIAA3kAAzoE/photo.jpg"
 _chars = load_characters()
 _ERRORS = {
+    "trade_changed": "A proposta foi alterada. Abra Trocas no menu para revisar e confirmar.",
+    "card_protected": "Um personagem está protegido. Desbloqueie antes de trocar.",
+    "card_reserved": "Um personagem está reservado em outro recurso.",
     "invalid_user": "Escolha outro usuário para a troca.",
     "invalid_character": "Informe dois IDs válidos de personagens.",
     "same_character": "Escolha personagens diferentes para trocar.",

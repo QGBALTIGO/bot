@@ -1,3 +1,4 @@
+import { navigateNative } from '../native/navigation';
 import { AnimatePresence, m } from 'framer-motion';
 import { Box, Clock3, Dices, Loader2, Sparkles, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -153,6 +154,7 @@ export const Dado = () => {
         </p>
       </header>
 
+      <Button size="sm" variant="secondary" onClick={()=>navigateNative('dice_info')}>Regras e histórico</Button>
       <section className="grid grid-cols-2 gap-3">
         <Card className="p-4 bg-zinc-900/50 border-white/[0.04]">
           <div className="flex items-center gap-2 text-zinc-500 mb-2">
