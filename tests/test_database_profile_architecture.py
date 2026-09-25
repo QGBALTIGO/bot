@@ -37,7 +37,9 @@ def test_profile_module_uses_shared_sql_core() -> None:
 
     assert "from database_core import run as _run" in profile
     assert "ConnectionPool(" not in profile
-    assert "pool.connection()" not in profile
+    assert "from database_core import pool" in profile
+    assert "conn.transaction()" in profile
+    assert "pg_advisory_xact_lock" in profile
 
 
 def test_profile_schema_contract_is_preserved() -> None:

@@ -5,6 +5,7 @@ Versão 2.0  |  Refatoração completa
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -16,7 +17,9 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
+from database_shop_safety import purchase_termo_hint_atomic
 
 from database import (
     add_progress_xp,
@@ -771,14 +774,17 @@ async def _give_hint(msg, game: Dict[str, Any], user_id: int) -> None:
         )
         return
 
-    # Cobrar coins em partida diária
     if game.get("mode") == "daily":
-        # Tentamos descontar; se saldo insuficiente avisamos mas não bloqueamos
-        # (depende da API de coins disponível no database.py)
-        try:
-            add_user_coins(user_id, -HINT_COST_COINS)
-        except Exception:
-            pass
+        result = await asyncio.to_thread(
+            purchase_termo_hint_atomic, user_id, int(game.get("id") or 0),
+            HINT_COST_COINS, TIME_LIMIT_SECS,
+        )
+        if not result.get("ok"):
+            text = (f"Você precisa de {HINT_COST_COINS} Coins para pedir uma dica."
+                    if result.get("error") == "no_coins"
+                    else "Esta partida não está mais disponível. Abra /termo novamente.")
+            await msg.reply_text(text)
+            return
 
     game["hint_used"] = True
     cost_note = f"\n<i>(-{HINT_COST_COINS} coins)</i>" if game.get("mode") == "daily" else ""
@@ -799,10 +805,16 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     if not query:
         return
-    await query.answer()
-    _touch_identity(update)
+    try:
+        await query.answer()
+    except BadRequest as exc:
+        error = str(exc).lower()
+        if "query is too old" in error or "query id is invalid" in error:
+            return  # Never repeat side effects for a callback Telegram has expired.
+        raise
+    await asyncio.to_thread(_touch_identity, update)
 
-    if not has_accepted_terms(int(query.from_user.id), TERMS_VERSION):
+    if not await asyncio.to_thread(has_accepted_terms, int(query.from_user.id), TERMS_VERSION):
         await query.edit_message_text(
             "⛩️ Aceite os termos primeiro. Use /start."
         )
@@ -816,7 +828,7 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif data == "termo:stats":
         await query.edit_message_text(
-            _stats_text(user_id), parse_mode="HTML",
+            await asyncio.to_thread(_stats_text, user_id), parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("⬅️ Voltar", callback_data="termo:menu")
             ]])
@@ -824,7 +836,7 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif data == "termo:ranking":
         await query.edit_message_text(
-            _ranking_text(get_termo_global_ranking(10), "Ranking Global — Termo Anime"),
+            _ranking_text(await asyncio.to_thread(get_termo_global_ranking, 10), "Ranking Global — Termo Anime"),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("📅 Semana",  callback_data="termo:rank_week"),
@@ -836,7 +848,7 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif data == "termo:rank_week":
         await query.edit_message_text(
-            _ranking_text(get_termo_period_ranking(7, 10), "Ranking da Semana"),
+            _ranking_text(await asyncio.to_thread(get_termo_period_ranking, 7, 10), "Ranking da Semana"),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🌍 Global",  callback_data="termo:ranking"),
@@ -846,7 +858,7 @@ async def termo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif data == "termo:rank_month":
         await query.edit_message_text(
-            _ranking_text(get_termo_period_ranking(30, 10), "Ranking do Mês"),
+            _ranking_text(await asyncio.to_thread(get_termo_period_ranking, 30, 10), "Ranking do Mês"),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🌍 Global",  callback_data="termo:ranking"),

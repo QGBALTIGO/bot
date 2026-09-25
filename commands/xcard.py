@@ -297,6 +297,15 @@ async def xcard_nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         _, owner_id, character_id, index = (q.data or "").split(":")
+        owner_id = int(owner_id)
+        if not -(2**63) < owner_id < 2**63:
+            raise ValueError("callback number outside range")
+        character_id = int(character_id)
+        if not -(2**63) < character_id < 2**63:
+            raise ValueError("callback number outside range")
+        index = int(index)
+        if not -(2**63) < index < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -324,6 +333,9 @@ async def xcard_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         _, card_id = (q.data or "").split(":")
+        card_id = int(card_id)
+        if not -(2**63) < card_id < 2**63:
+            raise ValueError("callback number outside range")
         parsed_card_id = int(card_id)
     except Exception:
         await q.answer()

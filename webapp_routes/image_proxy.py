@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import asyncio
+import time
+from collections import OrderedDict
 from urllib.parse import urlparse
 
 import httpx
@@ -19,15 +21,20 @@ IMAGE_PROXY_USER_AGENT = (
 )
 
 
-@router.get("/api/image-proxy")
-async def api_image_proxy(
+async def _load_image_proxy(
     url: str = Query(..., min_length=8, max_length=2000),
     crop: str = Query("", max_length=20),
 ):
     """Proxy público de imagens com validação SSRF e crop opcional 2:3."""
 
+    crop_mode = str(crop or "").strip().lower()
+    if crop_mode not in {"", "portrait"}:
+        raise HTTPException(status_code=400, detail="invalid_crop_mode")
     target = str(url or "").strip()
-    parsed = urlparse(target)
+    try:
+        parsed = urlparse(target)
+    except ValueError as exc:
+        raise HTTPException(400, "invalid_image_url") from exc
     hostname = (parsed.hostname or "").strip().lower()
 
     headers = {
@@ -85,6 +92,63 @@ async def api_image_proxy(
         headers={
             "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
             "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
             "X-Image-Crop": "2:3" if applied_crop else "original",
         },
     )
+
+
+# Public bytes only: no user/session data. Max 16 MiB per process; no failures cached.
+_IMAGE_CACHE = OrderedDict()
+_IMAGE_CACHE_BYTES = 0
+_IMAGE_INFLIGHT = {}
+_IMAGE_LIMIT = 16 * 1024 * 1024
+
+
+@router.get("/api/image-proxy")
+async def api_image_proxy(url: str = Query(..., min_length=8, max_length=2000), crop: str = Query("", max_length=20)):
+    global _IMAGE_CACHE_BYTES
+    mode = str(crop or "").strip().lower()
+    if mode not in {"", "portrait"}:
+        raise HTTPException(400, "invalid_crop_mode")
+    key = (str(url or "").strip(), mode)
+    cached = _IMAGE_CACHE.get(key)
+    if cached:
+        expiry, content, headers = cached
+        if expiry > time.monotonic():
+            _IMAGE_CACHE.move_to_end(key)
+            return Response(content=content, headers=headers)
+        _IMAGE_CACHE.pop(key)
+        _IMAGE_CACHE_BYTES -= len(content)
+    task_key = (asyncio.get_running_loop(), key)
+    task = _IMAGE_INFLIGHT.get(task_key)
+    if task is None:
+        if len(_IMAGE_INFLIGHT) >= 12:
+            raise HTTPException(503, "image_proxy_busy", headers={"Retry-After": "2"})
+        async def load():
+            global _IMAGE_CACHE_BYTES
+            try:
+                async with asyncio.timeout(25):
+                    response = await _load_image_proxy(key[0], mode)
+                content, headers = response.body, dict(response.headers)
+                if len(content) <= _IMAGE_LIMIT // 2:
+                    old = _IMAGE_CACHE.pop(key, None)
+                    if old:
+                        _IMAGE_CACHE_BYTES -= len(old[1])
+                    while _IMAGE_CACHE and (_IMAGE_CACHE_BYTES + len(content) > _IMAGE_LIMIT or len(_IMAGE_CACHE) >= 64):
+                        _, evicted = _IMAGE_CACHE.popitem(last=False)
+                        _IMAGE_CACHE_BYTES -= len(evicted[1])
+                    _IMAGE_CACHE[key] = (time.monotonic()+120, content, headers)
+                    _IMAGE_CACHE_BYTES += len(content)
+                return content, headers
+            except TimeoutError as exc:
+                raise HTTPException(504, "image_fetch_timeout") from exc
+            finally:
+                _IMAGE_INFLIGHT.pop(task_key, None)
+        task = asyncio.create_task(load())
+        # Consume errors even if the original browser request was cancelled.
+        task.add_done_callback(lambda t: None if t.cancelled() else t.exception())
+        _IMAGE_INFLIGHT[task_key] = task
+    content, headers = await asyncio.shield(task)
+    return Response(content=content, headers=headers)

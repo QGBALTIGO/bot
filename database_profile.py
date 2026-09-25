@@ -129,24 +129,23 @@ def nickname_exists(nickname: str) -> bool:
 
 
 def set_profile_nickname(user_id: int, nickname: str) -> dict:
-    ensure_profile_settings_row(user_id)
-
-    current = get_profile_settings(user_id) or {}
-    if current.get("nickname"):
-        return {"ok": False, "error": "nickname_locked"}
-
-    if nickname_exists(nickname):
-        return {"ok": False, "error": "nickname_taken"}
-
-    _run(
-        """
-        UPDATE user_profile_settings
-        SET nickname = %s,
-            updated_at = NOW()
-        WHERE user_id = %s
-        """,
-        ((nickname or "").strip(), int(user_id))
-    )
+    from psycopg.rows import dict_row
+    from database_core import pool
+    nickname = str(nickname or "").strip()
+    if not nickname:
+        return {"ok": False, "error": "nickname_invalid"}
+    with pool.connection() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT user_id FROM users WHERE user_id=%s FOR UPDATE", (int(user_id),))
+        if not cur.fetchone():
+            return {"ok": False, "error": "user_not_found"}
+        cur.execute("SELECT nickname FROM user_profile_settings WHERE user_id=%s", (int(user_id),))
+        if (cur.fetchone() or {}).get("nickname"):
+            return {"ok": False, "error": "nickname_locked"}
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(lower(%s), 7341))", (nickname,))
+        cur.execute("SELECT 1 FROM user_profile_settings WHERE lower(nickname)=lower(%s)", (nickname,))
+        if cur.fetchone():
+            return {"ok": False, "error": "nickname_taken"}
+        cur.execute("INSERT INTO user_profile_settings (user_id,nickname) VALUES (%s,%s) ON CONFLICT (user_id) DO UPDATE SET nickname=EXCLUDED.nickname,updated_at=NOW()", (int(user_id), nickname))
     return {"ok": True}
 
 

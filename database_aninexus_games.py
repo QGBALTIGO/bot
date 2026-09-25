@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import random
+
+_rng = random.SystemRandom()
 import secrets
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -203,7 +205,7 @@ def get_game_energy(user_id: int) -> Dict[str, Any]:
 
 
 def _wheel_index() -> int:
-    roll = random.random()
+    roll = _rng.random()
     if roll < 0.05:
         return 3  # personagem
     if roll < 0.15:
@@ -256,7 +258,7 @@ def _cipher_cards() -> list[Dict[str, Any]]:
         ]
         if len(candidates) < 8:
             return []
-        selected = random.sample(candidates, 8)
+        selected = _rng.sample(candidates, 8)
         return [
             {
                 "id": str(int(item.get("id") or 0)),
@@ -301,6 +303,8 @@ def start_game_session(user_id: int, game_type: str) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                # A missing active row cannot be row-locked: serialize starts explicitly.
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"{int(user_id)}:{game_type}",))
                 cur.execute(
                     """
                     UPDATE aninexus_game_sessions
@@ -483,13 +487,13 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
 
                 bonus_coin = False
                 bonus_coin_chance = max(0.0, min(1.0, float(pet_modifiers.get("bonus_coin_chance") or 0.0)))
-                if bonus_coin_chance > 0 and random.random() < bonus_coin_chance:
+                if bonus_coin_chance > 0 and _rng.random() < bonus_coin_chance:
                     coins += 1
                     bonus_coin = True
 
                 bonus_egg = False
                 egg_drop_chance = max(0.0, min(1.0, float(pet_modifiers.get("egg_drop_chance") or 0.0)))
-                if egg_drop_chance > 0 and random.random() < egg_drop_chance:
+                if egg_drop_chance > 0 and _rng.random() < egg_drop_chance:
                     bonus_egg = True
 
                 cur.execute(
@@ -522,9 +526,9 @@ def submit_game_session(user_id: int, game_type: str, session_id: str, score: in
                             %s,
                             %s,
                             jsonb_build_object(
-                                'game_type', %s,
-                                'session_id', %s,
-                                'pet_bonus_coin', %s
+                                'game_type', %s::text,
+                                'session_id', %s::text,
+                                'pet_bonus_coin', %s::boolean
                             )
                         )
                         """,

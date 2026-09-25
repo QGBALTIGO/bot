@@ -132,8 +132,11 @@ def build_aninexus_progression_router() -> APIRouter:
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
         out = []
+        values = {}
         for achievement_id, name, description, metric, target in ACHIEVEMENTS:
-            value = metric_value(user_id, metric, "weekly")
+            if metric not in values:
+                values[metric] = metric_value(user_id, metric, "weekly")
+            value = values[metric]
             out.append(
                 {
                     "id": achievement_id,

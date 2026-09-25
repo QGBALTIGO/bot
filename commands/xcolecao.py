@@ -495,6 +495,12 @@ async def xcolecao_callback(update, context):
 
     try:
         _, owner_id, _extra, page = (q.data or "").split(":")
+        owner_id = int(owner_id)
+        if not -(2**63) < owner_id < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -518,6 +524,12 @@ async def xcolecao_s_callback(update, context):
 
     try:
         _, owner_id, title_id, page = (q.data or "").split(":")
+        owner_id = int(owner_id)
+        if not -(2**63) < owner_id < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -546,6 +558,12 @@ async def xcolecao_f_callback(update, context):
 
     try:
         _, owner_id, title_id, page = (q.data or "").split(":")
+        owner_id = int(owner_id)
+        if not -(2**63) < owner_id < 2**63:
+            raise ValueError("callback number outside range")
+        page = int(page)
+        if not -(2**63) < page < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return
@@ -574,6 +592,12 @@ async def xcolecao_x_callback(update, context):
 
     try:
         _, owner_id, title_id, index = (q.data or "").split(":")
+        owner_id = int(owner_id)
+        if not -(2**63) < owner_id < 2**63:
+            raise ValueError("callback number outside range")
+        index = int(index)
+        if not -(2**63) < index < 2**63:
+            raise ValueError("callback number outside range")
     except Exception:
         await q.answer()
         return

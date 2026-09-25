@@ -174,7 +174,7 @@ def install_native_webapps(app: FastAPI) -> None:
     def native_version():
         return JSONResponse({'version': version, 'entrypoint': '/menu'}, headers=headers)
 
-    # Install last. Remove legacy GET handlers instead of shadowing them or using an iframe.
+    # Replace flat legacy handlers; prioritize native entries over nested included routers.
     app.router.routes[:] = [
         route
         for route in app.router.routes
@@ -183,6 +183,7 @@ def install_native_webapps(app: FastAPI) -> None:
             and "GET" in (getattr(route, "methods", None) or set())
         )
     ]
+    previous_routes = list(app.router.routes)
     for path in routes:
         app.add_api_route(path, native_entry, methods=["GET", "HEAD"], include_in_schema=False)
     existing = {getattr(route, "path", "") for route in app.routes}
@@ -192,4 +193,8 @@ def install_native_webapps(app: FastAPI) -> None:
         app.add_api_route("/api/native/config", native_config, methods=["GET"])
     if "/api/native/nickname" not in existing:
         app.add_api_route("/api/native/nickname", native_nickname, methods=["POST"])
+    # Newer FastAPI versions retain included routers as nested route wrappers.
+    # Exact native GET entries must run before those wrappers, or old HTML can win.
+    native_entries = [route for route in app.router.routes if route not in previous_routes]
+    app.router.routes[:] = native_entries + previous_routes
     app.openapi_schema = None

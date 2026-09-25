@@ -376,7 +376,10 @@ export async function apiFetch(
       return apiFetch(endpoint, options, retries - 1);
     }
 
-    console.error(`[API ERROR] ${method} ${endpoint}:`, normalized);
+    // Leaving a page intentionally aborts reads; it is not a server/network failure.
+    if (normalized.code !== 'cancelled') {
+      console.error(`[API ERROR] ${method} ${endpoint}:`, normalized);
+    }
     throw normalized;
   } finally {
     requestSignal.cleanup();

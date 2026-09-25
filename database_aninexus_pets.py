@@ -320,6 +320,7 @@ def buy_pet(user_id: int, pet_id: str) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT 1 FROM aninexus_user_pets WHERE user_id=%s AND pet_id=%s",
                     (user_id, pet_id),
@@ -369,6 +370,7 @@ def set_active_pet(user_id: int, pet_id: str) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT * FROM aninexus_user_pets WHERE user_id=%s AND pet_id=%s FOR UPDATE",
                     (int(user_id), str(pet_id)),
@@ -409,6 +411,7 @@ def care_for_active_pet(user_id: int, action: str) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT * FROM aninexus_user_pets WHERE user_id=%s AND is_active=TRUE FOR UPDATE",
                     (user_id,),
@@ -556,6 +559,7 @@ def incubate_egg(user_id: int, egg_id: int) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT * FROM aninexus_user_eggs WHERE egg_id=%s AND user_id=%s FOR UPDATE",
                     (egg_id, user_id),
@@ -621,6 +625,7 @@ def hatch_egg(user_id: int, egg_id: int) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT * FROM aninexus_user_eggs WHERE egg_id=%s AND user_id=%s FOR UPDATE",
                     (egg_id, user_id),
@@ -691,6 +696,7 @@ def sell_egg(user_id: int, egg_id: int) -> Dict[str, Any]:
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             try:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 7343))", (f"pets:{int(user_id)}",))
                 cur.execute(
                     "SELECT * FROM aninexus_user_eggs WHERE egg_id=%s AND user_id=%s FOR UPDATE",
                     (int(egg_id), int(user_id)),
@@ -710,7 +716,7 @@ def sell_egg(user_id: int, egg_id: int) -> Dict[str, Any]:
                 cur.execute(
                     """
                     INSERT INTO shop_transactions(user_id,type,amount,balance_after,reference_id,metadata)
-                    VALUES (%s,'aninexus_sell_egg',%s,%s,%s,jsonb_build_object('tier',%s))
+                    VALUES (%s,'aninexus_sell_egg',%s,%s,%s,jsonb_build_object('tier',%s::text))
                     """,
                     (int(user_id), price, balance, int(egg_id), tier),
                 )

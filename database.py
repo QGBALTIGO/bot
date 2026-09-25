@@ -1830,11 +1830,16 @@ def _refresh_dado_locked(cur, user_id: int) -> Dict[str, Any]:
             """
             INSERT INTO users (user_id, dado_balance, dado_slot, created_at, updated_at)
             VALUES (%s, %s, %s, NOW(), NOW())
+            ON CONFLICT (user_id) DO NOTHING
             RETURNING user_id, dado_balance, dado_slot
             """,
             (int(user_id), DADO_INITIAL_BALANCE, current_slot)
         )
         row = cur.fetchone()
+
+        if not row:
+            cur.execute("SELECT user_id,dado_balance,dado_slot FROM users WHERE user_id=%s FOR UPDATE", (int(user_id),))
+            row = cur.fetchone()
 
     balance = int(row.get("dado_balance") or 0)
     last_slot = int(row.get("dado_slot") or -1)
@@ -1886,7 +1891,6 @@ def _refresh_dado_locked(cur, user_id: int) -> Dict[str, Any]:
 
 
 def refresh_dado_balance(user_id: int) -> Dict[str, Any]:
-    create_or_get_user(user_id)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -3800,123 +3804,23 @@ def record_coin_transaction(user_id: int, tx_type: str, amount: int, metadata=No
     )
 
 def sell_character(user_id: int, character_id: int):
-    qty = get_user_card_quantity(user_id, character_id)
-
-    if qty <= 0:
-        return {"ok": False, "error": "no_card"}
-
-    remove_card_copy(user_id, character_id, 1)
-
-    add_user_coins(user_id, 1)
-
-    record_coin_transaction(
-        user_id,
-        "sell_character",
-        1,
-        {"character_id": character_id}
-    )
-
-    _run(
-        """
-        INSERT INTO shop_card_sales
-        (user_id, character_id, price, buyback_available_until)
-        VALUES (%s,%s,1,NOW() + INTERVAL '72 hours')
-        """,
-        (user_id, character_id)
-    )
-
-    return {"ok": True}
+    from database_shop_safety import sell_character_atomic
+    return sell_character_atomic(user_id, character_id)
 
 def buyback_character(user_id: int, sale_id: int):
-    sale = _run(
-        """
-        SELECT *
-        FROM shop_card_sales
-        WHERE id = %s
-          AND user_id = %s
-        """,
-        (sale_id, user_id),
-        fetch="one"
-    )
-
-    if not sale:
-        return {"ok": False}
-
-    price = 3
-
-    row = _run(
-        "SELECT coins FROM users WHERE user_id = %s",
-        (user_id,),
-        fetch="one"
-    )
-
-    coins = int((row or {}).get("coins") or 0)
-
-    if coins < price:
-        return {"ok": False, "error": "no_coins"}
-
-    add_user_coins(user_id, -price)
-
-    add_card_copy(user_id, sale["character_id"], 1)
-
-    record_coin_transaction(
-        user_id,
-        "buyback_character",
-        -price,
-        {"sale_id": sale_id}
-    )
-
-    return {"ok": True}
+    from database_shop_safety import buyback_character_atomic
+    return buyback_character_atomic(user_id, sale_id)
 
 def buy_dado(user_id: int):
-    price = 2
+    from database_shop_safety import buy_dado_atomic
+    return buy_dado_atomic(user_id)
 
-    row = _run(
-        "SELECT coins FROM users WHERE user_id = %s",
-        (user_id,),
-        fetch="one"
-    )
-
-    coins = int((row or {}).get("coins") or 0)
-
-    if coins < price:
-        return {"ok": False}
-
-    add_user_coins(user_id, -price)
-
-    add_dado_balance(user_id, 1)
-
-    record_coin_transaction(
-        user_id,
-        "buy_dado",
-        -price
-    )
-
-    return {"ok": True}
-
-def buy_nickname_change(user_id: int):
-    price = 3
-
-    row = _run(
-        "SELECT coins FROM users WHERE user_id = %s",
-        (user_id,),
-        fetch="one"
-    )
-
-    coins = int((row or {}).get("coins") or 0)
-
-    if coins < price:
-        return {"ok": False}
-
-    add_user_coins(user_id, -price)
-
-    record_coin_transaction(
-        user_id,
-        "buy_nickname",
-        -price
-    )
-
-    return {"ok": True}
+def buy_nickname_change(user_id: int, nickname: str = ""):
+    """A legacy purchase must also apply a valid nickname; never charge for nothing."""
+    if not isinstance(nickname, str) or not nickname.strip():
+        return {"ok": False, "error": "nickname_required"}
+    from webapp_routes.native_webapps import change_nickname_atomic
+    return change_nickname_atomic(user_id, nickname)
 
 def get_user_shop_history(user_id: int, limit: int = 20):
     rows = _run(
@@ -5165,15 +5069,9 @@ def create_trades_table():
 
 
 def create_trade(from_user, to_user, from_char, to_char):
-
-    row = _run("""
-        INSERT INTO card_trades
-        (from_user, to_user, from_character_id, to_character_id)
-        VALUES (%s,%s,%s,%s)
-        RETURNING trade_id
-    """,(from_user,to_user,from_char,to_char),"one")
-
-    return row["trade_id"]
+    from database_aninexus_social import create_trade_offer
+    result = create_trade_offer(from_user, to_user, from_char, to_char)
+    return result.get("trade_id") if result.get("ok") else None
 
 
 def get_trade(trade_id):
@@ -5185,171 +5083,19 @@ def get_trade(trade_id):
     """,(trade_id,),"one")
 
 
-def set_trade_status(trade_id,status):
-
-    _run("""
-        UPDATE card_trades
-        SET status=%s
-        WHERE trade_id=%s
-    """,(status,trade_id))
+def set_trade_status(trade_id, status):
+    # Terminal trades cannot be resurrected or overwritten by legacy callbacks.
+    if status not in {"rejected", "expired", "failed"}:
+        return False
+    return bool(_run("UPDATE card_trades SET status=%s WHERE trade_id=%s AND status='pending' RETURNING trade_id", (status, trade_id), "one"))
 
 
 def swap_characters_atomic(trade_id: int) -> bool:
+    from database_aninexus_social import respond_trade_offer
     trade = get_trade(trade_id)
     if not trade:
         return False
-
-    if str(trade.get("status")) != "pending":
-        return False
-
-    from_user = int(trade["from_user"])
-    to_user = int(trade["to_user"])
-    from_char = int(trade["from_character_id"])
-    to_char = int(trade["to_character_id"])
-
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            try:
-                cur.execute("BEGIN")
-
-                cur.execute(
-                    """
-                    SELECT quantity
-                    FROM user_card_collection
-                    WHERE user_id = %s AND character_id = %s
-                    FOR UPDATE
-                    """,
-                    (from_user, from_char)
-                )
-                row_a = cur.fetchone()
-
-                cur.execute(
-                    """
-                    SELECT quantity
-                    FROM user_card_collection
-                    WHERE user_id = %s AND character_id = %s
-                    FOR UPDATE
-                    """,
-                    (to_user, to_char)
-                )
-                row_b = cur.fetchone()
-
-                def _qty(row):
-                    if not row:
-                        return 0
-                    if isinstance(row, dict):
-                        value = row.get("quantity", 0)
-                    else:
-                        value = row[0] if len(row) > 0 else 0
-                    return int(value or 0)
-
-                qty_a = _qty(row_a)
-                qty_b = _qty(row_b)
-
-                if qty_a <= 0 or qty_b <= 0:
-                    cur.execute(
-                        """
-                        UPDATE card_trades
-                        SET status = 'failed'
-                        WHERE trade_id = %s
-                        """,
-                        (trade_id,)
-                    )
-                    conn.commit()
-                    return False
-
-                if qty_a == 1:
-                    cur.execute(
-                        """
-                        DELETE FROM user_card_collection
-                        WHERE user_id = %s AND character_id = %s
-                        """,
-                        (from_user, from_char)
-                    )
-                else:
-                    cur.execute(
-                        """
-                        UPDATE user_card_collection
-                        SET quantity = quantity - 1,
-                            updated_at = NOW()
-                        WHERE user_id = %s AND character_id = %s
-                        """,
-                        (from_user, from_char)
-                    )
-
-                if qty_b == 1:
-                    cur.execute(
-                        """
-                        DELETE FROM user_card_collection
-                        WHERE user_id = %s AND character_id = %s
-                        """,
-                        (to_user, to_char)
-                    )
-                else:
-                    cur.execute(
-                        """
-                        UPDATE user_card_collection
-                        SET quantity = quantity - 1,
-                            updated_at = NOW()
-                        WHERE user_id = %s AND character_id = %s
-                        """,
-                        (to_user, to_char)
-                    )
-
-                cur.execute(
-                    """
-                    INSERT INTO user_card_collection (
-                        user_id,
-                        character_id,
-                        quantity,
-                        first_obtained_at,
-                        updated_at
-                    )
-                    VALUES (%s, %s, 1, NOW(), NOW())
-                    ON CONFLICT (user_id, character_id)
-                    DO UPDATE SET
-                        quantity = user_card_collection.quantity + 1,
-                        updated_at = NOW()
-                    """,
-                    (from_user, to_char)
-                )
-
-                cur.execute(
-                    """
-                    INSERT INTO user_card_collection (
-                        user_id,
-                        character_id,
-                        quantity,
-                        first_obtained_at,
-                        updated_at
-                    )
-                    VALUES (%s, %s, 1, NOW(), NOW())
-                    ON CONFLICT (user_id, character_id)
-                    DO UPDATE SET
-                        quantity = user_card_collection.quantity + 1,
-                        updated_at = NOW()
-                    """,
-                    (to_user, from_char)
-                )
-
-                cur.execute(
-                    """
-                    UPDATE card_trades
-                    SET status = 'completed'
-                    WHERE trade_id = %s
-                    """,
-                    (trade_id,)
-                )
-
-                conn.commit()
-                return True
-
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                raise
+    return bool(respond_trade_offer(int(trade["to_user"]), trade_id, "accept").get("ok"))
 
 # =========================================================
 # ADMIN RESET SYSTEM
