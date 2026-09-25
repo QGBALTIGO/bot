@@ -19,13 +19,13 @@ export const Header = memo(({ onMenuClick, onNavigate }: HeaderProps) => {
   const live = useLiveStatus();
 
   return (
-    <header className="sticky top-0 z-[100] flex items-center justify-between px-3 xs:px-5 bg-zinc-950/95 h-14 shrink-0 select-none border-b border-white/[0.04]">
+    <header className="sticky top-0 z-[100] flex items-center justify-between gap-2 px-3 xs:px-5 bg-zinc-950/95 h-14 shrink-0 select-none border-b border-white/[0.04]">
       {/* Brand Section — click to return to Dashboard */}
       <button
         type="button"
         aria-label="Ir para o painel"
         onClick={() => onNavigate('profile')}
-        className="flex min-w-0 items-center gap-2 xs:gap-3 rounded-md -ml-1.5 pl-1.5 pr-2 py-1 text-left transition-colors hover:bg-white/5 active:bg-white/10"
+        className="flex min-w-0 flex-1 items-center gap-2 xs:gap-3 rounded-md -ml-1.5 pl-1.5 pr-2 py-1 text-left transition-colors hover:bg-white/5 active:bg-white/10"
       >
         <Avatar
           src={user?.avatar}
@@ -33,12 +33,12 @@ export const Header = memo(({ onMenuClick, onNavigate }: HeaderProps) => {
           fallbackText={user?.first_name?.[0] || user?.username?.[0]}
           className="w-8 h-8 rounded-md border border-white/5"
         />
-        <div className="flex flex-col justify-center">
-          <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div className="flex min-w-0 items-center gap-1.5">
             <span className="text-[10px] font-black text-zinc-100 tracking-wider uppercase leading-none truncate max-w-[80px] xs:max-w-[120px]">
               {botName || 'ANINEXUS'}
             </span>
-            <span className="text-[8px] font-mono text-zinc-500 uppercase">V2.4</span>
+            <span className="hidden sm:inline shrink-0 text-[8px] font-mono text-zinc-500 uppercase">V2.4</span>
           </div>
           <div className="flex items-center gap-1 mt-0.5">
             <div

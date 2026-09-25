@@ -138,7 +138,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
   return (
     <div className="pt-6 max-w-5xl mx-auto adaptive-px space-y-6">
       {user.favorite && (
-        <Card className="flex items-center gap-4 p-4" data-profile-favorite>
+        <Card className="grid grid-cols-[64px_minmax(0,1fr)] sm:flex items-center gap-x-4 gap-y-3 p-4" data-profile-favorite>
           {user.favorite.image && <img src={user.favorite.image} alt={user.favorite.name}
             className="w-16 aspect-[2/3] object-cover rounded-md shrink-0" decoding="async" referrerPolicy="no-referrer" />}
           <div className="min-w-0 flex-1">
@@ -146,7 +146,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             <h2 className="font-bold text-zinc-100 break-words">{user.favorite.name}</h2>
             <p className="text-xs text-zinc-400 break-words">{user.favorite.anime}</p>
           </div>
-          <Button size="sm" variant="secondary" aria-label="Alterar personagem favorito"
+          <Button size="sm" variant="secondary" className="col-start-2 justify-self-start sm:shrink-0" aria-label="Alterar personagem favorito"
             onClick={() => navigateNative('settings', { section: 'favorite' })}>Alterar</Button>
         </Card>
       )}

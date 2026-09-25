@@ -502,6 +502,17 @@ def run_tests(output: Path):
                         "document.documentElement.scrollWidth > innerWidth + 1"
                     )
                     assert not overflow, ("overflow", path, width)
+          header_overlap = page.evaluate("""() => {
+            const header = document.querySelector('header.sticky');
+            const brand = header.querySelector('button[aria-label="Ir para o painel"]');
+            const stats = header.lastElementChild;
+            const edge = stats.getBoundingClientRect().left;
+            return Array.from(brand.querySelectorAll('span')).some(el => {
+              const b = el.getBoundingClientRect();
+              return b.width > 0 && b.right > edge + 1;
+            });
+          }""")
+          assert not header_overlap, ("header overlap", path, width)
                     report["routes"].append(
                         {"path": path, "width": width, "title": title}
                     )
@@ -590,7 +601,7 @@ def run_tests(output: Path):
             page.locator("[data-profile-favorite]").get_by_text("Personagem 02", exact=True).wait_for()
             page.reload()
             page.locator("[data-profile-favorite]").get_by_text("Personagem 02", exact=True).wait_for()
-            page.locator("[data-profile-favorite]").get_by_role("button", name="Alterar", exact=True).click()
+            page.locator("[data-profile-favorite]").get_by_role("button", name="Alterar personagem favorito", exact=True).click()
             page.locator("[data-favorite-settings]").get_by_text("Personagem 02", exact=True).wait_for()
             for width in [320, 360, 390, 768, 1280]:
                 page.set_viewport_size({"width": width, "height": 720})
@@ -607,7 +618,7 @@ def run_tests(output: Path):
             page.get_by_role("button", name="Escolher favorito", exact=True).wait_for()
             assert STATE["favorite"] is None
             page.get_by_role("button", name="Ir para o painel").click()
-            assert page.locator("[data-profile-favorite]").count() == 0
+            page.locator("[data-profile-favorite]").wait_for(state="hidden")
             page.set_viewport_size({"width": 360, "height": 800})
             report["checks"].append("favorite picker search, save, profile sync, reload persistence, removal and responsive dialog")
             # Favorite selection from the album must update the same profile without a /me reload.
