@@ -17,7 +17,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
     <m.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6"
+      className="source-safe-overlay fixed inset-0 z-[200] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6"
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-brand-accent/10 blur-[120px] rounded-full" />
@@ -30,7 +30,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 1.2, opacity: 0, filter: 'brightness(2) blur(10px)' }}
-            className="relative flex flex-col items-center gap-8"
+            className="source-safe-panel overflow-y-auto relative flex flex-col items-center gap-8"
           >
             <m.div
               animate={{
@@ -72,7 +72,7 @@ export const RewardModal = ({ rewards, onClose }: { rewards: Reward; onClose: ()
             key="content"
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            className="w-full max-w-sm bg-zinc-950/50 border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative"
+            className="source-safe-panel overflow-y-auto w-full max-w-sm bg-zinc-950/50 border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative"
           >
             <div className="p-8 text-center space-y-8">
               <div className="space-y-2">

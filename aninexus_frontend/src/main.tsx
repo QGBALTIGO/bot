@@ -4,8 +4,11 @@ import './index.css';
 import App from './App';
 import features from './motion-features';
 import { installPtBR } from './ptBR';
+import { installTelegramViewport } from './telegram/viewport';
 
 installPtBR();
+const disposeViewport = installTelegramViewport();
+if (import.meta.hot) import.meta.hot.dispose(disposeViewport);
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Elemento raiz não encontrado');

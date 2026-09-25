@@ -27,7 +27,7 @@ export const GachaReveal = ({ character, onClose }: GachaRevealProps) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black select-none overflow-hidden p-6">
+      <div className="source-safe-overlay fixed inset-0 z-[2000] flex items-center justify-center bg-black select-none overflow-hidden p-6">
         <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -38,15 +38,15 @@ export const GachaReveal = ({ character, onClose }: GachaRevealProps) => {
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="relative w-full max-w-[380px] max-h-[78svh] aspect-[3/4.5] flex flex-col items-center"
+          className="source-gacha-panel relative w-full max-w-[380px] max-h-[78svh] aspect-[3/4.5] flex flex-col items-center"
         >
-          <div className="w-full h-full rounded-2xl border border-white/20 bg-zinc-950 shadow-2xl overflow-hidden relative">
+          <div className="source-gacha-card w-full h-full rounded-2xl border border-white/20 bg-zinc-950 shadow-2xl overflow-hidden relative">
             <img
               src={imgError ? FALLBACK_IMAGE : character.img_url}
               onError={() => setImgError(true)}
               alt={character.name}
               referrerPolicy="no-referrer"
-              className="absolute inset-0 w-full h-full object-cover"
+              className="source-gacha-image absolute inset-0 w-full h-full object-cover"
             />
 
             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black via-black/80 to-transparent" />
@@ -57,7 +57,7 @@ export const GachaReveal = ({ character, onClose }: GachaRevealProps) => {
               </div>
             </div>
 
-            <div className="absolute bottom-0 inset-x-0 p-8 flex flex-col items-center text-center space-y-6">
+            <div className="source-gacha-details absolute bottom-0 inset-x-0 p-8 flex flex-col items-center text-center space-y-6">
               <div className="space-y-3">
                 <Badge
                   variant="primary"

@@ -148,10 +148,10 @@
   --brand-accent-rgb: 59, 130, 246;
 
   /* Safe Area Insets */
-  --sat: env(safe-area-inset-top);
-  --sar: env(safe-area-inset-right);
-  --sab: env(safe-area-inset-bottom);
-  --sal: env(safe-area-inset-left);
+  --sat: var(--source-safe-top);
+  --sar: var(--source-safe-right);
+  --sab: var(--source-safe-bottom);
+  --sal: var(--source-safe-left);
 }
 
 * {
@@ -332,4 +332,72 @@ a {
 .app-scroller { padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 639px) {
   input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+}
+
+/* Telegram fullscreen: one shared safe rectangle for the entire MiniApp.
+   System insets and content insets are additive; CSS env and system insets
+   describe the same cutout and are merged with max(), not counted twice. */
+:root {
+  --source-safe-top: calc(max(env(safe-area-inset-top, 0px), var(--source-device-top, 0px)) + var(--source-content-top, 0px));
+  --source-safe-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--source-device-bottom, 0px)) + var(--source-content-bottom, 0px));
+  --source-safe-left: calc(max(env(safe-area-inset-left, 0px), var(--source-device-left, 0px)) + var(--source-content-left, 0px));
+  --source-safe-right: calc(max(env(safe-area-inset-right, 0px), var(--source-device-right, 0px)) + var(--source-content-right, 0px));
+  --source-fallback-height: 100vh;
+  --source-usable-height: max(0px, calc(var(--source-viewport-height, var(--source-fallback-height)) - var(--source-safe-top) - var(--source-safe-bottom)));
+}
+@supports (height: 100dvh) { :root { --source-fallback-height: 100dvh; } }
+#root {
+  position: fixed;
+  top: var(--source-viewport-top, 0px);
+  left: 0;
+  height: var(--source-viewport-height, var(--source-fallback-height));
+  padding: var(--source-safe-top) var(--source-safe-right) var(--source-safe-bottom) var(--source-safe-left);
+}
+/* The root reserves bottom space already. Don't subtract it twice in pages. */
+.app-scroller { padding-bottom: 24px; }
+.source-safe-overlay {
+  --overlay-gutter: 12px;
+  top: var(--source-viewport-top, 0px);
+  bottom: auto;
+  height: var(--source-viewport-height, var(--source-fallback-height));
+  padding-top: calc(var(--source-safe-top) + var(--overlay-gutter));
+  padding-bottom: calc(var(--source-safe-bottom) + var(--overlay-gutter));
+  padding-left: calc(var(--source-safe-left) + var(--overlay-gutter));
+  padding-right: calc(var(--source-safe-right) + var(--overlay-gutter));
+}
+.source-safe-panel { max-height: 100%; min-height: 0; }
+.source-safe-overlay > [role="dialog"] { max-height: 100%; }
+.source-navigation-drawer {
+  top: calc(var(--source-viewport-top, 0px) + var(--source-safe-top));
+  right: var(--source-safe-right);
+  height: var(--source-usable-height);
+  max-width: calc(100% - var(--source-safe-left) - var(--source-safe-right));
+}
+.source-toast-viewport {
+  top: calc(var(--source-viewport-top, 0px) + var(--source-safe-top) + 64px);
+  width: min(400px, calc(100% - var(--source-safe-left) - var(--source-safe-right)));
+  max-height: max(0px, calc(var(--source-usable-height) - 72px));
+  overflow-y: auto;
+}
+.source-intro-overlay { overflow-y: auto; }
+.source-intro-overlay > div { margin-block: auto; }
+.source-gacha-panel { max-height: 100%; }
+@media (min-width: 640px) { .source-safe-overlay { --overlay-gutter: 24px; } }
+/* Landscape/keyboard: all dismiss and confirmation actions remain scrollable. */
+@media (max-height: 540px) {
+  .source-drawer-footer { padding: 12px; }
+  .source-drawer-footer > div:first-child { display: none; }
+  .source-intro-overlay > div { padding-block: 16px; }
+  .source-gacha-panel { max-width: 560px; height: 100%; aspect-ratio: auto; }
+  .source-gacha-panel > div:last-child { display: none; }
+  .source-gacha-image { width: 40%; }
+  .source-gacha-details {
+    position: relative; margin-left: 40%; height: 100%; padding: 12px;
+    justify-content: center; gap: 8px; overflow-y: auto;
+  }
+  .source-gacha-details h2 { font-size: 20px; }
+}
+
+@media (max-height: 540px) {
+  .source-sheet-media { max-height: calc(var(--source-usable-height) * .35); }
 }

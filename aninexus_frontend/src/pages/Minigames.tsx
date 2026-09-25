@@ -222,7 +222,7 @@ export const Minigames = () => {
       </AnimatePresence>
 
       {submitting && (
-        <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div className="source-safe-overlay fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <Loader2 size={32} className="text-brand-accent animate-spin" />
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.3em]">

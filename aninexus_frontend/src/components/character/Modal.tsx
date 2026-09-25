@@ -98,7 +98,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-6">
+      <div className="source-safe-overlay fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -112,7 +112,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="relative w-full max-w-[440px] max-h-[92svh] bg-zinc-950 rounded-t-xl sm:rounded-xl flex flex-col overflow-hidden shadow-2xl border-t sm:border border-white/5"
+          className="relative w-full max-w-[440px] source-safe-panel max-h-[92svh] bg-zinc-950 rounded-t-xl sm:rounded-xl flex flex-col overflow-hidden shadow-2xl border-t sm:border border-white/5"
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
@@ -160,7 +160,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
           </div>
 
           {/* Content Section — scrolls when the sheet is taller than the viewport */}
-          <div className="flex-1 p-6 sm:p-6 pb-4 sm:pb-6 space-y-4 sm:space-y-6 overflow-y-auto overscroll-contain max-sm:pb-[max(1.5rem,var(--sab))]">
+          <div className="flex-1 p-6 sm:p-6 pb-4 sm:pb-6 space-y-4 sm:space-y-6 overflow-y-auto overscroll-contain max-sm:pb-6">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
                 <Target size={11} className="text-zinc-500" />
@@ -257,7 +257,7 @@ export const Modal = ({ character, onClose, actions }: ModalProps) => {
           </div>
 
           {/* Safe Area Padding */}
-          <div className="h-[calc(var(--sab,8px)+4px)] sm:hidden" />
+          <div className="h-1 sm:hidden" />
         </m.div>
       </div>
     </AnimatePresence>
