@@ -21,9 +21,14 @@ def test_database_core_preserves_pool_contract() -> None:
 
     assert 'DATABASE_URL = os.getenv("DATABASE_URL", "").strip()' in core
     assert 'raise RuntimeError("DATABASE_URL não encontrado nas variáveis de ambiente.")' in core
-    assert "min_size=1" in core
-    assert "max_size=10" in core
-    assert "timeout=10" in core
+    # Pool sizes became environment-configurable before the native UI migration.
+    # Assert the current contract rather than the historical hard-coded values.
+    assert "min_size=DATABASE_POOL_MIN_SIZE" in core
+    assert "max_size=DATABASE_POOL_MAX_SIZE" in core
+    assert "timeout=DATABASE_POOL_TIMEOUT_SECONDS" in core
+    assert 'os.getenv("DATABASE_POOL_MIN_SIZE", "2")' in core
+    assert 'os.getenv("DATABASE_POOL_MAX_SIZE", "16")' in core
+    assert 'os.getenv("DATABASE_POOL_TIMEOUT_SECONDS", "10")' in core
 
 
 def test_database_core_preserves_run_transaction_semantics() -> None:

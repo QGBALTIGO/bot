@@ -27,7 +27,8 @@ interface ApiErrorInit {
   cause?: unknown;
 }
 
-interface ApiRequestInit extends RequestInit {
+export interface ApiRequestInit extends RequestInit {
+  sourceEndpoint?: boolean | undefined;
   timeoutMs?: number | undefined;
 }
 
@@ -201,6 +202,7 @@ function buildApiError(response: Response, payload: unknown) {
 
   if (isRecord(payload)) {
     const error = payload.error;
+    if (typeof error === 'string' && error.trim()) message = error;
     const detail = payload.detail;
 
     if (isRecord(error)) {
@@ -242,7 +244,9 @@ function normalizeFetchError(
 
   if (error instanceof DOMException && error.name === 'AbortError') {
     return new ApiError({
-      message: timedOut ? 'A solicitação demorou demais. Tente novamente.' : 'Solicitação cancelada.',
+      message: timedOut
+        ? 'A solicitação demorou demais. Tente novamente.'
+        : 'Solicitação cancelada.',
       code: timedOut ? 'timeout' : 'cancelled',
       retryable: timedOut && isIdempotentRequest(options),
       cause: error,
@@ -290,10 +294,15 @@ export async function apiFetch(
   options: ApiRequestInit = {},
   retries = 2,
 ): Promise<any> {
-  const url = `${API_BASE}${endpoint}`;
+  if (options.sourceEndpoint && (!endpoint.startsWith('/api/') || endpoint.startsWith('//'))) {
+    throw new Error('Endpoint Source inválido.');
+  }
+  const sourceBase = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
+  const url = options.sourceEndpoint ? `${sourceBase}${endpoint}` : `${API_BASE}${endpoint}`;
   const method = options.method || 'GET';
   const headers = mergeHeaders(options.headers);
-  const { timeoutMs, ...fetchOptions } = options as ApiRequestInit;
+  const { timeoutMs, sourceEndpoint, ...fetchOptions } = options as ApiRequestInit;
+  if (sourceEndpoint && getTg()?.initData) headers['X-Telegram-Init-Data'] = getTg()!.initData;
 
   if (sessionToken) {
     headers.Authorization = `Bearer ${sessionToken}`;
@@ -305,7 +314,7 @@ export async function apiFetch(
     const response = await fetch(url, { ...fetchOptions, headers, signal: requestSignal.signal });
     const payload = await parseResponseBody(response);
 
-    if (response.status === 401) {
+    if (response.status === 401 && !sourceEndpoint) {
       if (isRefreshing) {
         return subscribeToRefresh(endpoint, options, retries);
       }
@@ -341,6 +350,15 @@ export async function apiFetch(
       throw buildApiError(response, payload);
     }
 
+    if (sourceEndpoint && isRecord(payload) && payload.ok === false) {
+      throw new ApiError({
+        message:
+          readString(payload.message) ||
+          readString(payload.error) ||
+          'Não foi possível concluir esta ação.',
+        code: readString(payload.error_code) || 'operation_failed',
+      });
+    }
     return payload;
   } catch (error) {
     const normalized = normalizeFetchError(error, endpoint, options, requestSignal.didTimeout());

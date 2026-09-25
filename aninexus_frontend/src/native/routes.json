@@ -1,0 +1,95 @@
+{
+  "/": {
+    "tab": "profile"
+  },
+  "/menu": {
+    "tab": "profile"
+  },
+  "/aninexus": {
+    "tab": "profile"
+  },
+  "/source-v2": {
+    "tab": "profile"
+  },
+  "/app-v2": {
+    "tab": "profile"
+  },
+  "/dado": {
+    "tab": "dado"
+  },
+  "/shop": {
+    "tab": "shop"
+  },
+  "/loja": {
+    "tab": "shop"
+  },
+  "/catalogo": {
+    "tab": "catalog_anime"
+  },
+  "/mangas": {
+    "tab": "catalog_manga"
+  },
+  "/cards": {
+    "tab": "cards"
+  },
+  "/cards/anime": {
+    "tab": "cards"
+  },
+  "/cards/search": {
+    "tab": "cards",
+    "params": {
+      "view": "characters"
+    }
+  },
+  "/cards/subcategory": {
+    "tab": "cards",
+    "params": {
+      "view": "category"
+    }
+  },
+  "/cccolecao": {
+    "tab": "album"
+  },
+  "/pedido": {
+    "tab": "requests"
+  },
+  "/cards/contrib": {
+    "tab": "contribute"
+  },
+  "/cards/contrib/image": {
+    "tab": "contribute",
+    "params": {
+      "view": "image"
+    }
+  },
+  "/cards/contrib/work": {
+    "tab": "contribute",
+    "params": {
+      "view": "work"
+    }
+  },
+  "/cards/contrib/rules": {
+    "tab": "contribute",
+    "params": {
+      "view": "rules"
+    }
+  },
+  "/memoria": {
+    "tab": "memory"
+  },
+  "/memory": {
+    "tab": "memory"
+  },
+  "/baltigoflix": {
+    "tab": "subscription"
+  },
+  "/baltigoflix/checkout-pending": {
+    "tab": "subscription",
+    "params": {
+      "pending": "1"
+    }
+  },
+  "/terms": {
+    "tab": "terms"
+  }
+}

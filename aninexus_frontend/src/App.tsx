@@ -1,3 +1,12 @@
+import {
+  legacyRoute,
+  NATIVE_ALIASES,
+  NATIVE_TABS,
+  nativeRouteKey,
+  navigateNative,
+  navigationDepth,
+} from './native/navigation';
+import { NativeScreens } from './native/Screens';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import React, { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -15,7 +24,7 @@ import { Profile } from './pages/Profile';
 import { ServerError } from './pages/ServerError';
 
 // Lazy load all pages
-const Shop = lazy(() => import('./pages/Shop').then((m) => ({ default: m.Shop })));
+const Shop = lazy(() => import('./native/ShopExtras').then((m) => ({ default: m.Shop })));
 const Gallery = lazy(() => import('./pages/Gallery').then((m) => ({ default: m.Gallery })));
 const PetShop = lazy(() => import('./pages/PetShop').then((m) => ({ default: m.PetShop })));
 const Hatchery = lazy(() => import('./pages/Hatchery').then((m) => ({ default: m.Hatchery })));
@@ -39,6 +48,7 @@ const Duels = lazy(() => import('./pages/Duels').then((m) => ({ default: m.Duels
 const Bonds = lazy(() => import('./pages/Bonds').then((m) => ({ default: m.Bonds })));
 
 const VALID_TABS = [
+  ...NATIVE_TABS,
   'profile',
   'dado',
   'incubation',
@@ -60,6 +70,7 @@ const VALID_TABS = [
   'bonds',
 ];
 const TAB_ALIASES: Record<string, string> = {
+  ...NATIVE_ALIASES,
   profile: 'profile',
   dado: 'dado',
   dice: 'dado',
@@ -247,11 +258,9 @@ const AppContent = () => {
 
   // Returning visitors within the same session skip the full intro — only a
   // brief fade so the app never hard-cuts between boots.
-  const [introDone, setIntroDone] = useState(() =>
-    sessionStorage.getItem('aninexus_intro_seen') === '1',
+  const [introDone, setIntroDone] = useState(
+    () => sessionStorage.getItem('aninexus_intro_seen') === '1',
   );
-  const introStatus: IntroStatus = error ? 'error' : loading ? 'loading' : 'ready';
-  const showIntro = !introDone || introStatus === 'error';
 
   const finishIntro = useCallback(() => {
     sessionStorage.setItem('aninexus_intro_seen', '1');
@@ -267,11 +276,30 @@ const AppContent = () => {
       if (route) return route;
     }
 
-    return { tab: 'profile', alias: 'profile' };
+    return legacyRoute() || { tab: 'profile', alias: 'profile' };
   }, []);
 
   const [activeRoute, setActiveRoute] = useState(getInitialRoute());
   const activeTab = activeRoute.tab;
+  const publicTab = [
+    'cards',
+    'catalog_anime',
+    'catalog_manga',
+    'subscription',
+    'terms',
+    'contribute',
+    'requests',
+  ].includes(activeTab);
+  const introStatus: IntroStatus =
+    error && !publicTab ? 'error' : loading && !publicTab ? 'loading' : 'ready';
+  const showIntro = !publicTab && (!introDone || introStatus === 'error');
+  const routeKey = nativeRouteKey(activeTab);
+  const routeKeyRef = useRef(routeKey);
+  routeKeyRef.current = routeKey;
+  const [nativeDialog, setNativeDialog] = useState(false);
+  const [accountDeleted, setAccountDeleted] = useState(false);
+  const [depth, setDepth] = useState(navigationDepth);
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedChar, setSelectedChar] = useState<any>(null);
   const [selectedPet, setSelectedPet] = useState<any>(null);
@@ -284,50 +312,65 @@ const AppContent = () => {
   activeRouteRef.current = activeRoute;
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setActiveRoute(getInitialRoute());
+    const saveScroll = () => {
+      const scroller = document.querySelector<HTMLElement>('.app-scroller');
+      if (scroller) scrollPositions.current.set(routeKeyRef.current, scroller.scrollTop);
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    const onRoute = () => {
+      saveScroll();
+      setActiveRoute(getInitialRoute());
+      setDepth(navigationDepth());
+      setSelectedChar(null);
+      setSelectedPet(null);
+      setIsMenuOpen(false);
+    };
+    const onDialog = (event: Event) => setNativeDialog(Boolean((event as CustomEvent).detail));
+    const onDeleted = () => setAccountDeleted(true);
+    window.addEventListener('hashchange', onRoute);
+    window.addEventListener('popstate', onRoute);
+    window.addEventListener('source:navigate', onRoute);
+    window.addEventListener('source:willnavigate', saveScroll);
+    window.addEventListener('source:dialog', onDialog);
+    window.addEventListener('source:account-deleted', onDeleted);
+    return () => {
+      window.removeEventListener('hashchange', onRoute);
+      window.removeEventListener('popstate', onRoute);
+      window.removeEventListener('source:navigate', onRoute);
+      window.removeEventListener('source:willnavigate', saveScroll);
+      window.removeEventListener('source:dialog', onDialog);
+      window.removeEventListener('source:account-deleted', onDeleted);
+    };
   }, [getInitialRoute]);
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (!tg) return;
-
-    if (backHandlerRef.current) {
-      tg.BackButton?.offClick?.(backHandlerRef.current);
+    if (accountDeleted) {
+      tg.BackButton?.hide?.();
+      return;
     }
-
-    if (selectedChar || selectedPet || isMenuOpen) {
-      const handler = () => {
+    const hasDialog = Boolean(selectedChar || selectedPet || isMenuOpen || nativeDialog);
+    const handleBack = () => {
+      if (nativeDialog) window.dispatchEvent(new Event('source:back'));
+      else if (selectedChar || selectedPet || isMenuOpen) {
         setSelectedChar(null);
         setSelectedPet(null);
         setIsMenuOpen(false);
-      };
-      backHandlerRef.current = handler;
-      tg.BackButton?.show?.();
-      tg.BackButton?.onClick?.(handler);
-    } else {
-      backHandlerRef.current = null;
-      tg.BackButton?.hide?.();
-      tg.enableVerticalSwipes?.();
-    }
-
-    // Lock Telegram's swipe-to-close while a bottom-sheet dialog is open so it
-    // doesn't fight our own sheet drag.
-    if (selectedChar || selectedPet || isMenuOpen) {
-      tg.disableVerticalSwipes?.();
-    }
-
-    tg.expand?.();
-
-    return () => {
-      if (backHandlerRef.current) {
-        tg?.BackButton?.offClick?.(backHandlerRef.current);
-      }
+      } else if (navigationDepth() > 0) window.history.back();
+      else navigateNative('profile');
     };
-  }, [selectedChar, selectedPet, isMenuOpen]);
+    backHandlerRef.current = handleBack;
+    if (hasDialog || depth > 0 || activeTab !== 'profile') {
+      tg.BackButton?.show?.();
+      tg.BackButton?.onClick?.(handleBack);
+    } else tg.BackButton?.hide?.();
+    if (hasDialog) tg.disableVerticalSwipes?.();
+    else tg.enableVerticalSwipes?.();
+    tg.expand?.();
+    return () => {
+      tg.BackButton?.offClick?.(handleBack);
+    };
+  }, [selectedChar, selectedPet, isMenuOpen, nativeDialog, depth, activeTab, accountDeleted]);
 
   // Harmonize the Telegram chrome (header bar + overscroll area) and the
   // native control scheme with the user's Telegram theme instead of forcing
@@ -355,20 +398,35 @@ const AppContent = () => {
 
   const handleNavigate = useCallback((tab: string) => {
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
-    // Save scroll position of the tab we're leaving.
-    const scroller = document.querySelector<HTMLElement>('.app-scroller');
-    if (scroller) scrollPositions.current.set(activeRouteRef.current.tab, scroller.scrollTop);
-    setActiveRoute({ tab, alias: tab });
-    if (VALID_TABS.includes(tab) && window.location.hash !== `#${tab}`) {
-      window.history.replaceState(null, '', `#${tab}`);
-    }
+    navigateNative(tab);
   }, []);
+
+  if (accountDeleted) {
+    return (
+      <div
+        data-source-shell
+        className="flex-1 flex flex-col bg-zinc-950 p-6 justify-center items-center gap-5 text-center"
+      >
+        <h1 className="text-xl font-bold text-zinc-100">Conta excluída</h1>
+        <p className="text-sm text-zinc-400">
+          Seus dados foram removidos. Feche a MiniApp para encerrar esta sessão.
+        </p>
+        <button
+          type="button"
+          className="bg-white text-zinc-950 px-6 py-3 rounded-md text-xs font-bold"
+          onClick={() => window.Telegram?.WebApp?.close?.()}
+        >
+          Fechar MiniApp
+        </button>
+      </div>
+    );
+  }
 
   if (showIntro) {
     return <IntroLoading status={introStatus} onFinish={finishIntro} />;
   }
 
-  if (error || (!loading && !user)) {
+  if (!publicTab && !accountDeleted && (error || (!loading && !user))) {
     return <ServerError onRetry={() => window.location.reload()} />;
   }
 
@@ -378,10 +436,18 @@ const AppContent = () => {
     (activeTab === 'upload' && !canViewUpload) || (activeTab === 'staff' && !canViewStaff);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-zinc-950">
-      <Header onMenuClick={() => setIsMenuOpen(true)} onNavigate={handleNavigate} />
+    <div data-source-shell className="flex-1 flex flex-col min-h-0 overflow-hidden bg-zinc-950">
+      {!accountDeleted && (
+        <div inert={nativeDialog || isMenuOpen}>
+          <Header onMenuClick={() => setIsMenuOpen(true)} onNavigate={handleNavigate} />
+        </div>
+      )}
 
-      <main className="app-scroller">
+      <main
+        className="app-scroller"
+        inert={nativeDialog || isMenuOpen}
+        style={nativeDialog || isMenuOpen ? { overflow: 'hidden' } : undefined}
+      >
         <Suspense
           fallback={
             <div className="flex flex-col items-center justify-center h-full gap-4">
@@ -389,8 +455,8 @@ const AppContent = () => {
             </div>
           }
         >
-          <div key={activeTab} className="page-transition-wrapper">
-            <ScrollRestore tab={activeTab} positions={scrollPositions.current} />
+          <div key={routeKey} className="page-transition-wrapper">
+            <ScrollRestore tab={routeKey} positions={scrollPositions.current} />
             {activeTab === 'profile' && (
               <Profile
                 onCharClick={setSelectedChar}
@@ -399,6 +465,7 @@ const AppContent = () => {
                 }
               />
             )}
+            {NATIVE_TABS.includes(activeTab) && <NativeScreens tab={activeTab} />}
             {activeTab === 'dado' && <Dado />}
             {activeTab === 'incubation' && <Hatchery />}
             {activeTab === 'shop' && <Shop onCharClick={setSelectedChar} />}

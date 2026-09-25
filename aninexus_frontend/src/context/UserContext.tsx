@@ -2,6 +2,7 @@ import React, {
   createContext,
   ReactNode,
   useCallback,
+  useRef,
   useContext,
   useEffect,
   useState,
@@ -150,11 +151,13 @@ const hasAuthBootstrap = () => {
 
 export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
+  const retired = useRef(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refreshUser = useCallback(async () => {
+    if (retired.current) return;
     try {
       // Routed through react-query so concurrent triggerRefresh() calls
       // dedupe into a single /me request.
@@ -163,6 +166,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         queryFn: () => apiFetch('/me'),
         staleTime: 0,
       });
+      if (retired.current) return;
       setUser(data);
       setError(null);
     } catch (err: any) {
@@ -172,6 +176,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(false);
     }
   }, [queryClient]);
+
+  useEffect(() => {
+    const retire = () => {
+      retired.current = true;
+      setUser(null);
+      setError(null);
+      setLoading(false);
+    };
+    window.addEventListener('source:account-deleted', retire);
+    return () => window.removeEventListener('source:account-deleted', retire);
+  }, []);
 
   const triggerRefresh = useCallback(() => {
     refreshUser();
