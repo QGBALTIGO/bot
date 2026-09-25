@@ -1,0 +1,21 @@
+name: Source fullscreen workbench
+on:
+  push:
+    branches: [codex/source-fullscreen-safeareas-20260925]
+    paths: ['.github/workflows/source-fullscreen-workbench.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export current source without credentials
+        run: |
+          tar --exclude='.git' --exclude='node_modules' --exclude='*.session*' --exclude='.env' --exclude='__pycache__' -czf /tmp/source-fullscreen-current.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-fullscreen-current
+          path: /tmp/source-fullscreen-current.tar.gz
+          retention-days: 1
