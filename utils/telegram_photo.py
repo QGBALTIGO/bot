@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import asyncio
 from collections import OrderedDict
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -116,7 +117,7 @@ async def reply_photo_from_url(message: Any, image_url: str, **kwargs: Any) -> A
         headers=headers,
         timeout=httpx.Timeout(45.0, connect=10.0),
     )
-    prepared = _jpeg_bytes(content, portrait_crop=portrait_crop)
+    prepared = await asyncio.to_thread(_jpeg_bytes, content, portrait_crop=portrait_crop)
     stream = io.BytesIO(prepared)
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
     stream.name = f"card-{digest}.jpg"

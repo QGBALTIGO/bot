@@ -10,6 +10,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  contentClassName?: string;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -23,6 +24,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       leftIcon,
       rightIcon,
+      contentClassName,
       ...props
     },
     ref,
@@ -42,17 +44,19 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes: Record<ButtonSize, string> = {
-      sm: 'h-8 px-3 text-[10px] font-bold uppercase tracking-wider rounded-sm',
-      md: 'h-10 px-5 text-[11px] font-extrabold uppercase tracking-widest rounded-md',
-      lg: 'h-12 px-7 text-xs font-black uppercase tracking-[0.15em] rounded-lg',
+      sm: 'min-h-8 py-1.5 px-3 text-[10px] font-bold uppercase tracking-wider rounded-sm',
+      md: 'min-h-10 py-2 px-4 text-[11px] font-extrabold uppercase tracking-widest rounded-md',
+      lg: 'min-h-12 py-2.5 px-5 text-xs font-black uppercase tracking-[0.15em] rounded-lg',
     };
 
     return (
       <button
         ref={ref}
+        type="button"
+        aria-busy={Boolean(isLoading)}
         disabled={isLoading || disabled}
         className={cn(
-          'inline-flex items-center justify-center gap-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-brand-accent/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap overflow-hidden relative',
+          'inline-flex items-center justify-center gap-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-brand-accent/40 disabled:opacity-40 disabled:pointer-events-none min-w-0 max-w-full whitespace-normal text-center leading-snug relative',
           variants[variant],
           sizes[size],
           className,
@@ -61,7 +65,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       >
         <div
           className={cn(
-            'flex items-center justify-center gap-2 transition-all duration-200',
+            'flex min-w-0 items-center justify-center gap-2 [&>svg]:shrink-0',
+            contentClassName,
             isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100',
           )}
         >

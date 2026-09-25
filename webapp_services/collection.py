@@ -211,10 +211,10 @@ def collection_detail_from_snapshot(
     }
 
 
-def collection_profile_payload(user_id: int, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def collection_profile_payload(user_id: int, ctx: Optional[Dict[str, Any]] = None, *, snapshot=None) -> Dict[str, Any]:
     data = build_menu_user_payload(
         int(user_id),
-        collection_snapshot=collection_snapshot,
+        collection_snapshot=(lambda _uid: snapshot) if snapshot is not None else collection_snapshot,
         collection_cards_from_snapshot=collection_cards_from_snapshot,
     )
     profile = dict((data or {}).get("profile") or {})

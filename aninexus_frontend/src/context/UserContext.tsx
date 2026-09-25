@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { apiFetch, getErrorMessage } from '../api/client';
+import { apiFetch, ensureSession, getErrorMessage } from '../api/client';
 
 export interface UserStats {
   level: number;
@@ -97,7 +97,16 @@ export interface Egg {
   incubation_pass_type?: string | null;
 }
 
+export interface FavoriteCharacter {
+  id: number;
+  name: string;
+  anime: string;
+  image: string;
+}
+
 export interface User {
+  favorite?: FavoriteCharacter | null;
+  nickname?: string;
   id: number;
   first_name: string;
   last_name?: string | null;
@@ -133,6 +142,7 @@ interface UserContextType {
   loading: boolean;
   error: string | null;
   refreshUser: () => Promise<void>;
+  patchUser: (patch: Partial<User>) => void;
   triggerRefresh: () => void;
 }
 
@@ -153,12 +163,16 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const queryClient = useQueryClient();
   const retired = useRef(false);
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refreshUser = useCallback(async () => {
     if (retired.current) return;
     try {
+      await ensureSession();
+      if (retired.current) return;
       // Routed through react-query so concurrent triggerRefresh() calls
       // dedupe into a single /me request.
       const data = await queryClient.fetchQuery({
@@ -171,7 +185,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
     } catch (err: any) {
       console.error('Failed to fetch user:', err);
-      setError(getErrorMessage(err));
+      if (!userRef.current) setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -187,6 +201,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     window.addEventListener('source:account-deleted', retire);
     return () => window.removeEventListener('source:account-deleted', retire);
   }, []);
+
+  const patchUser = useCallback((patch: Partial<User>) => {
+    if (retired.current) return;
+    setUser((previous) => previous ? { ...previous, ...patch } : previous);
+    queryClient.setQueryData<User>(['api', '/me', null], (previous) => previous ? { ...previous, ...patch } : previous);
+  }, [queryClient]);
 
   const triggerRefresh = useCallback(() => {
     refreshUser();
@@ -209,7 +229,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [triggerRefresh]);
 
   return (
-    <UserContext.Provider value={{ user, loading, error, refreshUser, triggerRefresh }}>
+    <UserContext.Provider value={{ user, loading, error, refreshUser, triggerRefresh, patchUser }}>
       {children}
     </UserContext.Provider>
   );

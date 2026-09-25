@@ -61,7 +61,6 @@ def ensure_profile_settings_row(user_id: int):
 
 
 def get_profile_settings(user_id: int):
-    ensure_profile_settings_row(user_id)
     row = _run(
         """
         SELECT
@@ -83,7 +82,11 @@ def get_profile_settings(user_id: int):
         (int(user_id),),
         fetch="one"
     )
-    return row or None
+    if row is None:
+        # Defaults are also used for accounts that have never opened settings.
+        return {"user_id": int(user_id), "country_code": "BR", "language": "pt",
+                "notifications_enabled": True, "private_profile": False}
+    return row
 
 
 def get_profile_settings_by_nickname(nickname: str):
@@ -147,16 +150,13 @@ def set_profile_nickname(user_id: int, nickname: str) -> dict:
     return {"ok": True}
 
 
-def set_profile_favorite(user_id: int, character_id: int):
-    ensure_profile_settings_row(user_id)
+def set_profile_favorite(user_id: int, character_id: int | None):
     _run(
-        """
-        UPDATE user_profile_settings
-        SET favorite_character_id = %s,
-            updated_at = NOW()
-        WHERE user_id = %s
-        """,
-        (int(character_id), int(user_id))
+        """INSERT INTO user_profile_settings (user_id, favorite_character_id, created_at, updated_at)
+        VALUES (%s, %s, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE
+        SET favorite_character_id=EXCLUDED.favorite_character_id, updated_at=NOW()""",
+        (int(user_id), int(character_id) if character_id is not None else None),
     )
 
 

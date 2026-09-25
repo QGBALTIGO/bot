@@ -17,7 +17,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { navigateNative } from '../native/navigation';
+import { Button } from '../components/ui/Button';
 import { useApi } from '../hooks/useApi';
 import { Avatar } from '../components/Avatar';
 import { Card as CharacterCard } from '../components/character/Card';
@@ -80,10 +81,10 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
   useEffect(() => {
     if (rarityData) setAvailableRarities(rarityData);
   }, [rarityData]);
-  useEffect(() => {
-    apiFetch('/social/marriage').then(setMarriage).catch(() => setMarriage(null));
-    apiFetch('/battle/stats').then(setBattleStats).catch(() => setBattleStats(null));
-  }, []);
+  const { data: marriageData } = useApi<any>('/social/marriage');
+  const { data: battleData } = useApi<any>('/battle/stats');
+  useEffect(() => setMarriage(marriageData), [marriageData]);
+  useEffect(() => setBattleStats(battleData), [battleData]);
 
   useEffect(() => {
     if (!focusCollection || userLoading) return;
@@ -136,6 +137,19 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
 
   return (
     <div className="pt-6 max-w-5xl mx-auto adaptive-px space-y-6">
+      {user.favorite && (
+        <Card className="flex items-center gap-4 p-4" data-profile-favorite>
+          {user.favorite.image && <img src={user.favorite.image} alt={user.favorite.name}
+            className="w-16 aspect-[2/3] object-cover rounded-md shrink-0" decoding="async" referrerPolicy="no-referrer" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Personagem favorito</p>
+            <h2 className="font-bold text-zinc-100 break-words">{user.favorite.name}</h2>
+            <p className="text-xs text-zinc-400 break-words">{user.favorite.anime}</p>
+          </div>
+          <Button size="sm" variant="secondary" aria-label="Alterar personagem favorito"
+            onClick={() => navigateNative('settings', { section: 'favorite' })}>Alterar</Button>
+        </Card>
+      )}
       {/* Profile & Registry Summary */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* User Profile Card */}
@@ -164,7 +178,7 @@ export const Profile = ({ onCharClick, focusCollection = false }: ProfileProps) 
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-1">
                 <h1 className="text-xl font-bold text-zinc-100 tracking-tight uppercase truncate">
-                  {[user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuário'}
+                  {user.nickname || [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuário'}
                 </h1>
                 {user.role_tag && (
                   <Badge variant="primary" size="xs" className="font-bold">

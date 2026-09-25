@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -19,7 +20,7 @@ from webapp_services.collection import (
     collection_cards_from_snapshot,
     collection_snapshot,
 )
-from webapp_services.profile_overview import build_menu_user_payload
+from webapp_services.profile_overview import build_menu_user_payload, load_menu_user_rows
 
 API_PREFIX = "/api/v1_7b82"
 SESSION_TTL_SECONDS = max(300, int(os.getenv("ANINEXUS_SESSION_TTL_SECONDS", "21600")))
@@ -171,13 +172,19 @@ def _progress_row(uid: int) -> dict[str, Any]:
 
 def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
     uid = int(session_user.get("id") or 0)
+    snapshot = collection_snapshot(uid)
+    user, progress, settings = load_menu_user_rows(uid)
     overview = build_menu_user_payload(
         uid,
-        collection_snapshot=collection_snapshot,
+        collection_snapshot=lambda _uid: snapshot,
         collection_cards_from_snapshot=collection_cards_from_snapshot,
+        create_user=lambda _uid: None,
+        get_user=lambda _uid: user,
+        get_progress=lambda _uid: progress,
+        get_settings=lambda _uid: settings,
     )
     profile = dict(overview.get("profile") or {})
-    data, qty_by_char, subcategory_map = collection_snapshot(uid)
+    data, qty_by_char, subcategory_map = snapshot
     characters_by_id = data.get("characters_by_id") or {}
 
     unique_count = len([qty for qty in qty_by_char.values() if int(qty or 0) > 0])
@@ -189,7 +196,6 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         else 0.0
     )
 
-    progress = _progress_row(uid)
     level = int(profile.get("level") or progress.get("level") or 1)
     xp_total = int(progress.get("xp") or progress.get("total_xp") or 0)
     xp_current = int(progress.get("xp_current") or progress.get("current_xp") or xp_total)
@@ -219,6 +225,8 @@ def _user_payload(session_user: dict[str, Any]) -> dict[str, Any]:
         "last_name": last_name or None,
         "username": username,
         "avatar": avatar,
+        "nickname": profile.get("nickname") or "",
+        "favorite": profile.get("favorite"),
         "is_sudo": False,
         "role": None,
         "role_label": None,
@@ -384,10 +392,11 @@ def build_aninexus_compat_router() -> APIRouter:
         user = dict(validated.get("user") or {})
         user_id = int(validated.get("user_id") or 0)
         try:
-            from database import create_or_get_user, touch_user_identity
+            from database import touch_user_identity
 
-            create_or_get_user(user_id)
-            touch_user_identity(
+            # Synchronous Psycopg must never block FastAPI's async event loop.
+            await asyncio.to_thread(
+                touch_user_identity,
                 user_id,
                 username=str(user.get("username") or "").strip(),
                 full_name=" ".join(

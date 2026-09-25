@@ -1051,22 +1051,19 @@ def create_or_get_user(user_id: int):
 
 
 def touch_user_identity(user_id: int, username: str = "", full_name: str = ""):
-    create_or_get_user(user_id)
-    username = (username or "").strip()
-    full_name = (full_name or "").strip()
     _run(
         """
-        UPDATE users
-        SET username = COALESCE(NULLIF(%s, ''), username),
-            full_name = COALESCE(NULLIF(%s, ''), full_name),
+        INSERT INTO users (user_id, username, full_name, dado_balance, dado_slot, created_at, updated_at)
+        VALUES (%s, NULLIF(%s, ''), NULLIF(%s, ''), %s, %s, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            username = COALESCE(EXCLUDED.username, users.username),
+            full_name = COALESCE(EXCLUDED.full_name, users.full_name),
             updated_at = NOW()
-        WHERE user_id = %s
+        WHERE users.username IS DISTINCT FROM COALESCE(EXCLUDED.username, users.username)
+           OR users.full_name IS DISTINCT FROM COALESCE(EXCLUDED.full_name, users.full_name)
         """,
-        (
-            username,
-            full_name,
-            int(user_id),
-        )
+        (int(user_id), (username or "").strip(), (full_name or "").strip(),
+         DADO_INITIAL_BALANCE, _slot_number_from_dt(_now_sp())),
     )
 
 
@@ -1662,17 +1659,12 @@ def ensure_progress_row(user_id: int):
 
 
 def get_progress_row(user_id: int) -> Optional[Dict[str, Any]]:
+    sql = "SELECT user_id, xp, level, total_actions, updated_at FROM user_progress WHERE user_id = %s"
+    row = _run(sql, (int(user_id),), fetch="one")
+    if row is not None:
+        return row
     ensure_progress_row(user_id)
-
-    return _run(
-        """
-        SELECT user_id, xp, level, total_actions, updated_at
-        FROM user_progress
-        WHERE user_id = %s
-        """,
-        (int(user_id),),
-        fetch="one"
-    )
+    return _run(sql, (int(user_id),), fetch="one")
 
 
 def level_xp_required(level: int) -> int:
@@ -1765,8 +1757,6 @@ def add_progress_xp(user_id: int, amount: int = 3) -> Dict[str, Any]:
 
 
 def get_user_level_rank(user_id: int) -> int:
-    ensure_progress_row(user_id)
-
     row = _run(
         """
         SELECT rank_pos
@@ -1782,6 +1772,14 @@ def get_user_level_rank(user_id: int) -> int:
         fetch="one"
     )
 
+    if row is None:
+        ensure_progress_row(user_id)
+        row = _run(
+            "SELECT 1 + COUNT(*) AS rank_pos FROM user_progress WHERE "
+            "(level, xp, total_actions, -user_id) > "
+            "(SELECT level, xp, total_actions, -user_id FROM user_progress WHERE user_id=%s)",
+            (int(user_id),), fetch="one",
+        )
     return int((row or {}).get("rank_pos") or 0)
 
 

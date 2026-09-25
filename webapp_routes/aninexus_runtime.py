@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -10,6 +11,14 @@ from fastapi.staticfiles import StaticFiles
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ANINEXUS_RUNTIME_DIR = ROOT_DIR / "aninexus_runtime"
 ANINEXUS_ASSETS_DIR = ANINEXUS_RUNTIME_DIR / "assets"
+
+
+class FingerprintedStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304) and re.search(r"-[A-Za-z0-9_-]{8}\.(?:js|css)$", path):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
 
 def install_aninexus_runtime(app: FastAPI) -> None:
@@ -26,7 +35,7 @@ def install_aninexus_runtime(app: FastAPI) -> None:
     if "/assets" not in existing_paths:
         app.mount(
             "/assets",
-            StaticFiles(directory=str(ANINEXUS_ASSETS_DIR)),
+            FingerprintedStaticFiles(directory=str(ANINEXUS_ASSETS_DIR)),
             name="aninexus-assets",
         )
         existing_paths.add("/assets")

@@ -156,7 +156,9 @@ def test_profile_favorite_ownership_contract_is_preserved() -> None:
     assert "resolve_webapp_user as _resolve_webapp_user" in module
     assert '"Personagem inválido."' in module
     assert "status_code=400" in module
-    assert "owned_ids = {" in module
+    assert "SELECT 1 FROM user_card_collection" in module
+    assert "quantity>0" in module
+    assert "if not character:" in module
     assert '"Você só pode favoritar personagens da sua coleção."' in module
     assert "status_code=403" in module
     assert "set_profile_favorite(user_id, character_id)" in module

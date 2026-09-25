@@ -254,6 +254,30 @@ def get_user_pets(user_id: int) -> List[Dict[str, Any]]:
     return [_pet_payload(row) for row in rows]
 
 
+def get_companion_overview(user_id: int) -> tuple[list[dict], list[dict]]:
+    """Load both lists for /me without repeating starter grants or pet reads."""
+    _ensure_user_initialized(user_id)
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """SELECT
+                  (SELECT COALESCE(jsonb_agg(p ORDER BY p.is_active DESC, p.level DESC, p.owned_at ASC), '[]'::jsonb)
+                   FROM aninexus_user_pets p WHERE p.user_id=%s) AS pets,
+                  (SELECT COALESCE(jsonb_agg(e ORDER BY e.created_at ASC, e.egg_id ASC), '[]'::jsonb)
+                   FROM aninexus_user_eggs e WHERE e.user_id=%s AND e.status IN ('fresh','incubating')) AS eggs""",
+                (int(user_id), int(user_id)),
+            )
+            row = cur.fetchone() or {}
+        conn.commit()
+    # JSON timestamps need conversion before the existing egg serializer.
+    eggs = list(row.get("eggs") or [])
+    for egg in eggs:
+        for key in ("hatch_at", "hatch_time", "created_at", "incubated_at"):
+            if isinstance(egg.get(key), str):
+                egg[key] = datetime.fromisoformat(egg[key])
+    return [_pet_payload(p) for p in row.get("pets") or []], [_egg_payload(e) for e in eggs]
+
+
 def get_active_pet(user_id: int) -> Optional[Dict[str, Any]]:
     pets = get_user_pets(user_id)
     return next((pet for pet in pets if pet.get("is_active")), pets[0] if pets else None)

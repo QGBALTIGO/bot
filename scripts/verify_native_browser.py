@@ -23,6 +23,9 @@ DIST = ROOT / "aninexus_frontend/dist"
 PORT = 8765
 STATE = {
     "posts": [],
+    "gets": [],
+    "me_delay": 0,
+    "favorite": {"id": 1, "name": "Personagem 01", "anime": "Obra de teste 01", "image": "/fixture-art/0.svg"},
     "coins": 100,
     "nickname": "Tester",
     "private_profile": False,
@@ -130,16 +133,24 @@ BOOT = """
 window.__bootCount=Number(sessionStorage.getItem('fixture_boots')||0)+1;
 sessionStorage.setItem('fixture_boots',String(window.__bootCount));
 sessionStorage.setItem('auth_token','fixture-token');sessionStorage.setItem('aninexus_intro_seen','1');
+if(new URLSearchParams(location.search).has('cold_start')){sessionStorage.removeItem('auth_token');sessionStorage.removeItem('aninexus_intro_seen');}
 window.__backHandlers=new Set();window.__external=[];
 window.Telegram={WebApp:{initData:'fixture-signed-data',initDataUnsafe:{user:{id:77}},colorScheme:'dark',themeParams:{bg_color:'#09090b'},ready(){},expand(){},close(){window.__closed=true},setHeaderColor(){},setBackgroundColor(){},enableVerticalSwipes(){},disableVerticalSwipes(){},onEvent(){},offEvent(){},BackButton:{show(){},hide(){},onClick(fn){window.__backHandlers.add(fn)},offClick(fn){window.__backHandlers.delete(fn)}},HapticFeedback:{selectionChanged(){},impactOccurred(){},notificationOccurred(){}},openLink(url){window.__external.push(url)},openTelegramLink(url){window.__external.push(url)}}};
 """
 
 
 def fixture(path, query, method, body):
+    if method == "GET":
+        STATE["gets"].append(path)
     if method == "POST":
         STATE["posts"].append({"path": path, "body": body})
         if path.endswith("/secure_init"):
             return {"token": "fixture-token"}
+        if path == "/api/menu/favorite":
+            cid = body.get("character_id")
+            c = next((c for c in CHARACTERS if c["id"] == cid), None)
+            STATE["favorite"] = {k: c[k] for k in ("id", "name", "anime", "image")} if c else None
+            return {"ok": True, "favorite": STATE["favorite"]}
         if path == "/api/menu/delete-account":
             return {"ok": True}
         if path == "/api/native/nickname":
@@ -218,8 +229,11 @@ def fixture(path, query, method, body):
             ],
         }
     if path.endswith("/me"):
+        time.sleep(STATE["me_delay"])
         return {
             **USER,
+            "favorite": STATE["favorite"],
+            "nickname": STATE["nickname"],
             "balance": STATE["coins"],
             "stats": {**USER["stats"], "points": STATE["coins"]},
         }
@@ -296,7 +310,7 @@ def fixture(path, query, method, body):
                 "language": STATE["language"],
                 "private_profile": STATE["private_profile"],
                 "notifications_enabled": STATE["notifications_enabled"],
-                "favorite": {"name": "Personagem 01"},
+                "favorite": STATE["favorite"],
             },
             "countries": [
                 {"code": "BR", "name": "Brasil"},
@@ -352,6 +366,7 @@ def fixture(path, query, method, body):
         "/api/shop/sell/all",
         "/api/collection/cards",
         "/api/collection/anime",
+        "/api/menu/collection-characters",
     ]:
         items = [
             x for x in CHARACTERS if q in x["name"].lower() or q in x["anime"].lower()
@@ -472,7 +487,7 @@ def run_tests(output: Path):
                 "/cccolecao?anime_id=1",
                 "/menu?view=image&character_id=1&q=Personagem%2001#contribute",
             ]
-            for width in [360, 1280]:
+            for width in [320, 360, 390, 768, 1280]:
                 page.set_viewport_size({"width": width, "height": 800})
                 for path in paths:
                     page.goto(f"http://127.0.0.1:{PORT}{path}")
@@ -541,6 +556,69 @@ def run_tests(output: Path):
             report["checks"].append(
                 "shared drawer, catalog pagination and debounced search"
             )
+            # First visit must follow real network readiness, not a decorative timer.
+            STATE["me_delay"] = 0.15
+            before_init = len([x for x in STATE["posts"] if x["path"].endswith("secure_init")])
+            started = time.monotonic()
+            page.goto(f"http://127.0.0.1:{PORT}/menu?cold_start=1")
+            page.wait_for_selector("[data-source-shell]")
+            boot_ms = round((time.monotonic() - started) * 1000)
+            assert boot_ms < 2000, ("artificial boot delay", boot_ms)
+            assert len([x for x in STATE["posts"] if x["path"].endswith("secure_init")]) == before_init + 1
+            STATE["me_delay"] = 0
+            report["fixture_boot_ms"] = boot_ms
+            report["checks"].append("cold startup uses one auth initialization and real readiness")
+            # Favorite is selected within settings and shared immediately with the profile.
+            page.goto(f"http://127.0.0.1:{PORT}/menu#settings")
+            page.get_by_role("button", name="Alterar favorito", exact=True).click()
+            page.get_by_role("dialog", name="Escolher personagem favorito").wait_for()
+            page.get_by_role("textbox", name="Buscar personagem favorito").fill("02")
+            favorite_button = page.get_by_role("button", name="Favoritar Personagem 02", exact=True)
+            favorite_button.wait_for()
+            # Even a slow /me must not hold a preference button hostage.
+            before_me = STATE["gets"].count("/api/v1_7b82/me")
+            STATE["me_delay"] = 3
+            started = time.monotonic()
+            favorite_button.click()
+            page.get_by_role("dialog").wait_for(state="hidden", timeout=1500)
+            save_ms = round((time.monotonic() - started) * 1000)
+            assert STATE["favorite"]["id"] == 2
+            assert STATE["gets"].count("/api/v1_7b82/me") == before_me
+            STATE["me_delay"] = 0
+            report["fixture_favorite_save_ms"] = save_ms
+            page.get_by_role("button", name="Ir para o painel").click()
+            page.locator("[data-profile-favorite]").get_by_text("Personagem 02", exact=True).wait_for()
+            page.reload()
+            page.locator("[data-profile-favorite]").get_by_text("Personagem 02", exact=True).wait_for()
+            page.locator("[data-profile-favorite]").get_by_role("button", name="Alterar", exact=True).click()
+            page.locator("[data-favorite-settings]").get_by_text("Personagem 02", exact=True).wait_for()
+            for width in [320, 360, 390, 768, 1280]:
+                page.set_viewport_size({"width": width, "height": 720})
+                page.get_by_role("button", name="Alterar favorito", exact=True).click()
+                page.get_by_role("dialog", name="Escolher personagem favorito").wait_for()
+                bounds = page.get_by_role("dialog").bounding_box()
+                assert bounds and bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= width + 1
+                assert bounds['y'] >= 0 and bounds['y'] + bounds['height'] <= 721
+                assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+                page.screenshot(path=str(output / f"favorite-picker-{width}.png"))
+                page.keyboard.press("Escape")
+                page.get_by_role("dialog").wait_for(state="hidden")
+            page.get_by_role("button", name="Remover favorito", exact=True).click()
+            page.get_by_role("button", name="Escolher favorito", exact=True).wait_for()
+            assert STATE["favorite"] is None
+            page.get_by_role("button", name="Ir para o painel").click()
+            assert page.locator("[data-profile-favorite]").count() == 0
+            page.set_viewport_size({"width": 360, "height": 800})
+            report["checks"].append("favorite picker search, save, profile sync, reload persistence, removal and responsive dialog")
+            # Favorite selection from the album must update the same profile without a /me reload.
+            page.goto(f"http://127.0.0.1:{PORT}/cccolecao")
+            page.get_by_role("button", name="Personagem 01", exact=True).click()
+            page.get_by_role("button", name="Definir como favorito").click()
+            page.get_by_text("Favorito atualizado.", exact=True).wait_for()
+            page.keyboard.press("Escape")
+            page.get_by_role("button", name="Ir para o painel").click()
+            page.locator("[data-profile-favorite]").get_by_text("Personagem 01", exact=True).wait_for()
+            report["checks"].append("album favorite updates profile using the same account field")
             # Sale requires confirmation; cancellation does not mutate.
             page.goto(f"http://127.0.0.1:{PORT}/menu?section=sell#shop")
             before = len(STATE["posts"])
@@ -701,8 +779,12 @@ def run_tests(output: Path):
             )
             assert not report["page_errors"], report["page_errors"]
             assert not report["console_errors"], report["console_errors"]
-        except Exception:
-            page.screenshot(path=str(output / "failure.png"))
+        except Exception as error:
+            report["failure"] = str(error)
+            try:
+                page.screenshot(path=str(output / "failure.png"))
+            except Exception:
+                pass
             (output / "browser-report.json").write_text(
                 json.dumps(report, ensure_ascii=False, indent=2)
             )
