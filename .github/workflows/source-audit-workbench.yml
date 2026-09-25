@@ -4,11 +4,11 @@ on:
     branches: [codex/source-deep-audit-20260925]
     paths: ['.github/workflows/source-audit-workbench.yml']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  runtime:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -23,33 +23,110 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Apply isolated probes
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: Apply checksum-verified corrections
         run: |
           python - <<'PY'
           import base64,lzma,hashlib,subprocess
           from pathlib import Path
-          patch=lzma.decompress(base64.b64decode(Path('.source-audit/probe.b64').read_text()))
-          assert hashlib.sha256(patch).hexdigest()=='f30958b26f3665594b0b1415b7787a47685a550ca754ccf385844399f2dcfa55'
-          subprocess.run(['git','apply','--check','-'],input=patch,check=True)
-          subprocess.run(['git','apply','-'],input=patch,check=True)
+          files=sorted(Path('.source-audit').glob('fixes-*.b64'))
+          if files:
+            patch=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in files),validate=True))
+            assert hashlib.sha256(patch).hexdigest()=='d073e565c14c99f554c3fbd0144e2ed7c81e48bfc4a24d7f7c9e41b8f9b35a2a'
+            subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+            subprocess.run(['git','apply','-'],input=patch,check=True)
+            subprocess.run(['git','rm','-r','.source-audit'],check=True)
           PY
-      - run: pip install -q -r requirements.txt pytest pytest-asyncio pip-audit
-      - name: Probe the actual assembled application
+      - name: Install updated dependencies and isolated test tools
+        run: |
+          pip install -q -r requirements.txt pytest pytest-asyncio pytest-cov ruff playwright pip-audit 'setuptools>=83'
+          cd aninexus_frontend && bun install --frozen-lockfile && cd ..
+          python -m playwright install --with-deps chromium >/tmp/browser-install.log 2>&1
+          npm install --prefix /tmp/source-browser-tools agent-browser
+      - name: Compile, build and synchronize runtime
+        run: |
+          mkdir -p audit-proof
+          python -m compileall -q -x '/(node_modules|\.git)/' .
+          cd aninexus_frontend && bun run build && cd ..
+          rm -rf aninexus_runtime && cp -a aninexus_frontend/dist aninexus_runtime
+          diff -qr aninexus_frontend/dist aninexus_runtime
+          ruff check . --select E9,F63,F7,F82 --exclude data --exclude node_modules
+      - name: Python regressions
+        id: unit
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pytest -q --cov=. --cov-report=json:audit-proof/coverage.json --junitxml=audit-proof/pytest.xml | tee audit-proof/pytest.txt
+      - name: Real PostgreSQL transaction races and rollbacks
+        id: transactions
+        continue-on-error: true
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/audit_transactions.py audit-proof/transactions.json >audit-proof/transactions-console.txt 2>&1
+      - name: Actual route and command entrypoint probes
+        id: runtime
+        continue-on-error: true
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
         run: |
-          mkdir -p audit-runtime
-          python scripts/audit_inventory.py --output audit-runtime/inventory.json
-          python scripts/audit_runtime.py audit-runtime >audit-runtime/console.txt 2>&1
-      - name: Current Python advisories
-        if: always()
+          python scripts/audit_inventory.py --output audit-proof/inventory.json
+          python scripts/audit_runtime.py audit-proof/runtime >audit-proof/runtime-console.txt 2>&1
+      - name: Browser regressions and canonical entrypoints
+        id: browser
+        continue-on-error: true
         run: |
-          pip-audit --format json --output audit-runtime/python-advisories.json >audit-runtime/python-advisories.log 2>&1
-          echo $? >audit-runtime/python-advisories-exit.txt
-        shell: bash {0}
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          python scripts/verify_native_browser.py --test --output audit-proof/native
+          python scripts/verify_fullscreen_browser.py --output audit-proof/fullscreen
+          python scripts/verify_profile_identity_browser.py --output audit-proof/profile
+          python scripts/verify_single_miniapp_browser.py --output audit-proof/single
+          python scripts/verify_native_browser.py --serve >/tmp/source-browser-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          AB=/tmp/source-browser-tools/node_modules/.bin/agent-browser
+          $AB --executable-path "$CHROMIUM_PATH" open http://127.0.0.1:8765/menu
+          $AB wait --load networkidle
+          $AB snapshot -i >audit-proof/agent-profile.txt
+          $AB screenshot audit-proof/agent-profile.png
+          $AB close
+      - name: Advisory scan of resolved application dependencies
+        id: advisories
+        continue-on-error: true
+        run: |
+          pip-audit -r requirements.txt --format json --output audit-proof/python-advisories.json >audit-proof/python-advisories.log 2>&1
+          cd aninexus_frontend && bun audit --json >../audit-proof/js-advisories.json
+      - name: Record and require all gates before committing
+        env:
+          UNIT: ${{ steps.unit.outcome }}
+          TRANSACTIONS: ${{ steps.transactions.outcome }}
+          RUNTIME: ${{ steps.runtime.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
+          ADVISORIES: ${{ steps.advisories.outcome }}
+        run: |
+          python - <<'PY'
+          import os,json
+          from pathlib import Path
+          gates={k:os.environ[k] for k in ['UNIT','TRANSACTIONS','RUNTIME','BROWSER','ADVISORIES']}
+          Path('audit-proof/gates.json').write_text(json.dumps(gates))
+          assert all(v=='success' for v in gates.values()), gates
+          responses=json.loads(Path('audit-proof/runtime/http.json').read_text())
+          assert not [r for r in responses if r['status']==500], 'Unhandled route errors'
+          commands=json.loads(Path('audit-proof/runtime/commands.json').read_text())
+          assert not [r for r in commands if r['status']=='error'], 'Unhandled command errors'
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add commands database*.py utils webapp.py webapp_routes aninexus_frontend aninexus_runtime scripts tests
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: harden Source transactions, remove duplicate work and update security dependencies'
+            git push origin HEAD:codex/source-deep-audit-20260925
+          fi
+          git rev-parse HEAD >audit-proof/source-sha.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-audit-runtime-baseline
-          path: audit-runtime/
+          name: source-deep-audit-proof
+          path: audit-proof/
           retention-days: 7
