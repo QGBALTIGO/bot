@@ -502,17 +502,8 @@ def run_tests(output: Path):
                         "document.documentElement.scrollWidth > innerWidth + 1"
                     )
                     assert not overflow, ("overflow", path, width)
-          header_overlap = page.evaluate("""() => {
-            const header = document.querySelector('header.sticky');
-            const brand = header.querySelector('button[aria-label="Ir para o painel"]');
-            const stats = header.lastElementChild;
-            const edge = stats.getBoundingClientRect().left;
-            return Array.from(brand.querySelectorAll('span')).some(el => {
-              const b = el.getBoundingClientRect();
-              return b.width > 0 && b.right > edge + 1;
-            });
-          }""")
-          assert not header_overlap, ("header overlap", path, width)
+                    header_overlap = page.evaluate('() => { const h=document.querySelector(\'header.sticky\'); const b=h.querySelector(\'button[aria-label="Ir para o painel"]\'); const x=h.lastElementChild.getBoundingClientRect().left; return Array.from(b.querySelectorAll(\'span\')).some(e => {const r=e.getBoundingClientRect(); return r.width>0 && r.right>x+1;}); }')
+                    assert not header_overlap, ("header overlap", path, width)
                     report["routes"].append(
                         {"path": path, "width": width, "title": title}
                     )
