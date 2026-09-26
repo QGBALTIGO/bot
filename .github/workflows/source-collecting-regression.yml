@@ -53,6 +53,10 @@ jobs:
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
         run: python scripts/verify_collecting_transactions.py collecting-proof/transactions.json
+      - name: Full production entrypoint with authenticated collecting actions
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/verify_collecting_entrypoint.py collecting-proof/entrypoint.json
       - name: Compiled collecting UI and guarded flows
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
