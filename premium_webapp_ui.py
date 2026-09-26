@@ -3327,7 +3327,7 @@ function collectionApi(path){{
   return "/api/collection/shared/" + path + separator + "share=" + encodeURIComponent(COLLECTION_SHARE);
 }}
 function collectionFetch(path, options){{
-  if (COLLECTION_SHARED) return fetchJson(collectionApi(path), options || {{}});
+  if (COLLECTION_SHARED) return authJson(collectionApi(path), options || {{}});
   return authJson(collectionApi(path), Object.assign({{ uid: COLLECTION_UID }}, options || {{}}));
 }}
 function collectionDisplayName(){{
@@ -3515,7 +3515,7 @@ if (COLLECTION_SHARED) {{
   collectionShareBtn.onclick = async function(){{
     try {{
       collectionShareBtn.disabled = true;
-      const response = await authJson("/api/collection/share", {{ uid: COLLECTION_UID, method: "POST", body: {{}} }});
+      const response = await authJson("/api/collection/share", {{ uid: COLLECTION_UID, method: "POST", json: {{}} }});
       if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Não foi possível compartilhar a coleção.");
       const publicUrl = window.location.origin + String(response.data.path || "");
       const shareUrl = "https://t.me/share/url?url=" + encodeURIComponent(publicUrl) + "&text=" + encodeURIComponent("Minha coleção no Source Baltigo");
