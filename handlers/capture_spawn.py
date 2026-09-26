@@ -24,6 +24,7 @@ from database import (
     set_capture_group_message_count,
 )
 from utils.runtime_guard import lock_manager
+from source_features.capture_groups import capture_group_settings
 
 
 SPAWN_EVERY = max(1, int(os.getenv("CAPTURE_SPAWN_EVERY", "75")))
@@ -419,6 +420,10 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
     chat_id = int(chat.id)
     should_spawn = False
+    group_settings = await asyncio.to_thread(capture_group_settings, chat_id, SPAWN_EVERY)
+    if not bool(group_settings.get("enabled")):
+        return
+    threshold = int(group_settings.get("message_threshold") or SPAWN_EVERY)
 
     lock = await lock_manager.acquire(f"capture:chat:{chat_id}")
     try:
@@ -432,7 +437,7 @@ async def capture_message_handler(update: Update, context: ContextTypes.DEFAULT_
         activity = await asyncio.to_thread(
             register_capture_group_activity,
             chat_id,
-            SPAWN_EVERY,
+            threshold,
         )
         should_spawn = bool(activity.get("should_spawn"))
     finally:
