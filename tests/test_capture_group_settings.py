@@ -9,6 +9,8 @@ import source_features.capture_groups as groups
 
 
 def test_capture_group_defaults(monkeypatch) -> None:
+    groups._CACHE.clear()
+    groups._ENSURED = False
     calls = []
     def fake_run(sql, params=(), fetch=None):
         calls.append((sql, params, fetch))
@@ -22,6 +24,8 @@ def test_capture_group_defaults(monkeypatch) -> None:
 
 
 def test_capture_group_saved_values(monkeypatch) -> None:
+    groups._CACHE.clear()
+    groups._ENSURED = False
     def fake_run(sql, params=(), fetch=None):
         if fetch == "one":
             return {"enabled": False, "message_threshold": 120}
