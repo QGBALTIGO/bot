@@ -114,3 +114,14 @@ def test_remaining_high_visibility_pages_are_native_portuguese():
         assert forbidden not in pets
     for forbidden in ("No Image", "PET ID:", "SYSTEM_SUPPORT_PERK", "Set Active", "Active Companion"):
         assert forbidden not in pet_modal
+
+
+def test_duel_miniapp_uses_canonical_repository_actions():
+    router = _read("webapp_routes/aninexus_bonds_duels.py")
+    page = _read("aninexus_frontend/src/pages/Duels.tsx")
+    assert '@router.get("/duels/active")' in router
+    assert '@router.post("/duels/{duel_id}/round")' in router
+    assert "get_active_duel_for_user" in router
+    assert "submit_round_choice" in router
+    assert "/duels/active" in page
+    assert "Sua escolha fica oculta" in page
