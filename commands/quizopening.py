@@ -133,18 +133,20 @@ async def opening_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not answer or not answer.user or not answer.option_ids:
         return
     store = context.application.bot_data.setdefault("opening_quizzes", {})
-    game = store.get(answer.poll_id)
-    if not game or game.get("closed"):
-        return
-    if int(answer.option_ids[0]) != int(game["correct"]):
-        return
-
-    game["closed"] = True
-    try:
-        await context.bot.stop_poll(chat_id=game["chat_id"], message_id=game["message_id"])
-    except Exception:
-        pass
-    progress = await asyncio.to_thread(add_progress_xp, int(answer.user.id), QUIZ_XP)
+    locks = context.application.bot_data.setdefault("opening_quiz_locks", {})
+    lock = locks.setdefault(answer.poll_id, asyncio.Lock())
+    async with lock:
+        game = store.get(answer.poll_id)
+        if not game or game.get("closed"):
+            return
+        if int(answer.option_ids[0]) != int(game["correct"]):
+            return
+        game["closed"] = True
+        try:
+            await context.bot.stop_poll(chat_id=game["chat_id"], message_id=game["message_id"])
+        except Exception:
+            pass
+        progress = await asyncio.to_thread(add_progress_xp, int(answer.user.id), QUIZ_XP)
     level = int((progress or {}).get("new_level") or 1)
     song = str(game.get("song") or "").strip()
     song_line = f"\n🎼 {song}" if song else ""
