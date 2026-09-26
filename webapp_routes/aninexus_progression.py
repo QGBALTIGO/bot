@@ -135,7 +135,7 @@ def _integration_quest_item(user_id: int) -> dict[str, Any]:
         "reward_xp": 0,
         "reward_shards": int(reward.get("coins") or 50),
         "reward_dados": int(reward.get("dados") or 1),
-        "progress": 1 if linked else 0,
+        "progress": 1 if (linked or bool(reward.get("claimed"))) else 0,
         "target": 1,
         "claimed": bool(reward.get("claimed")),
         "locked": False,
@@ -159,7 +159,7 @@ def build_aninexus_progression_router() -> APIRouter:
                 "description": "Conecte sua conta Source à sua conta AniNexus.",
                 "icon": "link",
                 "reward_xp": 0,
-                "unlocked": bool(integration.get("linked")),
+                "unlocked": bool(integration.get("linked")) or bool((integration.get("reward") or {}).get("claimed")),
             }
         ]
         values = {}
