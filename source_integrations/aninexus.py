@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from psycopg.rows import dict_row
 
 from cards_service import build_cards_final_data
-from database import get_level_progress_values, get_progress_row
+from database import DADO_MAX_BALANCE, get_level_progress_values, get_progress_row
 from database_core import pool
 from database_profile import get_profile_settings
 from utils.runtime_guard import rate_limiter
@@ -32,7 +32,6 @@ from webapp_routes.aninexus_compat import API_PREFIX, _require_user
 TOKEN_TTL_MINUTES = max(3, min(30, int(os.getenv("ANINEXUS_LINK_TTL_MINUTES", "10"))))
 LINK_REWARD_COINS = 50
 LINK_REWARD_DADOS = 1
-DADO_REWARD_CAP = 24
 ANINEXUS_ORIGIN = str(os.getenv("ANINEXUS_PUBLIC_ORIGIN") or "https://aninexus.com.br").rstrip("/")
 if not ANINEXUS_ORIGIN.startswith("https://"):
     raise RuntimeError("ANINEXUS_PUBLIC_ORIGIN precisa usar HTTPS.")
@@ -162,7 +161,7 @@ def _grant_link_reward_locked(cur, user_id: int) -> dict:
         raise HTTPException(404, "Conta Source não encontrada.")
 
     old_dado = max(0, int(user.get("dado_balance") or 0))
-    new_dado = min(DADO_REWARD_CAP, old_dado + LINK_REWARD_DADOS)
+    new_dado = min(DADO_MAX_BALANCE, old_dado + LINK_REWARD_DADOS)
     dados_applied = max(0, new_dado - old_dado)
     cur.execute(
         """
@@ -242,7 +241,7 @@ def _queue_reward_notice(user_id: int, reward: dict) -> None:
         dado_line = (
             f"🎲 <b>+{dados} Dado</b>"
             if dados > 0
-            else "🎲 <b>Dado:</b> seu saldo já estava no limite de 24"
+            else f"🎲 <b>Dado:</b> seu saldo já estava no limite de {DADO_MAX_BALANCE}"
         )
         enqueue_text(
             dedupe_key=f"aninexus-link-reward:{int(user_id)}",
