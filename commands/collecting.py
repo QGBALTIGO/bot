@@ -78,6 +78,10 @@ async def open_feature(update, context, key: str):
             )
             status_line = "🟢 <b>Status:</b> conectado"
             badge_line = "🏷 <b>Badge:</b> Source AniNexus"
+        elif reward.get("claimed"):
+            reward_line = "✅ <b>Recompensa:</b> já recebida nesta conta"
+            status_line = "⚪ <b>Status:</b> desconectado"
+            badge_line = "🏷 <b>Badge:</b> volte a conectar para exibi-lo no perfil"
         else:
             reward_line = "🎁 <b>Primeira conexão:</b> 50 Coins + 1 Dado"
             status_line = "⚪ <b>Status:</b> não conectado"
