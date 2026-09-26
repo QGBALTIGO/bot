@@ -70,6 +70,7 @@ from commands.capturar import (
     restore_capture_purchase_runtime,
 )
 from commands.spawn_personagem import spawn_personagem
+from commands.spawnconfig import spawnconfig
 
 from commands.trocar import (
     trocar,
@@ -238,6 +239,7 @@ def register_commands(app: Application):
     # gacha
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
+    app.add_handler(CommandHandler("spawnconfig", spawnconfig))
 
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
