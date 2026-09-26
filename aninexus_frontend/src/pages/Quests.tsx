@@ -20,6 +20,7 @@ interface Quest {
   icon: string;
   reward_xp: number;
   reward_shards: number;
+  reward_dados?: number;
   progress: number;
   target: number;
   claimed: boolean;
@@ -67,7 +68,7 @@ const QuestItem = ({ quest, onClaim, claiming }: QuestItemProps) => {
               {quest.description}
             </p>
           </div>
-          <div className="flex flex-col items-end shrink-0">
+          <div className="flex flex-col items-end shrink-0 gap-1">
             <div className="flex items-center gap-1.5 h-6 px-2 rounded bg-zinc-900 border border-white/5">
               <span className="text-[10px] font-mono font-bold text-zinc-100 leading-none">
                 {formatNumber(quest.reward_shards)}
@@ -76,9 +77,18 @@ const QuestItem = ({ quest, onClaim, claiming }: QuestItemProps) => {
                 Coins
               </span>
             </div>
-            <div className="text-[9px] font-mono font-bold text-zinc-600 uppercase mt-1 px-1">
-              +{quest.reward_xp} XP
-            </div>
+            {Boolean(quest.reward_dados) && (
+              <div className="h-6 px-2 rounded bg-violet-500/5 border border-violet-500/10 flex items-center">
+                <span className="text-[8px] font-bold text-violet-300 uppercase tracking-widest">
+                  +{quest.reward_dados} Dado
+                </span>
+              </div>
+            )}
+            {quest.reward_xp > 0 && (
+              <div className="text-[9px] font-mono font-bold text-zinc-600 uppercase px-1">
+                +{quest.reward_xp} XP
+              </div>
+            )}
           </div>
         </div>
 
@@ -118,6 +128,7 @@ const QuestItem = ({ quest, onClaim, claiming }: QuestItemProps) => {
 };
 
 interface QuestsResponse {
+  special?: Quest[];
   daily: Quest[];
   weekly: Quest[];
   pass: Quest[];
@@ -140,7 +151,10 @@ export const Quests = () => {
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     try {
       const res = await apiFetch(`/quests/claim/${questId}`, { method: 'POST' });
-      addToast(`Missão concluída: +${res.reward_shards} Coins`, 'success');
+      addToast(
+        `Missão concluída: +${res.reward_shards} Coins${res.reward_dados ? ` + ${res.reward_dados} Dado` : ''}`,
+        'success',
+      );
       triggerRefresh();
       fetchQuests().catch(() => undefined);
     } catch (err: any) {
@@ -207,6 +221,7 @@ export const Quests = () => {
       </header>
 
       <div className="space-y-10">
+        {renderQuestSection('INTEGRAÇÃO', questsData?.special || [])}
         {renderQuestSection('MISSÕES DIÁRIAS', questsData?.daily || [])}
         {renderQuestSection('MISSÕES SEMANAIS', questsData?.weekly || [])}
         {renderQuestSection('TEMPORADA', questsData?.pass || [])}

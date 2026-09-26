@@ -89,7 +89,7 @@ def main():
 
     def migration_is_repeatable():
         migrate(); migrate()
-        assert one("SELECT COUNT(*) n FROM source_feature_migrations WHERE version IN ('001_collecting','002_aninexus_link')")["n"] == 2
+        assert one("SELECT COUNT(*) n FROM source_feature_migrations WHERE version IN ('001_collecting','002_aninexus_link','003_aninexus_rewards')")["n"] == 3
         assert one("SELECT to_regclass('public.source_aninexus_links') linked")["linked"] == "source_aninexus_links"
     check("migration_is_repeatable", migration_is_repeatable)
 
@@ -119,7 +119,21 @@ def main():
         assert result["sourceSubject"].startswith("src_") and len(result["sourceSubject"]) == 68
         assert str(uid) not in result["sourceSubject"]
         holder["subject"] = result["sourceSubject"]
-        assert result["profile"]["stats"]["coins"] == 321
+        assert result["profile"]["stats"]["coins"] == 371
+        assert result["reward"]["newlyGranted"] is True
+        assert result["reward"]["coinsGranted"] == 50
+        assert result["reward"]["dadosGranted"] == 1
+        status = aninexus.link_status(uid)
+        assert status["reward"]["claimed"] is True
+        assert status["reward"]["available"] is False
+        assert one("SELECT coins FROM users WHERE user_id=%s", (uid,))["coins"] == 371
+        assert one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"] == 5
+        assert one("SELECT COUNT(*) n FROM shop_transactions WHERE user_id=%s AND type='aninexus_link_reward'", (uid,))["n"] == 1
+        notice = one("SELECT kind,status,caption FROM telegram_outbox WHERE dedupe_key=%s", (f"aninexus-link-reward:{uid}",))
+        assert notice["kind"] == "text"
+        assert notice["status"] == "pending"
+        assert "Source AniNexus conectado" in notice["caption"]
+        assert "+50 Coins" in notice["caption"]
         assert result["profile"]["stats"]["uniqueCharacters"] >= 1
         assert "user_id" not in json.dumps(result["profile"]).lower()
         assert aninexus.snapshot_for_link(link_id)["username"] == "source_fixture"
@@ -144,6 +158,10 @@ def main():
         assert result["sourceSubject"] == holder["subject"]
         expect_http(404, lambda: aninexus.snapshot_for_link(holder["old"]))
         assert aninexus.snapshot_for_link(new_id)["stats"]["totalCharacters"] >= 3
+        assert result["reward"]["newlyGranted"] is False
+        assert one("SELECT coins FROM users WHERE user_id=%s", (uid,))["coins"] == 371
+        assert one("SELECT COUNT(*) n FROM shop_transactions WHERE user_id=%s AND type='aninexus_link_reward'", (uid,))["n"] == 1
+        assert one("SELECT COUNT(*) n FROM telegram_outbox WHERE dedupe_key=%s", (f"aninexus-link-reward:{uid}",))["n"] == 1
         holder["new"] = new_id
         holder["revoke"] = result["revokeToken"]
     check("relink_rotates_opaque_id_and_invalidates_old_link", relink_rotates_opaque_id_and_invalidates_old_link)
@@ -155,7 +173,10 @@ def main():
 
     def correct_revoke_secret_unlinks():
         assert aninexus.revoke_link(holder["new"], holder["revoke"]) is True
-        assert aninexus.link_status(uid)["linked"] is False
+        status = aninexus.link_status(uid)
+        assert status["linked"] is False
+        assert status["reward"]["claimed"] is True
+        assert status["reward"]["available"] is False
         expect_http(404, lambda: aninexus.snapshot_for_link(holder["new"]))
     check("correct_revoke_secret_unlinks", correct_revoke_secret_unlinks)
 
@@ -181,6 +202,77 @@ def main():
         assert aninexus.revoke_link(UUID(linked["linkId"]), linked["revokeToken"]) is True
         expect_http(410, lambda: aninexus.consume_link_token(pending))
     check("remote_disconnect_invalidates_pending_reconnect", remote_disconnect_invalidates_pending_reconnect)
+
+    def existing_link_can_claim_reward_once():
+        legacy_uid, _ = make_user()
+        link_id = uuid4()
+        revoke_token = "legacy-revoke-token-" + uuid4().hex
+        run(
+            """
+            INSERT INTO source_aninexus_links(user_id,link_id,revoke_hash,linked_at,updated_at,revoked_at)
+            VALUES(%s,%s,%s,NOW(),NOW(),NULL)
+            ON CONFLICT(user_id) DO UPDATE SET
+              link_id=EXCLUDED.link_id,revoke_hash=EXCLUDED.revoke_hash,
+              linked_at=NOW(),updated_at=NOW(),revoked_at=NULL,
+              reward_claimed_at=NULL,reward_coins=0,reward_dados=0
+            """,
+            (legacy_uid, link_id, hashlib.sha256(revoke_token.encode()).hexdigest()),
+        )
+        before = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (legacy_uid,))
+        first = aninexus.claim_link_reward(legacy_uid)
+        second = aninexus.claim_link_reward(legacy_uid)
+        after = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (legacy_uid,))
+        assert first["newlyGranted"] is True
+        assert second["newlyGranted"] is False
+        assert int(after["coins"]) - int(before["coins"]) == 50
+        assert int(after["dado_balance"]) - int(before["dado_balance"]) == 1
+        assert one("SELECT COUNT(*) n FROM shop_transactions WHERE user_id=%s AND type='aninexus_link_reward'", (legacy_uid,))["n"] == 1
+    check("existing_link_can_claim_reward_once", existing_link_can_claim_reward_once)
+
+    def full_dado_balance_never_overflows_cap():
+        full_uid, _ = make_user()
+        run("UPDATE users SET dado_balance=24 WHERE user_id=%s", (full_uid,))
+        token = token_from(aninexus.create_link_token(full_uid))
+        linked = aninexus.consume_link_token(token)
+        assert linked["reward"]["coinsGranted"] == 50
+        assert linked["reward"]["dadosGranted"] == 0
+        balances = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (full_uid,))
+        assert int(balances["coins"]) == 371
+        assert int(balances["dado_balance"]) == 24
+    check("full_dado_balance_never_overflows_cap", full_dado_balance_never_overflows_cap)
+
+    def reward_cannot_be_farmed_by_recreating_source_account():
+        farm_uid, _ = make_user()
+        first_token = token_from(aninexus.create_link_token(farm_uid))
+        first = aninexus.consume_link_token(first_token)
+        subject = first["sourceSubject"]
+        assert first["reward"]["newlyGranted"] is True
+        assert one("SELECT COUNT(*) n FROM source_aninexus_reward_claims WHERE source_subject=%s", (subject,))["n"] == 1
+
+        # Simulate account recreation while intentionally preserving the opaque
+        # anti-abuse marker. No Telegram id is stored in that durable ledger.
+        run("DELETE FROM source_aninexus_link_tokens WHERE user_id=%s", (farm_uid,))
+        run("DELETE FROM source_aninexus_links WHERE user_id=%s", (farm_uid,))
+        run("DELETE FROM user_progress WHERE user_id=%s", (farm_uid,))
+        run("DELETE FROM user_card_collection WHERE user_id=%s", (farm_uid,))
+        run("DELETE FROM users WHERE user_id=%s", (farm_uid,))
+        db.create_or_get_user(farm_uid)
+        run("UPDATE users SET coins=0,dado_balance=4 WHERE user_id=%s", (farm_uid,))
+        recreated_status = aninexus.link_status(farm_uid)
+        assert recreated_status["linked"] is False
+        assert recreated_status["reward"]["claimed"] is True
+        assert recreated_status["reward"]["available"] is False
+
+        second_token = token_from(aninexus.create_link_token(farm_uid))
+        second = aninexus.consume_link_token(second_token)
+        balances = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (farm_uid,))
+        assert second["sourceSubject"] == subject
+        assert second["reward"]["newlyGranted"] is False
+        assert second["reward"]["claimed"] is True
+        assert int(balances["coins"]) == 0
+        assert int(balances["dado_balance"]) == 4
+        assert one("SELECT COUNT(*) n FROM source_aninexus_reward_claims WHERE source_subject=%s", (subject,))["n"] == 1
+    check("reward_cannot_be_farmed_by_recreating_source_account", reward_cannot_be_farmed_by_recreating_source_account)
 
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "aninexus-bridge.json")
     out.parent.mkdir(parents=True, exist_ok=True)

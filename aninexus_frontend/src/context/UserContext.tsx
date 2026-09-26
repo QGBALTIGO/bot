@@ -126,6 +126,19 @@ export interface User {
   } | null;
   role_perks?: Record<string, number>;
   role_benefits?: string[];
+  integrations?: {
+    aninexus?: {
+      linked: boolean;
+      linkedAt?: string | null;
+      badge?: string | null;
+      reward?: {
+        claimed: boolean;
+        available: boolean;
+        coins?: number;
+        dados?: number;
+      };
+    };
+  };
   balance: number;
   zenith: number;
   stats: UserStats;

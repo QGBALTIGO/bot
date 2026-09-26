@@ -30,6 +30,7 @@ ENTRIES = {
     "agora": ("activity", "Disponível agora", {}),
     "ajuda": ("help", "Central de ajuda", {}),
     "identificar": ("identify", "Identificar uma cena", {}),
+    "aninexus": ("settings", "Source AniNexus", {"section": "aninexus"}),
 }
 
 
@@ -62,6 +63,47 @@ async def open_feature(update, context, key: str):
         if notice:
             await message.reply_html(notice)
         return
+
+    if key == "aninexus":
+        from source_integrations.aninexus import link_status
+
+        state = await asyncio.to_thread(link_status, int(update.effective_user.id))
+        reward = dict(state.get("reward") or {})
+        linked = bool(state.get("linked"))
+        if linked:
+            reward_line = (
+                "✅ <b>Recompensa recebida</b>"
+                if reward.get("claimed")
+                else "🎁 <b>Recompensa disponível:</b> 50 Coins + 1 Dado"
+            )
+            status_line = "🟢 <b>Status:</b> conectado"
+            badge_line = "🏷 <b>Badge:</b> Source AniNexus"
+        elif reward.get("claimed"):
+            reward_line = "✅ <b>Recompensa:</b> já recebida nesta conta"
+            status_line = "⚪ <b>Status:</b> desconectado"
+            badge_line = "🏷 <b>Badge:</b> volte a conectar para exibi-lo no perfil"
+        else:
+            reward_line = "🎁 <b>Primeira conexão:</b> 50 Coins + 1 Dado"
+            status_line = "⚪ <b>Status:</b> não conectado"
+            badge_line = "🏷 <b>Badge:</b> liberado após conectar"
+
+        await message.reply_html(
+            "<b>Source AniNexus</b>\n\n"
+            f"{status_line}\n"
+            f"{reward_line}\n"
+            f"{badge_line}\n\n"
+            "A conexão sincroniza seu perfil Source com o AniNexus e libera missões e benefícios integrados.",
+            reply_markup=InlineKeyboardMarkup(
+                [[
+                    InlineKeyboardButton(
+                        "Gerenciar Source AniNexus",
+                        web_app=WebAppInfo(url=miniapp_url("settings", section="aninexus")),
+                    )
+                ]]
+            ),
+        )
+        return
+
     await message.reply_html(
         f"<b>{html.escape(title)}</b>\n\nUse sua coleção e suas preferências no aplicativo único do Source. Nenhuma operação é feita sem sua confirmação.",
         reply_markup=InlineKeyboardMarkup(
