@@ -11,6 +11,7 @@ from telegram.ext import (
     InlineQueryHandler,
     CommandHandler,
     MessageHandler,
+    PollAnswerHandler,
     filters,
 )
 
@@ -71,6 +72,7 @@ from commands.capturar import (
 )
 from commands.spawn_personagem import spawn_personagem
 from commands.spawnconfig import spawnconfig
+from commands.quizopening import quizopening, opening_poll_answer
 
 from commands.trocar import (
     trocar,
@@ -240,6 +242,7 @@ def register_commands(app: Application):
     app.add_handler(CommandHandler("capturar", capturar))
     app.add_handler(CommandHandler("spawnpersonagem", spawn_personagem))
     app.add_handler(CommandHandler("spawnconfig", spawnconfig))
+    app.add_handler(CommandHandler("quizopening", quizopening))
 
     # troca
     app.add_handler(CommandHandler("trocar", trocar))
@@ -324,6 +327,7 @@ def register_callbacks(app: Application):
 # =========================================================
 
 def register_messages(app: Application):
+    app.add_handler(PollAnswerHandler(opening_poll_answer), group=0)
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, termo_guess),
         group=1,
