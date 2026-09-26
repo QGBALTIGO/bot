@@ -98,12 +98,9 @@ def build_collection_router(*, banner_url: str) -> APIRouter:
             x_telegram_init_data=x_telegram_init_data, uid=uid, x_webapp_uid=x_webapp_uid
         )
         user_id = int(ctx["user_id"])
-        from source_features.collection import settings
-        if not bool(settings(user_id).get("share_inline")):
-            return JSONResponse(
-                {"ok": False, "message": "Ative o compartilhamento da coleção nas configurações."},
-                status_code=403,
-            )
+        from source_features.collection import save_settings
+        # Clicking Share is the explicit opt-in. The existing setting remains the revocation switch.
+        save_settings(user_id, {"share_inline": True})
         token = create_collection_share_token(user_id)
         return JSONResponse({
             "ok": True,
