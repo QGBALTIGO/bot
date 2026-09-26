@@ -72,10 +72,29 @@ jobs:
                       )
                   print(f"catalog_ok anime={query!r} id={expected_id} characters={total}")
 
+          def require_collecting_dispatch(client):
+              # No credentials or user identity: every probe must be rejected before
+              # business logic. The actor's detail differs from the legacy fallback.
+              # A 401 alone was insufficient to detect the previous routing bug.
+              placeholder = "00000000-0000-4000-8000-000000000001"
+              probes = [("PATCH", "/settings")] + [("POST", path) for path in (
+                  "/wishes", "/wishes/work/1", "/workshop/preview",
+                  "/workshop/recycle", "/workshop/craft", "/daily/claim",
+                  "/daily/milestone", "/market", f"/market/{placeholder}/action",
+                  f"/market/{placeholder}/settle", "/events",
+                  f"/events/{placeholder}/publish", f"/events/{placeholder}/contribute",
+                  f"/events/{placeholder}/claim", "/identify",
+              )]
+              for method, path in probes:
+                  response = client.request(method, base + "/api/v1_7b82/collecting" + path, json={})
+                  if response.status_code != 401 or response.json() != {"detail": "Sessão expirada. Reabra a MiniApp."}:
+                      raise RuntimeError(f"collecting_dispatch_{method}_{path}_http_{response.status_code}")
+                  print(f"collecting_auth_guard_ok method={method} path={path} status=401")
+
           with httpx.Client(
               timeout=15.0,
               follow_redirects=True,
-              headers={"User-Agent": "SourceBaltigo-Production-Smoke/3.0"},
+              headers={"User-Agent": "SourceBaltigo-Production-Smoke/4.0"},
           ) as client:
               for attempt in range(1, 25):
                   try:
@@ -95,6 +114,7 @@ jobs:
                           if root.status_code != 200:
                               raise RuntimeError(f"root_http_{root.status_code}")
                           require_catalog(client)
+                          require_collecting_dispatch(client)
                           print("Production smoke passed")
                           raise SystemExit(0)
 
