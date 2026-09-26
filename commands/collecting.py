@@ -87,6 +87,17 @@ async def start_feature(update, context, payload: str) -> bool:
     if payload.startswith("source_") and payload[7:] in ENTRIES:
         await open_feature(update, context, payload[7:])
         return True
+    if payload.startswith("sourcecollection_"):
+        token = payload[len("sourcecollection_"):].strip()
+        from utils.collection_share import verify_collection_share_token
+        if verify_collection_share_token(token) and update.effective_message:
+            await update.effective_message.reply_html(
+                "📚 <b>Coleção compartilhada</b>\n\nAbra o álbum dentro da MiniApp do Source.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("Abrir coleção", web_app=WebAppInfo(url=miniapp_url("album", share=token)))]]
+                ),
+            )
+            return True
     if payload.startswith("sourcecard_") and payload[11:].isdigit():
         from cards_service import get_character_by_id
 
@@ -143,12 +154,12 @@ async def inline_showcase(update, context):
             from utils.collection_share import create_collection_share_token
             await asyncio.to_thread(save_settings, int(query.from_user.id), {"share_inline": True})
             token = create_collection_share_token(int(query.from_user.id))
-            shared_url = miniapp_entrypoint().removesuffix("/menu") + "/cccolecao/shared?share=" + token
+            shared_url = private_url("sourcecollection_" + token)
             results.append(
                 InlineQueryResultArticle(
                     id="collection-full",
                     title="Compartilhar minha coleção completa",
-                    description="Abre seu álbum no WebApp em modo somente leitura",
+                    description="Abre o álbum dentro da MiniApp do Source",
                     input_message_content=InputTextMessageContent(
                         "📚 <b>Minha coleção no Source</b>\n\nAbra o álbum completo pelo botão abaixo.",
                         parse_mode="HTML",
