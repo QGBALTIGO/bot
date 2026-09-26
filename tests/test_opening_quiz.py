@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("DATABASE_URL", "postgresql://source:source@127.0.0.1:9/source")
+
 from commands.quizopening import _parse_theme
 
 
