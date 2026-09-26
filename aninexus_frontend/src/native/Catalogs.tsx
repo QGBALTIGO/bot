@@ -91,7 +91,7 @@ export function Catalog({ manga = false }: { manga?: boolean }) {
             src={item.cover_url}
             title={item.titulo}
             subtitle={[item.format, item.year].filter(Boolean).join(' · ')}
-            onClick={() => { if (!shared) setSelected(item); }}
+            onClick={() => setSelected(item)}
           />
         ))}
       </PosterGrid>
@@ -429,7 +429,7 @@ export function Album() {
                 src={item.image}
                 title={item.name}
                 subtitle={`${item.quantity || 0} cópia(s) · ${item.anime || ''}`}
-                onClick={() => setSelected(item)}
+                onClick={() => { if (!shared) setSelected(item); }}
               />
             ),
           )}
