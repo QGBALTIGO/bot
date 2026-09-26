@@ -13,6 +13,8 @@ from database import add_progress_xp
 
 API = "https://api.animethemes.moe/anime"
 AUDIO = "https://a.animethemes.moe/"
+MUSIC_FALLBACK_API = "https://anime-music.jijidown.com/api/v2/music"
+_THEME_CACHE: list[dict[str, str]] = []
 QUIZ_XP = 5
 
 
@@ -63,6 +65,64 @@ async def _theme_for(anilist_id: int) -> dict[str, str] | None:
         return _parse_theme(response.json())
 
 
+async def _fallback_random_theme() -> tuple[dict[str, Any], dict[str, str]] | None:
+    """Independent provider used only when AnimeThemes is unavailable."""
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        response = await client.get(MUSIC_FALLBACK_API, params={"recommend": "true"})
+        response.raise_for_status()
+        body = response.json()
+    item = dict(body.get("res") or {})
+    anime_info = dict(item.get("anime_info") or {})
+    anime_title = str(anime_info.get("title") or "").strip()
+    play_url = str(item.get("play_url") or "").strip()
+    if not anime_title or not play_url.startswith(("https://", "http://")):
+        return None
+    return (
+        {"anime": anime_title, "anime_id": 0},
+        {"audio": play_url, "type": str(item.get("type") or "OP"), "song": str(item.get("title") or "")},
+    )
+
+
+async def _media_works(url: str) -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+            response = await client.get(url, headers={"Range": "bytes=0-2047"})
+            return response.status_code in {200, 206} and len(response.content) > 128
+    except Exception:
+        return False
+
+
+async def _pick_playable_theme(catalog: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, str]] | None:
+    random.shuffle(_THEME_CACHE)
+    for cached in list(_THEME_CACHE):
+        if await _media_works(cached["audio"]):
+            return ({"anime": cached["anime"], "anime_id": int(cached.get("anime_id") or 0)}, cached)
+        _THEME_CACHE.remove(cached)
+
+    candidates = random.sample(catalog, min(18, len(catalog)))
+    for anime in candidates:
+        anime_id = int(anime.get("anime_id") or 0)
+        if anime_id <= 0:
+            continue
+        try:
+            theme = await _theme_for(anime_id)
+        except Exception:
+            continue
+        if theme and await _media_works(theme["audio"]):
+            cached = {**theme, "anime": str(anime.get("anime") or ""), "anime_id": anime_id}
+            _THEME_CACHE.append(cached)
+            del _THEME_CACHE[:-50]
+            return anime, theme
+
+    try:
+        fallback = await _fallback_random_theme()
+    except Exception:
+        fallback = None
+    if fallback and await _media_works(fallback[1]["audio"]):
+        return fallback
+    return None
+
+
 async def quizopening(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message, chat = update.effective_message, update.effective_chat
     if not message or not chat or chat.type not in ("group", "supergroup"):
@@ -75,23 +135,11 @@ async def quizopening(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await message.reply_text("O catálogo ainda não tem obras suficientes para este quiz.")
         return
 
-    candidates = random.sample(catalog, min(12, len(catalog)))
-    chosen = theme = None
-    for anime in candidates:
-        anime_id = int(anime.get("id") or anime.get("anime_id") or 0)
-        if anime_id <= 0:
-            continue
-        try:
-            theme = await _theme_for(anime_id)
-        except Exception:
-            continue
-        if theme:
-            chosen = anime
-            break
-
-    if not chosen or not theme:
-        await message.reply_text("Não consegui preparar uma abertura agora. A fonte musical está indisponível; tente novamente depois.")
+    prepared = await _pick_playable_theme(catalog)
+    if not prepared:
+        await message.reply_text("Não encontrei uma faixa reproduzível agora. Tente novamente em alguns instantes.")
         return
+    chosen, theme = prepared
 
     correct = str(chosen.get("anime") or "").strip()
     distractors = [str(x.get("anime") or "").strip() for x in catalog if str(x.get("anime") or "").strip() and str(x.get("anime") or "").strip() != correct]
