@@ -15,6 +15,12 @@ from database_aninexus_bonds import (
     respond_bond_invite,
 )
 from database_core import pool
+from duel_repository import (
+    confirm_surrender,
+    get_active_duel_for_user,
+    set_surrender_pending,
+    submit_round_choice,
+)
 from webapp_routes.aninexus_compat import API_PREFIX
 from webapp_routes.aninexus_social import _auth, _name_for_user
 
@@ -214,6 +220,57 @@ def build_aninexus_bonds_duels_router() -> APIRouter:
         return JSONResponse(
             {"error": {"code": "bond_not_found", "message": "Você não possui um vínculo ativo."}},
             status_code=404,
+        )
+
+    @router.get("/duels/active")
+    def duel_active(authorization: str = Header(default="")):
+        user, error = _auth(authorization)
+        if error:
+            return error
+        assert user is not None
+        duel = get_active_duel_for_user(int(user.get("id") or 0))
+        return JSONResponse({"active": bool(duel), "duel": duel})
+
+    @router.post("/duels/{duel_id}/round")
+    def duel_round(
+        duel_id: int,
+        payload: dict = Body(default={}),
+        authorization: str = Header(default=""),
+    ):
+        user, error = _auth(authorization)
+        if error:
+            return error
+        assert user is not None
+        try:
+            slot = int((payload or {}).get("slot") or 0)
+        except (TypeError, ValueError):
+            slot = 0
+        result = submit_round_choice(int(duel_id), int(user.get("id") or 0), slot, 90)
+        if result.get("ok"):
+            return JSONResponse(result)
+        return JSONResponse(
+            {"error": {"code": str(result.get("error") or "duel_action_failed"), "message": "Não foi possível registrar essa jogada."}},
+            status_code=409,
+        )
+
+    @router.post("/duels/{duel_id}/surrender")
+    def duel_surrender(
+        duel_id: int,
+        payload: dict = Body(default={}),
+        authorization: str = Header(default=""),
+    ):
+        user, error = _auth(authorization)
+        if error:
+            return error
+        assert user is not None
+        user_id = int(user.get("id") or 0)
+        confirmed = bool((payload or {}).get("confirm"))
+        result = confirm_surrender(int(duel_id), user_id) if confirmed else set_surrender_pending(int(duel_id), user_id, True)
+        if result.get("ok"):
+            return JSONResponse(result)
+        return JSONResponse(
+            {"error": {"code": str(result.get("error") or "duel_action_failed"), "message": "Não foi possível concluir essa ação."}},
+            status_code=409,
         )
 
     @router.get("/duels/history")
