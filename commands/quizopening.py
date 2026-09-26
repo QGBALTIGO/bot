@@ -18,7 +18,11 @@ QUIZ_XP = 5
 
 def _catalog() -> list[dict[str, Any]]:
     data = build_cards_final_data()
-    return [dict(x) for x in (data.get("animes_by_id") or {}).values() if x.get("anime")]
+    return [
+        {**dict(meta), "anime_id": int(anime_id)}
+        for anime_id, meta in (data.get("animes_by_id") or {}).items()
+        if (meta or {}).get("anime")
+    ]
 
 
 def _parse_theme(payload: dict[str, Any]) -> dict[str, str] | None:
