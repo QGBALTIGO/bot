@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from database import get_dado_state, get_user_level_rank
 from database_aninexus_pets import get_companion_overview
 from level_system import get_rank_tag
+from source_integrations.aninexus import link_status as get_aninexus_link_status
 from utils.aninexus_admin import is_admin, is_owner
 from webapp_routes.aninexus_compat import (
     API_PREFIX,
@@ -65,6 +66,9 @@ def build_aninexus_me_router() -> APIRouter:
         payload["pets"] = pets
         payload["current_pet"] = active_pet
         payload["eggs"] = eggs
+        payload["integrations"] = {
+            "aninexus": get_aninexus_link_status(user_id),
+        }
 
         stats["points"] = int(payload.get("balance") or 0)
         stats["zenith"] = dado_balance

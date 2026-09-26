@@ -52,6 +52,36 @@ def ensure_telegram_outbox_tables() -> None:
         _TABLES_READY = True
 
 
+def enqueue_text(
+    *,
+    dedupe_key: str,
+    chat_id: int,
+    text: str,
+    parse_mode: str = "HTML",
+) -> bool:
+    ensure_telegram_outbox_tables()
+    key = str(dedupe_key or "").strip()
+    body = str(text or "").strip()
+    if not key or int(chat_id) <= 0 or not body:
+        return False
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO telegram_outbox
+                    (dedupe_key, chat_id, kind, caption, parse_mode)
+                VALUES (%s, %s, 'text', %s, %s)
+                ON CONFLICT (dedupe_key) DO NOTHING
+                RETURNING id
+                """,
+                (key, int(chat_id), body, str(parse_mode or "HTML")),
+            )
+            inserted = cur.fetchone()
+        conn.commit()
+    return bool(inserted)
+
+
 def enqueue_photo(
     *,
     dedupe_key: str,
@@ -200,15 +230,23 @@ async def telegram_outbox_worker(app) -> None:
                 outbox_id = int(row["id"])
                 attempts = int(row.get("attempts") or 0) + 1
                 try:
-                    if str(row.get("kind") or "") != "photo":
+                    kind = str(row.get("kind") or "")
+                    if kind == "photo":
+                        await app.bot.send_photo(
+                            chat_id=int(row["chat_id"]),
+                            photo=str(row.get("photo") or ""),
+                            caption=str(row.get("caption") or ""),
+                            parse_mode=str(row.get("parse_mode") or "HTML"),
+                        )
+                    elif kind == "text":
+                        await app.bot.send_message(
+                            chat_id=int(row["chat_id"]),
+                            text=str(row.get("caption") or ""),
+                            parse_mode=str(row.get("parse_mode") or "HTML"),
+                            disable_web_page_preview=True,
+                        )
+                    else:
                         raise RuntimeError("unsupported_outbox_kind")
-
-                    await app.bot.send_photo(
-                        chat_id=int(row["chat_id"]),
-                        photo=str(row.get("photo") or ""),
-                        caption=str(row.get("caption") or ""),
-                        parse_mode=str(row.get("parse_mode") or "HTML"),
-                    )
                     await asyncio.to_thread(_mark_sent, outbox_id)
                 except RetryAfter as exc:
                     await asyncio.to_thread(

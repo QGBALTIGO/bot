@@ -1,5 +1,5 @@
 import { useFeatureQuery } from '../features/collecting/api';
-import { Crown, Pencil, Ticket } from 'lucide-react';
+import { Crown, Link2, Pencil, Ticket } from 'lucide-react';
 import type { User } from '../context/UserContext';
 import { navigateNative } from '../native/navigation';
 import { Avatar } from './Avatar';
@@ -70,6 +70,11 @@ export function ProfileIdentity({ user }: { user: User }) {
         {appearance.data?.label && <p className="text-[10px] text-brand-accent font-bold break-words">{appearance.data.label}</p>}
         <div data-profile-badges className="flex flex-wrap items-center gap-2 min-w-0 [&>span]:max-w-full [&>span]:whitespace-normal [&>span]:[overflow-wrap:anywhere]">
           {user.role_tag && <Badge variant="primary" size="xs">{user.role_tag}</Badge>}
+          {user.integrations?.aninexus?.linked && (
+            <Badge variant="primary" size="xs" icon={Link2}>
+              SOURCE ANINEXUS
+            </Badge>
+          )}
           <Badge variant="epic" size="xs" icon={Crown}>
             {user.titles?.current || 'USUÁRIO'}
           </Badge>

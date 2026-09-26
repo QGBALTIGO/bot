@@ -20,6 +20,7 @@ from database_aninexus_progression_source import (
     source_level_progress,
 )
 from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
+from source_integrations.aninexus import claim_link_reward, link_status
 
 
 QUESTS: dict[str, dict[str, Any]] = {
@@ -122,6 +123,25 @@ def _quest_item(user_id: int, quest_id: str, definition: dict[str, Any]) -> dict
     }
 
 
+def _integration_quest_item(user_id: int) -> dict[str, Any]:
+    status = link_status(user_id)
+    reward = dict(status.get("reward") or {})
+    linked = bool(status.get("linked"))
+    return {
+        "id": "connect_aninexus",
+        "name": "Conectar ao AniNexus",
+        "description": "Vincule sua conta Source à sua conta AniNexus.",
+        "icon": "link",
+        "reward_xp": 0,
+        "reward_shards": int(reward.get("coins") or 50),
+        "reward_dados": int(reward.get("dados") or 1),
+        "progress": 1 if linked else 0,
+        "target": 1,
+        "claimed": bool(reward.get("claimed")),
+        "locked": False,
+    }
+
+
 def build_aninexus_progression_router() -> APIRouter:
     router = APIRouter(prefix=API_PREFIX, tags=["aninexus-progression"])
 
@@ -131,7 +151,17 @@ def build_aninexus_progression_router() -> APIRouter:
             return error
         assert session_user is not None
         user_id = int(session_user.get("id") or 0)
-        out = []
+        integration = link_status(user_id)
+        out = [
+            {
+                "id": "connected_aninexus",
+                "name": "Source AniNexus",
+                "description": "Conecte sua conta Source à sua conta AniNexus.",
+                "icon": "link",
+                "reward_xp": 0,
+                "unlocked": bool(integration.get("linked")),
+            }
+        ]
         values = {}
         for achievement_id, name, description, metric, target in ACHIEVEMENTS:
             if metric not in values:
@@ -165,13 +195,36 @@ def build_aninexus_progression_router() -> APIRouter:
             for quest_id, definition in QUESTS.items()
             if definition["period"] == "weekly"
         ]
-        return JSONResponse({"daily": daily, "weekly": weekly, "pass": [], "pass_type": "free"})
+        return JSONResponse({
+            "special": [_integration_quest_item(user_id)],
+            "daily": daily,
+            "weekly": weekly,
+            "pass": [],
+            "pass_type": "free",
+        })
 
     def claim_quest_endpoint(quest_id: str, authorization: str = Header(default="")):
         session_user, error = _auth(authorization)
         if error:
             return error
         assert session_user is not None
+        if str(quest_id) == "connect_aninexus":
+            try:
+                result = claim_link_reward(int(session_user.get("id") or 0))
+            except Exception as exc:
+                from fastapi import HTTPException
+                if isinstance(exc, HTTPException):
+                    return _error("integration_not_linked", str(exc.detail), exc.status_code)
+                raise
+            if not result.get("newlyGranted"):
+                return _error("already_claimed", "Esta recompensa já foi resgatada.", 409)
+            return JSONResponse({
+                "success": True,
+                "reward_xp": 0,
+                "reward_shards": int(result.get("coinsGranted") or 50),
+                "reward_dados": int(result.get("dadosGranted") or 0),
+            })
+
         definition = QUESTS.get(str(quest_id))
         if not definition:
             return _error("quest_not_found", "Missão não encontrada.", 404)

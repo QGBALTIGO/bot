@@ -149,6 +149,7 @@ with TestClient(TraceEndpoint(), raise_server_exceptions=True) as client:
         probes = [
             ("GET", "/api/v1_7b82/integrations/aninexus/status", None, 401, "status"),
             ("POST", "/api/v1_7b82/integrations/aninexus/link-token", {}, 401, "link_token"),
+            ("POST", "/api/v1_7b82/integrations/aninexus/reward", {}, 401, "reward"),
             ("DELETE", "/api/v1_7b82/integrations/aninexus/link", None, 401, "unlink"),
             ("POST", "/api/integrations/aninexus/consume", {"token": "invalid-single-use-token-for-entrypoint-regression"}, 410, "consume"),
             ("GET", "/api/integrations/aninexus/profile/00000000-0000-4000-8000-000000000001", None, 404, "profile"),

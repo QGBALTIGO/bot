@@ -108,6 +108,7 @@ def _install_runtime_routes() -> None:
     aninexus_integration_paths = {
         "/api/v1_7b82/integrations/aninexus/status",
         "/api/v1_7b82/integrations/aninexus/link-token",
+        "/api/v1_7b82/integrations/aninexus/reward",
         "/api/v1_7b82/integrations/aninexus/link",
         "/api/integrations/aninexus/consume",
         "/api/integrations/aninexus/profile/{link_id}",

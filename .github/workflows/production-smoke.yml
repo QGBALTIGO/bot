@@ -95,6 +95,7 @@ jobs:
               private_probes = [
                   ("GET", "/api/v1_7b82/integrations/aninexus/status"),
                   ("POST", "/api/v1_7b82/integrations/aninexus/link-token"),
+                  ("POST", "/api/v1_7b82/integrations/aninexus/reward"),
               ]
               for method, path in private_probes:
                   response = client.request(method, base + path, json={} if method == "POST" else None)

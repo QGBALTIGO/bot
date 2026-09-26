@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -29,6 +30,9 @@ from webapp_routes.aninexus_compat import API_PREFIX, _require_user
 
 
 TOKEN_TTL_MINUTES = max(3, min(30, int(os.getenv("ANINEXUS_LINK_TTL_MINUTES", "10"))))
+LINK_REWARD_COINS = 50
+LINK_REWARD_DADOS = 1
+DADO_REWARD_CAP = 24
 ANINEXUS_ORIGIN = str(os.getenv("ANINEXUS_PUBLIC_ORIGIN") or "https://aninexus.com.br").rstrip("/")
 if not ANINEXUS_ORIGIN.startswith("https://"):
     raise RuntimeError("ANINEXUS_PUBLIC_ORIGIN precisa usar HTTPS.")
@@ -70,6 +74,208 @@ def _favorite(character_id: int | None):
         "work": str(meta.get("anime") or meta.get("subcategory") or "")[:240],
         "image": image[:2000] if image.startswith("https://") else None,
     }
+
+
+def _reward_payload(row: dict | None, *, linked: bool) -> dict:
+    row = row or {}
+    claimed_at = row.get("reward_claimed_at")
+    return {
+        "coins": LINK_REWARD_COINS,
+        "dados": LINK_REWARD_DADOS,
+        "claimed": bool(claimed_at),
+        "available": bool(linked and not claimed_at),
+        "claimedAt": claimed_at.isoformat() if claimed_at else None,
+        "coinsGranted": int(row.get("reward_coins") or 0),
+        "dadosGranted": int(row.get("reward_dados") or 0),
+    }
+
+
+def _grant_link_reward_locked(cur, user_id: int) -> dict:
+    uid = int(user_id)
+    subject = _subject(uid)
+    cur.execute(
+        """
+        SELECT reward_claimed_at,reward_coins,reward_dados
+        FROM source_aninexus_links
+        WHERE user_id=%s
+        FOR UPDATE
+        """,
+        (uid,),
+    )
+    link = dict(cur.fetchone() or {})
+    if not link:
+        raise HTTPException(404, "Vínculo AniNexus não encontrado.")
+
+    cur.execute(
+        """
+        SELECT claimed_at,reward_coins,reward_dados
+        FROM source_aninexus_reward_claims
+        WHERE source_subject=%s
+        """,
+        (subject,),
+    )
+    durable = dict(cur.fetchone() or {})
+    if durable:
+        cur.execute(
+            """
+            UPDATE source_aninexus_links
+            SET reward_claimed_at=COALESCE(reward_claimed_at,%s),
+                reward_coins=GREATEST(reward_coins,%s),
+                reward_dados=GREATEST(reward_dados,%s),
+                updated_at=NOW()
+            WHERE user_id=%s
+            RETURNING reward_claimed_at,reward_coins,reward_dados
+            """,
+            (
+                durable["claimed_at"],
+                int(durable.get("reward_coins") or 0),
+                int(durable.get("reward_dados") or 0),
+                uid,
+            ),
+        )
+        restored = dict(cur.fetchone() or {})
+        return {**_reward_payload(restored, linked=True), "newlyGranted": False}
+
+    if link.get("reward_claimed_at"):
+        cur.execute(
+            """
+            INSERT INTO source_aninexus_reward_claims
+                (source_subject,reward_coins,reward_dados,claimed_at)
+            VALUES(%s,%s,%s,%s)
+            ON CONFLICT(source_subject) DO NOTHING
+            """,
+            (
+                subject,
+                int(link.get("reward_coins") or 0),
+                int(link.get("reward_dados") or 0),
+                link["reward_claimed_at"],
+            ),
+        )
+        return {**_reward_payload(link, linked=True), "newlyGranted": False}
+
+    cur.execute(
+        "SELECT coins,dado_balance FROM users WHERE user_id=%s FOR UPDATE",
+        (uid,),
+    )
+    user = dict(cur.fetchone() or {})
+    if not user:
+        raise HTTPException(404, "Conta Source não encontrada.")
+
+    old_dado = max(0, int(user.get("dado_balance") or 0))
+    new_dado = min(DADO_REWARD_CAP, old_dado + LINK_REWARD_DADOS)
+    dados_applied = max(0, new_dado - old_dado)
+    cur.execute(
+        """
+        UPDATE users
+        SET coins=COALESCE(coins,0)+%s,
+            dado_balance=%s,
+            updated_at=NOW()
+        WHERE user_id=%s
+        RETURNING coins,dado_balance
+        """,
+        (LINK_REWARD_COINS, new_dado, uid),
+    )
+    balances = dict(cur.fetchone() or {})
+    cur.execute(
+        """
+        UPDATE source_aninexus_links
+        SET reward_claimed_at=NOW(),
+            reward_coins=%s,
+            reward_dados=%s,
+            updated_at=NOW()
+        WHERE user_id=%s
+        RETURNING reward_claimed_at,reward_coins,reward_dados
+        """,
+        (LINK_REWARD_COINS, dados_applied, uid),
+    )
+    rewarded = dict(cur.fetchone() or {})
+    cur.execute(
+        """
+        INSERT INTO source_aninexus_reward_claims
+            (source_subject,reward_coins,reward_dados,claimed_at)
+        VALUES(%s,%s,%s,%s)
+        ON CONFLICT(source_subject) DO NOTHING
+        """,
+        (
+            subject,
+            LINK_REWARD_COINS,
+            dados_applied,
+            rewarded["reward_claimed_at"],
+        ),
+    )
+    cur.execute(
+        """
+        INSERT INTO shop_transactions
+            (user_id,type,amount,balance_after,metadata)
+        VALUES (%s,'aninexus_link_reward',%s,%s,%s::jsonb)
+        """,
+        (
+            uid,
+            LINK_REWARD_COINS,
+            int(balances.get("coins") or 0),
+            json.dumps(
+                {
+                    "integration": "aninexus",
+                    "coins": LINK_REWARD_COINS,
+                    "dados_requested": LINK_REWARD_DADOS,
+                    "dados_applied": dados_applied,
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    return {
+        **_reward_payload(rewarded, linked=True),
+        "newlyGranted": True,
+        "balance": int(balances.get("coins") or 0),
+        "dadoBalance": int(balances.get("dado_balance") or 0),
+    }
+
+
+def _queue_reward_notice(user_id: int, reward: dict) -> None:
+    if not reward.get("newlyGranted"):
+        return
+    try:
+        from utils.telegram_outbox import enqueue_text
+
+        dados = int(reward.get("dadosGranted") or 0)
+        dado_line = (
+            f"🎲 <b>+{dados} Dado</b>"
+            if dados > 0
+            else "🎲 <b>Dado:</b> seu saldo já estava no limite de 24"
+        )
+        enqueue_text(
+            dedupe_key=f"aninexus-link-reward:{int(user_id)}",
+            chat_id=int(user_id),
+            text=(
+                "✅ <b>Source AniNexus conectado!</b>\n\n"
+                "Sua conta Source foi vinculada com sucesso ao AniNexus.\n\n"
+                "🎁 <b>Recompensa de integração</b>\n"
+                f"🪙 <b>+{int(reward.get('coinsGranted') or 0)} Coins</b>\n"
+                f"{dado_line}\n"
+                "🏷 <b>Badge Source AniNexus liberado</b>\n\n"
+                "Use /aninexus para consultar a conexão, sincronizar ou gerenciar o vínculo."
+            ),
+        )
+    except Exception:
+        # A entrega é best-effort e desacoplada da transação econômica.
+        # O worker/outbox não pode desfazer uma recompensa já confirmada.
+        pass
+
+
+def claim_link_reward(user_id: int) -> dict:
+    uid = int(user_id)
+    with pool.connection() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT revoked_at FROM source_aninexus_links WHERE user_id=%s FOR UPDATE",
+            (uid,),
+        )
+        row = cur.fetchone()
+        if not row or row.get("revoked_at") is not None:
+            raise HTTPException(409, "Conecte sua conta ao AniNexus antes de resgatar a recompensa.")
+        reward = _grant_link_reward_locked(cur, uid)
+    _queue_reward_notice(uid, reward)
+    return reward
 
 
 def profile_snapshot(user_id: int) -> dict:
@@ -121,6 +327,7 @@ def profile_snapshot(user_id: int) -> dict:
             "collectionPercent": round((unique_count / total_available) * 100, 1) if total_available else 0.0,
         },
         "public": not bool(settings.get("private_profile")),
+        "integration": link_status(uid),
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -186,10 +393,13 @@ def consume_link_token(token: str) -> dict:
             """,
             (uid, link_id, revoke_hash),
         )
+        reward = _grant_link_reward_locked(cur, uid)
+    _queue_reward_notice(uid, reward)
     return {
         "linkId": str(link_id),
         "sourceSubject": _subject(uid),
         "revokeToken": revoke_token,
+        "reward": reward,
         "profile": profile_snapshot(uid),
     }
 
@@ -197,7 +407,11 @@ def consume_link_token(token: str) -> dict:
 def link_status(user_id: int) -> dict:
     with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT linked_at,updated_at FROM source_aninexus_links WHERE user_id=%s AND revoked_at IS NULL",
+            """
+            SELECT linked_at,updated_at,reward_claimed_at,reward_coins,reward_dados
+            FROM source_aninexus_links
+            WHERE user_id=%s AND revoked_at IS NULL
+            """,
             (int(user_id),),
         )
         row = cur.fetchone()
@@ -205,6 +419,8 @@ def link_status(user_id: int) -> dict:
         "linked": bool(row),
         "linkedAt": row["linked_at"].isoformat() if row else None,
         "updatedAt": row["updated_at"].isoformat() if row else None,
+        "reward": _reward_payload(dict(row or {}), linked=bool(row)),
+        "badge": "Source AniNexus" if row else None,
     }
 
 
@@ -296,6 +512,10 @@ def build_aninexus_integration_router() -> APIRouter:
     @router.post(API_PREFIX + "/integrations/aninexus/link-token")
     def link_token(uid: int = Depends(_actor)):
         return create_link_token(uid)
+
+    @router.post(API_PREFIX + "/integrations/aninexus/reward")
+    def reward(uid: int = Depends(_actor)):
+        return claim_link_reward(uid)
 
     @router.delete(API_PREFIX + "/integrations/aninexus/link")
     def unlink(uid: int = Depends(_actor)):
