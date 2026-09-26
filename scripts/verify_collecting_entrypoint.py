@@ -145,6 +145,25 @@ with TestClient(TraceEndpoint(), raise_server_exceptions=True) as client:
         assert not failures, failures
 
     @check
+    def aninexus_bridge_routes_dispatch_before_legacy_fallback():
+        probes = [
+            ("GET", "/api/v1_7b82/integrations/aninexus/status", None, 401, "status"),
+            ("POST", "/api/v1_7b82/integrations/aninexus/link-token", {}, 401, "link_token"),
+            ("DELETE", "/api/v1_7b82/integrations/aninexus/link", None, 401, "unlink"),
+            ("POST", "/api/integrations/aninexus/consume", {"token": "invalid-single-use-token-for-entrypoint-regression"}, 410, "consume"),
+            ("GET", "/api/integrations/aninexus/profile/00000000-0000-4000-8000-000000000001", None, 404, "profile"),
+            ("POST", "/api/integrations/aninexus/revoke", {"linkId": "00000000-0000-4000-8000-000000000001", "revokeToken": "x" * 32}, 404, "revoke"),
+        ]
+        for method, path, payload, expected_status, expected_handler in probes:
+            response = client.request(method, path, json=payload)
+            actual = captured[-1]
+            assert response.status_code == expected_status, (method, path, response.status_code, response.text[:300])
+            assert actual["module"] == "source_integrations.aninexus", (method, path, actual)
+            assert actual["handler"] == expected_handler, (method, path, actual)
+            dispatches.append({"method": method, "path": path, "expected_handler": expected_handler,
+                               **actual, "status": response.status_code})
+
+    @check
     def authentication_validation_and_legacy_block_are_preserved():
         uid = user()
         assert client.post(PREFIX + "/wishes", json={"ids": [C1]}).status_code == 401
