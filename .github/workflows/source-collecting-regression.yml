@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
-    paths: ['source_features/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
+    paths: ['source_features/**', 'source_integrations/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'scripts/*aninexus*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
   push:
     branches: [main]
     paths: ['source_features/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
@@ -53,6 +53,10 @@ jobs:
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
         run: python scripts/verify_collecting_transactions.py collecting-proof/transactions.json
+      - name: Source to AniNexus account bridge
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/verify_aninexus_bridge.py collecting-proof/aninexus-bridge.json
       - name: Full production entrypoint with authenticated collecting actions
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit

@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, Settings2, Shield, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
-import { getErrorMessage, setSessionToken } from '../api/client';
+import { Bell, ExternalLink, Link2, RefreshCw, Settings2, Shield, Trash2, Unlink } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { apiFetch, getErrorMessage, setSessionToken } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -14,6 +14,9 @@ import { NicknameForm } from './ShopExtras';
 
 export function Settings() {
   const query = useSourceQuery('/api/menu/profile');
+  const aninexus = useSourceQuery<{ linked: boolean; linkedAt?: string | null }>(
+    '/api/v1_7b82/integrations/aninexus/status',
+  );
   const profile = query.data?.profile;
   const { pending, run } = useSourceAction(),
     { addToast } = useToast(),
@@ -23,6 +26,35 @@ export function Settings() {
     [deleting, setDeleting] = useState(false),
     [deleted, setDeleted] = useState(false);
   const deleteLock = useRef(false);
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void aninexus.refetch();
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [aninexus.refetch]);
+  const connectAniNexus = async () => {
+    const result = await run<{ url: string; expiresInSeconds: number }>(
+      'aninexus-link',
+      () => apiFetch('/integrations/aninexus/link-token', { method: 'POST' }),
+    );
+    if (!result?.url) return;
+    const tg = window.Telegram?.WebApp;
+    if (tg?.openLink) tg.openLink(result.url);
+    else window.open(result.url, '_blank', 'noopener,noreferrer');
+  };
+  const unlinkAniNexus = async () => {
+    const result = await run<{ ok: boolean }>(
+      'aninexus-unlink',
+      () => apiFetch('/integrations/aninexus/link', { method: 'DELETE' }),
+      'Conta AniNexus desconectada.',
+    );
+    if (result?.ok) void aninexus.refetch();
+  };
   const save = (key: string, body: Record<string, unknown>) =>
     run(key, () => sourcePost(`/api/menu/${key}`, body), 'Preferência atualizada.');
   const remove = async () => {
@@ -77,6 +109,63 @@ export function Settings() {
           </Card>
           {!profile.nickname && <NicknameForm />}
           <FavoriteSettings current={profile.favorite} />
+          <Card className="p-5 space-y-4 border-brand-accent/15">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Link2 size={15} className="text-brand-accent" />
+                  <h2 className="text-sm font-bold text-zinc-100">AniNexus</h2>
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Conecte sua conta para levar seu perfil Source ao AniNexus. Sua senha e sua sessão do Telegram nunca são compartilhadas.
+                </p>
+              </div>
+              <span className={`shrink-0 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${
+                aninexus.data?.linked
+                  ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5'
+                  : 'text-zinc-500 border-white/5 bg-zinc-900'
+              }`}>
+                {aninexus.isPending ? 'Verificando' : aninexus.data?.linked ? 'Conectado' : 'Não conectado'}
+              </span>
+            </div>
+            {aninexus.data?.linked && aninexus.data.linkedAt && (
+              <p className="text-[10px] text-zinc-600">
+                Vinculado em {new Date(aninexus.data.linkedAt).toLocaleDateString('pt-BR')}.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                leftIcon={<ExternalLink size={13} />}
+                disabled={Boolean(pending)}
+                isLoading={pending === 'aninexus-link'}
+                onClick={connectAniNexus}
+              >
+                {aninexus.data?.linked ? 'Reconectar AniNexus' : 'Conectar AniNexus'}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<RefreshCw size={13} />}
+                disabled={Boolean(pending) || aninexus.isFetching}
+                onClick={() => void aninexus.refetch()}
+              >
+                Atualizar status
+              </Button>
+              {aninexus.data?.linked && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<Unlink size={13} />}
+                  disabled={Boolean(pending)}
+                  isLoading={pending === 'aninexus-unlink'}
+                  onClick={unlinkAniNexus}
+                >
+                  Desconectar
+                </Button>
+              )}
+            </div>
+          </Card>
           <Card className="p-5 space-y-5">
             <Field label="País">
               <select
