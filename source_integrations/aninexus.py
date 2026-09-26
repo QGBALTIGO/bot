@@ -404,6 +404,8 @@ def consume_link_token(token: str) -> dict:
 
 
 def link_status(user_id: int) -> dict:
+    uid = int(user_id)
+    subject = _subject(uid)
     with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -411,15 +413,35 @@ def link_status(user_id: int) -> dict:
             FROM source_aninexus_links
             WHERE user_id=%s AND revoked_at IS NULL
             """,
-            (int(user_id),),
+            (uid,),
         )
-        row = cur.fetchone()
+        row = dict(cur.fetchone() or {})
+        cur.execute(
+            """
+            SELECT claimed_at,reward_coins,reward_dados
+            FROM source_aninexus_reward_claims
+            WHERE source_subject=%s
+            """,
+            (subject,),
+        )
+        durable = dict(cur.fetchone() or {})
+
+    linked = bool(row)
+    if durable:
+        reward_row = {
+            "reward_claimed_at": durable.get("claimed_at"),
+            "reward_coins": int(durable.get("reward_coins") or 0),
+            "reward_dados": int(durable.get("reward_dados") or 0),
+        }
+    else:
+        reward_row = row
+
     return {
-        "linked": bool(row),
+        "linked": linked,
         "linkedAt": row["linked_at"].isoformat() if row else None,
         "updatedAt": row["updated_at"].isoformat() if row else None,
-        "reward": _reward_payload(dict(row or {}), linked=bool(row)),
-        "badge": "Source AniNexus" if row else None,
+        "reward": _reward_payload(reward_row, linked=linked),
+        "badge": "Source AniNexus" if linked else None,
     }
 
 
