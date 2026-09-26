@@ -11,6 +11,7 @@ from database_aninexus_games import (
     submit_game_session,
 )
 from webapp_routes.aninexus_compat import API_PREFIX, _require_user, _unauthorized
+from source_features.termo_web import termo_guess, termo_start, termo_state
 
 
 def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
@@ -104,6 +105,39 @@ def build_aninexus_games_router() -> APIRouter:
         }
         return _error(code, messages.get(code, "Não foi possível validar a recompensa."))
 
+    def termo_state_route(authorization: str = Header(default="")):
+        session_user, error = _auth(authorization)
+        if error:
+            return error
+        assert session_user is not None
+        return JSONResponse(termo_state(int(session_user.get("id") or 0)))
+
+    def termo_start_route(authorization: str = Header(default="")):
+        session_user, error = _auth(authorization)
+        if error:
+            return error
+        assert session_user is not None
+        return JSONResponse(termo_start(int(session_user.get("id") or 0)))
+
+    def termo_guess_route(payload: dict = Body(default={}), authorization: str = Header(default="")):
+        session_user, error = _auth(authorization)
+        if error:
+            return error
+        assert session_user is not None
+        result = termo_guess(int(session_user.get("id") or 0), str((payload or {}).get("guess") or ""))
+        if result.get("ok"):
+            return JSONResponse(result)
+        messages = {
+            "invalid_word": "Palavra inválida para o Termo Anime.",
+            "not_started": "Inicie a partida antes de enviar uma palavra.",
+            "already_guessed": "Essa palavra já foi usada nesta partida.",
+        }
+        code = str(result.get("error") or "termo_failed")
+        return _error(code, messages.get(code, "Não foi possível registrar a tentativa."), 409)
+
+    router.add_api_route("/termo/state", termo_state_route, methods=["GET"])
+    router.add_api_route("/termo/start", termo_start_route, methods=["POST"])
+    router.add_api_route("/termo/guess", termo_guess_route, methods=["POST"])
     router.add_api_route("/minigames/state", state, methods=["GET"])
     router.add_api_route("/minigames/start/{game_type}", start, methods=["POST"])
     router.add_api_route("/minigames/submit", submit, methods=["POST"])
