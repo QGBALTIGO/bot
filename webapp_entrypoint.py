@@ -269,8 +269,12 @@ def _install_runtime_middleware() -> None:
     app.add_middleware(RequestObservabilityMiddleware)
 
 
-_install_runtime_routes()
+# Specific feature APIs must precede the legacy POST/PATCH catch-all installed
+# by _install_runtime_routes(). Route priority is first-match in FastAPI/Starlette.
+# Keep one app and the original auth/transaction handlers; never bypass the fallback.
 from source_features.router import install as install_collecting
+
 install_collecting(app)
+_install_runtime_routes()
 install_native_webapps(app)
 _install_runtime_middleware()
