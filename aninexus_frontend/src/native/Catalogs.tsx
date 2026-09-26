@@ -91,7 +91,7 @@ export function Catalog({ manga = false }: { manga?: boolean }) {
             src={item.cover_url}
             title={item.titulo}
             subtitle={[item.format, item.year].filter(Boolean).join(' · ')}
-            onClick={() => setSelected(item)}
+            onClick={() => { if (!shared) setSelected(item); }}
           />
         ))}
       </PosterGrid>
@@ -332,16 +332,20 @@ export function Cards() {
 
 export function Album() {
   const params = nativeParams(),
-    animeId = params.get('anime_id');
+    animeId = params.get('anime_id'),
+    share = params.get('share') || '',
+    shared = Boolean(share);
+  const sharedEndpoint = (path: string) =>
+    shared ? `/api/collection/shared/${path}${path.includes('?') ? '&' : '?'}share=${encodeURIComponent(share)}` : `/api/collection/${path}`;
   const [view, setView] = useState(animeId ? 'owned' : 'cards');
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(40);
   const [selected, setSelected] = useState<Character | null>(null);
-  const stats = useSourceQuery('/api/collection/state');
+  const stats = useSourceQuery(sharedEndpoint('state'));
   const query = useSourceQuery(
     animeId
-      ? queryUrl('/api/collection/anime', { anime_id: animeId, mode: view })
-      : `/api/collection/${view === 'works' ? 'animes' : 'cards'}`,
+      ? sharedEndpoint(`anime?anime_id=${encodeURIComponent(animeId)}&mode=${encodeURIComponent(view)}`)
+      : sharedEndpoint(view === 'works' ? 'animes' : 'cards'),
   );
   const items = (query.data?.items || []).filter((item: any) =>
     String(item.name || item.anime || '')
@@ -354,9 +358,9 @@ export function Album() {
       title={
         animeId
           ? (typeof details === 'string' ? details : details?.anime) || 'Álbum da obra'
-          : 'Meu álbum'
+          : shared ? `Coleção de ${stats.data?.profile?.display_name || 'jogador'}` : 'Meu álbum'
       }
-      subtitle="Sua coleção, cópias e obras completas"
+      subtitle={shared ? "Coleção compartilhada · somente leitura" : "Sua coleção, cópias e obras completas"}
       icon={BookOpen}
       {...(animeId ? { back: () => navigateNative('album') } : {})}
     >
@@ -417,7 +421,7 @@ export function Album() {
                 src={item.cover_image}
                 title={item.anime}
                 subtitle={`${item.owned_count}/${item.total_count} · ${item.completion_pct}%`}
-                onClick={() => navigateNative('album', { anime_id: item.anime_id })}
+                onClick={() => navigateNative('album', { anime_id: item.anime_id, ...(shared ? { share } : {}) })}
               />
             ) : (
               <Poster
