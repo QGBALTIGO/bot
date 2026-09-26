@@ -559,38 +559,31 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
         await _send_or_edit(update, use_edit, text, kb)
         return
 
-    # Nova partida
-    word_data = _pick_daily_word(user_id)
-    start_ts  = int(time.time())
-    # Buscar dica e dificuldade do índice
-    word_entry = _WORD_INDEX.get(word_data["word"], word_data)
-
-    create_termo_game(
-        user_id=user_id,
-        game_date=today,
-        word=word_data["word"],
-        category=word_data["category"],
-        source=word_data["source"],
-        start_time=start_ts,
-        mode="daily",
-    )
-    mark_termo_word_used(user_id, word_data["word"])
-
-    created = get_termo_daily_game(user_id, today)
+    # Nova partida: use the same advisory-locked start path as the MiniApp.
+    from source_features.termo_web import termo_start as start_daily_transaction
+    await asyncio.to_thread(start_daily_transaction, user_id)
+    created = await asyncio.to_thread(get_termo_daily_game, user_id, today)
+    if not created:
+        await _send_or_edit(update, use_edit, "Não foi possível iniciar o Termo agora.")
+        return
+    word = str(created.get("word") or "")
+    _load_words()
+    word_entry = _WORD_INDEX.get(word, {})
+    start_ts = int(created.get("start_time") or time.time())
     ACTIVE_GAMES[user_id] = {
-        "id":         int(created["id"]) if created and created.get("id") else 0,
-        "user_id":    user_id,
-        "date":       today,
-        "word":       word_data["word"],
-        "category":   word_data["category"],
-        "source":     word_data["source"],
+        "id": int(created.get("id") or 0),
+        "user_id": user_id,
+        "date": today,
+        "word": word,
+        "category": str(created.get("category") or ""),
+        "source": str(created.get("source") or ""),
         "difficulty": word_entry.get("difficulty", 1),
-        "hint":       word_entry.get("hint", ""),
-        "guesses":    [],
-        "mode":       "daily",
-        "status":     "playing",
+        "hint": word_entry.get("hint", ""),
+        "guesses": list(created.get("guesses") or []),
+        "mode": "daily",
+        "status": str(created.get("status") or "playing"),
         "start_time": start_ts,
-        "hint_used":  False,
+        "hint_used": False,
     }
 
     diff_stars = _difficulty_stars(word_entry.get("difficulty", 1))
