@@ -33,6 +33,9 @@ def test_collection_domain_lives_outside_webapp_monolith() -> None:
 
     assert '@app.get("/cccolecao", response_class=HTMLResponse)' not in legacy
     assert '@router.get("/cccolecao", response_class=HTMLResponse)' in route
+    assert '@router.get("/cccolecao/shared", response_class=HTMLResponse)' in route
+    assert '@router.get("/api/collection/shared/state")' in route
+    assert 'verify_collection_share_token' in route
 
     assert "def collection_snapshot(" in service
     assert "def collection_cards_from_snapshot(" in service
@@ -54,7 +57,7 @@ def test_collection_routes_keep_signed_identity_and_touch() -> None:
     assert "resolve_webapp_user as _resolve_webapp_user" in route
     assert "def _touch_identity(" in route
     assert "touch_user_identity(" in route
-    assert route.count("_resolve_webapp_user(") == 4
+    assert route.count("_resolve_webapp_user(") == 5
     assert route.count("_touch_identity(user_id, ctx)") == 0
     assert 'anime_id: int = Query(..., ge=1)' in route
     assert 'mode: str = Query(default="owned")' in route

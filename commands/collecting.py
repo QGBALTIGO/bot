@@ -138,6 +138,26 @@ async def inline_showcase(update, context):
     try:
         page = await asyncio.to_thread(inline_cards, query.from_user.id, search, offset)
         results = []
+        if offset == 0 and not search:
+            from source_features.collection import save_settings
+            from utils.collection_share import create_collection_share_token
+            await asyncio.to_thread(save_settings, int(query.from_user.id), {"share_inline": True})
+            token = create_collection_share_token(int(query.from_user.id))
+            shared_url = miniapp_entrypoint().removesuffix("/menu") + "/cccolecao/shared?share=" + token
+            results.append(
+                InlineQueryResultArticle(
+                    id="collection-full",
+                    title="Compartilhar minha coleção completa",
+                    description="Abre seu álbum no WebApp em modo somente leitura",
+                    input_message_content=InputTextMessageContent(
+                        "📚 <b>Minha coleção no Source</b>\n\nAbra o álbum completo pelo botão abaixo.",
+                        parse_mode="HTML",
+                    ),
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("Abrir minha coleção", url=shared_url)]]
+                    ),
+                )
+            )
         for card in page["items"]:
             name = html.escape(card["name"])
             work = html.escape(card["anime"])

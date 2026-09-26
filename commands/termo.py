@@ -559,38 +559,31 @@ async def _start_daily(update: Update, use_edit: bool = False) -> None:
         await _send_or_edit(update, use_edit, text, kb)
         return
 
-    # Nova partida
-    word_data = _pick_daily_word(user_id)
-    start_ts  = int(time.time())
-    # Buscar dica e dificuldade do índice
-    word_entry = _WORD_INDEX.get(word_data["word"], word_data)
-
-    create_termo_game(
-        user_id=user_id,
-        game_date=today,
-        word=word_data["word"],
-        category=word_data["category"],
-        source=word_data["source"],
-        start_time=start_ts,
-        mode="daily",
-    )
-    mark_termo_word_used(user_id, word_data["word"])
-
-    created = get_termo_daily_game(user_id, today)
+    # Nova partida: use the same advisory-locked start path as the MiniApp.
+    from source_features.termo_web import termo_start as start_daily_transaction
+    await asyncio.to_thread(start_daily_transaction, user_id)
+    created = await asyncio.to_thread(get_termo_daily_game, user_id, today)
+    if not created:
+        await _send_or_edit(update, use_edit, "Não foi possível iniciar o Termo agora.")
+        return
+    word = str(created.get("word") or "")
+    _load_words()
+    word_entry = _WORD_INDEX.get(word, {})
+    start_ts = int(created.get("start_time") or time.time())
     ACTIVE_GAMES[user_id] = {
-        "id":         int(created["id"]) if created and created.get("id") else 0,
-        "user_id":    user_id,
-        "date":       today,
-        "word":       word_data["word"],
-        "category":   word_data["category"],
-        "source":     word_data["source"],
+        "id": int(created.get("id") or 0),
+        "user_id": user_id,
+        "date": today,
+        "word": word,
+        "category": str(created.get("category") or ""),
+        "source": str(created.get("source") or ""),
         "difficulty": word_entry.get("difficulty", 1),
-        "hint":       word_entry.get("hint", ""),
-        "guesses":    [],
-        "mode":       "daily",
-        "status":     "playing",
+        "hint": word_entry.get("hint", ""),
+        "guesses": list(created.get("guesses") or []),
+        "mode": "daily",
+        "status": str(created.get("status") or "playing"),
         "start_time": start_ts,
-        "hint_used":  False,
+        "hint_used": False,
     }
 
     diff_stars = _difficulty_stars(word_entry.get("difficulty", 1))
@@ -932,6 +925,52 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if guess in {str(x["guess"]).lower() for x in game["guesses"]}:
         await update.message.reply_text("♻️ Palavra já tentada nesta partida.")
+        return
+
+    # Daily games use the same row-locked transaction as the MiniApp.
+    # Training stays local and reward-free.
+    if game.get("mode") == "daily":
+        from source_features.termo_web import termo_guess as submit_daily_guess
+        outcome = await asyncio.to_thread(submit_daily_guess, user_id, guess)
+        if not outcome.get("ok"):
+            if outcome.get("error") == "already_guessed":
+                await update.message.reply_text("♻️ Palavra já tentada nesta partida.")
+            elif outcome.get("error") == "invalid_word":
+                await update.message.reply_text("❌ <b>Palavra inválida</b> — não está na lista do jogo.", parse_mode="HTML")
+            else:
+                await update.message.reply_text("Não foi possível registrar a tentativa agora.")
+            return
+        public = outcome.get("game") or {}
+        game["guesses"] = list(public.get("guesses") or [])
+        status = str(public.get("status") or "playing")
+        if status == "playing":
+            await update.message.reply_text(_board_text(game), parse_mode="HTML")
+            return
+
+        ACTIVE_GAMES.pop(user_id, None)
+        if status == "win":
+            stats = get_termo_stats(user_id) or {}
+            streak = int(stats.get("current_streak") or 0)
+            attempts = len(game["guesses"])
+            reward_coins = int(public.get("reward_coins") or 0)
+            await update.message.reply_text(
+                f"🎯 <b>Palavra encontrada em {attempts}/6!</b>\n\n"
+                f"{_history_text(game['guesses'])}\n\n"
+                f"Palavra: <b>{game['word'].upper()}</b>\n"
+                f"Categoria: <b>{game['category']}</b>\n"
+                f"Origem: <b>{game['source']}</b>\n\n"
+                f"🪙 +<b>{reward_coins}</b> Coins\n⭐ +<b>{XP_REWARD}</b> XP\n"
+                f"🔥 Sequência: <b>{streak}</b> dia(s)",
+                parse_mode="HTML",
+            )
+        else:
+            label = "⏰ <b>Tempo esgotado!</b>" if status == "timeout" else "💀 <b>Fim de jogo!</b>"
+            await update.message.reply_text(
+                f"{label}\n\n{_history_text(game['guesses'])}\n\n"
+                f"A palavra era: <b>{game['word'].upper()}</b>\n"
+                f"Categoria: <b>{game['category']}</b>\nOrigem: <b>{game['source']}</b>",
+                parse_mode="HTML",
+            )
         return
 
     # Verificar tempo

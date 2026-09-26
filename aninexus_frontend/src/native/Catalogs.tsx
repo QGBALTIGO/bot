@@ -332,16 +332,21 @@ export function Cards() {
 
 export function Album() {
   const params = nativeParams(),
-    animeId = params.get('anime_id');
+    animeId = params.get('anime_id'),
+    share = params.get('share') || '',
+    shared = Boolean(share);
+  const sharedEndpoint = (path: string) =>
+    shared ? `/api/collection/shared/${path}${path.includes('?') ? '&' : '?'}share=${encodeURIComponent(share)}` : `/api/collection/${path}`;
   const [view, setView] = useState(animeId ? 'owned' : 'cards');
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(40);
   const [selected, setSelected] = useState<Character | null>(null);
-  const stats = useSourceQuery('/api/collection/state');
+  const { pending: sharePending, run: runShare } = useSourceAction();
+  const stats = useSourceQuery(sharedEndpoint('state'));
   const query = useSourceQuery(
     animeId
-      ? queryUrl('/api/collection/anime', { anime_id: animeId, mode: view })
-      : `/api/collection/${view === 'works' ? 'animes' : 'cards'}`,
+      ? sharedEndpoint(`anime?anime_id=${encodeURIComponent(animeId)}&mode=${encodeURIComponent(view)}`)
+      : sharedEndpoint(view === 'works' ? 'animes' : 'cards'),
   );
   const items = (query.data?.items || []).filter((item: any) =>
     String(item.name || item.anime || '')
@@ -354,12 +359,29 @@ export function Album() {
       title={
         animeId
           ? (typeof details === 'string' ? details : details?.anime) || 'Álbum da obra'
-          : 'Meu álbum'
+          : shared ? `Coleção de ${stats.data?.profile?.display_name || 'jogador'}` : 'Meu álbum'
       }
-      subtitle="Sua coleção, cópias e obras completas"
+      subtitle={shared ? "Coleção compartilhada · somente leitura" : "Sua coleção, cópias e obras completas"}
       icon={BookOpen}
       {...(animeId ? { back: () => navigateNative('album') } : {})}
     >
+      {!shared && (
+        <Button
+          variant="secondary"
+          isLoading={sharePending === 'share-collection'}
+          disabled={Boolean(sharePending)}
+          onClick={() =>
+            runShare('share-collection', async () => {
+              const result = await sourcePost<{ path: string }>('/api/collection/share');
+              const url = new URL(result.path, window.location.origin).toString();
+              openExternal(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent('Minha coleção no Source Baltigo')}`);
+              return result;
+            }, 'Link da coleção pronto para compartilhar.')
+          }
+        >
+          Compartilhar minha coleção
+        </Button>
+      )}
       <div className="grid grid-cols-3 gap-3">
         {[
           ['Cards', stats.data?.stats?.unique_cards],
@@ -417,7 +439,7 @@ export function Album() {
                 src={item.cover_image}
                 title={item.anime}
                 subtitle={`${item.owned_count}/${item.total_count} · ${item.completion_pct}%`}
-                onClick={() => navigateNative('album', { anime_id: item.anime_id })}
+                onClick={() => navigateNative('album', { anime_id: item.anime_id, ...(shared ? { share } : {}) })}
               />
             ) : (
               <Poster
@@ -425,7 +447,7 @@ export function Album() {
                 src={item.image}
                 title={item.name}
                 subtitle={`${item.quantity || 0} cópia(s) · ${item.anime || ''}`}
-                onClick={() => setSelected(item)}
+                onClick={() => { if (!shared) setSelected(item); }}
               />
             ),
           )}

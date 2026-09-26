@@ -5,6 +5,7 @@ import { apiFetch, getErrorMessage } from '../api/client';
 import { CipherMatch } from '../components/minigames/CipherMatch';
 import { EnergyDisplay } from '../components/minigames/EnergyDisplay';
 import { NexusWheel } from '../components/minigames/NexusWheel';
+import { TermoAnime } from '../components/minigames/TermoAnime';
 import { RewardModal } from '../components/minigames/RewardModal';
 import type { MinigameState, Reward, SessionData } from '../components/minigames/types';
 import { Card } from '../components/ui/Card';
@@ -106,9 +107,13 @@ export const Minigames = () => {
           </h1>
         </div>
         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-60">
-          Duas partidas rápidas com energia própria e recompensas do Source
+          Termo Anime e partidas rápidas integradas à progressão do Source
         </p>
       </header>
+
+      <div className="mb-5">
+        <TermoAnime />
+      </div>
 
       {state && (
         <EnergyDisplay

@@ -3205,8 +3205,9 @@ def _uid_query(uid: int) -> str:
     return f"?uid={int(uid)}" if int(uid) > 0 else ""
 
 
-def build_collection_page(*, uid: int, banner_url: str) -> str:
+def build_collection_page(*, uid: int, banner_url: str, share_token: str = "") -> str:
     uid_q = _uid_query(uid)
+    shared = bool(str(share_token or "").strip())
     body = f"""
 <section class="hero-card hero-card--compact">
   <div class="hero-media"><img src="{_h(banner_url)}" alt="Colecao"></div>
@@ -3233,6 +3234,9 @@ def build_collection_page(*, uid: int, banner_url: str) -> str:
     <span class="soft-pill soft-pill--cool" id="collectionNicknamePill">Conta: ...</span>
     <span class="soft-pill" id="collectionFavoritePill">Favorito: --</span>
     <span class="soft-pill">Live sync 5s</span>
+  </div>
+  <div class="pill-row" style="margin-top:12px;">
+    <button type="button" class="action-btn action-btn--cool" id="collectionShareBtn">Compartilhar minha coleção</button>
   </div>
   <div class="segmented" style="margin-top:14px;">
     <button type="button" class="segmented-btn active" id="collectionTabCards">Cards</button>
@@ -3301,6 +3305,8 @@ def build_collection_page(*, uid: int, banner_url: str) -> str:
 """
     js = f"""
 const COLLECTION_UID = resolveWebappUid({int(uid)});
+const COLLECTION_SHARE = {_j(str(share_token or ""))};
+const COLLECTION_SHARED = Boolean(COLLECTION_SHARE);
 const collectionNote = document.getElementById("collectionNote");
 const collectionState = {{
   profile: null,
@@ -3315,6 +3321,15 @@ const collectionState = {{
 const tgCollection = getTelegramWebApp();
 if (tgCollection) {{ try {{ tgCollection.ready(); tgCollection.expand(); }} catch(err) {{}} }}
 function setCollectionNote(message, tone){{ collectionNote.textContent = message || ""; collectionNote.dataset.tone = tone || ""; }}
+function collectionApi(path){{
+  if (!COLLECTION_SHARED) return "/api/collection/" + path;
+  const separator = path.includes("?") ? "&" : "?";
+  return "/api/collection/shared/" + path + separator + "share=" + encodeURIComponent(COLLECTION_SHARE);
+}}
+function collectionFetch(path, options){{
+  if (COLLECTION_SHARED) return authJson(collectionApi(path), options || {{}});
+  return authJson(collectionApi(path), Object.assign({{ uid: COLLECTION_UID }}, options || {{}}));
+}}
 function collectionDisplayName(){{
   const profile = collectionState.profile || {{}};
   return String(profile.nickname || profile.display_name || profile.full_name || (COLLECTION_UID > 0 ? ("UID " + COLLECTION_UID) : "Jogador"));
@@ -3415,7 +3430,7 @@ function closeCollectionDetail(){{
 }}
 async function loadCollectionDetail(options){{
   if (!collectionState.detailAnimeId) return;
-  const response = await authJson("/api/collection/anime?anime_id=" + encodeURIComponent(collectionState.detailAnimeId) + "&mode=" + encodeURIComponent(collectionState.detailMode), {{ uid: COLLECTION_UID }});
+  const response = await collectionFetch("anime?anime_id=" + encodeURIComponent(collectionState.detailAnimeId) + "&mode=" + encodeURIComponent(collectionState.detailMode));
   if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar detalhes da obra.");
   const data = response.data;
   const anime = data.anime || {{}};
@@ -3457,7 +3472,7 @@ async function openCollectionDetail(animeId, mode){{
   }}
 }}
 async function loadCollectionState(options){{
-  const response = await authJson("/api/collection/state", {{ uid: COLLECTION_UID }});
+  const response = await collectionFetch("state");
   if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar resumo da colecao.");
   collectionState.profile = response.data.profile || null;
   collectionState.stats = response.data.stats || null;
@@ -3467,7 +3482,7 @@ async function loadCollectionState(options){{
 async function loadCollectionCards(options){{
   const opts = options || {{}};
   if (!opts.silent && !collectionState.cards.length) setSkeleton("collectionCardsGrid", 6);
-  const response = await authJson("/api/collection/cards", {{ uid: COLLECTION_UID }});
+  const response = await collectionFetch("cards");
   if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar cards da colecao.");
   collectionState.cards = Array.isArray(response.data.items) ? response.data.items : [];
   renderCollectionCards();
@@ -3478,7 +3493,7 @@ async function loadCollectionAnimes(options){{
     setSkeleton("collectionAnimesGrid", 4);
     setSkeleton("collectionMissingGrid", 4);
   }}
-  const response = await authJson("/api/collection/animes", {{ uid: COLLECTION_UID }});
+  const response = await collectionFetch("animes");
   if (!response.ok || !response.data.ok) throw new Error("Falha ao carregar obras da colecao.");
   collectionState.animes = Array.isArray(response.data.items) ? response.data.items : [];
   renderCollectionAnimeSummary("collectionAnimesGrid", "collectionAnimesEmpty", "collectionAnimesMeta", "animes");
@@ -3489,6 +3504,29 @@ async function refreshCollection(){{
   await loadCollectionCards({{ silent: true }});
   await loadCollectionAnimes({{ silent: true }});
   if (collectionDetailOpen()) await loadCollectionDetail({{ silent: true }});
+}}
+const collectionShareBtn = document.getElementById("collectionShareBtn");
+if (COLLECTION_SHARED) {{
+  collectionShareBtn.style.display = "none";
+  document.querySelector(".section-title").textContent = "Coleção compartilhada";
+  const shopLink = document.getElementById("collectionDetailShopLink");
+  if (shopLink) shopLink.style.display = "none";
+}} else {{
+  collectionShareBtn.onclick = async function(){{
+    try {{
+      collectionShareBtn.disabled = true;
+      const response = await authJson("/api/collection/share", {{ uid: COLLECTION_UID, method: "POST", json: {{}} }});
+      if (!response.ok || !response.data.ok) throw new Error((response.data && response.data.message) || "Não foi possível compartilhar a coleção.");
+      const publicUrl = window.location.origin + String(response.data.path || "");
+      const shareUrl = "https://t.me/share/url?url=" + encodeURIComponent(publicUrl) + "&text=" + encodeURIComponent("Minha coleção no Source Baltigo");
+      tgOpenLink(shareUrl);
+      setCollectionNote("Link da sua coleção pronto para compartilhar.", "success");
+    }} catch(err) {{
+      setCollectionNote(err.message, "error");
+    }} finally {{
+      collectionShareBtn.disabled = false;
+    }}
+  }};
 }}
 document.getElementById("collectionSearchInput").addEventListener("input", debounce(function(event){{
   collectionState.q = String(event.target.value || "");

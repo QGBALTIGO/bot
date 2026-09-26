@@ -29,10 +29,10 @@ jobs:
           cd aninexus_frontend && bun install --frozen-lockfile && cd ..
           pip install -r requirements.txt pytest playwright
           python -m playwright install --with-deps chromium
-      - name: Build and verify committed runtime
-        run: |
-          cd aninexus_frontend && bun run build && cd ..
-          diff -qr aninexus_frontend/dist aninexus_runtime
+      - name: Build native runtime
+        run: cd aninexus_frontend && bun run build
+      - name: Verify committed runtime
+        run: diff -qr aninexus_frontend/dist aninexus_runtime
       - name: Verify routes and transactions
         run: python -m pytest -q tests/test_native_webapps.py tests/test_native_nickname_transactions.py tests/test_webapp_identity.py tests/test_fullscreen_viewport.py tests/test_single_miniapp.py
       - name: Verify real UI with synthetic API fixtures
@@ -51,6 +51,12 @@ jobs:
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_single_miniapp_browser.py --output native-proof/single-miniapp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-webapps-dist
+          path: aninexus_frontend/dist/
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
