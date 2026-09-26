@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import time
 from database_core import run
 
 DEFAULT_THRESHOLD = 75
 MIN_THRESHOLD = 20
 MAX_THRESHOLD = 500
+_ENSURED = False
+_CACHE: dict[int, tuple[float, dict]] = {}
+CACHE_TTL = 30.0
 
 
 def ensure_capture_group_settings() -> None:
+    global _ENSURED
+    if _ENSURED:
+        return
     run(
         """
         CREATE TABLE IF NOT EXISTS source_capture_group_settings (
@@ -20,21 +27,28 @@ def ensure_capture_group_settings() -> None:
         )
         """
     )
+    _ENSURED = True
 
 
 def capture_group_settings(chat_id: int, default_threshold: int = DEFAULT_THRESHOLD) -> dict:
     ensure_capture_group_settings()
+    cached = _CACHE.get(int(chat_id))
+    if cached and time.monotonic() - cached[0] < CACHE_TTL:
+        return dict(cached[1])
     row = run(
         "SELECT enabled,message_threshold FROM source_capture_group_settings WHERE chat_id=%s",
         (int(chat_id),),
         fetch="one",
     )
     if not row:
-        return {"enabled": True, "message_threshold": max(MIN_THRESHOLD, min(MAX_THRESHOLD, int(default_threshold)))}
-    return {
-        "enabled": bool(row.get("enabled")),
-        "message_threshold": int(row.get("message_threshold") or default_threshold),
-    }
+        state = {"enabled": True, "message_threshold": max(MIN_THRESHOLD, min(MAX_THRESHOLD, int(default_threshold)))}
+    else:
+        state = {
+            "enabled": bool(row.get("enabled")),
+            "message_threshold": int(row.get("message_threshold") or default_threshold),
+        }
+    _CACHE[int(chat_id)] = (time.monotonic(), dict(state))
+    return state
 
 
 def save_capture_group_settings(chat_id: int, user_id: int, *, enabled: bool | None = None, message_threshold: int | None = None) -> dict:
@@ -56,4 +70,6 @@ def save_capture_group_settings(chat_id: int, user_id: int, *, enabled: bool | N
         """,
         (int(chat_id), next_enabled, next_threshold, int(user_id)),
     )
-    return {"enabled": next_enabled, "message_threshold": next_threshold}
+    state = {"enabled": next_enabled, "message_threshold": next_threshold}
+    _CACHE[int(chat_id)] = (time.monotonic(), dict(state))
+    return state
