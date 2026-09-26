@@ -1,4 +1,9 @@
 import { Activity, Coins, Shield, Swords, Timer, Trophy } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '../components/ui/Button';
+import { apiFetch, getErrorMessage } from '../api/client';
+import { useToast } from '../components/ui/Toast';
+import { useUser } from '../context/UserContext';
 import { Badge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -64,6 +69,10 @@ const reasonLabel = (reason?: string) => {
 const modeLabel = (mode: string) => (mode === 'wager' ? 'Apostado' : 'Amistoso');
 
 export const Duels = () => {
+  const { user } = useUser();
+  const { addToast } = useToast();
+  const [acting, setActing] = useState(false);
+  const { data: active, execute: reloadActive } = useApi<any>('/duels/active');
   const {
     data: stats,
     loading: statsLoading,
@@ -78,7 +87,29 @@ export const Duels = () => {
   } = useApi<DuelHistoryItem[]>('/duels/history?limit=40', { initialData: [] });
 
   const loading = (statsLoading && !stats) || (historyLoading && !history);
-  const reload = () => Promise.allSettled([reloadStats(), reloadHistory()]);
+  const reload = () => Promise.allSettled([reloadStats(), reloadHistory(), reloadActive()]);
+  const battle = active?.duel;
+  const myId = Number(user?.id || 0);
+  const myTeam = battle?.teams_state?.[String(myId)]?.cards || [];
+  const opponentId = Number(battle?.challenger_user_id) === myId
+    ? Number(battle?.challenged_user_id || 0)
+    : Number(battle?.challenger_user_id || 0);
+  const opponentTeam = battle?.teams_state?.[String(opponentId)]?.cards || [];
+  const playSlot = async (slot: number) => {
+    if (!battle?.duel_id || acting) return;
+    setActing(true);
+    try {
+      await apiFetch(`/duels/${battle.duel_id}/round`, {
+        method: 'POST',
+        body: JSON.stringify({ slot }),
+      });
+      await reloadActive();
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error');
+    } finally {
+      setActing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -132,6 +163,55 @@ export const Duels = () => {
           Histórico e desempenho dos seus confrontos
         </p>
       </header>
+
+      {battle && (
+        <Card variant="surface" className="p-5 space-y-5 border-red-500/20">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-bold text-red-400 uppercase tracking-widest">Batalha ativa</p>
+              <h2 className="text-base font-bold text-zinc-100 mt-1">Rodada {battle.current_round || 1}</h2>
+            </div>
+            <Badge variant="warning" size="xs">{String(battle.mode || 'friendly').toUpperCase()}</Badge>
+          </div>
+          {String(battle.state) === 'active' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Sua equipe</p>
+                {myTeam.map((card: any, index: number) => (
+                  <button
+                    key={card.slot || index}
+                    type="button"
+                    disabled={acting || card.eliminated || Number(card.hp || 0) <= 0}
+                    onClick={() => playSlot(Number(card.slot || index + 1))}
+                    className="w-full text-left p-3 rounded-lg border border-white/5 bg-zinc-950/60 disabled:opacity-40"
+                  >
+                    <div className="flex justify-between gap-3 text-xs font-bold text-zinc-200">
+                      <span>{card.name || card.title || `Card ${index + 1}`}</span>
+                      <span className="font-mono text-emerald-400">{Math.max(0, Number(card.hp || 0))} HP</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Adversário</p>
+                {opponentTeam.map((card: any, index: number) => (
+                  <div key={card.slot || index} className="p-3 rounded-lg border border-white/5 bg-zinc-950/40">
+                    <div className="flex justify-between gap-3 text-xs font-bold text-zinc-300">
+                      <span>{card.name || card.title || `Card ${index + 1}`}</span>
+                      <span className="font-mono text-red-400">{Math.max(0, Number(card.hp || 0))} HP</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-400">Preparação do duelo em andamento. Conclua as etapas indicadas no Telegram.</p>
+          )}
+          <p className="text-[9px] text-zinc-600 uppercase tracking-widest">
+            Sua escolha fica oculta até o adversário confirmar a jogada.
+          </p>
+        </Card>
+      )}
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
