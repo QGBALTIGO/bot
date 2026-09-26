@@ -173,7 +173,10 @@ def main():
 
     def correct_revoke_secret_unlinks():
         assert aninexus.revoke_link(holder["new"], holder["revoke"]) is True
-        assert aninexus.link_status(uid)["linked"] is False
+        status = aninexus.link_status(uid)
+        assert status["linked"] is False
+        assert status["reward"]["claimed"] is True
+        assert status["reward"]["available"] is False
         expect_http(404, lambda: aninexus.snapshot_for_link(holder["new"]))
     check("correct_revoke_secret_unlinks", correct_revoke_secret_unlinks)
 
@@ -255,6 +258,10 @@ def main():
         run("DELETE FROM users WHERE user_id=%s", (farm_uid,))
         db.create_or_get_user(farm_uid)
         run("UPDATE users SET coins=0,dado_balance=4 WHERE user_id=%s", (farm_uid,))
+        recreated_status = aninexus.link_status(farm_uid)
+        assert recreated_status["linked"] is False
+        assert recreated_status["reward"]["claimed"] is True
+        assert recreated_status["reward"]["available"] is False
 
         second_token = token_from(aninexus.create_link_token(farm_uid))
         second = aninexus.consume_link_token(second_token)
