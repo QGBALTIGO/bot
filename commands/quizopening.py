@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 from typing import Any
+import time
 
 import httpx
 from telegram import Update
@@ -14,7 +15,9 @@ from database import add_progress_xp
 API = "https://api.animethemes.moe/anime"
 AUDIO = "https://a.animethemes.moe/"
 MUSIC_FALLBACK_API = "https://anime-music.jijidown.com/api/v2/music"
-_THEME_CACHE: list[dict[str, str]] = []
+_THEME_CACHE: list[dict[str, Any]] = []
+_CACHE_TTL = 6 * 3600
+_PROVIDER_COOLDOWN: dict[str, float] = {}
 QUIZ_XP = 5
 
 
@@ -65,7 +68,7 @@ async def _theme_for(anilist_id: int) -> dict[str, str] | None:
         return _parse_theme(response.json())
 
 
-async def _fallback_random_theme() -> tuple[dict[str, Any], dict[str, str]] | None:
+async def _jijidown_random_theme() -> tuple[dict[str, Any], dict[str, str]] | None:
     """Independent provider used only when AnimeThemes is unavailable."""
     async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
         response = await client.get(MUSIC_FALLBACK_API, params={"recommend": "true"})
@@ -92,34 +95,64 @@ async def _media_works(url: str) -> bool:
         return False
 
 
+def _provider_ready(name: str) -> bool:
+    return time.monotonic() >= float(_PROVIDER_COOLDOWN.get(name) or 0)
+
+
+def _provider_failed(name: str, seconds: int = 120) -> None:
+    _PROVIDER_COOLDOWN[name] = time.monotonic() + max(10, int(seconds))
+
+
+def _remember(anime: dict[str, Any], theme: dict[str, str], provider: str) -> None:
+    _THEME_CACHE.append({
+        **theme,
+        "anime": str(anime.get("anime") or ""),
+        "anime_id": int(anime.get("anime_id") or 0),
+        "provider": provider,
+        "validated_at": time.time(),
+    })
+    del _THEME_CACHE[:-100]
+
+
 async def _pick_playable_theme(catalog: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, str]] | None:
-    random.shuffle(_THEME_CACHE)
-    for cached in list(_THEME_CACHE):
-        if await _media_works(cached["audio"]):
-            return ({"anime": cached["anime"], "anime_id": int(cached.get("anime_id") or 0)}, cached)
-        _THEME_CACHE.remove(cached)
+    # Hot path: use recently validated media first. No provider request per round.
+    fresh = [x for x in _THEME_CACHE if time.time() - float(x.get("validated_at") or 0) < _CACHE_TTL]
+    random.shuffle(fresh)
+    if fresh:
+        cached = fresh[0]
+        return ({"anime": cached["anime"], "anime_id": int(cached.get("anime_id") or 0)}, cached)
 
-    candidates = random.sample(catalog, min(18, len(catalog)))
-    for anime in candidates:
-        anime_id = int(anime.get("anime_id") or 0)
-        if anime_id <= 0:
-            continue
+    # Primary: AnimeThemes, because it maps cleanly to AniList IDs.
+    if _provider_ready("animethemes"):
+        candidates = random.sample(catalog, min(18, len(catalog)))
+        had_response = False
+        for anime in candidates:
+            anime_id = int(anime.get("anime_id") or 0)
+            if anime_id <= 0:
+                continue
+            try:
+                theme = await _theme_for(anime_id)
+                had_response = True
+            except Exception:
+                continue
+            if theme and await _media_works(theme["audio"]):
+                _remember(anime, theme, "animethemes")
+                return anime, theme
+        if not had_response:
+            _provider_failed("animethemes", 300)
+
+    # Independent fallback with its own MP3 file server.
+    if _provider_ready("jijidown"):
         try:
-            theme = await _theme_for(anime_id)
+            fallback = await _jijidown_random_theme()
         except Exception:
-            continue
-        if theme and await _media_works(theme["audio"]):
-            cached = {**theme, "anime": str(anime.get("anime") or ""), "anime_id": anime_id}
-            _THEME_CACHE.append(cached)
-            del _THEME_CACHE[:-50]
-            return anime, theme
-
-    try:
-        fallback = await _fallback_random_theme()
-    except Exception:
-        fallback = None
-    if fallback and await _media_works(fallback[1]["audio"]):
-        return fallback
+            fallback = None
+            _provider_failed("jijidown", 120)
+        if fallback and await _media_works(fallback[1]["audio"]):
+            _remember(fallback[0], fallback[1], "jijidown")
+            return fallback
+        if fallback is None:
+            _provider_failed("jijidown", 120)
     return None
 
 
