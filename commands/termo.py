@@ -934,6 +934,52 @@ async def termo_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("♻️ Palavra já tentada nesta partida.")
         return
 
+    # Daily games use the same row-locked transaction as the MiniApp.
+    # Training stays local and reward-free.
+    if game.get("mode") == "daily":
+        from source_features.termo_web import termo_guess as submit_daily_guess
+        outcome = await asyncio.to_thread(submit_daily_guess, user_id, guess)
+        if not outcome.get("ok"):
+            if outcome.get("error") == "already_guessed":
+                await update.message.reply_text("♻️ Palavra já tentada nesta partida.")
+            elif outcome.get("error") == "invalid_word":
+                await update.message.reply_text("❌ <b>Palavra inválida</b> — não está na lista do jogo.", parse_mode="HTML")
+            else:
+                await update.message.reply_text("Não foi possível registrar a tentativa agora.")
+            return
+        public = outcome.get("game") or {}
+        game["guesses"] = list(public.get("guesses") or [])
+        status = str(public.get("status") or "playing")
+        if status == "playing":
+            await update.message.reply_text(_board_text(game), parse_mode="HTML")
+            return
+
+        ACTIVE_GAMES.pop(user_id, None)
+        if status == "win":
+            stats = get_termo_stats(user_id) or {}
+            streak = int(stats.get("current_streak") or 0)
+            attempts = len(game["guesses"])
+            reward_coins = int(public.get("reward_coins") or 0)
+            await update.message.reply_text(
+                f"🎯 <b>Palavra encontrada em {attempts}/6!</b>\n\n"
+                f"{_history_text(game['guesses'])}\n\n"
+                f"Palavra: <b>{game['word'].upper()}</b>\n"
+                f"Categoria: <b>{game['category']}</b>\n"
+                f"Origem: <b>{game['source']}</b>\n\n"
+                f"🪙 +<b>{reward_coins}</b> Coins\n⭐ +<b>{XP_REWARD}</b> XP\n"
+                f"🔥 Sequência: <b>{streak}</b> dia(s)",
+                parse_mode="HTML",
+            )
+        else:
+            label = "⏰ <b>Tempo esgotado!</b>" if status == "timeout" else "💀 <b>Fim de jogo!</b>"
+            await update.message.reply_text(
+                f"{label}\n\n{_history_text(game['guesses'])}\n\n"
+                f"A palavra era: <b>{game['word'].upper()}</b>\n"
+                f"Categoria: <b>{game['category']}</b>\nOrigem: <b>{game['source']}</b>",
+                parse_mode="HTML",
+            )
+        return
+
     # Verificar tempo
     if _seconds_left(game["start_time"]) <= 0:
         if game["mode"] != "train":
