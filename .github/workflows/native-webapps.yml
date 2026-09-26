@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths: ["aninexus_frontend/**", "aninexus_runtime/**", "webapp_routes/native_webapps.py", "webapp_entrypoint.py", "bot.py", "tests/test_native*.py", "tests/test_single_miniapp.py", "utils/miniapp*.py", "commands/**", "scripts/verify_single_miniapp_browser.py", "tests/test_fullscreen_viewport.py", "scripts/verify_native_browser.py", "scripts/verify_fullscreen_browser.py", "scripts/verify_profile_identity_browser.py", ".github/workflows/native-webapps.yml"]
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: native-webapps-${{ github.ref }}
   cancel-in-progress: true
@@ -31,21 +31,6 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Build native runtime
         run: cd aninexus_frontend && bun run build
-      - name: Sync compiled runtime on same-repository PR branches
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          git fetch origin "${{ github.head_ref }}"
-          git checkout -B native-sync "origin/${{ github.head_ref }}"
-          cd aninexus_frontend && bun run build && cd ..
-          rm -rf aninexus_runtime
-          cp -R aninexus_frontend/dist aninexus_runtime
-          if ! git diff --quiet -- aninexus_runtime; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add aninexus_runtime
-            git commit -m "build(native): sync compiled runtime"
-            git push origin HEAD:"${{ github.head_ref }}"
-          fi
       - name: Verify committed runtime
         run: diff -qr aninexus_frontend/dist aninexus_runtime
       - name: Verify routes and transactions
