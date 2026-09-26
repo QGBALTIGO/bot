@@ -91,5 +91,11 @@
   },
   "/terms": {
     "tab": "terms"
+  },
+  "/cccolecao/shared": {
+    "tab": "album",
+    "params": {
+      "shared": "1"
+    }
   }
 }
