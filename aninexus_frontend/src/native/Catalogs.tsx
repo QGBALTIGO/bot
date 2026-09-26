@@ -341,6 +341,7 @@ export function Album() {
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(40);
   const [selected, setSelected] = useState<Character | null>(null);
+  const { pending: sharePending, run: runShare } = useSourceAction();
   const stats = useSourceQuery(sharedEndpoint('state'));
   const query = useSourceQuery(
     animeId
@@ -364,6 +365,23 @@ export function Album() {
       icon={BookOpen}
       {...(animeId ? { back: () => navigateNative('album') } : {})}
     >
+      {!shared && (
+        <Button
+          variant="secondary"
+          isLoading={sharePending === 'share-collection'}
+          disabled={Boolean(sharePending)}
+          onClick={() =>
+            runShare('share-collection', async () => {
+              const result = await sourcePost<{ path: string }>('/api/collection/share');
+              const url = new URL(result.path, window.location.origin).toString();
+              openExternal(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent('Minha coleção no Source Baltigo')}`);
+              return result;
+            }, 'Link da coleção pronto para compartilhar.')
+          }
+        >
+          Compartilhar minha coleção
+        </Button>
+      )}
       <div className="grid grid-cols-3 gap-3">
         {[
           ['Cards', stats.data?.stats?.unique_cards],
