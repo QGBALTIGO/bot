@@ -154,7 +154,7 @@ async def inline_showcase(update, context):
             from utils.collection_share import create_collection_share_token
             await asyncio.to_thread(save_settings, int(query.from_user.id), {"share_inline": True})
             token = create_collection_share_token(int(query.from_user.id))
-            shared_url = private_url("sourcecollection_" + token)
+            shared_url = miniapp_url("album", share=token)
             results.append(
                 InlineQueryResultArticle(
                     id="collection-full",
@@ -165,7 +165,7 @@ async def inline_showcase(update, context):
                         parse_mode="HTML",
                     ),
                     reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("Abrir minha coleção", url=shared_url)]]
+                        [[InlineKeyboardButton("Abrir minha coleção", web_app=WebAppInfo(url=shared_url))]]
                     ),
                 )
             )
