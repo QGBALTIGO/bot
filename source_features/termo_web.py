@@ -9,18 +9,11 @@ from psycopg.rows import dict_row
 
 from database import xp_to_level
 from database_core import pool
-from commands.termo import (
-    MAX_ATTEMPTS,
-    TIME_LIMIT_SECS,
-    VALID_WORDS,
-    XP_REWARD,
-    _daily_coins,
-    _evaluate,
-    _load_words,
-    _pick_daily_word,
-    _streak_bonus,
-    _WORD_INDEX,
-)
+import commands.termo as termo
+
+MAX_ATTEMPTS = termo.MAX_ATTEMPTS
+TIME_LIMIT_SECS = termo.TIME_LIMIT_SECS
+XP_REWARD = termo.XP_REWARD
 
 TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -75,7 +68,7 @@ def termo_start(user_id: int) -> dict:
             if existing:
                 conn.commit()
                 return _public(dict(existing))
-            word = _pick_daily_word(uid)
+            word = termo._pick_daily_word(uid)
             cur.execute(
                 """
                 INSERT INTO termo_games(user_id,date,word,category,source,attempts,guesses,used_letters,status,mode,start_time)
@@ -147,8 +140,8 @@ def _award(cur, uid: int, coins: int, xp: int) -> None:
 def termo_guess(user_id: int, guess: str) -> dict:
     uid = int(user_id)
     guess = str(guess or "").strip().lower()
-    _load_words()
-    if len(guess) != 6 or guess not in VALID_WORDS:
+    termo._load_words()
+    if len(guess) != 6 or guess not in termo.VALID_WORDS:
         return {"ok": False, "error": "invalid_word"}
 
     with pool.connection() as conn:
@@ -176,7 +169,7 @@ def termo_guess(user_id: int, guess: str) -> dict:
                 row["status"] = "timeout"
                 return {"ok": True, "game": _public(row)}
 
-            result = _evaluate(str(row["word"]), guess)
+            result = termo._evaluate(str(row["word"]), guess)
             guesses.append({"guess": guess, "result": result, "ts": int(time.time())})
             attempts = len(guesses)
             status = "playing"
@@ -184,7 +177,7 @@ def termo_guess(user_id: int, guess: str) -> dict:
             if guess == str(row["word"]):
                 status = "win"
                 streak = _record_stats(cur, uid, True, attempts)
-                coins = _daily_coins(attempts) + _streak_bonus(streak)
+                coins = termo._daily_coins(attempts) + termo._streak_bonus(streak)
                 xp = XP_REWARD
                 _award(cur, uid, coins, xp)
             elif attempts >= MAX_ATTEMPTS:
