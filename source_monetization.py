@@ -61,7 +61,7 @@ def cooldown_minutes() -> int:
 
 
 def coin_reward() -> int:
-    return _bounded_int("MONETAG_REWARD_COINS", 15, 1, 500)
+    return _bounded_int("MONETAG_REWARD_COINS", 2, 1, 500)
 
 
 def dado_reward() -> int:
