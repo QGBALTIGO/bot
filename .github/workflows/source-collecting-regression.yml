@@ -70,6 +70,7 @@ jobs:
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_collecting_browser.py --output collecting-proof/browser
           python scripts/verify_collecting_extended_browser.py --output collecting-proof/extended
+          python scripts/verify_monetag_browser.py --output collecting-proof/monetag-browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:
