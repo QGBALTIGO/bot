@@ -38,7 +38,7 @@ def status():
         "zoneId": "123456",
         "sdkFunction": "show_123456",
         "requestVar": "source_rewarded_bonus",
-        "rewards": {"coins": 15, "dado": 1},
+        "rewards": {"coins": 2, "dado": 1},
         "dailyLimit": 3,
         "rewardedToday": STATE["rewarded_today"],
         "remainingToday": max(0, 3 - STATE["rewarded_today"]),
@@ -74,7 +74,7 @@ class Handler(fixture.Handler):
         if parsed.path == PREFIX + "/" + SESSION_ID:
             STATE["result_calls"] += 1
             selected = STATE["selected"]
-            rewarded_coins = 15 if selected == "coins" else 0
+            rewarded_coins = 2 if selected == "coins" else 0
             rewarded_dados = 1 if selected == "dado" else 0
             if STATE["result_calls"] >= 1:
                 STATE["rewarded_today"] += 1
@@ -85,7 +85,7 @@ class Handler(fixture.Handler):
                         "id": SESSION_ID,
                         "status": "rewarded",
                         "rewardType": selected,
-                        "rewardAmount": 15 if selected == "coins" else 1,
+                        "rewardAmount": 2 if selected == "coins" else 1,
                         "rewardedDados": rewarded_dados,
                         "rewardedCoins": rewarded_coins,
                     }
@@ -96,7 +96,7 @@ class Handler(fixture.Handler):
                         "id": SESSION_ID,
                         "status": "pending",
                         "rewardType": selected,
-                        "rewardAmount": 15 if selected == "coins" else 1,
+                        "rewardAmount": 2 if selected == "coins" else 1,
                         "rewardedDados": 0,
                         "rewardedCoins": 0,
                     }
@@ -124,7 +124,7 @@ class Handler(fixture.Handler):
                     "sdkFunction": "show_123456",
                     "requestVar": "source_rewarded_bonus",
                     "rewardType": reward_type,
-                    "rewardAmount": 15 if reward_type == "coins" else 1,
+                    "rewardAmount": 2 if reward_type == "coins" else 1,
                     "reused": False,
                 }
             )
@@ -173,8 +173,8 @@ def run(output: Path):
 
             page.set_viewport_size({"width": 390, "height": 844})
             goto_activity(1001)
-            page.get_by_role("radio", name="+15 Coins Sempre disponível").click()
-            page.get_by_role("button", name="Assistir e ganhar +15 Coins", exact=True).click()
+            page.get_by_role("radio", name="+2 Coins Sempre disponível").click()
+            page.get_by_role("button", name="Assistir e ganhar +2 Coins", exact=True).click()
             expect(page.get_by_text("1/3", exact=True)).to_be_visible(timeout=10000)
             calls = page.evaluate("window.__monetagCalls")
             assert len(calls) == 1
@@ -201,8 +201,8 @@ def run(output: Path):
             goto_activity(1004)
             dado = page.get_by_role("radio", name="+1 Dado Saldo já está cheio")
             expect(dado).to_be_disabled()
-            page.get_by_role("radio", name="+15 Coins Sempre disponível").click()
-            expect(page.get_by_role("button", name="Assistir e ganhar +15 Coins", exact=True)).to_be_enabled()
+            page.get_by_role("radio", name="+2 Coins Sempre disponível").click()
+            expect(page.get_by_role("button", name="Assistir e ganhar +2 Coins", exact=True)).to_be_enabled()
             report["flows"].append("full Dado balance keeps Coins choice available")
 
             assert not report["page_errors"], report["page_errors"]
