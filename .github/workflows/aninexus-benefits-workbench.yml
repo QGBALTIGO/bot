@@ -1,4 +1,5 @@
 name: AniNexus benefits and Monetag workbench
+# Rerun after typed reward polling and economy calibration.
 on:
   push:
     branches: [codex/aninexus-integration-benefits-20260926]
