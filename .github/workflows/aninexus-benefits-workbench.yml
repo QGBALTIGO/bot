@@ -1,5 +1,5 @@
 name: AniNexus benefits and Monetag workbench
-# Rerun after typed reward polling and economy calibration.
+# Final rerun: two-Coin equivalence, durable anti-abuse marker, Monetag route regression and stable integration secret.
 on:
   push:
     branches: [codex/aninexus-integration-benefits-20260926]
