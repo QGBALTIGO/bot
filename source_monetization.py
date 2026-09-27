@@ -288,7 +288,7 @@ def process_postback(
         raise HTTPException(400, "Evento Monetag desconhecido.")
 
     try:
-        price = Decimal(str(estimated_price or "0"))
+        price = max(Decimal("0"), Decimal(str(estimated_price or "0")))
     except (InvalidOperation, ValueError):
         price = Decimal("0")
 
@@ -305,6 +305,12 @@ def process_postback(
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Sessão de anúncio não encontrada.")
+
+        uid = int(row["user_id"])
+        telegram = str(telegram_id or "").strip()
+        if telegram:
+            if not telegram.isdigit() or int(telegram) != uid:
+                raise HTTPException(403, "Telegram ID do postback não corresponde à sessão.")
 
         status = str(row.get("status") or "")
         if status == "rewarded":
@@ -340,7 +346,6 @@ def process_postback(
             )
             return {"ok": True, "rewarded": False}
 
-        uid = int(row["user_id"])
         cur.execute("SELECT dado_balance FROM users WHERE user_id=%s FOR UPDATE", (uid,))
         user = cur.fetchone()
         if not user:
