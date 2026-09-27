@@ -91,6 +91,33 @@ jobs:
                       raise RuntimeError(f"collecting_dispatch_{method}_{path}_http_{response.status_code}")
                   print(f"collecting_auth_guard_ok method={method} path={path} status=401")
 
+          def require_monetag_rewards(client):
+              private_probes = [
+                  ("GET", "/api/v1_7b82/monetization/rewarded/status"),
+                  ("POST", "/api/v1_7b82/monetization/rewarded/start"),
+              ]
+              for method, path in private_probes:
+                  response = client.request(method, base + path, json={} if method == "POST" else None)
+                  body = response.json()
+                  if response.status_code != 401 or body.get("detail") != "Sessão expirada. Reabra a MiniApp.":
+                      raise RuntimeError(f"monetag_private_guard_{method}_{path}_{response.status_code}:{body}")
+                  print(f"monetag_private_guard_ok method={method} path={path}")
+
+              postback = client.get(
+                  base + "/api/monetization/monetag/postback",
+                  params={
+                      "secret": "invalid-production-smoke-secret",
+                      "ymid": "00000000-0000-4000-8000-000000000001",
+                      "event": "impression",
+                      "value": "valued",
+                      "zone": "0",
+                      "source": "source_dado_reward",
+                  },
+              )
+              if postback.status_code != 403:
+                  raise RuntimeError(f"monetag_postback_guard_{postback.status_code}:{postback.text[:200]}")
+              print("monetag_postback_guard_ok")
+
           def require_aninexus_bridge(client):
               private_probes = [
                   ("GET", "/api/v1_7b82/integrations/aninexus/status"),
@@ -138,6 +165,7 @@ jobs:
                           require_catalog(client)
                           require_collecting_dispatch(client)
                           require_aninexus_bridge(client)
+                          require_monetag_rewards(client)
                           print("Production smoke passed")
                           raise SystemExit(0)
 
