@@ -30,7 +30,7 @@ os.environ.update(
     MONETAG_POSTBACK_SECRET="synthetic-postback-secret-never-production-123",
     MONETAG_DAILY_REWARD_LIMIT="3",
     MONETAG_REWARD_COOLDOWN_MINUTES="15",
-    MONETAG_REWARD_COINS="15",
+    MONETAG_REWARD_COINS="2",
     MONETAG_REWARD_DADOS="1",
 )
 
@@ -96,7 +96,7 @@ def main():
         assert one("SELECT to_regclass('public.source_rewarded_ad_sessions') t")["t"] == "source_rewarded_ad_sessions"
         assert ads.monetag_enabled() is True
         assert ads.daily_limit() == 3
-        assert ads.coin_reward() == 15
+        assert ads.coin_reward() == 2
         assert ads.dado_reward() == 1
     check("migration_and_config", migration_and_config)
 
@@ -232,9 +232,9 @@ def main():
         result = valued(session, uid)
         after = int(one("SELECT coins FROM users WHERE user_id=%s", (uid,))["coins"])
         assert result["rewarded"] is True
-        assert result["rewardedCoins"] == 15
+        assert result["rewardedCoins"] == 2
         assert result["rewardedDados"] == 0
-        assert after - before == 15
+        assert after - before == 2
         assert one(
             "SELECT COUNT(*) n FROM shop_transactions WHERE user_id=%s AND type='monetag_rewarded_ad'",
             (uid,),
@@ -250,8 +250,8 @@ def main():
         after = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (fallback_uid,))
         assert result["rewarded"] is True
         assert result["rewardedDados"] == 0
-        assert result["rewardedCoins"] == 15
-        assert int(after["coins"]) - before == 15
+        assert result["rewardedCoins"] == 2
+        assert int(after["coins"]) - before == 2
         assert int(after["dado_balance"]) == 24
     check("full_dado_converts_to_coins_if_it_fills_after_start", full_dado_converts_to_coins_if_it_fills_after_start)
 
@@ -264,7 +264,7 @@ def main():
         expect_http(409, lambda: ads.start_rewarded_session(full_uid, "dado"))
         session = ads.start_rewarded_session(full_uid, "coins")
         result = valued(session, full_uid)
-        assert result["rewardedCoins"] == 15
+        assert result["rewardedCoins"] == 2
         assert int(one("SELECT dado_balance FROM users WHERE user_id=%s", (full_uid,))["dado_balance"]) == 24
     check("full_balance_still_allows_coin_ads", full_balance_still_allows_coin_ads)
 
