@@ -111,7 +111,7 @@ jobs:
                       "event": "impression",
                       "value": "valued",
                       "zone": "0",
-                      "source": "source_dado_reward",
+                      "source": "source_rewarded_bonus",
                   },
               )
               if postback.status_code != 403:
