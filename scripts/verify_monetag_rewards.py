@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 
@@ -170,7 +170,6 @@ def main():
         after = one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"]
         assert result["rewarded"] is False
         assert int(before) == int(after)
-        assert ads.session_status(uid, uuid4()) if False else True
     check("click_does_not_reward", click_does_not_reward)
 
     def valued_impression_rewards_once():
@@ -182,7 +181,7 @@ def main():
         assert first["rewarded"] is True and first["rewardedDados"] == 1
         assert second["duplicate"] is True
         assert after - before == 1
-        row = ads.session_status(uid, uuid4()) if False else ads.session_status(uid, __import__("uuid").UUID(session["id"]))
+        row = ads.session_status(uid, UUID(session["id"]))
         assert row["status"] == "rewarded"
         assert row["rewardedDados"] == 1
     check("valued_impression_rewards_once", valued_impression_rewards_once)
@@ -192,10 +191,10 @@ def main():
         assert status["rewardedToday"] == 1
         assert status["canStart"] is False
         expect_http(429, lambda: ads.start_rewarded_session(uid))
+        ads.COOLDOWN_MINUTES = 0
     check("cooldown_is_enforced", cooldown_is_enforced)
 
     def non_valued_never_rewards():
-        run("UPDATE source_rewarded_ad_sessions SET rewarded_at=NOW()-INTERVAL '2 hours' WHERE user_id=%s AND status='rewarded'", (uid,))
         session = ads.start_rewarded_session(uid)
         before = int(one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"])
         result = ads.process_postback(
@@ -217,10 +216,6 @@ def main():
 
     def daily_limit_three():
         for _ in range(2):
-            run(
-                "UPDATE source_rewarded_ad_sessions SET rewarded_at=NOW()-INTERVAL '2 hours' WHERE user_id=%s AND status='rewarded'",
-                (uid,),
-            )
             session = ads.start_rewarded_session(uid)
             valued(session, uid)
         status = ads.rewarded_status(uid)
