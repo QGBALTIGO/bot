@@ -1,0 +1,96 @@
+name: AniNexus benefits and Monetag workbench
+on:
+  push:
+    branches: [codex/aninexus-integration-benefits-20260926]
+    paths: ['.github/workflows/aninexus-benefits-workbench.yml']
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: synthetic-audit-only
+          POSTGRES_DB: source_audit
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U audit -d source_audit" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: Install test dependencies
+        run: |
+          pip install -q -r requirements.txt pytest pytest-asyncio ruff playwright
+          cd aninexus_frontend && bun install --frozen-lockfile && cd ..
+          python -m playwright install --with-deps chromium
+      - name: Build and synchronize the single MiniApp runtime
+        run: |
+          cd aninexus_frontend
+          bun run build
+          cd ..
+          rm -rf aninexus_runtime
+          cp -a aninexus_frontend/dist aninexus_runtime
+      - name: Syntax, lint and Python regressions
+        run: |
+          mkdir -p proof
+          python -m compileall -q -x '/(node_modules|\.git)/' .
+          ruff check . --select E9,F63,F7,F82 --exclude data --exclude node_modules
+          python -m pytest -q --junitxml=proof/pytest.xml
+      - name: Repeat Source AniNexus reward bridge three times
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: |
+          for round in 1 2 3; do
+            echo "aninexus_reward_round=$round"
+            python scripts/verify_aninexus_bridge.py "proof/aninexus-$round.json"
+          done
+      - name: Repeat Monetag economic/postback regression five times
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: |
+          for round in 1 2 3 4 5; do
+            echo "monetag_pg_round=$round"
+            python scripts/verify_monetag_rewards.py "proof/monetag-pg-$round.json"
+          done
+      - name: Production entrypoint dispatch
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+          BOT_TOKEN: 999999999:synthetic-workbench-only
+          BOT_USERNAME: SourceWorkbenchBot
+          BASE_URL: https://source.invalid
+          WEBAPP_URL: https://source.invalid/menu
+          SOURCE_MINIAPP_URL: https://source.invalid/menu
+        run: python scripts/verify_collecting_entrypoint.py proof/entrypoint.json
+      - name: Repeat compiled Monetag UI three times
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
+          for round in 1 2 3; do
+            echo "monetag_browser_round=$round"
+            python scripts/verify_monetag_browser.py --output "proof/monetag-browser-$round"
+          done
+      - name: Commit only the verified generated runtime
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add aninexus_runtime
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: sync Source runtime for AniNexus rewards and Monetag'
+            git push origin HEAD:codex/aninexus-integration-benefits-20260926
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aninexus-benefits-monetag-proof
+          path: proof/
+          retention-days: 7
