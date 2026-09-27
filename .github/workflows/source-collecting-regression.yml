@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
-    paths: ['source_features/**', 'source_integrations/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'scripts/*aninexus*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
+    paths: ['source_features/**', 'source_integrations/**', 'source_monetization.py', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'scripts/*aninexus*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
   push:
     branches: [main]
-    paths: ['source_features/**', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
+    paths: ['source_features/**', 'source_monetization.py', 'migrations/**', 'database*.py', 'commands/**', 'bot.py', 'webapp*.py', 'webapp_routes/**', 'aninexus_frontend/**', 'aninexus_runtime/**', 'scripts/*collecting*', 'tests/*collecting*', '.github/workflows/source-collecting-regression.yml']
 permissions:
   contents: read
 concurrency:
@@ -57,6 +57,10 @@ jobs:
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
         run: python scripts/verify_aninexus_bridge.py collecting-proof/aninexus-bridge.json
+      - name: Monetag rewarded-ad economics and postback
+        env:
+          SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
+        run: python scripts/verify_monetag_rewards.py collecting-proof/monetag-rewards.json
       - name: Full production entrypoint with authenticated collecting actions
         env:
           SOURCE_AUDIT_DATABASE_URL: postgresql://audit:synthetic-audit-only@127.0.0.1:5432/source_audit
@@ -66,6 +70,7 @@ jobs:
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')"
           python scripts/verify_collecting_browser.py --output collecting-proof/browser
           python scripts/verify_collecting_extended_browser.py --output collecting-proof/extended
+          python scripts/verify_monetag_browser.py --output collecting-proof/monetag-browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:

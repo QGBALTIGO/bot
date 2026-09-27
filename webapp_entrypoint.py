@@ -38,6 +38,7 @@ from webapp_routes.aninexus_runtime import install_aninexus_runtime
 from webapp_routes.native_webapps import install_native_webapps
 from webapp_routes.source_v2 import build_source_v2_router
 from source_integrations.aninexus import build_aninexus_integration_router
+from source_monetization import build_monetization_router
 from webapp_routes.terms import build_terms_router
 from webapp_services.collection import (
     collection_cards_from_snapshot,
@@ -79,6 +80,7 @@ aninexus_social_router = build_aninexus_social_router()
 aninexus_progression_router = build_aninexus_progression_router()
 aninexus_compat_router = build_aninexus_compat_router()
 aninexus_integration_router = build_aninexus_integration_router()
+monetization_router = build_monetization_router()
 
 
 def _install_runtime_routes() -> None:
@@ -117,6 +119,16 @@ def _install_runtime_routes() -> None:
     if not aninexus_integration_paths.issubset(registered_paths):
         app.include_router(aninexus_integration_router)
         registered_paths.update(aninexus_integration_paths)
+
+    monetization_paths = {
+        "/api/v1_7b82/monetization/rewarded/status",
+        "/api/v1_7b82/monetization/rewarded/start",
+        "/api/v1_7b82/monetization/rewarded/{session_id}",
+        "/api/monetization/monetag/postback",
+    }
+    if not monetization_paths.issubset(registered_paths):
+        app.include_router(monetization_router)
+        registered_paths.update(monetization_paths)
 
     aninexus_dado_paths = {
         "/api/v1_7b82/dado/state",

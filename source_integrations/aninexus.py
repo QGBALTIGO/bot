@@ -393,13 +393,15 @@ def consume_link_token(token: str) -> dict:
             (uid, link_id, revoke_hash),
         )
         reward = _grant_link_reward_locked(cur, uid)
+
+    profile = profile_snapshot(uid)
     _queue_reward_notice(uid, reward)
     return {
         "linkId": str(link_id),
         "sourceSubject": _subject(uid),
         "revokeToken": revoke_token,
         "reward": reward,
-        "profile": profile_snapshot(uid),
+        "profile": profile,
     }
 
 
