@@ -143,6 +143,10 @@ def rewarded_status(user_id: int) -> dict:
     return {
         "enabled": monetag_enabled(),
         "provider": PROVIDER,
+        "sdkUrl": _sdk_url() if monetag_enabled() else None,
+        "zoneId": _zone_id() if monetag_enabled() else None,
+        "sdkFunction": _sdk_function() if monetag_enabled() else None,
+        "requestVar": PLACEMENT,
         "rewardDados": REWARD_DADOS,
         "dailyLimit": DAILY_LIMIT,
         "rewardedToday": daily,
