@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { NativePage, QueryFeedback } from '../../native/ui';
+import { RewardedAdCard } from '../monetization/RewardedAdCard';
 import { nativeParams, navigateNative } from '../../native/navigation';
 import { useFeatureAction, useFeatureQuery } from './api';
 interface Calendar {
@@ -106,6 +107,7 @@ export function Activity() {
           </Button>
         </div>
       </Card>
+      <RewardedAdCard />
       <div className="grid sm:grid-cols-2 gap-3">
         {now.data?.items
           .filter((i) => i.id !== 'daily')
