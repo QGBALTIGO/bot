@@ -28,6 +28,10 @@ os.environ.update(
     MONETAG_SDK_URL="https://ads.invalid/sdk.js",
     MONETAG_ZONE_ID="123456",
     MONETAG_POSTBACK_SECRET="synthetic-postback-secret-never-production-123",
+    MONETAG_DAILY_REWARD_LIMIT="3",
+    MONETAG_REWARD_COOLDOWN_MINUTES="15",
+    MONETAG_REWARD_COINS="15",
+    MONETAG_REWARD_DADOS="1",
 )
 
 import database as db
@@ -49,12 +53,12 @@ def expect_http(status, fn):
     raise AssertionError("Expected HTTP %s" % status)
 
 
-def make_user(balance=4):
+def make_user(balance=4, coins=100):
     uid = 998_100_000_000 + (uuid4().int % 800_000_000)
     db.create_or_get_user(uid)
     run(
-        "UPDATE users SET username=%s,full_name=%s,dado_balance=%s WHERE user_id=%s",
-        ("monetag_fixture", "Monetag Fixture", int(balance), uid),
+        "UPDATE users SET username=%s,full_name=%s,dado_balance=%s,coins=%s WHERE user_id=%s",
+        ("monetag_fixture", "Monetag Fixture", int(balance), int(coins), uid),
     )
     return uid
 
@@ -91,16 +95,21 @@ def main():
         assert one("SELECT COUNT(*) n FROM source_feature_migrations WHERE version='004_monetag_rewarded_ads'")["n"] == 1
         assert one("SELECT to_regclass('public.source_rewarded_ad_sessions') t")["t"] == "source_rewarded_ad_sessions"
         assert ads.monetag_enabled() is True
+        assert ads.daily_limit() == 3
+        assert ads.coin_reward() == 15
+        assert ads.dado_reward() == 1
     check("migration_and_config", migration_and_config)
 
     uid = make_user()
     holder = {}
 
     def start_is_idempotent_while_pending():
-        first = ads.start_rewarded_session(uid)
-        second = ads.start_rewarded_session(uid)
+        first = ads.start_rewarded_session(uid, "dado")
+        second = ads.start_rewarded_session(uid, "coins")
         assert first["id"] == second["id"]
         assert second["reused"] is True
+        assert second["rewardType"] == "dado"
+        assert first["rewardAmount"] == 1
         assert first["sdkUrl"] == "https://ads.invalid/sdk.js"
         assert first["zoneId"] == "123456"
         assert first["requestVar"] == ads.PLACEMENT
@@ -155,7 +164,7 @@ def main():
 
     def click_does_not_reward():
         session = holder["session"]
-        before = one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"]
+        before = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (uid,))
         result = ads.process_postback(
             secret=os.environ["MONETAG_POSTBACK_SECRET"],
             ymid=session["id"],
@@ -167,36 +176,38 @@ def main():
             estimated_price="0.003",
             telegram_id=str(uid),
         )
-        after = one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"]
+        after = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (uid,))
         assert result["rewarded"] is False
-        assert int(before) == int(after)
+        assert before == after
     check("click_does_not_reward", click_does_not_reward)
 
-    def valued_impression_rewards_once():
+    def valued_dado_rewards_once():
         session = holder["session"]
         before = int(one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"])
         first = valued(session, uid)
         second = valued(session, uid)
         after = int(one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"])
         assert first["rewarded"] is True and first["rewardedDados"] == 1
+        assert first["rewardedCoins"] == 0
         assert second["duplicate"] is True
         assert after - before == 1
         row = ads.session_status(uid, UUID(session["id"]))
         assert row["status"] == "rewarded"
         assert row["rewardedDados"] == 1
-    check("valued_impression_rewards_once", valued_impression_rewards_once)
+        assert row["rewardedCoins"] == 0
+    check("valued_dado_rewards_once", valued_dado_rewards_once)
 
     def cooldown_is_enforced():
         status = ads.rewarded_status(uid)
         assert status["rewardedToday"] == 1
         assert status["canStart"] is False
-        expect_http(429, lambda: ads.start_rewarded_session(uid))
-        ads.COOLDOWN_MINUTES = 0
+        expect_http(429, lambda: ads.start_rewarded_session(uid, "coins"))
+        os.environ["MONETAG_REWARD_COOLDOWN_MINUTES"] = "0"
     check("cooldown_is_enforced", cooldown_is_enforced)
 
-    def non_valued_never_rewards():
-        session = ads.start_rewarded_session(uid)
-        before = int(one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"])
+    def non_valued_never_rewards_or_counts():
+        session = ads.start_rewarded_session(uid, "coins")
+        before = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (uid,))
         result = ads.process_postback(
             secret=os.environ["MONETAG_POSTBACK_SECRET"],
             ymid=session["id"],
@@ -208,33 +219,76 @@ def main():
             estimated_price="0",
             telegram_id=str(uid),
         )
-        after = int(one("SELECT dado_balance FROM users WHERE user_id=%s", (uid,))["dado_balance"])
+        after = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (uid,))
         assert result["rewarded"] is False
         assert after == before
         assert one("SELECT status FROM source_rewarded_ad_sessions WHERE id=%s", (session["id"],))["status"] == "non_valued"
-    check("non_valued_never_rewards", non_valued_never_rewards)
+        assert ads.rewarded_status(uid)["rewardedToday"] == 1
+    check("non_valued_never_rewards_or_counts", non_valued_never_rewards_or_counts)
 
-    def daily_limit_three():
-        for _ in range(2):
-            session = ads.start_rewarded_session(uid)
-            valued(session, uid)
+    def coins_reward_is_atomic_and_logged():
+        session = ads.start_rewarded_session(uid, "coins")
+        before = int(one("SELECT coins FROM users WHERE user_id=%s", (uid,))["coins"])
+        result = valued(session, uid)
+        after = int(one("SELECT coins FROM users WHERE user_id=%s", (uid,))["coins"])
+        assert result["rewarded"] is True
+        assert result["rewardedCoins"] == 15
+        assert result["rewardedDados"] == 0
+        assert after - before == 15
+        assert one(
+            "SELECT COUNT(*) n FROM shop_transactions WHERE user_id=%s AND type='monetag_rewarded_ad'",
+            (uid,),
+        )["n"] == 1
+    check("coins_reward_is_atomic_and_logged", coins_reward_is_atomic_and_logged)
+
+    def full_dado_converts_to_coins_if_it_fills_after_start():
+        fallback_uid = make_user(balance=23, coins=40)
+        session = ads.start_rewarded_session(fallback_uid, "dado")
+        run("UPDATE users SET dado_balance=24 WHERE user_id=%s", (fallback_uid,))
+        before = int(one("SELECT coins FROM users WHERE user_id=%s", (fallback_uid,))["coins"])
+        result = valued(session, fallback_uid)
+        after = one("SELECT coins,dado_balance FROM users WHERE user_id=%s", (fallback_uid,))
+        assert result["rewarded"] is True
+        assert result["rewardedDados"] == 0
+        assert result["rewardedCoins"] == 15
+        assert int(after["coins"]) - before == 15
+        assert int(after["dado_balance"]) == 24
+    check("full_dado_converts_to_coins_if_it_fills_after_start", full_dado_converts_to_coins_if_it_fills_after_start)
+
+    def full_balance_still_allows_coin_ads():
+        full_uid = make_user(balance=24, coins=10)
+        status = ads.rewarded_status(full_uid)
+        assert status["canStart"] is True
+        assert status["canStartDado"] is False
+        assert status["canStartCoins"] is True
+        expect_http(409, lambda: ads.start_rewarded_session(full_uid, "dado"))
+        session = ads.start_rewarded_session(full_uid, "coins")
+        result = valued(session, full_uid)
+        assert result["rewardedCoins"] == 15
+        assert int(one("SELECT dado_balance FROM users WHERE user_id=%s", (full_uid,))["dado_balance"]) == 24
+    check("full_balance_still_allows_coin_ads", full_balance_still_allows_coin_ads)
+
+    def daily_limit_three_mixed_rewards():
+        # uid already has two valued rewards: one Dado and one Coins.
+        session = ads.start_rewarded_session(uid, "dado")
+        valued(session, uid)
         status = ads.rewarded_status(uid)
         assert status["rewardedToday"] == 3
         assert status["remainingToday"] == 0
-        expect_http(429, lambda: ads.start_rewarded_session(uid))
-    check("daily_limit_three", daily_limit_three)
+        expect_http(429, lambda: ads.start_rewarded_session(uid, "coins"))
+        expect_http(429, lambda: ads.start_rewarded_session(uid, "dado"))
+    check("daily_limit_three_mixed_rewards", daily_limit_three_mixed_rewards)
 
-    def full_balance_blocks_wasted_ad():
-        full_uid = make_user(balance=24)
-        status = ads.rewarded_status(full_uid)
-        assert status["dadoBalance"] == 24
-        assert status["canStart"] is False
-        expect_http(409, lambda: ads.start_rewarded_session(full_uid))
-    check("full_balance_blocks_wasted_ad", full_balance_blocks_wasted_ad)
+    def invalid_reward_type_rejected():
+        other_uid = make_user()
+        expect_http(422, lambda: ads.start_rewarded_session(other_uid, "diamonds"))
+    check("invalid_reward_type_rejected", invalid_reward_type_rejected)
 
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "monetag-rewards.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"passed": all(row["passed"] for row in rows), "cases": rows}, ensure_ascii=False, indent=2))
+    out.write_text(
+        json.dumps({"passed": all(row["passed"] for row in rows), "cases": rows}, ensure_ascii=False, indent=2)
+    )
     print(json.dumps(rows, ensure_ascii=False))
 
 
