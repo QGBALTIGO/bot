@@ -123,7 +123,7 @@ async function waitForReward(sessionId: string) {
   let latest: RewardedResult | null = null;
   for (let attempt = 0; attempt < 10; attempt += 1) {
     await wait(attempt === 0 ? 1200 : 1500);
-    latest = await apiFetch('/monetization/rewarded/' + sessionId);
+    latest = (await apiFetch('/monetization/rewarded/' + sessionId)) as RewardedResult;
     if (latest.status !== 'pending') return latest;
   }
   return latest;
